@@ -22,6 +22,7 @@
   <div class="map-loader" id="mapLoader"><div class="map-loader-spinner"></div></div>
 
   <div id="map"></div>
+  <div class="map-frame"></div>
 
   <div class="project-toolbar">
     <div class="project-brand">
@@ -123,15 +124,16 @@
 
   <div id="status" class="status map-status" hidden></div>
   <div id="fallbackLayerSwitcher" class="fallback-switcher" hidden>
-    <h4>Layers</h4>
+    <h4>SURVEY LAYERS</h4>
     <label><input type="checkbox" id="fbBlocks" checked> BLOCKS</label>
     <label><input type="checkbox" id="fbParcels" checked> PARCELS</label>
     <hr>
-    <label><input type="radio" name="fbBasemap" value="OpenStreetMap"> OpenStreetMap</label>
+    <h4>Base Maps</h4>
     <label><input type="radio" name="fbBasemap" value="Google Satellite Hybrid" checked> Google Satellite Hybrid</label>
+    <label><input type="radio" name="fbBasemap" value="OpenStreetMap"> OpenStreetMap</label>
     <label><input type="radio" name="fbBasemap" value="Esri World Imagery"> Esri World Imagery</label>
     <label><input type="radio" name="fbBasemap" value="Esri World Topo Map"> Esri World Topo Map</label>
-    <label><input type="radio" name="fbBasemap" value="OpenTopoMap"> OpenTopoMap</label>
+    <label><input type="radio" name="fbBasemap" value="Esri World Terrain"> Esri World Terrain</label>
   </div>
 
   <script type="module" src="./js/map-app.js"></script>

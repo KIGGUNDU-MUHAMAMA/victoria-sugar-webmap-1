@@ -97,21 +97,13 @@ function createBasemapLayer(title, source, visible = false) {
 }
 
 function buildLayerTree() {
+  const googleHybrid = createBasemapLayer("Google Satellite Hybrid", new ol.source.XYZ({
+    url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    crossOrigin: "anonymous"
+  }), true);
   const osm = createBasemapLayer("OpenStreetMap", new ol.source.OSM(), false);
   const osmHot = createBasemapLayer("OpenStreetMap HOT", new ol.source.XYZ({
     url: "https://{a-c}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
-    crossOrigin: "anonymous"
-  }));
-  const cartoPositron = createBasemapLayer("Carto Positron", new ol.source.XYZ({
-    url: "https://{a-c}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    crossOrigin: "anonymous"
-  }));
-  const cartoVoyager = createBasemapLayer("Carto Voyager", new ol.source.XYZ({
-    url: "https://{a-c}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    crossOrigin: "anonymous"
-  }));
-  const cartoDarkMatter = createBasemapLayer("Carto Dark Matter", new ol.source.XYZ({
-    url: "https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
     crossOrigin: "anonymous"
   }));
   const esriImagery = createBasemapLayer("Esri World Imagery", new ol.source.XYZ({
@@ -126,36 +118,24 @@ function buildLayerTree() {
     url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}",
     crossOrigin: "anonymous"
   }));
-  const googleHybrid = createBasemapLayer("Google Satellite Hybrid", new ol.source.XYZ({
-    url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-    crossOrigin: "anonymous"
-  }), true);
-  const openTopo = createBasemapLayer("OpenTopoMap", new ol.source.XYZ({
-    url: "https://tile.opentopomap.org/{z}/{x}/{y}.png",
-    crossOrigin: "anonymous"
-  }));
-  const openMapSurfer = createBasemapLayer("OpenMapSurfer Hillshade", new ol.source.XYZ({
-    url: "https://tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png",
-    crossOrigin: "anonymous"
-  }));
   const noBasemap = createBasemapLayer("No Basemap", new ol.source.XYZ({
     url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
   }));
+
+  const overlaysGroup = new ol.layer.Group({
+    title: "SURVEY LAYERS",
+    fold: "open",
+    layers: [blocksLayer, parcelsLayer]
+  });
 
   const baseGroup = new ol.layer.Group({
     title: "Base Maps",
     fold: "open",
     layers: [
-      osm, osmHot, cartoPositron, cartoVoyager, cartoDarkMatter,
-      esriImagery, esriTopo, esriTerrain, googleHybrid, openTopo,
-      openMapSurfer, noBasemap
+      googleHybrid, osm, osmHot,
+      esriImagery, esriTopo, esriTerrain,
+      noBasemap
     ]
-  });
-
-  const overlaysGroup = new ol.layer.Group({
-    title: "PostGIS Layers",
-    fold: "open",
-    layers: [blocksLayer, parcelsLayer]
   });
 
   sketchLayer.set("displayInLayerSwitcher", false);

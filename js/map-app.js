@@ -133,7 +133,8 @@ function buildLayerTree() {
 
   sketchLayer.set("displayInLayerSwitcher", false);
   baseGroupRef = baseGroup;
-  return [overlaysGroup, baseGroup, sketchLayer];
+  // Order = bottom → top. Tile basemaps must be below vector layers or opaque maps hide polygons.
+  return [baseGroup, overlaysGroup, sketchLayer];
 }
 
 function setBasemapByTitle(targetTitle) {

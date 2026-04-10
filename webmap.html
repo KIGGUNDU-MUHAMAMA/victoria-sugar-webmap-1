@@ -34,8 +34,8 @@
       <p>Land intelligence platform for sugarcane blocks and parcels.</p>
     </div>
     <div class="map-top-controls">
-      <button type="button" class="control-btn" id="parcelSearchBtn" title="Parcel Search">
-        <i class="fas fa-search"></i><span class="btn-label">Search</span>
+      <button type="button" class="control-btn" id="parcelSearchBtn" title="Find block or plot on the map" aria-expanded="false" aria-haspopup="dialog" aria-controls="parcelSearchPopover">
+        <i class="fas fa-search-location"></i><span class="btn-label">Search</span>
       </button>
       <button type="button" class="control-btn" id="locateBtn" title="Locate Me">
         <i class="fas fa-location-crosshairs"></i><span class="btn-label">Locate</span>
@@ -67,6 +67,36 @@
       <button type="button" class="control-btn" id="logoutBtn" title="Sign Out">
         <i class="fas fa-right-from-bracket"></i><span class="btn-label">Sign Out</span>
       </button>
+    </div>
+
+    <div id="parcelSearchPopover" class="parcel-search-popover" hidden role="dialog" aria-modal="true" aria-labelledby="parcelSearchPopoverTitle">
+      <div class="parcel-search-popover__card">
+        <header class="parcel-search-popover__head">
+          <div class="parcel-search-popover__title-row">
+            <span class="parcel-search-popover__icon" aria-hidden="true"><i class="fas fa-map-location-dot"></i></span>
+            <h2 id="parcelSearchPopoverTitle" class="parcel-search-popover__title">Find block or plot</h2>
+          </div>
+          <button type="button" class="parcel-search-popover__close" id="parcelSearchPopoverCloseBtn" aria-label="Close search">
+            <i class="fas fa-times"></i>
+          </button>
+        </header>
+        <p class="parcel-search-popover__hint"><strong>Block</strong> (code or name) is always required. Leave <strong>plot</strong> empty to zoom to the whole block. To find one plot, enter both block and plot number—the map will highlight that plot.</p>
+        <form id="parcelSearchForm" class="parcel-search-popover__form" novalidate>
+          <div class="parcel-search-popover__fields">
+            <label class="parcel-search-popover__label" for="parcelSearchBlockInput">Block <span class="parcel-search-popover__req">required</span></label>
+            <input id="parcelSearchBlockInput" name="block" type="text" class="parcel-search-popover__input" placeholder="Code or name, e.g. 12 or North field" autocomplete="off" required>
+            <label class="parcel-search-popover__label" for="parcelSearchNoInput">Plot <span class="parcel-search-popover__opt">optional</span></label>
+            <input id="parcelSearchNoInput" name="parcelNo" type="number" class="parcel-search-popover__input" min="1" step="1" placeholder="Leave blank for block only, or e.g. 3 for a plot" inputmode="numeric">
+          </div>
+          <p id="parcelSearchPopoverError" class="parcel-search-popover__error" role="alert" hidden></p>
+          <div class="parcel-search-popover__actions">
+            <button type="button" class="btn-secondary parcel-search-popover__btn-cancel" id="parcelSearchPopoverCancelBtn">Cancel</button>
+            <button type="submit" class="parcel-search-popover__btn-go" id="parcelSearchGoBtn">
+              <i class="fas fa-location-arrow" aria-hidden="true"></i> Go to map
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -215,13 +245,7 @@
   </aside>
 
   <aside class="side-panel" id="panelHost">
-    <div class="panel active" id="parcelSearchPanel">
-      <h3>Parcel Search</h3>
-      <input id="parcelSearchInput" type="text" placeholder="Block code, block name, parcel no">
-      <button id="parcelSearchRunBtn" type="button">Search</button>
-    </div>
-
-    <div class="panel" id="qualityFlagsPanel">
+    <div class="panel active" id="qualityFlagsPanel">
       <h3>Flags</h3>
       <p class="small">Applies to BLOCKS and PARCELS only.</p>
       <input id="flagNoteInput" type="text" placeholder="Flag note">

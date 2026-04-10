@@ -10,8 +10,6 @@ const cfg = getConfig();
 const statusEl = document.getElementById("status");
 const panelHost = document.getElementById("panelHost");
 
-const parcelSearchInput = document.getElementById("parcelSearchInput");
-const parcelSearchRunBtn = document.getElementById("parcelSearchRunBtn");
 const flagNoteInput = document.getElementById("flagNoteInput");
 const flagFeatureBtn = document.getElementById("flagFeatureBtn");
 const refreshFlagsBtn = document.getElementById("refreshFlagsBtn");
@@ -22,7 +20,6 @@ const measureLineBtn = document.getElementById("measureLineBtn");
 const measureAreaBtn = document.getElementById("measureAreaBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
 const panelButtons = {
-  parcelSearchBtn: "parcelSearchPanel",
   qualityFlagsBtn: "qualityFlagsPanel",
   drawingPanelBtn: "drawingPanel"
 };
@@ -48,6 +45,9 @@ const blocksSource = new ol.source.Vector();
 const parcelsSource = new ol.source.Vector();
 const editSource = new ol.source.Vector();
 
+/** Set by parcel search RPC; layer styles emphasize these ids after bbox reload. */
+const searchHighlight = { blockId: null, parcelId: null };
+
 function surveyFeatureAreaAcresText(feature) {
   const raw = feature.get("expected_area_acres");
   if (raw != null && raw !== "" && Number.isFinite(Number(raw))) {
@@ -67,16 +67,25 @@ const blocksLayer = new ol.layer.Vector({
   visible: true,
   source: blocksSource,
   style: (feature) => {
+    const bid = feature.getId();
+    const hi =
+      searchHighlight.blockId != null &&
+      bid != null &&
+      String(bid) === String(searchHighlight.blockId);
     const code = String(feature.get("block_code") ?? "").trim() || "—";
     const area = surveyFeatureAreaAcresText(feature);
     const text = area ? `${code}\n${area}` : code;
     return new ol.style.Style({
-      stroke: new ol.style.Stroke({ color: "#c62828", width: 2 }),
-      fill: new ol.style.Fill({ color: "rgba(0, 0, 0, 0)" }),
+      stroke: new ol.style.Stroke(
+        hi ? { color: "#e65100", width: 4 } : { color: "#c62828", width: 2 }
+      ),
+      fill: new ol.style.Fill({
+        color: hi ? "rgba(230, 81, 0, 0.14)" : "rgba(0, 0, 0, 0)"
+      }),
       text: new ol.style.Text({
         text,
-        font: "600 11px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: "#b71c1c" }),
+        font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: hi ? "#bf360c" : "#b71c1c" }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
         overflow: true
       })
@@ -89,6 +98,11 @@ const parcelsLayer = new ol.layer.Vector({
   visible: true,
   source: parcelsSource,
   style: (feature) => {
+    const pid = feature.getId();
+    const hi =
+      searchHighlight.parcelId != null &&
+      pid != null &&
+      String(pid) === String(searchHighlight.parcelId);
     const num = feature.get("parcel_no");
     const label =
       num != null && num !== ""
@@ -99,13 +113,19 @@ const parcelsLayer = new ol.layer.Vector({
     const area = surveyFeatureAreaAcresText(feature);
     const text = area ? `${label}\n${area}` : label;
     return new ol.style.Style({
-      stroke: new ol.style.Stroke({ color: "#1565c0", width: 2 }),
-      fill: new ol.style.Fill({ color: "rgba(21, 101, 192, 0.06)" }),
+      stroke: new ol.style.Stroke(
+        hi
+          ? { color: "#f9a825", width: 4 }
+          : { color: "#1565c0", width: 2 }
+      ),
+      fill: new ol.style.Fill({
+        color: hi ? "rgba(249, 168, 37, 0.38)" : "rgba(21, 101, 192, 0.06)"
+      }),
       text: new ol.style.Text({
         text,
-        font: "600 11px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: "#0d47a1" }),
-        stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+        font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: hi ? "#f57f17" : "#0d47a1" }),
+        stroke: new ol.style.Stroke({ color: "#ffffff", width: hi ? 4 : 3 }),
         overflow: true
       })
     });
@@ -202,6 +222,8 @@ function enableFallbackLayerSwitcher() {
 }
 
 function setActivePanel(panelId) {
+  closeParcelSearchPopover({ clearHighlight: true });
+
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
 
   const coordDrawer = document.getElementById("coordSearchDrawer");
@@ -342,6 +364,261 @@ async function loadLayersFromDb() {
   }
 }
 
+function clearSearchHighlight() {
+  searchHighlight.blockId = null;
+  searchHighlight.parcelId = null;
+  if (map) {
+    blocksLayer.changed();
+    parcelsLayer.changed();
+  }
+}
+
+let parcelSearchPopoverOpen = false;
+let parcelSearchOutsideHandler = null;
+let parcelSearchEscapeHandler = null;
+
+function setParcelSearchPopoverError(msg) {
+  const el = document.getElementById("parcelSearchPopoverError");
+  if (!el) return;
+  if (!msg) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function positionParcelSearchPopover() {
+  const btn = document.getElementById("parcelSearchBtn");
+  const pop = document.getElementById("parcelSearchPopover");
+  if (!btn || !pop || pop.hidden) return;
+  const r = btn.getBoundingClientRect();
+  const gap = 10;
+  const margin = 12;
+  pop.style.position = "fixed";
+  pop.style.zIndex = "1250";
+  const measured = pop.getBoundingClientRect();
+  const w = measured.width || 300;
+  const h = measured.height || 260;
+  let left = r.left;
+  if (left + w > window.innerWidth - margin) {
+    left = Math.max(margin, window.innerWidth - w - margin);
+  }
+  if (left < margin) left = margin;
+  let top = r.bottom + gap;
+  if (top + h > window.innerHeight - margin) {
+    top = Math.max(margin, r.top - gap - h);
+  }
+  pop.style.top = `${Math.round(top)}px`;
+  pop.style.left = `${Math.round(left)}px`;
+}
+
+function closeParcelSearchPopover(options = {}) {
+  const { clearHighlight = true } = options;
+  const pop = document.getElementById("parcelSearchPopover");
+  const btn = document.getElementById("parcelSearchBtn");
+  if (parcelSearchOutsideHandler) {
+    document.removeEventListener("pointerdown", parcelSearchOutsideHandler, true);
+    parcelSearchOutsideHandler = null;
+  }
+  if (parcelSearchEscapeHandler) {
+    document.removeEventListener("keydown", parcelSearchEscapeHandler, true);
+    parcelSearchEscapeHandler = null;
+  }
+  parcelSearchPopoverOpen = false;
+  if (pop) pop.hidden = true;
+  btn?.classList.remove("active");
+  btn?.setAttribute("aria-expanded", "false");
+  setParcelSearchPopoverError("");
+  if (clearHighlight) clearSearchHighlight();
+}
+
+function openParcelSearchPopover() {
+  const pop = document.getElementById("parcelSearchPopover");
+  const btn = document.getElementById("parcelSearchBtn");
+  const blockInput = document.getElementById("parcelSearchBlockInput");
+  if (!pop || !btn || parcelSearchPopoverOpen) return;
+
+  pop.hidden = false;
+  btn.classList.add("active");
+  btn.setAttribute("aria-expanded", "true");
+  parcelSearchPopoverOpen = true;
+
+  parcelSearchOutsideHandler = (ev) => {
+    if (!parcelSearchPopoverOpen) return;
+    if (pop.contains(ev.target) || btn.contains(ev.target)) return;
+    closeParcelSearchPopover({ clearHighlight: true });
+  };
+  document.addEventListener("pointerdown", parcelSearchOutsideHandler, true);
+
+  parcelSearchEscapeHandler = (ev) => {
+    if (ev.key === "Escape" && parcelSearchPopoverOpen) {
+      ev.preventDefault();
+      closeParcelSearchPopover({ clearHighlight: true });
+    }
+  };
+  document.addEventListener("keydown", parcelSearchEscapeHandler, true);
+
+  requestAnimationFrame(() => {
+    positionParcelSearchPopover();
+    blockInput?.focus();
+    blockInput?.select?.();
+  });
+}
+
+function toggleParcelSearchPopover() {
+  if (parcelSearchPopoverOpen) closeParcelSearchPopover({ clearHighlight: true });
+  else openParcelSearchPopover();
+}
+
+async function runLocateParcelFromPopover() {
+  const blockInput = document.getElementById("parcelSearchBlockInput");
+  const noInput = document.getElementById("parcelSearchNoInput");
+  const goBtn = document.getElementById("parcelSearchGoBtn");
+  const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
+  const blockQ = blockInput?.value?.trim() ?? "";
+  const plotStr = noInput?.value?.trim() ?? "";
+  let parcelNo = null;
+  if (plotStr !== "") {
+    const parcelNoRaw = parseNum(plotStr);
+    parcelNo = parcelNoRaw != null ? Math.trunc(parcelNoRaw) : null;
+    if (parcelNo == null || parcelNo < 1 || !Number.isFinite(parcelNo)) {
+      setParcelSearchPopoverError(
+        "Enter a valid plot number (whole number ≥ 1), or leave plot empty to search the block only."
+      );
+      return;
+    }
+  }
+
+  setParcelSearchPopoverError("");
+  if (!blockQ) {
+    setParcelSearchPopoverError("Enter a block code or block name.");
+    return;
+  }
+
+  goBtn.disabled = true;
+  if (cancelBtn) cancelBtn.disabled = true;
+
+  const { data, error } = await supabase.rpc("vsl_locate_parcel", {
+    p_block_query: blockQ,
+    p_parcel_no: parcelNo
+  });
+
+  if (error) {
+    setParcelSearchPopoverError(error.message || "Search failed.");
+    goBtn.disabled = false;
+    if (cancelBtn) cancelBtn.disabled = false;
+    return;
+  }
+
+  if (!data || data.success !== true) {
+    const errMsg = (data && data.error) || "Nothing matched.";
+    setParcelSearchPopoverError(String(errMsg));
+    goBtn.disabled = false;
+    if (cancelBtn) cancelBtn.disabled = false;
+    return;
+  }
+
+  const mode = data.search_mode === "parcel" ? "parcel" : "block";
+  const geojsonFmt = new ol.format.GeoJSON();
+  const projOpts = { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" };
+  let blockGeom;
+  try {
+    blockGeom = geojsonFmt.readGeometry(data.block.geojson, projOpts);
+  } catch (e) {
+    setParcelSearchPopoverError("Could not read geometry from the server.");
+    goBtn.disabled = false;
+    if (cancelBtn) cancelBtn.disabled = false;
+    return;
+  }
+
+  let parcelGeom = null;
+  if (mode === "parcel" && data.parcel?.geojson) {
+    try {
+      parcelGeom = geojsonFmt.readGeometry(data.parcel.geojson, projOpts);
+    } catch (e) {
+      setParcelSearchPopoverError("Could not read plot geometry from the server.");
+      goBtn.disabled = false;
+      if (cancelBtn) cancelBtn.disabled = false;
+      return;
+    }
+  }
+
+  searchHighlight.blockId = data.block.id;
+  searchHighlight.parcelId = mode === "parcel" && data.parcel?.id != null ? data.parcel.id : null;
+
+  const combined = ol.extent.createEmpty();
+  ol.extent.extend(combined, blockGeom.getExtent());
+  if (parcelGeom) ol.extent.extend(combined, parcelGeom.getExtent());
+
+  const finish = async () => {
+    try {
+      await loadLayersFromDb();
+      blocksLayer.changed();
+      parcelsLayer.changed();
+      clearStatus(statusEl);
+      const bc = data.block.block_code ?? "";
+      if (mode === "parcel" && data.parcel) {
+        setStatus(
+          statusEl,
+          `Block ${bc}, plot ${data.parcel.parcel_no} — highlighted on the map.`
+        );
+      } else {
+        setStatus(statusEl, `Block ${bc} — zoomed to block boundary.`);
+      }
+      closeParcelSearchPopover({ clearHighlight: false });
+    } finally {
+      goBtn.disabled = false;
+      if (cancelBtn) cancelBtn.disabled = false;
+    }
+  };
+
+  let finished = false;
+  const safeFinish = () => {
+    if (finished) return;
+    finished = true;
+    finish();
+  };
+
+  const fitOpts = {
+    padding: [100, 100, 100, 100],
+    maxZoom: 19,
+    duration: 1350,
+    callback: () => safeFinish()
+  };
+  if (ol.easing && typeof ol.easing.easeOut === "function") {
+    fitOpts.easing = ol.easing.easeOut;
+  }
+
+  map.getView().fit(combined, fitOpts);
+  window.setTimeout(() => safeFinish(), 2200);
+}
+
+function setupParcelSearchPopover() {
+  const searchBtn = document.getElementById("parcelSearchBtn");
+  const form = document.getElementById("parcelSearchForm");
+  const closeBtn = document.getElementById("parcelSearchPopoverCloseBtn");
+  const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
+
+  searchBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleParcelSearchPopover();
+  });
+
+  closeBtn?.addEventListener("click", () => closeParcelSearchPopover({ clearHighlight: true }));
+  cancelBtn?.addEventListener("click", () => closeParcelSearchPopover({ clearHighlight: true }));
+
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    runLocateParcelFromPopover();
+  });
+
+  window.addEventListener("resize", () => {
+    if (parcelSearchPopoverOpen) positionParcelSearchPopover();
+  });
+}
+
 function stopActiveTool() {
   if (activeInteraction) {
     map.removeInteraction(activeInteraction);
@@ -415,24 +692,6 @@ function startMeasure(type) {
   map.addInteraction(draw);
 }
 
-function runParcelSearch() {
-  const q = parcelSearchInput.value.trim().toLowerCase();
-  if (!q) return;
-  const allFeatures = [...blocksSource.getFeatures(), ...parcelsSource.getFeatures()];
-  const match = allFeatures.find((f) => {
-    const p = f.getProperties();
-    return [p.block_code, p.block_name, p.estate_name, p.parcel_no, p.parcel_code]
-      .map((v) => String(v ?? "").toLowerCase())
-      .some((v) => v.includes(q));
-  });
-  if (!match) {
-    setStatus(statusEl, "No result in current loaded extent.", true);
-    return;
-  }
-  map.getView().fit(match.getGeometry().getExtent(), { duration: 350, maxZoom: 18, padding: [40, 40, 40, 40] });
-  setStatus(statusEl, "Search result found.");
-}
-
 function locateMe() {
   if (!navigator.geolocation) {
     setStatus(statusEl, "Geolocation is not supported in this browser.", true);
@@ -487,8 +746,8 @@ async function refreshFlags() {
 
 function bindEvents() {
   setupPanels();
+  setupParcelSearchPopover();
 
-  parcelSearchRunBtn.addEventListener("click", runParcelSearch);
   flagFeatureBtn.addEventListener("click", submitFlag);
   refreshFlagsBtn.addEventListener("click", refreshFlags);
 

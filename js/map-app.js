@@ -560,9 +560,6 @@ async function initMap() {
       zoom: cfg.DEFAULT_ZOOM || 11
     }),
     controls: [
-      new ol.control.Zoom(),
-      new ol.control.Rotate(),
-      new ol.control.FullScreen(),
       new ol.control.ScaleLine()
     ]
   });

@@ -55,8 +55,8 @@ const blocksLayer = new ol.layer.Vector({
   visible: true,
   source: blocksSource,
   style: new ol.style.Style({
-    stroke: new ol.style.Stroke({ color: "#2f71b8", width: 2 }),
-    fill: new ol.style.Fill({ color: "rgba(47, 113, 184, 0.2)" })
+    stroke: new ol.style.Stroke({ color: "#c62828", width: 2 }),
+    fill: new ol.style.Fill({ color: "rgba(0, 0, 0, 0)" })
   })
 });
 
@@ -65,8 +65,8 @@ const parcelsLayer = new ol.layer.Vector({
   visible: true,
   source: parcelsSource,
   style: new ol.style.Style({
-    stroke: new ol.style.Stroke({ color: "#2f9a50", width: 2 }),
-    fill: new ol.style.Fill({ color: "rgba(47, 154, 80, 0.2)" })
+    stroke: new ol.style.Stroke({ color: "#1565c0", width: 2 }),
+    fill: new ol.style.Fill({ color: "rgba(21, 101, 192, 0.06)" })
   })
 });
 

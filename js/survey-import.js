@@ -199,6 +199,7 @@ export function initSurveyImport({
       toggleBtn.classList.add("active");
       coordDrawer?.classList.remove("open");
       coordBtn?.classList.remove("active");
+      window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
     } else {
       toggleBtn.classList.remove("active");
     }

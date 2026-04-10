@@ -53,3 +53,17 @@ export function toLonLatFromCrs(proj4lib, crs, easting, northing) {
   const out = proj4lib(crs, "EPSG:4326", [Number(easting), Number(northing)]);
   return [out[0], out[1]];
 }
+
+/**
+ * @returns {[x, y]} easting/northing (or lon/lat degrees if crs is EPSG:4326)
+ */
+export function toProjectedFromWgs84(proj4lib, crs, lon, lat) {
+  if (crs === "EPSG:4326") {
+    return [Number(lon), Number(lat)];
+  }
+  if (!PROJ4_DEFS[crs]) {
+    throw new Error(`Unknown CRS: ${crs}`);
+  }
+  const out = proj4lib("EPSG:4326", crs, [Number(lon), Number(lat)]);
+  return [out[0], out[1]];
+}

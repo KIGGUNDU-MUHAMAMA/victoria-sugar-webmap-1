@@ -115,6 +115,7 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
     if (drawer.classList.contains("open")) {
       closeDrawer();
     } else {
+      window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
       document.getElementById("surveyDrawer")?.classList.remove("open");
       document.getElementById("surveyPanelBtn")?.classList.remove("active");
       openDrawer();

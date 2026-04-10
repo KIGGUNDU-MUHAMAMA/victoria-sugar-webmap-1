@@ -2,6 +2,7 @@ import { createSupabaseClient, getConfig } from "./supabase-client.js";
 import { clearStatus, parseNum, setStatus } from "./utils.js";
 import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
+import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -11,8 +12,6 @@ const panelHost = document.getElementById("panelHost");
 
 const parcelSearchInput = document.getElementById("parcelSearchInput");
 const parcelSearchRunBtn = document.getElementById("parcelSearchRunBtn");
-const extractCoordsBtn = document.getElementById("extractCoordsBtn");
-const coordsOutput = document.getElementById("coordsOutput");
 const flagNoteInput = document.getElementById("flagNoteInput");
 const flagFeatureBtn = document.getElementById("flagFeatureBtn");
 const refreshFlagsBtn = document.getElementById("refreshFlagsBtn");
@@ -24,7 +23,6 @@ const measureAreaBtn = document.getElementById("measureAreaBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
 const panelButtons = {
   parcelSearchBtn: "parcelSearchPanel",
-  coordExtractorMainBtn: "coordExtractorPanel",
   qualityFlagsBtn: "qualityFlagsPanel",
   drawingPanelBtn: "drawingPanel"
 };
@@ -160,11 +158,16 @@ function enableFallbackLayerSwitcher() {
 }
 
 function setActivePanel(panelId) {
+  window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
+
   const coordDrawer = document.getElementById("coordSearchDrawer");
   const coordBtn = document.getElementById("coordSearchBtn");
   coordDrawer?.classList.remove("open");
   coordBtn?.classList.remove("active");
   coordDrawer?.setAttribute("aria-hidden", "true");
+
+  const extractBtn = document.getElementById("coordExtractorMainBtn");
+  extractBtn?.classList.remove("active");
 
   panelHost.classList.add("visible");
   for (const panel of panelHost.querySelectorAll(".panel")) {
@@ -192,6 +195,10 @@ function setupInfoPopup() {
   map.addOverlay(infoOverlay);
 
   map.on("singleclick", (evt) => {
+    if (document.getElementById("coordExtractDrawer")?.classList.contains("open")) {
+      return;
+    }
+
     selectedFeature = null;
     selectedLayerType = null;
     popupEl.innerHTML = "";
@@ -382,20 +389,6 @@ function runParcelSearch() {
   setStatus(statusEl, "Search result found.");
 }
 
-function runCoordinateExtractor() {
-  if (!selectedFeature || !selectedLayerType) {
-    setStatus(statusEl, "Select a BLOCK or PARCEL first.", true);
-    return;
-  }
-  const g = selectedFeature.getGeometry();
-  const geo = new ol.format.GeoJSON().writeGeometryObject(g, {
-    featureProjection: "EPSG:3857",
-    dataProjection: "EPSG:4326"
-  });
-  coordsOutput.value = JSON.stringify(geo.coordinates, null, 2);
-  setStatus(statusEl, `Coordinates extracted from ${selectedLayerType}.`);
-}
-
 function locateMe() {
   if (!navigator.geolocation) {
     setStatus(statusEl, "Geolocation is not supported in this browser.", true);
@@ -452,7 +445,6 @@ function bindEvents() {
   setupPanels();
 
   parcelSearchRunBtn.addEventListener("click", runParcelSearch);
-  extractCoordsBtn.addEventListener("click", runCoordinateExtractor);
   flagFeatureBtn.addEventListener("click", submitFlag);
   refreshFlagsBtn.addEventListener("click", refreshFlags);
 
@@ -574,6 +566,7 @@ async function initMap() {
     parcelsSource
   });
   initCoordSearchDrawer({ map, setStatus, statusEl });
+  initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl });
   await loadLayersFromDb();
   await refreshFlags();
   map.on("moveend", async () => {

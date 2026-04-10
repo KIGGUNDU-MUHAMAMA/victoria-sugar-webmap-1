@@ -52,7 +52,7 @@ function getExteriorRings3857(geometry) {
   return [];
 }
 
-function buildCsvRows(rings3857, proj4lib, crs, blockCode, parcelCode) {
+function buildCsvRows(rings3857, proj4lib, crs, blockCode, parcelCode, layerType) {
   const rows = [];
   rings3857.forEach((ring, ri) => {
     ring.forEach((xy, pi) => {
@@ -61,6 +61,7 @@ function buildCsvRows(rings3857, proj4lib, crs, blockCode, parcelCode) {
       rows.push({
         ring: ri + 1,
         pt: pi + 1,
+        layerType,
         block: blockCode,
         parcel: parcelCode,
         crs,
@@ -77,15 +78,16 @@ function buildCsvContent(rows, crs) {
   const h1 = geo ? "longitude" : "easting";
   const h2 = geo ? "latitude" : "northing";
   const lines = [
-    `ring_index,point_index,block_code,parcel_code,crs,${h1},${h2}`,
+    `ring_index,point_index,layer_type,block_code,parcel_code,crs,${h1},${h2}`,
     ...rows.map((r) =>
-      `${r.ring},${r.pt},${escapeCsv(r.block)},${escapeCsv(r.parcel)},${escapeCsv(r.crs)},${r.x},${r.y}`
+      `${r.ring},${r.pt},${escapeCsv(r.layerType)},${escapeCsv(r.block)},${escapeCsv(r.parcel)},${escapeCsv(r.crs)},${r.x},${r.y}`
     )
   ];
   return lines.join("\n");
 }
 
-function buildDxfFromRings(projectedRings) {
+function buildDxfFromRings(projectedRings, dxfLayerName = "PARCEL") {
+  const layer = String(dxfLayerName || "PARCEL").replace(/[^\w-]/g, "_").slice(0, 32) || "PARCEL";
   const lines = [];
   const push = (a, b) => {
     lines.push(String(a));
@@ -107,7 +109,7 @@ function buildDxfFromRings(projectedRings) {
   push(5, "10");
   push(100, "AcDbSymbolTableRecord");
   push(100, "AcDbLayerTableRecord");
-  push(2, "PARCEL");
+  push(2, layer);
   push(70, "0");
   push(62, "5");
   push(6, "CONTINUOUS");
@@ -122,7 +124,7 @@ function buildDxfFromRings(projectedRings) {
     push(0, "LWPOLYLINE");
     push(5, h);
     push(100, "AcDbEntity");
-    push(8, "PARCEL");
+    push(8, layer);
     push(100, "AcDbPolyline");
     push(90, String(pts.length));
     push(70, "1");
@@ -164,10 +166,11 @@ export function initCoordExtractDrawer({
     return { closeDrawer: () => {} };
   }
 
-  const hitOpts = {
-    hitTolerance: 14,
-    layerFilter: (layer) => layer === parcelsLayer
-  };
+  const parcelHitOpts = { hitTolerance: 14, layerFilter: (layer) => layer === parcelsLayer };
+  const blockHitOpts =
+    blocksLayer != null
+      ? { hitTolerance: 14, layerFilter: (layer) => layer === blocksLayer }
+      : null;
 
   CRS_OPTIONS.forEach((o) => {
     const opt = document.createElement("option");
@@ -203,11 +206,11 @@ export function initCoordExtractDrawer({
 
   function resetIdleHint() {
     setHint(
-      "Choose CRS and formats, then press <strong>Select parcel on map</strong> and click a <strong>parcel</strong> polygon (blue fill)."
+      "Choose CRS and formats, then press <strong>Select on map</strong> and click a <strong>block</strong> (red outline) or <strong>parcel</strong> (blue fill)."
     );
   }
 
-  async function runExportForFeature(picked) {
+  async function runExportForFeature(picked, layerType) {
     const wantCsv = exportCsv?.checked;
     const wantDxf = exportDxf?.checked;
     if (!wantCsv && !wantDxf) {
@@ -240,9 +243,9 @@ export function initCoordExtractDrawer({
       const p4 = await ensureProj4();
       const props = picked.getProperties();
       const blockCode = props.block_code ?? "";
-      const parcelCode = props.parcel_code ?? props.parcel_no ?? "";
+      const parcelCode = layerType === "PARCELS" ? (props.parcel_code ?? props.parcel_no ?? "") : "";
 
-      const rows = buildCsvRows(rings3857, p4, crs, blockCode, parcelCode);
+      const rows = buildCsvRows(rings3857, p4, crs, blockCode, parcelCode, layerType);
       const projectedRings = [];
       for (const ring of rings3857) {
         const pts = ring.map((xy) => {
@@ -254,30 +257,36 @@ export function initCoordExtractDrawer({
 
       const base = sanitizeFilenamePart(parcelCode || blockCode || picked.getId() || "export");
       const crsTag = crs.replace(":", "_");
+      const kindTag = layerType === "BLOCKS" ? "block" : "parcel";
+      const dxfLayer = layerType === "BLOCKS" ? "BLOCK" : "PARCEL";
 
       if (wantCsv) {
         const csv = buildCsvContent(rows, crs);
-        downloadText(`${base}_${crsTag}_corners.csv`, csv, "text/csv;charset=utf-8");
+        downloadText(`${base}_${crsTag}_${kindTag}_corners.csv`, csv, "text/csv;charset=utf-8");
       }
       if (wantDxf) {
-        const dxf = buildDxfFromRings(projectedRings);
-        downloadText(`${base}_${crsTag}_parcel.dxf`, dxf, "image/vnd.dxf");
+        const dxf = buildDxfFromRings(projectedRings, dxfLayer);
+        downloadText(`${base}_${crsTag}_${kindTag}.dxf`, dxf, "image/vnd.dxf");
       }
 
       const parts = [];
       if (wantCsv) parts.push("CSV");
       if (wantDxf) parts.push("DXF");
-      const summary = `${parts.join(" + ")} · ${rows.length} corner(s) · ${crs}`;
+      const summary = `${layerType} · ${parts.join(" + ")} · ${rows.length} corner(s) · ${crs}`;
       setStatus(statusEl, `Exported: ${summary}.`);
 
       if (lastExportEl) {
         lastExportEl.hidden = false;
-        lastExportEl.innerHTML = `<strong>Last export</strong><br>${escapeHtml(String(parcelCode || base))} · ${escapeHtml(crs)} · ${escapeHtml(summary)}`;
+        const label =
+          layerType === "BLOCKS"
+            ? `BLOCK ${blockCode || base}`
+            : `PARCEL ${parcelCode || base}`;
+        lastExportEl.innerHTML = `<strong>Last export</strong><br>${escapeHtml(label)} · ${escapeHtml(crs)} · ${escapeHtml(summary)}`;
       }
 
       disarmPicking({ preserveHint: true });
       setHint(
-        "<strong>Export complete.</strong> Change CRS or formats if needed, then press <strong>Select parcel on map</strong> for another parcel."
+        "<strong>Export complete.</strong> Adjust CRS or formats if needed, then press <strong>Select on map</strong> for another feature."
       );
     } catch (err) {
       setStatus(statusEl, err.message || "Export failed", true);
@@ -290,53 +299,39 @@ export function initCoordExtractDrawer({
     if (!pickingArmed || drawer.dataset.picking !== "1") return;
 
     let picked = null;
+    let layerType = null;
+
     map.forEachFeatureAtPixel(
       evt.pixel,
-      (feature, layer) => {
-        if (layer === parcelsLayer) {
-          picked = feature;
-          return true;
-        }
+      (feature) => {
+        picked = feature;
+        return true;
       },
-      hitOpts
+      parcelHitOpts
     );
-
-    if (!picked && blocksLayer) {
-      let hitBlock = false;
+    if (picked) layerType = "PARCELS";
+    else if (blockHitOpts) {
       map.forEachFeatureAtPixel(
         evt.pixel,
-        () => {
-          hitBlock = true;
+        (feature) => {
+          picked = feature;
           return true;
         },
-        {
-          hitTolerance: hitOpts.hitTolerance,
-          layerFilter: (layer) => layer === blocksLayer
-        }
+        blockHitOpts
       );
-      if (hitBlock) {
-        setStatus(
-          statusEl,
-          "That is a block outline (red). Export needs a parcel — click inside a blue parcel polygon.",
-          true
-        );
-        setHint(
-          "<span class=\"extract-hint--warn\">You clicked a <strong>block</strong> (red line). Turn on PARCELS in the layer list and click a <strong>parcel</strong> (blue).</span>"
-        );
-        return;
-      }
+      if (picked) layerType = "BLOCKS";
     }
 
     if (!picked) {
       setStatus(
         statusEl,
-        "No parcel at this location. Zoom in, confirm PARCELS is visible, then click inside a parcel.",
+        "No block or parcel here. Zoom in, confirm BLOCKS/PARCELS are visible in the layer list, then click the polygon.",
         true
       );
       return;
     }
 
-    void runExportForFeature(picked);
+    void runExportForFeature(picked, layerType);
   }
 
   function disarmPicking(opts = {}) {
@@ -360,9 +355,9 @@ export function initCoordExtractDrawer({
 
     setPickingUi(true);
     setHint(
-      "<strong>Picking active.</strong> Click a <strong>parcel</strong> polygon on the map. Downloads start as soon as a parcel is selected. Press <strong>Cancel picking</strong> to stop."
+      "<strong>Picking active.</strong> Click a <strong>block</strong> (red) or <strong>parcel</strong> (blue) polygon. Downloads start immediately. Press <strong>Cancel picking</strong> to stop."
     );
-    setStatus(statusEl, "Click a parcel on the map to export.");
+    setStatus(statusEl, "Click a block or parcel on the map to export.");
   }
 
   map.on("singleclick", onExtractSingleClick);

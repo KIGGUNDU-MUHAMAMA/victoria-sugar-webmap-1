@@ -160,9 +160,9 @@
       <div class="coord-drawer-related">
         <p class="extract-section-label">Export from map</p>
         <button type="button" id="coordSearchOpenExtractBtn" class="btn-pick-parcel btn-pick-parcel--compact">
-          <i class="fas fa-download" aria-hidden="true"></i> Parcel corners (CSV / DXF)
+          <i class="fas fa-download" aria-hidden="true"></i> Block / parcel export (CSV / DXF)
         </button>
-        <p class="small extract-related-hint">Download a selected parcel boundary in Uganda CRS—opens the <strong>Extract</strong> tool.</p>
+        <p class="small extract-related-hint">Opens <strong>Extract</strong> to download block or parcel boundaries in your chosen CRS.</p>
       </div>
     </div>
   </aside>
@@ -173,12 +173,12 @@
         <h2>Coordinate extractor</h2>
         <button type="button" class="survey-close" id="coordExtractCloseBtn" aria-label="Close">&times;</button>
       </div>
-      <p class="small">Professional export of <strong>parcel</strong> boundary vertices: corner listing (CSV) and CAD polyline (DXF), both in the CRS you choose below.</p>
+      <p class="small">Export <strong>block</strong> or <strong>parcel</strong> boundary corners as CSV and/or DXF in your chosen CRS. Where a parcel sits on a block, the parcel is used.</p>
 
       <ol class="extract-step-list" aria-label="Steps">
         <li><span class="extract-step-num">1</span> CRS &amp; file types</li>
         <li><span class="extract-step-num">2</span> Arm picker</li>
-        <li><span class="extract-step-num">3</span> Click parcel → download</li>
+        <li><span class="extract-step-num">3</span> Click block or parcel → download</li>
       </ol>
 
       <div class="extract-section">
@@ -199,13 +199,13 @@
       <div class="extract-section">
         <span class="extract-section-label">Map selection</span>
         <button type="button" id="coordExtractPickBtn" class="btn-pick-parcel">
-          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select parcel on map
+          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on map
         </button>
         <button type="button" id="coordExtractCancelPickBtn" class="btn-secondary extract-cancel-pick" hidden>Cancel picking</button>
       </div>
 
       <div id="coordExtractHint" class="extract-hint" role="status" aria-live="polite">
-        Choose CRS and formats, then press <strong>Select parcel on map</strong> and click a blue parcel boundary.
+        Choose CRS and formats, then press <strong>Select on map</strong> and click a block (red) or parcel (blue).
       </div>
 
       <div id="coordExtractLastExport" class="extract-last-export" hidden></div>

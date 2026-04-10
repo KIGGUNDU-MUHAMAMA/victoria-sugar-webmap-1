@@ -20,6 +20,14 @@ function escapeCsv(s) {
   return t;
 }
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function sameCoord(a, b, eps = 1e-5) {
   return Math.abs(a[0] - b[0]) < eps && Math.abs(a[1] - b[1]) < eps;
 }
@@ -133,7 +141,14 @@ function sanitizeFilenamePart(s) {
   return String(s ?? "parcel").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "parcel";
 }
 
-export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl }) {
+export function initCoordExtractDrawer({
+  map,
+  parcelsLayer,
+  blocksLayer,
+  setStatus,
+  statusEl,
+  stopActiveTool
+}) {
   const drawer = document.getElementById("coordExtractDrawer");
   const toggleBtn = document.getElementById("coordExtractorMainBtn");
   const closeBtn = document.getElementById("coordExtractCloseBtn");
@@ -149,6 +164,11 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
     return { closeDrawer: () => {} };
   }
 
+  const hitOpts = {
+    hitTolerance: 14,
+    layerFilter: (layer) => layer === parcelsLayer
+  };
+
   CRS_OPTIONS.forEach((o) => {
     const opt = document.createElement("option");
     opt.value = o.value;
@@ -160,7 +180,6 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
   if (exportDxf) exportDxf.checked = true;
 
   let proj4lib = null;
-  let selectInteraction = null;
   let pickingArmed = false;
 
   async function ensureProj4() {
@@ -188,25 +207,7 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
     );
   }
 
-  function ensureSelectInteraction() {
-    if (selectInteraction) return;
-    selectInteraction = new ol.interaction.Select({
-      layers: [parcelsLayer],
-      style: new ol.style.Style({
-        stroke: new ol.style.Stroke({ color: "#e65100", width: 3 }),
-        fill: new ol.style.Fill({ color: "rgba(255, 152, 0, 0.18)" })
-      })
-    });
-    selectInteraction.on("select", (e) => {
-      void handleParcelSelect(e);
-    });
-  }
-
-  async function handleParcelSelect(e) {
-    const picked = e.selected[0];
-    selectInteraction?.getFeatures().clear();
-    if (!picked || !pickingArmed) return;
-
+  async function runExportForFeature(picked) {
     const wantCsv = exportCsv?.checked;
     const wantDxf = exportDxf?.checked;
     if (!wantCsv && !wantDxf) {
@@ -285,16 +286,60 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
     }
   }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+  function onExtractSingleClick(evt) {
+    if (!pickingArmed || drawer.dataset.picking !== "1") return;
+
+    let picked = null;
+    map.forEachFeatureAtPixel(
+      evt.pixel,
+      (feature, layer) => {
+        if (layer === parcelsLayer) {
+          picked = feature;
+          return true;
+        }
+      },
+      hitOpts
+    );
+
+    if (!picked && blocksLayer) {
+      let hitBlock = false;
+      map.forEachFeatureAtPixel(
+        evt.pixel,
+        () => {
+          hitBlock = true;
+          return true;
+        },
+        {
+          hitTolerance: hitOpts.hitTolerance,
+          layerFilter: (layer) => layer === blocksLayer
+        }
+      );
+      if (hitBlock) {
+        setStatus(
+          statusEl,
+          "That is a block outline (red). Export needs a parcel — click inside a blue parcel polygon.",
+          true
+        );
+        setHint(
+          "<span class=\"extract-hint--warn\">You clicked a <strong>block</strong> (red line). Turn on PARCELS in the layer list and click a <strong>parcel</strong> (blue).</span>"
+        );
+        return;
+      }
+    }
+
+    if (!picked) {
+      setStatus(
+        statusEl,
+        "No parcel at this location. Zoom in, confirm PARCELS is visible, then click inside a parcel.",
+        true
+      );
+      return;
+    }
+
+    void runExportForFeature(picked);
   }
 
   function disarmPicking(opts = {}) {
-    if (selectInteraction) map.removeInteraction(selectInteraction);
     setPickingUi(false);
     if (!opts.preserveHint) resetIdleHint();
   }
@@ -311,14 +356,16 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
       return;
     }
 
-    ensureSelectInteraction();
-    map.addInteraction(selectInteraction);
+    stopActiveTool?.();
+
     setPickingUi(true);
     setHint(
       "<strong>Picking active.</strong> Click a <strong>parcel</strong> polygon on the map. Downloads start as soon as a parcel is selected. Press <strong>Cancel picking</strong> to stop."
     );
     setStatus(statusEl, "Click a parcel on the map to export.");
   }
+
+  map.on("singleclick", onExtractSingleClick);
 
   function closeDrawer() {
     disarmPicking();

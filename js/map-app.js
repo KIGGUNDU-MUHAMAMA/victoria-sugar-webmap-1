@@ -566,7 +566,14 @@ async function initMap() {
     parcelsSource
   });
   initCoordSearchDrawer({ map, setStatus, statusEl });
-  initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl });
+  initCoordExtractDrawer({
+    map,
+    parcelsLayer,
+    blocksLayer,
+    setStatus,
+    statusEl,
+    stopActiveTool
+  });
   await loadLayersFromDb();
   await refreshFlags();
   map.on("moveend", async () => {

@@ -92,13 +92,30 @@ function parseCsvFile(file) {
   });
 }
 
+function fitMapToLayerSources(map, blocksSource, parcelsSource) {
+  if (!map || !blocksSource || !parcelsSource) return;
+  const extent = ol.extent.createEmpty();
+  for (const f of blocksSource.getFeatures()) {
+    const g = f.getGeometry();
+    if (g) ol.extent.extend(extent, g.getExtent());
+  }
+  for (const f of parcelsSource.getFeatures()) {
+    const g = f.getGeometry();
+    if (g) ol.extent.extend(extent, g.getExtent());
+  }
+  if (ol.extent.isEmpty(extent)) return;
+  map.getView().fit(extent, { padding: [90, 90, 90, 90], maxZoom: 18, duration: 450 });
+}
+
 export function initSurveyImport({
   map,
   cfg,
   setStatus,
   statusEl,
   loadLayersFromDb,
-  getManagementLocked
+  getManagementLocked,
+  blocksSource,
+  parcelsSource
 }) {
   const drawer = document.getElementById("surveyDrawer");
   const toggleBtn = document.getElementById("surveyPanelBtn");
@@ -351,6 +368,7 @@ export function initSurveyImport({
       lastPreviewPayload = null;
       saveBtn.disabled = true;
       await loadLayersFromDb();
+      fitMapToLayerSources(map, blocksSource, parcelsSource);
       setStatus(
         statusEl,
         `Saved ${inserted} feature(s).` +

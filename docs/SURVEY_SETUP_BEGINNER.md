@@ -22,6 +22,8 @@ where proname = 'vsl_survey_batch_upsert';
 
 5. If saves failed with **missing FROM-clause entry for table "v_item"**, your database still has an old `002` definition. Copy the **latest** `sql/002_vsl_survey_batch.sql` from GitHub (`main` branch), paste into SQL Editor, and **Run** again (this replaces the function safely).
 
+6. **Guest map is empty but Table Editor shows rows?** Run `sql/004_vsl_anon_read_map_layers.sql` (full file from GitHub) in SQL Editor. Row Level Security previously blocked the **anon** key from reading `vsl_blocks` / `vsl_parcels`, so `vsl_get_features_bbox` returned no features to the webmap.
+
 ---
 
 ## Step 2 — Edge Function secrets (so “Save to database” can write)

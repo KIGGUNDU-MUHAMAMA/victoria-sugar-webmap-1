@@ -17,6 +17,7 @@ gh repo create victoria-sugar-webmap --public --source=. --push
 2. Run SQL files in order:
    - `sql/001_vsl_schema.sql`
    - `sql/002_vsl_survey_batch.sql` (batch polygon upsert for Survey import; **Edge Function only**)
+   - `sql/004_vsl_anon_read_map_layers.sql` (lets **guest / anon** users see BLOCKS and PARCELS on the map; without it, saves work but the map stays empty when not logged in)
 3. **Survey import (Edge Function):**
    - Install [Supabase CLI](https://supabase.com/docs/guides/cli), then from the repo root:
 

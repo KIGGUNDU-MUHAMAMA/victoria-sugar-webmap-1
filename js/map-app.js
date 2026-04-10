@@ -539,7 +539,9 @@ async function initMap() {
     setStatus,
     statusEl,
     loadLayersFromDb,
-    getManagementLocked: () => currentProfile?.role === "MANAGMENT"
+    getManagementLocked: () => currentProfile?.role === "MANAGMENT",
+    blocksSource,
+    parcelsSource
   });
   await loadLayersFromDb();
   await refreshFlags();

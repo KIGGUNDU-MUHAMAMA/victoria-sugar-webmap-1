@@ -21,6 +21,7 @@ function surveyFunctionUrl(cfg) {
 }
 
 async function callSurveyEdge(cfg, body) {
+  const url = surveyFunctionUrl(cfg);
   const headers = {
     Authorization: `Bearer ${cfg.SUPABASE_ANON_KEY}`,
     apikey: cfg.SUPABASE_ANON_KEY,
@@ -29,17 +30,49 @@ async function callSurveyEdge(cfg, body) {
   if (cfg.SURVEY_IMPORT_SECRET) {
     headers["x-vsl-survey-secret"] = cfg.SURVEY_IMPORT_SECRET;
   }
-  const res = await fetch(surveyFunctionUrl(cfg), {
+  const res = await fetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body)
   });
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    console.error("[Victoria Survey] Response was not JSON", {
+      url,
+      action: body?.action,
+      httpStatus: res.status,
+      responsePreview: text.slice(0, 2500)
+    });
+    throw new Error(
+      `Survey service returned invalid JSON (HTTP ${res.status}). Open the browser console (F12) and look for [Victoria Survey].`
+    );
+  }
   if (!res.ok) {
-    throw new Error(data.error || data.message || `Survey service error (${res.status})`);
+    console.error("[Victoria Survey] HTTP error", {
+      url,
+      action: body?.action,
+      httpStatus: res.status,
+      responseBody: data,
+      responsePreview: text.slice(0, 2500)
+    });
+    throw new Error(
+      data.error ||
+        data.message ||
+        `Survey service error (HTTP ${res.status}). Details are in the console under [Victoria Survey].`
+    );
   }
   if (!data.success) {
-    throw new Error(data.error || "Survey request failed");
+    console.error("[Victoria Survey] success:false", {
+      url,
+      action: body?.action,
+      responseBody: data
+    });
+    throw new Error(
+      data.error || "Survey request failed. Details are in the console under [Victoria Survey]."
+    );
   }
   return data;
 }
@@ -281,6 +314,7 @@ export function initSurveyImport({
       setStatus(statusEl, "Preview ready. Verify on map, then save.");
     } catch (e) {
       clearPreview();
+      console.error("[Victoria Survey] Preview failed", e);
       setStatus(statusEl, e.message, true);
     }
   });
@@ -300,6 +334,18 @@ export function initSurveyImport({
       });
       const inserted = data.db?.inserted ?? 0;
       const errs = data.db?.errors || [];
+      if (inserted === 0) {
+        console.error("[Victoria Survey] Save returned 0 rows inserted", {
+          fullResponse: data,
+          dbErrors: errs
+        });
+        const errMsg =
+          Array.isArray(errs) && errs.length
+            ? `Nothing was saved. Database reported: ${JSON.stringify(errs)}`
+            : "Nothing was saved (0 rows). For PARCELS, the parent block code must match an existing block exactly. Check the console for [Victoria Survey].";
+        setStatus(statusEl, errMsg, true);
+        return;
+      }
       polySource.clear(true);
       pointSource.clear(true);
       lastPreviewPayload = null;
@@ -308,9 +354,13 @@ export function initSurveyImport({
       setStatus(
         statusEl,
         `Saved ${inserted} feature(s).` +
-          (Array.isArray(errs) && errs.length ? ` ${errs.length} row-level error(s) in response.` : "")
+          (Array.isArray(errs) && errs.length ? ` (${errs.length} minor row note(s) in console.)` : "")
       );
+      if (Array.isArray(errs) && errs.length) {
+        console.warn("[Victoria Survey] Partial row notes from database", errs);
+      }
     } catch (e) {
+      console.error("[Victoria Survey] Save failed", e);
       setStatus(statusEl, e.message, true);
     }
   });

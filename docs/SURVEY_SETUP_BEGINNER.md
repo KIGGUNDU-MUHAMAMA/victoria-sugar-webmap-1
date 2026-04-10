@@ -20,6 +20,8 @@ where proname = 'vsl_survey_batch_upsert';
 
 4. You should see one row. If you see **no rows**, open the file `sql/002_vsl_survey_batch.sql` from this repository, copy **all** of it, paste into SQL Editor, and click **Run**.
 
+5. If saves failed with **missing FROM-clause entry for table "v_item"**, your database still has an old `002` definition. Copy the **latest** `sql/002_vsl_survey_batch.sql` from GitHub (`main` branch), paste into SQL Editor, and **Run** again (this replaces the function safely).
+
 ---
 
 ## Step 2 — Edge Function secrets (so “Save to database” can write)

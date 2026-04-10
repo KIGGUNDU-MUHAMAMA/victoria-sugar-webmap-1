@@ -46,20 +46,21 @@ begin
     v_estate := null;
   end if;
 
+  -- Loop variable v_item is each jsonb object from the array (not a record with .elem).
   for v_item in
     select elem from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) as t(elem)
   loop
     begin
-      v_geom := st_setsrid(st_geomfromgeojson((v_item.elem->'geometry')::text), 4326);
+      v_geom := st_setsrid(st_geomfromgeojson((v_item->'geometry')::text), 4326);
       if v_geom is null or geometrytype(v_geom) <> 'POLYGON' then
         v_errors := v_errors || jsonb_build_array(
-          jsonb_build_object('parcel', v_item.elem->>'csv_parcel_id', 'error', 'Invalid or non-polygon geometry')
+          jsonb_build_object('parcel', v_item->>'csv_parcel_id', 'error', 'Invalid or non-polygon geometry')
         );
         continue;
       end if;
 
       if p_layer_type = 'BLOCKS' then
-        v_name := coalesce(nullif(trim(p_project_name), ''), trim(v_item.elem->>'csv_parcel_id'));
+        v_name := coalesce(nullif(trim(p_project_name), ''), trim(v_item->>'csv_parcel_id'));
         insert into public.vsl_blocks (
           block_code,
           block_name,
@@ -71,12 +72,12 @@ begin
           updated_by
         )
         values (
-          trim(v_item.elem->>'csv_parcel_id'),
+          trim(v_item->>'csv_parcel_id'),
           v_name,
           v_estate,
           case
-            when v_item.elem ? 'area_hectares' and (v_item.elem->>'area_hectares') ~ '^-?[0-9]+\.?[0-9]*$'
-            then (v_item.elem->>'area_hectares')::numeric * 2.4710538146717
+            when v_item ? 'area_hectares' and (v_item->>'area_hectares') ~ '^-?[0-9]+\.?[0-9]*$'
+            then (v_item->>'area_hectares')::numeric * 2.4710538146717
             else null
           end,
           'captured',
@@ -93,8 +94,8 @@ begin
           updated_at = now();
         v_inserted := v_inserted + 1;
       else
-        if (v_item.elem->>'csv_parcel_id') ~ '^[0-9]+$' then
-          v_parcel_no := (v_item.elem->>'csv_parcel_id')::integer;
+        if (v_item->>'csv_parcel_id') ~ '^[0-9]+$' then
+          v_parcel_no := (v_item->>'csv_parcel_id')::integer;
         else
           v_parcel_no := public.vsl_next_parcel_no(v_block_id);
         end if;
@@ -112,10 +113,10 @@ begin
         values (
           v_block_id,
           v_parcel_no,
-          left(trim(coalesce(v_item.elem->>'descriptions', '')), 500),
+          left(trim(coalesce(v_item->>'descriptions', '')), 500),
           case
-            when v_item.elem ? 'area_hectares' and (v_item.elem->>'area_hectares') ~ '^-?[0-9]+\.?[0-9]*$'
-            then (v_item.elem->>'area_hectares')::numeric * 2.4710538146717
+            when v_item ? 'area_hectares' and (v_item->>'area_hectares') ~ '^-?[0-9]+\.?[0-9]*$'
+            then (v_item->>'area_hectares')::numeric * 2.4710538146717
             else null
           end,
           'captured',
@@ -137,7 +138,7 @@ begin
     exception
       when others then
         v_errors := v_errors || jsonb_build_array(
-          jsonb_build_object('parcel', v_item.elem->>'csv_parcel_id', 'error', sqlerrm)
+          jsonb_build_object('parcel', v_item->>'csv_parcel_id', 'error', sqlerrm)
         );
     end;
   end loop;

@@ -10,7 +10,6 @@
 <body>
   <script type="module">
     import { createSupabaseClient } from "./js/supabase-client.js";
-
     const client = createSupabaseClient();
     const { data } = await client.auth.getSession();
     window.location.href = data.session ? "./webmap.html" : "./login.html";

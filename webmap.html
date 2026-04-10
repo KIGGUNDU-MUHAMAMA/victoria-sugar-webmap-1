@@ -4,44 +4,98 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Victoria Sugar Webmap</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="./css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5"></script>
   <script src="./config/app-config.js"></script>
 </head>
 <body>
   <div id="map"></div>
 
-  <aside class="toolbar">
-    <h3>Victoria Sugar Webmap</h3>
-    <div class="small" id="currentUser"></div>
+  <div class="project-toolbar">
+    <div class="project-brand">
+      <div class="project-title-row">
+        <i class="fas fa-seedling"></i>
+        <h1>VICTORIA SUGAR LTD</h1>
+      </div>
+      <p>Land intelligence platform for sugarcane blocks and parcels.</p>
+    </div>
+    <div class="map-top-controls">
+      <button type="button" class="control-btn" id="parcelSearchBtn" title="Parcel Search">
+        <i class="fas fa-search"></i>
+      </button>
+      <button type="button" class="control-btn" id="locateBtn" title="Locate Me">
+        <i class="fas fa-location-crosshairs"></i>
+      </button>
+      <button type="button" class="control-btn" id="printBtn" title="Print Map">
+        <i class="fas fa-print"></i>
+      </button>
+      <button type="button" class="control-btn" id="fullscreenBtn" title="Full Screen">
+        <i class="fas fa-expand"></i>
+      </button>
+      <button type="button" class="control-btn" id="infoBtn" title="Feature Info">
+        <i class="fas fa-circle-info"></i>
+      </button>
+      <button type="button" class="control-btn" id="qualityFlagsBtn" title="Flags">
+        <i class="fas fa-flag-checkered"></i>
+      </button>
+      <button type="button" class="control-btn" id="coordSearchBtn" title="Coordinate Search">
+        <i class="fas fa-crosshairs"></i>
+      </button>
+      <button type="button" class="control-btn" id="coordExtractorMainBtn" title="Coordinate Extractor">
+        <i class="fas fa-draw-polygon"></i>
+      </button>
+      <button type="button" class="control-btn" id="drawingPanelBtn" title="Draw and Measure">
+        <i class="fas fa-ruler-combined"></i>
+      </button>
+      <button type="button" class="control-btn" id="importPanelBtn" title="Import CSV">
+        <i class="fas fa-file-upload"></i>
+      </button>
+      <button type="button" class="control-btn" id="logoutBtn" title="Sign Out">
+        <i class="fas fa-right-from-bracket"></i>
+      </button>
+    </div>
+  </div>
 
-    <div class="group">
-      <label for="basemapSelect">Basemap</label>
-      <select id="basemapSelect"></select>
-      <label><input id="toggleBlocks" type="checkbox" checked> BLOCKS</label>
-      <label><input id="toggleParcels" type="checkbox" checked> PARCELS</label>
+  <aside class="side-panel" id="panelHost">
+    <div class="panel active" id="parcelSearchPanel">
+      <h3>Parcel Search</h3>
+      <input id="parcelSearchInput" type="text" placeholder="Block code, block name, parcel no">
+      <button id="parcelSearchRunBtn" type="button">Search</button>
     </div>
 
-    <div class="group">
-      <label for="parcelSearchInput">Parcel/Block Search</label>
-      <input id="parcelSearchInput" type="text" placeholder="Block code, parcel no, estate">
-      <button id="parcelSearchBtn" type="button">Search</button>
-    </div>
-
-    <div class="group">
-      <label>Coordinate Search</label>
+    <div class="panel" id="coordinateSearchPanel">
+      <h3>Coordinate Search</h3>
       <div class="inline">
         <input id="coordLon" type="number" placeholder="Longitude">
         <input id="coordLat" type="number" placeholder="Latitude">
       </div>
-      <button id="coordSearchBtn" type="button">Go To Coordinate</button>
+      <button id="coordSearchRunBtn" type="button">Go To Coordinate</button>
     </div>
 
-    <div class="group">
-      <label>Digitizing</label>
+    <div class="panel" id="coordExtractorPanel">
+      <h3>Coordinate Extractor</h3>
+      <p class="small">Select a BLOCK or PARCEL on map, then extract coordinates.</p>
+      <button id="extractCoordsBtn" type="button">Extract Coordinates</button>
+      <textarea id="coordsOutput" rows="7" readonly></textarea>
+    </div>
+
+    <div class="panel" id="qualityFlagsPanel">
+      <h3>Flags</h3>
+      <p class="small">Applies to BLOCKS and PARCELS only.</p>
+      <input id="flagNoteInput" type="text" placeholder="Flag note">
+      <button id="flagFeatureBtn" type="button">Flag Selected Feature</button>
+      <button id="refreshFlagsBtn" class="btn-secondary" type="button">Refresh Flags</button>
+      <div id="flagList" class="flags-list"></div>
+    </div>
+
+    <div class="panel" id="drawingPanel">
+      <h3>Drawing and Measuring</h3>
       <div class="inline">
         <button id="drawBlockBtn" type="button">Draw Block</button>
         <button id="drawParcelBtn" type="button">Draw Parcel</button>
@@ -50,49 +104,29 @@
         <button id="measureLineBtn" class="btn-secondary" type="button">Measure Line</button>
         <button id="measureAreaBtn" class="btn-secondary" type="button">Measure Area</button>
       </div>
-      <button id="stopDrawBtn" class="btn-secondary" type="button">Stop Drawing</button>
+      <button id="stopDrawBtn" class="btn-secondary" type="button">Stop Tool</button>
     </div>
 
-    <div class="group">
-      <label>Coordinate Extractor</label>
-      <button id="extractCoordsBtn" class="btn-secondary" type="button">Extract Selected Geometry</button>
-      <textarea id="coordsOutput" rows="4" readonly placeholder="Coordinates output"></textarea>
-    </div>
-
-    <div class="group">
-      <label>Flags</label>
-      <div class="inline">
-        <input id="flagNoteInput" type="text" placeholder="Issue note">
-        <button id="flagFeatureBtn" type="button">Flag Selected</button>
-      </div>
-    </div>
-
-    <div class="group">
-      <label>CSV Import (Attributes Only)</label>
+    <div class="panel" id="importPanel">
+      <h3>CSV Import</h3>
+      <p class="small">Attributes-only import for block/parcel records.</p>
       <input id="csvInput" type="file" accept=".csv,text/csv">
       <button id="importCsvBtn" type="button">Import CSV</button>
     </div>
-
-    <div class="group">
-      <div class="inline">
-        <button id="locateBtn" class="btn-secondary" type="button">Locate Me</button>
-        <button id="infoBtn" class="btn-secondary" type="button">Info</button>
-      </div>
-      <div class="inline">
-        <button id="fullscreenBtn" class="btn-secondary" type="button">Full Screen</button>
-        <button id="printBtn" class="btn-secondary" type="button">Print</button>
-      </div>
-      <button id="logoutBtn" class="btn-secondary" type="button">Sign Out</button>
-    </div>
-
-    <div id="status" class="status" hidden></div>
   </aside>
 
-  <section class="legend">
-    <strong>Layers</strong>
-    <div class="legend-row"><span class="swatch blocks"></span> BLOCKS</div>
-    <div class="legend-row"><span class="swatch parcels"></span> PARCELS</div>
-  </section>
+  <div id="status" class="status map-status" hidden></div>
+  <div id="fallbackLayerSwitcher" class="fallback-switcher" hidden>
+    <h4>Layers</h4>
+    <label><input type="checkbox" id="fbBlocks" checked> BLOCKS</label>
+    <label><input type="checkbox" id="fbParcels" checked> PARCELS</label>
+    <hr>
+    <label><input type="radio" name="fbBasemap" value="OpenStreetMap"> OpenStreetMap</label>
+    <label><input type="radio" name="fbBasemap" value="Google Satellite Hybrid" checked> Google Satellite Hybrid</label>
+    <label><input type="radio" name="fbBasemap" value="Esri World Imagery"> Esri World Imagery</label>
+    <label><input type="radio" name="fbBasemap" value="Esri World Topo Map"> Esri World Topo Map</label>
+    <label><input type="radio" name="fbBasemap" value="OpenTopoMap"> OpenTopoMap</label>
+  </div>
 
   <script type="module" src="./js/map-app.js"></script>
 </body>

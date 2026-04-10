@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Victoria Sugar Webmap</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css">
+  <link rel="stylesheet" href="./css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="./config/app-config.js"></script>
+</head>
+<body>
+  <div id="map"></div>
+
+  <aside class="toolbar">
+    <h3>Victoria Sugar Webmap</h3>
+    <div class="small" id="currentUser"></div>
+
+    <div class="group">
+      <label for="basemapSelect">Basemap</label>
+      <select id="basemapSelect"></select>
+      <label><input id="toggleBlocks" type="checkbox" checked> BLOCKS</label>
+      <label><input id="toggleParcels" type="checkbox" checked> PARCELS</label>
+    </div>
+
+    <div class="group">
+      <label for="parcelSearchInput">Parcel/Block Search</label>
+      <input id="parcelSearchInput" type="text" placeholder="Block code, parcel no, estate">
+      <button id="parcelSearchBtn" type="button">Search</button>
+    </div>
+
+    <div class="group">
+      <label>Coordinate Search</label>
+      <div class="inline">
+        <input id="coordLon" type="number" placeholder="Longitude">
+        <input id="coordLat" type="number" placeholder="Latitude">
+      </div>
+      <button id="coordSearchBtn" type="button">Go To Coordinate</button>
+    </div>
+
+    <div class="group">
+      <label>Digitizing</label>
+      <div class="inline">
+        <button id="drawBlockBtn" type="button">Draw Block</button>
+        <button id="drawParcelBtn" type="button">Draw Parcel</button>
+      </div>
+      <div class="inline">
+        <button id="measureLineBtn" class="btn-secondary" type="button">Measure Line</button>
+        <button id="measureAreaBtn" class="btn-secondary" type="button">Measure Area</button>
+      </div>
+      <button id="stopDrawBtn" class="btn-secondary" type="button">Stop Drawing</button>
+    </div>
+
+    <div class="group">
+      <label>Coordinate Extractor</label>
+      <button id="extractCoordsBtn" class="btn-secondary" type="button">Extract Selected Geometry</button>
+      <textarea id="coordsOutput" rows="4" readonly placeholder="Coordinates output"></textarea>
+    </div>
+
+    <div class="group">
+      <label>Flags</label>
+      <div class="inline">
+        <input id="flagNoteInput" type="text" placeholder="Issue note">
+        <button id="flagFeatureBtn" type="button">Flag Selected</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>CSV Import (Attributes Only)</label>
+      <input id="csvInput" type="file" accept=".csv,text/csv">
+      <button id="importCsvBtn" type="button">Import CSV</button>
+    </div>
+
+    <div class="group">
+      <div class="inline">
+        <button id="locateBtn" class="btn-secondary" type="button">Locate Me</button>
+        <button id="infoBtn" class="btn-secondary" type="button">Info</button>
+      </div>
+      <div class="inline">
+        <button id="fullscreenBtn" class="btn-secondary" type="button">Full Screen</button>
+        <button id="printBtn" class="btn-secondary" type="button">Print</button>
+      </div>
+      <button id="logoutBtn" class="btn-secondary" type="button">Sign Out</button>
+    </div>
+
+    <div id="status" class="status" hidden></div>
+  </aside>
+
+  <section class="legend">
+    <strong>Layers</strong>
+    <div class="legend-row"><span class="swatch blocks"></span> BLOCKS</div>
+    <div class="legend-row"><span class="swatch parcels"></span> PARCELS</div>
+  </section>
+
+  <script type="module" src="./js/map-app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+block_code,block_name,estate_name,expected_area_acres,parcel_label
+B001,Block 001,North Estate,12.0,Imported parcel
+B001,Block 001,North Estate,12.0,Imported parcel
+B002,Block 002,South Estate,18.5,Imported parcel

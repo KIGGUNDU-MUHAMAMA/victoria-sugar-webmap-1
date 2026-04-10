@@ -1,0 +1,8 @@
+window.VSL_CONFIG = {
+  SUPABASE_URL: "https://YOUR_PROJECT.supabase.co",
+  SUPABASE_ANON_KEY: "YOUR_SUPABASE_ANON_KEY",
+  APP_NAME: "Victoria Sugar Webmap",
+  DEFAULT_CENTER: [32.59, 0.35],
+  DEFAULT_ZOOM: 11,
+  AREA_TOLERANCE_PERCENT: 5
+};

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Victoria Sugar | Sign In</title>
+  <link rel="stylesheet" href="./css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config/app-config.js"></script>
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-brand">
+      <h1>Victoria Sugar Limited</h1>
+      <p>Land intelligence platform for sugarcane blocks and parcels.</p>
+      <div class="cane-strip"></div>
+      <p class="small">
+        Agricultural mapping, survey workflows, and operational parcel tracking.
+      </p>
+    </section>
+
+    <section class="login-panel">
+      <div class="card">
+        <h2>Sign In</h2>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username">
+
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password">
+
+        <button id="signInBtn" type="button">Sign In</button>
+
+        <div class="group">
+          <h3>Create Account</h3>
+          <label for="newEmail">Email</label>
+          <input id="newEmail" type="email">
+
+          <label for="newPassword">Password</label>
+          <input id="newPassword" type="password">
+
+          <label for="role">Role</label>
+          <select id="role">
+            <option value="ADMIN">ADMIN</option>
+            <option value="SURVEYOR">SURVEYOR</option>
+            <option value="MANAGMENT">MANAGMENT</option>
+          </select>
+
+          <button id="signUpBtn" class="btn-secondary" type="button">Create User</button>
+        </div>
+
+        <div class="group">
+          <button id="forgotBtn" class="btn-secondary" type="button">Forgot Password</button>
+        </div>
+
+        <div id="status" class="status" hidden></div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./js/auth.js"></script>
+</body>
+</html>

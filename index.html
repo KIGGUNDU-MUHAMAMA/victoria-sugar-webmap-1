@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Victoria Sugar Webmap</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config/app-config.js"></script>
+</head>
+<body>
+  <script type="module">
+    import { createSupabaseClient } from "./js/supabase-client.js";
+
+    const client = createSupabaseClient();
+    const { data } = await client.auth.getSession();
+    window.location.href = data.session ? "./webmap.html" : "./login.html";
+  </script>
+</body>
+</html>

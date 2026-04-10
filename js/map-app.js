@@ -559,13 +559,17 @@ async function initMap() {
       center: ol.proj.fromLonLat(cfg.DEFAULT_CENTER || [32.59, 0.35]),
       zoom: cfg.DEFAULT_ZOOM || 11
     }),
-    controls: ol.control.defaults().extend([
-      new ol.control.FullScreen()
-    ])
+    controls: [
+      new ol.control.Zoom(),
+      new ol.control.Rotate(),
+      new ol.control.FullScreen(),
+      new ol.control.ScaleLine()
+    ]
   });
 
-  if (ol?.control?.LayerSwitcher) {
-    const layerSwitcher = new ol.control.LayerSwitcher({
+  const LayerSwitcherClass = ol.control.LayerSwitcher || window.LayerSwitcher;
+  if (LayerSwitcherClass) {
+    const layerSwitcher = new LayerSwitcherClass({
       tipLabel: "Layers",
       groupSelectStyle: "children",
       activationMode: "click",
@@ -576,7 +580,7 @@ async function initMap() {
       setTimeout(() => layerSwitcher.renderPanel(), 0);
     }
   } else {
-    setStatus(statusEl, "Layer Switcher plugin not available. Using fallback switcher.", true);
+    console.warn("LayerSwitcher not found at ol.control.LayerSwitcher or window.LayerSwitcher");
     enableFallbackLayerSwitcher();
   }
 

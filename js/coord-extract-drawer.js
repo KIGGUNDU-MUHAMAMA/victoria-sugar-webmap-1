@@ -140,6 +140,10 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
   const crsSelect = document.getElementById("coordExtractCrsSelect");
   const exportCsv = document.getElementById("coordExtractCsv");
   const exportDxf = document.getElementById("coordExtractDxf");
+  const pickBtn = document.getElementById("coordExtractPickBtn");
+  const cancelPickBtn = document.getElementById("coordExtractCancelPickBtn");
+  const hintEl = document.getElementById("coordExtractHint");
+  const lastExportEl = document.getElementById("coordExtractLastExport");
 
   if (!drawer || !toggleBtn) {
     return { closeDrawer: () => {} };
@@ -157,6 +161,7 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
 
   let proj4lib = null;
   let selectInteraction = null;
+  let pickingArmed = false;
 
   async function ensureProj4() {
     if (proj4lib) return proj4lib;
@@ -166,14 +171,161 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
     return proj4lib;
   }
 
+  function setPickingUi(armed) {
+    pickingArmed = armed;
+    drawer.dataset.picking = armed ? "1" : "";
+    pickBtn?.classList.toggle("btn-pick-parcel--armed", armed);
+    if (cancelPickBtn) cancelPickBtn.hidden = !armed;
+  }
+
+  function setHint(html) {
+    if (hintEl) hintEl.innerHTML = html;
+  }
+
+  function resetIdleHint() {
+    setHint(
+      "Choose CRS and formats, then press <strong>Select parcel on map</strong> and click a <strong>parcel</strong> polygon (blue fill)."
+    );
+  }
+
+  function ensureSelectInteraction() {
+    if (selectInteraction) return;
+    selectInteraction = new ol.interaction.Select({
+      layers: [parcelsLayer],
+      style: new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: "#e65100", width: 3 }),
+        fill: new ol.style.Fill({ color: "rgba(255, 152, 0, 0.18)" })
+      })
+    });
+    selectInteraction.on("select", (e) => {
+      void handleParcelSelect(e);
+    });
+  }
+
+  async function handleParcelSelect(e) {
+    const picked = e.selected[0];
+    selectInteraction?.getFeatures().clear();
+    if (!picked || !pickingArmed) return;
+
+    const wantCsv = exportCsv?.checked;
+    const wantDxf = exportDxf?.checked;
+    if (!wantCsv && !wantDxf) {
+      setStatus(statusEl, "Enable CSV and/or DXF export.", true);
+      disarmPicking();
+      return;
+    }
+
+    const crs = crsSelect?.value;
+    if (!crs) {
+      setStatus(statusEl, "Choose an export coordinate system.", true);
+      disarmPicking();
+      return;
+    }
+
+    const geom = picked.getGeometry();
+    if (!geom) {
+      disarmPicking();
+      return;
+    }
+
+    const rings3857 = getExteriorRings3857(geom);
+    if (!rings3857.length) {
+      setStatus(statusEl, "Selected feature has no polygon geometry.", true);
+      disarmPicking();
+      return;
+    }
+
+    try {
+      const p4 = await ensureProj4();
+      const props = picked.getProperties();
+      const blockCode = props.block_code ?? "";
+      const parcelCode = props.parcel_code ?? props.parcel_no ?? "";
+
+      const rows = buildCsvRows(rings3857, p4, crs, blockCode, parcelCode);
+      const projectedRings = [];
+      for (const ring of rings3857) {
+        const pts = ring.map((xy) => {
+          const [lon, lat] = ol.proj.transform(xy, "EPSG:3857", "EPSG:4326");
+          return toProjectedFromWgs84(p4, crs, lon, lat);
+        });
+        projectedRings.push(pts);
+      }
+
+      const base = sanitizeFilenamePart(parcelCode || blockCode || picked.getId() || "export");
+      const crsTag = crs.replace(":", "_");
+
+      if (wantCsv) {
+        const csv = buildCsvContent(rows, crs);
+        downloadText(`${base}_${crsTag}_corners.csv`, csv, "text/csv;charset=utf-8");
+      }
+      if (wantDxf) {
+        const dxf = buildDxfFromRings(projectedRings);
+        downloadText(`${base}_${crsTag}_parcel.dxf`, dxf, "image/vnd.dxf");
+      }
+
+      const parts = [];
+      if (wantCsv) parts.push("CSV");
+      if (wantDxf) parts.push("DXF");
+      const summary = `${parts.join(" + ")} · ${rows.length} corner(s) · ${crs}`;
+      setStatus(statusEl, `Exported: ${summary}.`);
+
+      if (lastExportEl) {
+        lastExportEl.hidden = false;
+        lastExportEl.innerHTML = `<strong>Last export</strong><br>${escapeHtml(String(parcelCode || base))} · ${escapeHtml(crs)} · ${escapeHtml(summary)}`;
+      }
+
+      disarmPicking({ preserveHint: true });
+      setHint(
+        "<strong>Export complete.</strong> Change CRS or formats if needed, then press <strong>Select parcel on map</strong> for another parcel."
+      );
+    } catch (err) {
+      setStatus(statusEl, err.message || "Export failed", true);
+      setHint(`<span class="extract-hint--warn">${escapeHtml(err.message || "Export failed")}</span>`);
+      disarmPicking();
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function disarmPicking(opts = {}) {
+    if (selectInteraction) map.removeInteraction(selectInteraction);
+    setPickingUi(false);
+    if (!opts.preserveHint) resetIdleHint();
+  }
+
+  function armPicking() {
+    const wantCsv = exportCsv?.checked;
+    const wantDxf = exportDxf?.checked;
+    if (!wantCsv && !wantDxf) {
+      setStatus(statusEl, "Choose at least one export format (CSV or DXF).", true);
+      return;
+    }
+    if (!crsSelect?.value) {
+      setStatus(statusEl, "Choose an export coordinate system.", true);
+      return;
+    }
+
+    ensureSelectInteraction();
+    map.addInteraction(selectInteraction);
+    setPickingUi(true);
+    setHint(
+      "<strong>Picking active.</strong> Click a <strong>parcel</strong> polygon on the map. Downloads start as soon as a parcel is selected. Press <strong>Cancel picking</strong> to stop."
+    );
+    setStatus(statusEl, "Click a parcel on the map to export.");
+  }
+
   function closeDrawer() {
+    disarmPicking();
     drawer.classList.remove("open");
     drawer.setAttribute("aria-hidden", "true");
     toggleBtn.classList.remove("active");
-    if (selectInteraction) {
-      map.removeInteraction(selectInteraction);
-      selectInteraction = null;
-    }
+    drawer.dataset.picking = "";
   }
 
   function openDrawer() {
@@ -186,80 +338,23 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
     document.getElementById("coordSearchDrawer")?.classList.remove("open");
     document.getElementById("coordSearchBtn")?.classList.remove("active");
 
-    if (!selectInteraction) {
-      selectInteraction = new ol.interaction.Select({
-        layers: [parcelsLayer],
-        style: new ol.style.Style({
-          stroke: new ol.style.Stroke({ color: "#ff9800", width: 3 }),
-          fill: new ol.style.Fill({ color: "rgba(255, 152, 0, 0.12)" })
-        })
-      });
-      selectInteraction.on("select", async (e) => {
-        const picked = e.selected[0];
-        selectInteraction.getFeatures().clear();
-        if (!picked) return;
-
-        const wantCsv = exportCsv?.checked;
-        const wantDxf = exportDxf?.checked;
-        if (!wantCsv && !wantDxf) {
-          setStatus(statusEl, "Enable CSV and/or DXF export.", true);
-          return;
-        }
-
-        const crs = crsSelect?.value;
-        if (!crs) {
-          setStatus(statusEl, "Choose an export coordinate system.", true);
-          return;
-        }
-
-        const geom = picked.getGeometry();
-        if (!geom) return;
-
-        const rings3857 = getExteriorRings3857(geom);
-        if (!rings3857.length) {
-          setStatus(statusEl, "Selected feature has no polygon geometry.", true);
-          return;
-        }
-
-        try {
-          const p4 = await ensureProj4();
-          const props = picked.getProperties();
-          const blockCode = props.block_code ?? "";
-          const parcelCode = props.parcel_code ?? props.parcel_no ?? "";
-
-          const rows = buildCsvRows(rings3857, p4, crs, blockCode, parcelCode);
-          const projectedRings = [];
-          for (const ring of rings3857) {
-            const pts = ring.map((xy) => {
-              const [lon, lat] = ol.proj.transform(xy, "EPSG:3857", "EPSG:4326");
-              return toProjectedFromWgs84(p4, crs, lon, lat);
-            });
-            projectedRings.push(pts);
-          }
-
-          const base = sanitizeFilenamePart(parcelCode || blockCode || picked.getId() || "export");
-          const crsTag = crs.replace(":", "_");
-
-          if (wantCsv) {
-            const csv = buildCsvContent(rows, crs);
-            downloadText(`${base}_${crsTag}_corners.csv`, csv, "text/csv;charset=utf-8");
-          }
-          if (wantDxf) {
-            const dxf = buildDxfFromRings(projectedRings);
-            downloadText(`${base}_${crsTag}_parcel.dxf`, dxf, "image/vnd.dxf");
-          }
-
-          const parts = [];
-          if (wantCsv) parts.push("CSV");
-          if (wantDxf) parts.push("DXF");
-          setStatus(statusEl, `Downloaded ${parts.join(" + ")} (${rows.length} corner point(s), ${crs}).`);
-        } catch (err) {
-          setStatus(statusEl, err.message || "Export failed", true);
-        }
-      });
-      map.addInteraction(selectInteraction);
-    }
+    resetIdleHint();
+    disarmPicking();
   }
+
+  pickBtn?.addEventListener("click", () => {
+    if (pickingArmed) {
+      disarmPicking();
+      setStatus(statusEl, "Picking cancelled.");
+      return;
+    }
+    armPicking();
+  });
+
+  cancelPickBtn?.addEventListener("click", () => {
+    disarmPicking();
+    setStatus(statusEl, "Picking cancelled.");
+  });
 
   toggleBtn.addEventListener("click", () => {
     if (drawer.classList.contains("open")) {
@@ -275,6 +370,19 @@ export function initCoordExtractDrawer({ map, parcelsLayer, setStatus, statusEl 
     if (drawer.classList.contains("open")) closeDrawer();
   }
   window.addEventListener("vsl-force-close-extract-drawer", onForceClose);
+
+  window.addEventListener("vsl-open-extract-drawer", () => {
+    document.getElementById("surveyDrawer")?.classList.remove("open");
+    document.getElementById("surveyPanelBtn")?.classList.remove("active");
+    document.getElementById("coordSearchDrawer")?.classList.remove("open");
+    document.getElementById("coordSearchBtn")?.classList.remove("active");
+    if (drawer.classList.contains("open")) {
+      resetIdleHint();
+      disarmPicking();
+      return;
+    }
+    openDrawer();
+  });
 
   return { closeDrawer };
 }

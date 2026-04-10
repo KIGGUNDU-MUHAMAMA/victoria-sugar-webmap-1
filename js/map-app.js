@@ -195,7 +195,7 @@ function setupInfoPopup() {
   map.addOverlay(infoOverlay);
 
   map.on("singleclick", (evt) => {
-    if (document.getElementById("coordExtractDrawer")?.classList.contains("open")) {
+    if (document.getElementById("coordExtractDrawer")?.dataset.picking === "1") {
       return;
     }
 

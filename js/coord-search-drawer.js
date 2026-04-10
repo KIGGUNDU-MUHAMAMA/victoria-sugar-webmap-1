@@ -124,6 +124,12 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
 
   closeBtn?.addEventListener("click", closeDrawer);
 
+  document.getElementById("coordSearchOpenExtractBtn")?.addEventListener("click", () => {
+    closeDrawer();
+    toggleBtn.classList.remove("active");
+    window.dispatchEvent(new CustomEvent("vsl-open-extract-drawer"));
+  });
+
   function fitToMarkers() {
     const extent = markersSource.getExtent();
     if (!extent || !extent.every(Number.isFinite)) return;

@@ -1,6 +1,7 @@
 import { createSupabaseClient, getConfig } from "./supabase-client.js";
 import { clearStatus, parseNum, setStatus } from "./utils.js";
 import { initSurveyImport } from "./survey-import.js";
+import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -10,9 +11,6 @@ const panelHost = document.getElementById("panelHost");
 
 const parcelSearchInput = document.getElementById("parcelSearchInput");
 const parcelSearchRunBtn = document.getElementById("parcelSearchRunBtn");
-const coordLon = document.getElementById("coordLon");
-const coordLat = document.getElementById("coordLat");
-const coordSearchRunBtn = document.getElementById("coordSearchRunBtn");
 const extractCoordsBtn = document.getElementById("extractCoordsBtn");
 const coordsOutput = document.getElementById("coordsOutput");
 const flagNoteInput = document.getElementById("flagNoteInput");
@@ -26,7 +24,6 @@ const measureAreaBtn = document.getElementById("measureAreaBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
 const panelButtons = {
   parcelSearchBtn: "parcelSearchPanel",
-  coordSearchBtn: "coordinateSearchPanel",
   coordExtractorMainBtn: "coordExtractorPanel",
   qualityFlagsBtn: "qualityFlagsPanel",
   drawingPanelBtn: "drawingPanel"
@@ -162,6 +159,12 @@ function enableFallbackLayerSwitcher() {
 }
 
 function setActivePanel(panelId) {
+  const coordDrawer = document.getElementById("coordSearchDrawer");
+  const coordBtn = document.getElementById("coordSearchBtn");
+  coordDrawer?.classList.remove("open");
+  coordBtn?.classList.remove("active");
+  coordDrawer?.setAttribute("aria-hidden", "true");
+
   panelHost.classList.add("visible");
   for (const panel of panelHost.querySelectorAll(".panel")) {
     panel.classList.toggle("active", panel.id === panelId);
@@ -378,16 +381,6 @@ function runParcelSearch() {
   setStatus(statusEl, "Search result found.");
 }
 
-function runCoordinateSearch() {
-  const lon = parseNum(coordLon.value);
-  const lat = parseNum(coordLat.value);
-  if (lon === null || lat === null) {
-    setStatus(statusEl, "Enter both longitude and latitude.", true);
-    return;
-  }
-  map.getView().animate({ center: ol.proj.fromLonLat([lon, lat]), zoom: 17, duration: 450 });
-}
-
 function runCoordinateExtractor() {
   if (!selectedFeature || !selectedLayerType) {
     setStatus(statusEl, "Select a BLOCK or PARCEL first.", true);
@@ -458,7 +451,6 @@ function bindEvents() {
   setupPanels();
 
   parcelSearchRunBtn.addEventListener("click", runParcelSearch);
-  coordSearchRunBtn.addEventListener("click", runCoordinateSearch);
   extractCoordsBtn.addEventListener("click", runCoordinateExtractor);
   flagFeatureBtn.addEventListener("click", submitFlag);
   refreshFlagsBtn.addEventListener("click", refreshFlags);
@@ -580,6 +572,7 @@ async function initMap() {
     blocksSource,
     parcelsSource
   });
+  initCoordSearchDrawer({ map, setStatus, statusEl });
   await loadLayersFromDb();
   await refreshFlags();
   map.on("moveend", async () => {

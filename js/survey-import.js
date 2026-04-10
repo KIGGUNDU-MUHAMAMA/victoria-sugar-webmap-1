@@ -2,17 +2,7 @@
  * Survey CSV import: left drawer UI + Edge Function preview/commit.
  */
 
-const CRS_OPTIONS = [
-  { value: "EPSG:4326", label: "WGS 84 — geographic (longitude / latitude)" },
-  { value: "EPSG:21095", label: "Arc 1960 / UTM zone 35N" },
-  { value: "EPSG:21035", label: "Arc 1960 / UTM zone 35S" },
-  { value: "EPSG:21096", label: "Arc 1960 / UTM zone 36N" },
-  { value: "EPSG:21036", label: "Arc 1960 / UTM zone 36S" },
-  { value: "EPSG:32635", label: "WGS 84 / UTM zone 35N" },
-  { value: "EPSG:32735", label: "WGS 84 / UTM zone 35S" },
-  { value: "EPSG:32636", label: "WGS 84 / UTM zone 36N" },
-  { value: "EPSG:32736", label: "WGS 84 / UTM zone 36S" }
-];
+import { CRS_OPTIONS } from "./crs-definitions.js";
 
 function surveyFunctionUrl(cfg) {
   const base = (cfg.SUPABASE_URL || "").replace(/\/$/, "");
@@ -201,10 +191,14 @@ export function initSurveyImport({
       setStatus(statusEl, "Survey import is not available for your role.", true);
       return;
     }
+    const coordDrawer = document.getElementById("coordSearchDrawer");
+    const coordBtn = document.getElementById("coordSearchBtn");
     drawer.classList.toggle("open");
     drawer.setAttribute("aria-hidden", drawer.classList.contains("open") ? "false" : "true");
     if (drawer.classList.contains("open")) {
       toggleBtn.classList.add("active");
+      coordDrawer?.classList.remove("open");
+      coordBtn?.classList.remove("active");
     } else {
       toggleBtn.classList.remove("active");
     }

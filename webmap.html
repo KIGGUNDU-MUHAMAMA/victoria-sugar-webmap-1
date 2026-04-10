@@ -117,20 +117,53 @@
     </div>
   </aside>
 
+  <aside id="coordSearchDrawer" class="survey-drawer coord-search-drawer" aria-hidden="true">
+    <div class="survey-drawer-inner">
+      <div class="survey-drawer-head">
+        <h2>Coordinate search</h2>
+        <button type="button" class="survey-close" id="coordSearchCloseBtn" aria-label="Close">&times;</button>
+      </div>
+      <p class="small">Plot survey coordinates on the map. Pick the same CRS as your eastings/northings (or lon/lat for WGS84 geographic).</p>
+
+      <label for="coordDrawerCrsSelect">Coordinate system</label>
+      <select id="coordDrawerCrsSelect"></select>
+
+      <div class="coord-mode-row" role="radiogroup" aria-label="Input mode">
+        <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeSingle" value="single" checked> Single point</label>
+        <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeCsv" value="csv"> CSV points</label>
+      </div>
+
+      <div id="coordSingleBlock">
+        <label for="coordDrawerEasting">Easting (or longitude if WGS84 geographic)</label>
+        <input id="coordDrawerEasting" type="text" inputmode="decimal" placeholder="e.g. 500000 or 32.59" autocomplete="off">
+        <label for="coordDrawerNorthing">Northing (or latitude if WGS84 geographic)</label>
+        <input id="coordDrawerNorthing" type="text" inputmode="decimal" placeholder="e.g. 200000 or 0.35" autocomplete="off">
+        <div class="survey-actions" style="margin-top:0.6rem">
+          <button type="button" id="coordPlotSingleBtn" class="btn-secondary">Plot on map</button>
+        </div>
+      </div>
+
+      <div id="coordCsvBlock" hidden>
+        <p class="small">Columns: <code>eastings</code>, <code>northings</code> (or easting/northing). Optional: <code>point_id</code>, <code>label</code>.</p>
+        <label for="coordDrawerCsvInput">CSV file</label>
+        <input id="coordDrawerCsvInput" type="file" accept=".csv,text/csv">
+        <div id="coordCsvDropzone" class="survey-dropzone">Drop CSV here</div>
+        <div class="survey-actions" style="margin-top:0.6rem">
+          <button type="button" id="coordPlotCsvBtn" class="btn-secondary">Plot CSV points</button>
+        </div>
+      </div>
+
+      <div class="survey-actions" style="margin-top:0.75rem">
+        <button type="button" id="coordClearMarkersBtn">Clear markers</button>
+      </div>
+    </div>
+  </aside>
+
   <aside class="side-panel" id="panelHost">
     <div class="panel active" id="parcelSearchPanel">
       <h3>Parcel Search</h3>
       <input id="parcelSearchInput" type="text" placeholder="Block code, block name, parcel no">
       <button id="parcelSearchRunBtn" type="button">Search</button>
-    </div>
-
-    <div class="panel" id="coordinateSearchPanel">
-      <h3>Coordinate Search</h3>
-      <div class="inline">
-        <input id="coordLon" type="number" placeholder="Longitude">
-        <input id="coordLat" type="number" placeholder="Latitude">
-      </div>
-      <button id="coordSearchRunBtn" type="button">Go To Coordinate</button>
     </div>
 
     <div class="panel" id="coordExtractorPanel">

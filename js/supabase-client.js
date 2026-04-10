@@ -5,7 +5,9 @@ const fallbackCfg = {
   DEFAULT_CENTER: [32.59, 0.35],
   DEFAULT_ZOOM: 11,
   AREA_TOLERANCE_PERCENT: 5,
-  ALLOW_GUEST_PREVIEW: true
+  // false = webmap requires sign-in (recommended so RLS applies and layers load reliably).
+  // Override with ALLOW_GUEST_PREVIEW: true in config/app-config.js for public demo only.
+  ALLOW_GUEST_PREVIEW: false
 };
 
 const cfg = {

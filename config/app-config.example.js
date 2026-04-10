@@ -20,5 +20,7 @@ window.VSL_CONFIG = {
   AREA_TOLERANCE_PERCENT: 5,
   // Optional: must match Edge Function secret if you set SURVEY_IMPORT_SECRET in Supabase.
   // SURVEY_IMPORT_SECRET: "your-shared-secret",
-  // SURVEY_FUNCTION_NAME: "quick-api"
+  // SURVEY_FUNCTION_NAME: "quick-api",
+  // Set true only for a public demo without login (layers need sql/004 + 005 for anon reads).
+  // ALLOW_GUEST_PREVIEW: false
 };

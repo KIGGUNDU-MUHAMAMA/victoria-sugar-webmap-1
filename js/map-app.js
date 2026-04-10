@@ -220,7 +220,16 @@ function setupInfoPopup() {
 }
 
 async function loadLayersFromDb() {
-  const extent = map.getView().calculateExtent(map.getSize());
+  if (!map) return;
+  map.updateSize();
+  const size = map.getSize();
+  if (!size || size[0] < 2 || size[1] < 2) {
+    if (window.console && console.debug) {
+      console.debug("[Victoria map] Skipping bbox load: map size not ready yet");
+    }
+    return;
+  }
+  const extent = map.getView().calculateExtent(size);
   const [minLon, minLat, maxLon, maxLat] = ol.proj.transformExtent(extent, "EPSG:3857", "EPSG:4326");
   const { data, error } = await supabase.rpc("vsl_get_features_bbox", {
     p_min_lon: minLon,
@@ -582,6 +591,16 @@ async function initMap() {
     loader.classList.add("hidden");
     setTimeout(() => loader.remove(), 500);
   }
+
+  // First paint often reports 0×0 map size; reload layers once layout is stable.
+  requestAnimationFrame(() => {
+    map.updateSize();
+    loadLayersFromDb();
+  });
+  setTimeout(() => {
+    map.updateSize();
+    loadLayersFromDb();
+  }, 350);
 }
 
 async function start() {
@@ -591,8 +610,8 @@ async function start() {
   await initMap();
   if (isAuthenticated) {
     setStatus(statusEl, `Signed in as ${currentProfile.role}. Ready.`);
-  } else {
-    setStatus(statusEl, "Guest preview mode: basemaps and layer switcher enabled.");
+  } else if (cfg.ALLOW_GUEST_PREVIEW) {
+    setStatus(statusEl, "Guest preview mode: sign in for full access.");
   }
 }
 

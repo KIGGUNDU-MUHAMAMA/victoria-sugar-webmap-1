@@ -13,8 +13,6 @@ const newPassword = document.getElementById("newPassword");
 const role = document.getElementById("role");
 const signUpBtn = document.getElementById("signUpBtn");
 const forgotBtn = document.getElementById("forgotBtn");
-const previewBtn = document.getElementById("previewBtn");
-
 async function handleSignIn() {
   clearStatus(statusEl);
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -94,9 +92,6 @@ async function init() {
   signInBtn.addEventListener("click", handleSignIn);
   signUpBtn.addEventListener("click", handleSignUp);
   forgotBtn.addEventListener("click", handleForgotPassword);
-  previewBtn?.addEventListener("click", () => {
-    window.location.href = "./webmap.html";
-  });
 }
 
 init().catch((err) => setStatus(statusEl, err.message, true));

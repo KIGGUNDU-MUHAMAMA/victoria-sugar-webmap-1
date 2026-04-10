@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Victoria Sugar Webmap</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -15,6 +19,8 @@
   <script src="./config/app-config.js"></script>
 </head>
 <body>
+  <div class="map-loader" id="mapLoader"><div class="map-loader-spinner"></div></div>
+
   <div id="map"></div>
 
   <div class="project-toolbar">
@@ -27,37 +33,37 @@
     </div>
     <div class="map-top-controls">
       <button type="button" class="control-btn" id="parcelSearchBtn" title="Parcel Search">
-        <i class="fas fa-search"></i>
+        <i class="fas fa-search"></i><span class="btn-label">Search</span>
       </button>
       <button type="button" class="control-btn" id="locateBtn" title="Locate Me">
-        <i class="fas fa-location-crosshairs"></i>
+        <i class="fas fa-location-crosshairs"></i><span class="btn-label">Locate</span>
       </button>
       <button type="button" class="control-btn" id="printBtn" title="Print Map">
-        <i class="fas fa-print"></i>
+        <i class="fas fa-print"></i><span class="btn-label">Print</span>
       </button>
       <button type="button" class="control-btn" id="fullscreenBtn" title="Full Screen">
-        <i class="fas fa-expand"></i>
+        <i class="fas fa-expand"></i><span class="btn-label">Full</span>
       </button>
       <button type="button" class="control-btn" id="infoBtn" title="Feature Info">
-        <i class="fas fa-circle-info"></i>
+        <i class="fas fa-circle-info"></i><span class="btn-label">Info</span>
       </button>
       <button type="button" class="control-btn" id="qualityFlagsBtn" title="Flags">
-        <i class="fas fa-flag-checkered"></i>
+        <i class="fas fa-flag-checkered"></i><span class="btn-label">Flags</span>
       </button>
       <button type="button" class="control-btn" id="coordSearchBtn" title="Coordinate Search">
-        <i class="fas fa-crosshairs"></i>
+        <i class="fas fa-crosshairs"></i><span class="btn-label">Coords</span>
       </button>
       <button type="button" class="control-btn" id="coordExtractorMainBtn" title="Coordinate Extractor">
-        <i class="fas fa-draw-polygon"></i>
+        <i class="fas fa-draw-polygon"></i><span class="btn-label">Extract</span>
       </button>
       <button type="button" class="control-btn" id="drawingPanelBtn" title="Draw and Measure">
-        <i class="fas fa-ruler-combined"></i>
+        <i class="fas fa-ruler-combined"></i><span class="btn-label">Draw</span>
       </button>
       <button type="button" class="control-btn" id="importPanelBtn" title="Import CSV">
-        <i class="fas fa-file-upload"></i>
+        <i class="fas fa-file-upload"></i><span class="btn-label">Import</span>
       </button>
       <button type="button" class="control-btn" id="logoutBtn" title="Sign Out">
-        <i class="fas fa-right-from-bracket"></i>
+        <i class="fas fa-right-from-bracket"></i><span class="btn-label">Sign Out</span>
       </button>
     </div>
   </div>

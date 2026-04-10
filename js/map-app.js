@@ -52,7 +52,6 @@ let selectedLayerType = null;
 let activeInteraction = null;
 let infoOverlay;
 let baseGroupRef;
-let guestDataNoticeShown = false;
 
 const blocksSource = new ol.source.Vector();
 const parcelsSource = new ol.source.Vector();
@@ -191,6 +190,9 @@ function setActivePanel(panelId) {
   for (const panel of panelHost.querySelectorAll(".panel")) {
     panel.classList.toggle("active", panel.id === panelId);
   }
+  for (const [btnId, pId] of Object.entries(panelButtons)) {
+    document.getElementById(btnId)?.classList.toggle("active", pId === panelId);
+  }
 }
 
 function setupPanels() {
@@ -251,14 +253,7 @@ async function loadLayersFromDb() {
     p_max_lat: maxLat
   });
   if (error) {
-    if (!isAuthenticated) {
-      if (!guestDataNoticeShown) {
-        setStatus(statusEl, "Guest preview active. Sign in to load BLOCKS/PARCELS data.", true);
-        guestDataNoticeShown = true;
-      }
-    } else {
-      setStatus(statusEl, `Layer load failed: ${error.message}`, true);
-    }
+    setStatus(statusEl, `Layer load failed: ${error.message}`, true);
     return;
   }
 
@@ -299,10 +294,6 @@ function drawGeometry(layerType) {
 }
 
 async function saveGeometry(feature, layerType) {
-  if (!isAuthenticated || !currentUser?.id) {
-    setStatus(statusEl, "Sign in required for drawing/saving geometry.", true);
-    return;
-  }
   const geojson = new ol.format.GeoJSON().writeFeatureObject(feature, {
     featureProjection: "EPSG:3857",
     dataProjection: "EPSG:4326"
@@ -410,10 +401,6 @@ function locateMe() {
 }
 
 async function submitFlag() {
-  if (!isAuthenticated || !currentUser?.id) {
-    setStatus(statusEl, "Sign in required to submit flags.", true);
-    return;
-  }
   if (!selectedFeature || !selectedLayerType) {
     setStatus(statusEl, "Select a BLOCK/PARCEL before flagging.", true);
     return;
@@ -455,10 +442,6 @@ async function refreshFlags() {
 }
 
 async function runCsvImport() {
-  if (!isAuthenticated || !currentUser?.id) {
-    setStatus(statusEl, "Sign in required for CSV import.", true);
-    return;
-  }
   if (!csvInput.files?.[0]) {
     setStatus(statusEl, "Choose a CSV file first.", true);
     return;
@@ -512,16 +495,8 @@ async function initUser() {
   if (!data.session?.user) {
     if (cfg.ALLOW_GUEST_PREVIEW) {
       isAuthenticated = false;
-      currentUser = null;
+      currentUser = { id: "guest" };
       currentProfile = { role: "GUEST" };
-      drawBlockBtn.disabled = true;
-      drawParcelBtn.disabled = true;
-      measureLineBtn.disabled = true;
-      measureAreaBtn.disabled = true;
-      stopDrawBtn.disabled = true;
-      importCsvBtn.disabled = true;
-      flagFeatureBtn.disabled = true;
-      refreshFlagsBtn.disabled = true;
       return true;
     }
     window.location.href = "./login.html";
@@ -599,14 +574,16 @@ async function initMap() {
   setupInfoPopup();
   bindEvents();
   await loadLayersFromDb();
-  if (isAuthenticated) {
-    await refreshFlags();
-  } else {
-    flagList.innerHTML = "<div class='flag-item'>Sign in to view flags.</div>";
-  }
+  await refreshFlags();
   map.on("moveend", async () => {
     await loadLayersFromDb();
   });
+
+  const loader = document.getElementById("mapLoader");
+  if (loader) {
+    loader.classList.add("hidden");
+    setTimeout(() => loader.remove(), 500);
+  }
 }
 
 async function start() {

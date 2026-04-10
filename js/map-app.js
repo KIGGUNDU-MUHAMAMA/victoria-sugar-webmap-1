@@ -48,24 +48,68 @@ const blocksSource = new ol.source.Vector();
 const parcelsSource = new ol.source.Vector();
 const editSource = new ol.source.Vector();
 
+function surveyFeatureAreaAcresText(feature) {
+  const raw = feature.get("expected_area_acres");
+  if (raw != null && raw !== "" && Number.isFinite(Number(raw))) {
+    return `${Number(raw).toFixed(2)} ac`;
+  }
+  const g = feature.getGeometry();
+  if (!g) return "";
+  try {
+    return `${(ol.sphere.getArea(g) * 0.000247105).toFixed(2)} ac`;
+  } catch {
+    return "";
+  }
+}
+
 const blocksLayer = new ol.layer.Vector({
   title: "BLOCKS",
   visible: true,
   source: blocksSource,
-  style: new ol.style.Style({
-    stroke: new ol.style.Stroke({ color: "#c62828", width: 2 }),
-    fill: new ol.style.Fill({ color: "rgba(0, 0, 0, 0)" })
-  })
+  style: (feature) => {
+    const code = String(feature.get("block_code") ?? "").trim() || "—";
+    const area = surveyFeatureAreaAcresText(feature);
+    const text = area ? `${code}\n${area}` : code;
+    return new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: "#c62828", width: 2 }),
+      fill: new ol.style.Fill({ color: "rgba(0, 0, 0, 0)" }),
+      text: new ol.style.Text({
+        text,
+        font: "600 11px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: "#b71c1c" }),
+        stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+        overflow: true
+      })
+    });
+  }
 });
 
 const parcelsLayer = new ol.layer.Vector({
   title: "PARCELS",
   visible: true,
   source: parcelsSource,
-  style: new ol.style.Style({
-    stroke: new ol.style.Stroke({ color: "#1565c0", width: 2 }),
-    fill: new ol.style.Fill({ color: "rgba(21, 101, 192, 0.06)" })
-  })
+  style: (feature) => {
+    const num = feature.get("parcel_no");
+    const label =
+      num != null && num !== ""
+        ? String(num)
+        : String(feature.get("parcel_code") ?? "")
+            .replace(/^P-/i, "")
+            .trim() || "—";
+    const area = surveyFeatureAreaAcresText(feature);
+    const text = area ? `${label}\n${area}` : label;
+    return new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: "#1565c0", width: 2 }),
+      fill: new ol.style.Fill({ color: "rgba(21, 101, 192, 0.06)" }),
+      text: new ol.style.Text({
+        text,
+        font: "600 11px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: "#0d47a1" }),
+        stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+        overflow: true
+      })
+    });
+  }
 });
 
 const sketchLayer = new ol.layer.Vector({

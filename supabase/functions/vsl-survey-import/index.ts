@@ -1,3 +1,8 @@
+/**
+ * Survey CSV preview + commit (Supabase Edge). Numbering is enforced in Postgres:
+ * run `sql/006_vsl_survey_auto_numbering.sql` so `vsl_survey_batch_upsert` assigns
+ * block codes 1,2,3… globally and parcel numbers 1,2,3… per parent block.
+ */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import proj4 from "https://esm.sh/proj4@2.11.0";
 

@@ -76,7 +76,7 @@
         <h2>Survey import</h2>
         <button type="button" class="survey-close" id="surveyCloseBtn" aria-label="Close">&times;</button>
       </div>
-      <p class="small">CSV columns: <code>parcel_id</code>, <code>point_number</code>, <code>eastings</code>, <code>northings</code>, <code>description</code></p>
+      <p class="small">CSV: <code>parcel_id</code> (groups corners only), <code>point_number</code>, <code>eastings</code>, <code>northings</code>, <code>description</code>. Saved <strong>blocks</strong> get codes <strong>1, 2, 3…</strong>; <strong>parcels</strong> are <strong>1, 2, 3…</strong> inside the block you pick.</p>
 
       <label for="surveyLayerSelect">Layer to update</label>
       <select id="surveyLayerSelect">
@@ -86,13 +86,15 @@
       </select>
 
       <div id="surveyBlockFields" class="survey-conditional" hidden>
-        <label for="surveyProjectName">Project name</label>
-        <input id="surveyProjectName" type="text" placeholder="Survey or estate project name" autocomplete="off">
+        <label for="surveyProjectName">Estate / project name (optional)</label>
+        <input id="surveyProjectName" type="text" placeholder="Stored on each new block; codes are still 1, 2, 3…" autocomplete="off">
       </div>
 
       <div id="surveyParcelFields" class="survey-conditional" hidden>
-        <label for="surveyParentBlockCode">Parent block code</label>
-        <input id="surveyParentBlockCode" type="text" placeholder="Existing block_code in database" autocomplete="off">
+        <label for="surveyParentBlockSelect">Parent block</label>
+        <select id="surveyParentBlockSelect">
+          <option value="">Load map blocks first, then choose…</option>
+        </select>
       </div>
 
       <label for="surveyCrsSelect">Coordinate system</label>

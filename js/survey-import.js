@@ -114,7 +114,7 @@ export function initSurveyImport({
   const blockFields = document.getElementById("surveyBlockFields");
   const parcelFields = document.getElementById("surveyParcelFields");
   const projectName = document.getElementById("surveyProjectName");
-  const parentBlock = document.getElementById("surveyParentBlockCode");
+  const parentBlockSelect = document.getElementById("surveyParentBlockSelect");
   const crsSelect = document.getElementById("surveyCrsSelect");
   const additionalInfo = document.getElementById("surveyAdditionalInfo");
   const fileInput = document.getElementById("surveyFileInput");
@@ -168,10 +168,39 @@ export function initSurveyImport({
     drawer.setAttribute("aria-hidden", "true");
   }
 
+  function refreshParentBlockOptions() {
+    if (!parentBlockSelect) return;
+    const keep = parentBlockSelect.value;
+    parentBlockSelect.innerHTML =
+      '<option value="">Select a block (codes 1, 2, 3…)</option>';
+    const feats = blocksSource.getFeatures().slice().sort((a, b) => {
+      const ca = String(a.get("block_code") ?? "");
+      const cb = String(b.get("block_code") ?? "");
+      const na = Number(ca);
+      const nb = Number(cb);
+      if (Number.isFinite(na) && Number.isFinite(nb) && String(na) === ca && String(nb) === cb) {
+        return na - nb;
+      }
+      return ca.localeCompare(cb, undefined, { numeric: true });
+    });
+    for (const f of feats) {
+      const code = f.get("block_code");
+      if (code == null || String(code).trim() === "") continue;
+      const opt = document.createElement("option");
+      opt.value = String(code).trim();
+      opt.textContent = `Block ${String(code).trim()}`;
+      parentBlockSelect.appendChild(opt);
+    }
+    if (keep && [...parentBlockSelect.options].some((o) => o.value === keep)) {
+      parentBlockSelect.value = keep;
+    }
+  }
+
   function updateLayerFields() {
     const v = layerSelect.value;
     blockFields.hidden = v !== "BLOCKS";
     parcelFields.hidden = v !== "PARCELS";
+    if (v === "PARCELS") refreshParentBlockOptions();
   }
 
   function clearPreview() {
@@ -200,6 +229,7 @@ export function initSurveyImport({
       coordDrawer?.classList.remove("open");
       coordBtn?.classList.remove("active");
       window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
+      refreshParentBlockOptions();
     } else {
       toggleBtn.classList.remove("active");
     }
@@ -257,12 +287,8 @@ export function initSurveyImport({
       setStatus(statusEl, "Select target layer (BLOCKS or PARCELS).", true);
       return;
     }
-    if (layerType === "BLOCKS" && !projectName?.value?.trim()) {
-      setStatus(statusEl, "Enter project name for BLOCKS import.", true);
-      return;
-    }
-    if (layerType === "PARCELS" && !parentBlock?.value?.trim()) {
-      setStatus(statusEl, "Enter parent block code for PARCELS import.", true);
+    if (layerType === "PARCELS" && !parentBlockSelect?.value?.trim()) {
+      setStatus(statusEl, "Choose the parent block for these parcels (load blocks on the map if the list is empty).", true);
       return;
     }
     if (!parsedRows.length) {
@@ -282,6 +308,9 @@ export function initSurveyImport({
       renderSummary(
         `<p><strong>Parcels (groups):</strong> ${summary.totalParcels} &nbsp;|&nbsp; <strong>Valid:</strong> ${summary.validParcels} &nbsp;|&nbsp; <strong>Failed:</strong> ${summary.failedParcels}</p>` +
           `<p><strong>Total points:</strong> ${summary.totalPoints} &nbsp;|&nbsp; <strong>Skipped rows:</strong> ${summary.skippedRows}</p>` +
+          (layerType === "BLOCKS"
+            ? "<p class=\"small\">On save, each polygon becomes a new block numbered <strong>1, 2, 3…</strong> (CSV <code>parcel_id</code> is only for grouping points).</p>"
+            : "<p class=\"small\">On save, parcels get numbers <strong>1, 2, 3…</strong> in the selected block (CSV <code>parcel_id</code> is only for grouping corners).</p>") +
           (summary.failedParcels > 0
             ? "<p class=\"small\">Some parcels failed validation; check console or fix CSV.</p>"
             : "")
@@ -317,7 +346,7 @@ export function initSurveyImport({
       lastPreviewPayload = {
         layerType,
         projectName: projectName?.value?.trim() || "",
-        parentBlockCode: parentBlock?.value?.trim() || "",
+        parentBlockCode: parentBlockSelect?.value?.trim() || "",
         coordinateSystem: crs,
         additionalInfo: additionalInfo?.value?.trim() || "",
         results
@@ -354,7 +383,7 @@ export function initSurveyImport({
         const errMsg =
           Array.isArray(errs) && errs.length
             ? `Nothing was saved. Database reported: ${JSON.stringify(errs)}`
-            : "Nothing was saved (0 rows). For PARCELS, the parent block code must match an existing block exactly. Check the console for [Victoria Survey].";
+            : "Nothing was saved (0 rows). For PARCELS, choose a parent block that exists on the map. See console [Victoria Survey].";
         setStatus(statusEl, errMsg, true);
         return;
       }
@@ -363,6 +392,7 @@ export function initSurveyImport({
       lastPreviewPayload = null;
       saveBtn.disabled = true;
       await loadLayersFromDb();
+      refreshParentBlockOptions();
       fitMapToLayerSources(map, blocksSource, parcelsSource);
       setStatus(
         statusEl,

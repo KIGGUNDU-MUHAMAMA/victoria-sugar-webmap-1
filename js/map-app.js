@@ -46,11 +46,13 @@ const fallbackLayerSwitcherEl = document.getElementById("fallbackLayerSwitcher")
 let map;
 let currentUser;
 let currentProfile;
+let isAuthenticated = false;
 let selectedFeature = null;
 let selectedLayerType = null;
 let activeInteraction = null;
 let infoOverlay;
 let baseGroupRef;
+let guestDataNoticeShown = false;
 
 const blocksSource = new ol.source.Vector();
 const parcelsSource = new ol.source.Vector();
@@ -249,7 +251,14 @@ async function loadLayersFromDb() {
     p_max_lat: maxLat
   });
   if (error) {
-    setStatus(statusEl, `Layer load failed: ${error.message}`, true);
+    if (!isAuthenticated) {
+      if (!guestDataNoticeShown) {
+        setStatus(statusEl, "Guest preview active. Sign in to load BLOCKS/PARCELS data.", true);
+        guestDataNoticeShown = true;
+      }
+    } else {
+      setStatus(statusEl, `Layer load failed: ${error.message}`, true);
+    }
     return;
   }
 
@@ -290,6 +299,10 @@ function drawGeometry(layerType) {
 }
 
 async function saveGeometry(feature, layerType) {
+  if (!isAuthenticated || !currentUser?.id) {
+    setStatus(statusEl, "Sign in required for drawing/saving geometry.", true);
+    return;
+  }
   const geojson = new ol.format.GeoJSON().writeFeatureObject(feature, {
     featureProjection: "EPSG:3857",
     dataProjection: "EPSG:4326"
@@ -397,6 +410,10 @@ function locateMe() {
 }
 
 async function submitFlag() {
+  if (!isAuthenticated || !currentUser?.id) {
+    setStatus(statusEl, "Sign in required to submit flags.", true);
+    return;
+  }
   if (!selectedFeature || !selectedLayerType) {
     setStatus(statusEl, "Select a BLOCK/PARCEL before flagging.", true);
     return;
@@ -438,6 +455,10 @@ async function refreshFlags() {
 }
 
 async function runCsvImport() {
+  if (!isAuthenticated || !currentUser?.id) {
+    setStatus(statusEl, "Sign in required for CSV import.", true);
+    return;
+  }
   if (!csvInput.files?.[0]) {
     setStatus(statusEl, "Choose a CSV file first.", true);
     return;
@@ -489,10 +510,25 @@ function bindEvents() {
 async function initUser() {
   const { data } = await supabase.auth.getSession();
   if (!data.session?.user) {
+    if (cfg.ALLOW_GUEST_PREVIEW) {
+      isAuthenticated = false;
+      currentUser = null;
+      currentProfile = { role: "GUEST" };
+      drawBlockBtn.disabled = true;
+      drawParcelBtn.disabled = true;
+      measureLineBtn.disabled = true;
+      measureAreaBtn.disabled = true;
+      stopDrawBtn.disabled = true;
+      importCsvBtn.disabled = true;
+      flagFeatureBtn.disabled = true;
+      refreshFlagsBtn.disabled = true;
+      return true;
+    }
     window.location.href = "./login.html";
     return false;
   }
   currentUser = data.session.user;
+  isAuthenticated = true;
   const { data: profile, error } = await supabase
     .from("vsl_profiles")
     .select("role")
@@ -562,8 +598,14 @@ async function initMap() {
   setupInfoPopup();
   bindEvents();
   await loadLayersFromDb();
-  await refreshFlags();
-  map.on("moveend", loadLayersFromDb);
+  if (isAuthenticated) {
+    await refreshFlags();
+  } else {
+    flagList.innerHTML = "<div class='flag-item'>Sign in to view flags.</div>";
+  }
+  map.on("moveend", async () => {
+    await loadLayersFromDb();
+  });
 }
 
 async function start() {
@@ -571,7 +613,11 @@ async function start() {
   const ok = await initUser();
   if (!ok) return;
   await initMap();
-  setStatus(statusEl, `Signed in as ${currentProfile.role}. Ready.`);
+  if (isAuthenticated) {
+    setStatus(statusEl, `Signed in as ${currentProfile.role}. Ready.`);
+  } else {
+    setStatus(statusEl, "Guest preview mode: basemaps and layer switcher enabled.");
+  }
 }
 
 start().catch((err) => setStatus(statusEl, err.message, true));

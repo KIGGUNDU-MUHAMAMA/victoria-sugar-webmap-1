@@ -236,17 +236,45 @@ async function loadLayersFromDb() {
   blocksSource.clear(true);
   parcelsSource.clear(true);
 
-  const geojson = new ol.format.GeoJSON();
+  const geojsonFmt = new ol.format.GeoJSON();
+  const projOpts = { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" };
+  const geomTypes = new Set([
+    "Point",
+    "LineString",
+    "Polygon",
+    "MultiPoint",
+    "MultiLineString",
+    "MultiPolygon",
+    "GeometryCollection"
+  ]);
+
+  let n = 0;
   for (const row of data || []) {
     if (!row.geojson) continue;
-    const feature = geojson.readFeature(row.geojson, {
-      dataProjection: "EPSG:4326",
-      featureProjection: "EPSG:3857"
-    });
+    let feature;
+    const gj = row.geojson;
+    if (typeof gj === "string") {
+      try {
+        feature = geojsonFmt.readFeature(gj, projOpts);
+      } catch {
+        continue;
+      }
+    } else if (gj.type === "Feature") {
+      feature = geojsonFmt.readFeature(gj, projOpts);
+    } else if (geomTypes.has(gj.type)) {
+      const geom = geojsonFmt.readGeometry(gj, projOpts);
+      feature = new ol.Feature({ geometry: geom });
+    } else {
+      continue;
+    }
     feature.setProperties(row.properties || {}, true);
     feature.setId(row.feature_id);
     if (row.layer_type === "BLOCKS") blocksSource.addFeature(feature);
     if (row.layer_type === "PARCELS") parcelsSource.addFeature(feature);
+    n += 1;
+  }
+  if (window.console && typeof console.debug === "function") {
+    console.debug(`[Victoria map] vsl_get_features_bbox: ${n} feature(s) in view (${(data || []).length} row(s) from API)`);
   }
 }
 

@@ -22,7 +22,7 @@ where proname = 'vsl_survey_batch_upsert';
 
 5. If saves failed with **missing FROM-clause entry for table "v_item"**, your database still has an old `002` definition. Copy the **latest** `sql/002_vsl_survey_batch.sql` from GitHub (`main` branch), paste into SQL Editor, and **Run** again (this replaces the function safely).
 
-6. **Guest map is empty but Table Editor shows rows?** Run `sql/004_vsl_anon_read_map_layers.sql` (full file from GitHub) in SQL Editor. Row Level Security previously blocked the **anon** key from reading `vsl_blocks` / `vsl_parcels`, so `vsl_get_features_bbox` returned no features to the webmap.
+6. **Guest map is empty but Table Editor shows rows?** Run `sql/004_vsl_anon_read_map_layers.sql` in SQL Editor, then **`sql/005_vsl_get_features_bbox_definer.sql`**. `005` recreates `vsl_get_features_bbox` as **SECURITY DEFINER** so **not being logged in** does not block reads (results are still clipped to the map view). Also confirm column **`geom`** is non-null — **`geometry_status` = `captured` is not the same as having a geometry.
 
 ---
 

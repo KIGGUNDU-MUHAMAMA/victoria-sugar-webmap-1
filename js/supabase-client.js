@@ -10,7 +10,8 @@ const fallbackCfg = {
 
 const cfg = {
   ...fallbackCfg,
-  SURVEY_FUNCTION_NAME: "vsl-survey-import",
+  /** Must match the function name in Supabase (e.g. quick-api or vsl-survey-import). */
+  SURVEY_FUNCTION_NAME: "quick-api",
   ...(window.VSL_CONFIG || {})
 };
 

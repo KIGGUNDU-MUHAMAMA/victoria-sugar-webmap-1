@@ -16,7 +16,7 @@ const CRS_OPTIONS = [
 
 function surveyFunctionUrl(cfg) {
   const base = (cfg.SUPABASE_URL || "").replace(/\/$/, "");
-  const name = cfg.SURVEY_FUNCTION_NAME || "vsl-survey-import";
+  const name = cfg.SURVEY_FUNCTION_NAME || "quick-api";
   return `${base}/functions/v1/${name}`;
 }
 

@@ -17,25 +17,31 @@ gh repo create victoria-sugar-webmap --public --source=. --push
 2. Run SQL files in order:
    - `sql/001_vsl_schema.sql`
    - `sql/002_vsl_survey_batch.sql` (batch polygon upsert for Survey import; **Edge Function only**)
+3. **Survey import (Edge Function):**
+   - Install [Supabase CLI](https://supabase.com/docs/guides/cli), then from the repo root:
 
-## Survey import (Edge Function)
+     ```bash
+     supabase login
+     supabase link --project-ref YOUR_PROJECT_REF
+     supabase functions deploy vsl-survey-import
+     ```
 
-1. Install [Supabase CLI](https://supabase.com/docs/guides/cli), then from the repo root:
+   - If you deploy under another name (e.g. Dashboard **quick-api**), set in `config/app-config.js`:
 
-   ```bash
-   supabase login
-   supabase link --project-ref YOUR_PROJECT_REF
-   supabase functions deploy vsl-survey-import
-   ```
+     ```js
+     SURVEY_FUNCTION_NAME: "quick-api"
+     ```
 
-2. Optional hardening: in Supabase Dashboard → Edge Functions → `vsl-survey-import` → Secrets, set `SURVEY_IMPORT_SECRET` to a random string. Add the same value to `config/app-config.js` as `SURVEY_IMPORT_SECRET` so the browser sends header `x-vsl-survey-secret`. If the secret is **not** set, the function accepts requests with only the anon key (fine for internal testing; tighten for production).
+     The built-in fallback in `js/supabase-client.js` defaults to **`quick-api`** so GitHub Pages works without a local config file.
 
-3. `supabase/config.toml` sets `verify_jwt = false` for this function so **guest / anon** callers can preview and commit without signing in (writes use the service role inside the function, not the user’s session).
+   - Optional hardening: Dashboard → Edge Functions → your function → Secrets → `SURVEY_IMPORT_SECRET`. Mirror it in `config/app-config.js` as `SURVEY_IMPORT_SECRET` (header `x-vsl-survey-secret`). If unset, the anon key alone is enough for testing.
 
-4. CSV format for survey points: see `docs/survey_points_template.csv`.
-3. In Supabase Auth settings, set Site URL:
+   - For **guest / anon** Survey preview and save, turn **off** JWT verification for that function (Dashboard → Edge Functions → your function → Settings). Writes still use the **service role** inside the function.
+
+   - CSV format: `docs/survey_points_template.csv`.
+4. In Supabase Auth settings, set Site URL:
    - `https://victoriasugarltd.xyz`
-4. Add Redirect URLs:
+5. Add Redirect URLs:
    - `https://victoriasugarltd.xyz/login.html`
    - `https://victoriasugarltd.xyz/webmap.html`
 

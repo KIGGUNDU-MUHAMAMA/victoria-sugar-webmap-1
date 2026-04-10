@@ -60,14 +60,61 @@
       <button type="button" class="control-btn" id="drawingPanelBtn" title="Draw and Measure">
         <i class="fas fa-ruler-combined"></i><span class="btn-label">Draw</span>
       </button>
-      <button type="button" class="control-btn" id="importPanelBtn" title="Import CSV">
-        <i class="fas fa-file-upload"></i><span class="btn-label">Import</span>
+      <button type="button" class="control-btn" id="surveyPanelBtn" title="Survey CSV import">
+        <i class="fas fa-drafting-compass"></i><span class="btn-label">Survey</span>
       </button>
       <button type="button" class="control-btn" id="logoutBtn" title="Sign Out">
         <i class="fas fa-right-from-bracket"></i><span class="btn-label">Sign Out</span>
       </button>
     </div>
   </div>
+
+  <aside id="surveyDrawer" class="survey-drawer" aria-hidden="true">
+    <div class="survey-drawer-inner">
+      <div class="survey-drawer-head">
+        <h2>Survey import</h2>
+        <button type="button" class="survey-close" id="surveyCloseBtn" aria-label="Close">&times;</button>
+      </div>
+      <p class="small">CSV columns: <code>parcel_id</code>, <code>point_number</code>, <code>eastings</code>, <code>northings</code>, <code>description</code></p>
+
+      <label for="surveyLayerSelect">Layer to update</label>
+      <select id="surveyLayerSelect">
+        <option value="">Select layer…</option>
+        <option value="BLOCKS">1. BLOCKS</option>
+        <option value="PARCELS">2. PARCELS</option>
+      </select>
+
+      <div id="surveyBlockFields" class="survey-conditional" hidden>
+        <label for="surveyProjectName">Project name</label>
+        <input id="surveyProjectName" type="text" placeholder="Survey or estate project name" autocomplete="off">
+      </div>
+
+      <div id="surveyParcelFields" class="survey-conditional" hidden>
+        <label for="surveyParentBlockCode">Parent block code</label>
+        <input id="surveyParentBlockCode" type="text" placeholder="Existing block_code in database" autocomplete="off">
+      </div>
+
+      <label for="surveyCrsSelect">Coordinate system</label>
+      <select id="surveyCrsSelect"></select>
+
+      <label for="surveyAdditionalInfo">Additional information (optional)</label>
+      <textarea id="surveyAdditionalInfo" rows="3" placeholder="Notes, surveyor, job reference, datum notes…"></textarea>
+
+      <label for="surveyFileInput">CSV file</label>
+      <input id="surveyFileInput" type="file" accept=".csv,text/csv">
+
+      <div id="surveyDropzone" class="survey-dropzone">Drag and drop CSV here</div>
+
+      <div id="surveySummary" class="survey-summary" hidden></div>
+
+      <label class="survey-check"><input type="checkbox" id="surveySkipSelfIntersect"> Allow self-intersecting polygons (advanced)</label>
+
+      <div class="survey-actions">
+        <button type="button" id="surveyPreviewBtn" class="btn-secondary">Preview on map</button>
+        <button type="button" id="surveySaveBtn" disabled>Save to Supabase</button>
+      </div>
+    </div>
+  </aside>
 
   <aside class="side-panel" id="panelHost">
     <div class="panel active" id="parcelSearchPanel">
@@ -114,12 +161,6 @@
       <button id="stopDrawBtn" class="btn-secondary" type="button">Stop Tool</button>
     </div>
 
-    <div class="panel" id="importPanel">
-      <h3>CSV Import</h3>
-      <p class="small">Attributes-only import for block/parcel records.</p>
-      <input id="csvInput" type="file" accept=".csv,text/csv">
-      <button id="importCsvBtn" type="button">Import CSV</button>
-    </div>
   </aside>
 
   <div id="status" class="status map-status" hidden></div>

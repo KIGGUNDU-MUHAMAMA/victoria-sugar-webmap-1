@@ -406,6 +406,122 @@ button:hover {
   to { transform: rotate(360deg); }
 }
 
+.survey-drawer {
+  position: fixed;
+  top: 86px;
+  left: 0;
+  width: min(380px, 26vw);
+  min-width: 280px;
+  height: calc(100vh - 96px);
+  z-index: 1155;
+  background: rgba(255, 255, 255, 0.97);
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
+  transform: translateX(-102%);
+  transition: transform 0.28s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.survey-drawer.open {
+  transform: translateX(0);
+}
+
+.survey-drawer-inner {
+  padding: 0.85rem 1rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.survey-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.survey-drawer-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.survey-close {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  background: #eef5ec;
+  color: var(--text);
+  font-size: 1.4rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+}
+
+.survey-close:hover {
+  background: #e0ebd8;
+}
+
+.survey-drawer .small code {
+  font-size: 0.78rem;
+  background: #eef5ec;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.survey-conditional {
+  margin-top: 0.5rem;
+}
+
+.survey-dropzone {
+  margin-top: 0.45rem;
+  padding: 1rem;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 0.86rem;
+  color: var(--muted);
+  background: #fafcf8;
+}
+
+.survey-dropzone.dragover {
+  border-color: var(--primary);
+  background: #eef8ea;
+  color: var(--text);
+}
+
+.survey-summary {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  background: #f0f6ec;
+  font-size: 0.86rem;
+}
+
+.survey-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.survey-check input {
+  width: auto;
+  margin-top: 0.2rem;
+}
+
+.survey-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
 @media (max-width: 940px) {
   .login-shell {
     grid-template-columns: 1fr;
@@ -433,5 +549,10 @@ button:hover {
   .fallback-switcher {
     top: 140px;
     width: calc(100vw - 24px);
+  }
+
+  .survey-drawer {
+    width: min(100vw - 16px, 420px);
+    min-width: unset;
   }
 }

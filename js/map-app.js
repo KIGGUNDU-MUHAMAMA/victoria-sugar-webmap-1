@@ -1,6 +1,6 @@
 import { createSupabaseClient, getConfig } from "./supabase-client.js";
 import { clearStatus, parseNum, setStatus } from "./utils.js";
-import { importAttributesCsv } from "./importer.js";
+import { initSurveyImport } from "./survey-import.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -24,16 +24,12 @@ const drawParcelBtn = document.getElementById("drawParcelBtn");
 const measureLineBtn = document.getElementById("measureLineBtn");
 const measureAreaBtn = document.getElementById("measureAreaBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
-const csvInput = document.getElementById("csvInput");
-const importCsvBtn = document.getElementById("importCsvBtn");
-
 const panelButtons = {
   parcelSearchBtn: "parcelSearchPanel",
   coordSearchBtn: "coordinateSearchPanel",
   coordExtractorMainBtn: "coordExtractorPanel",
   qualityFlagsBtn: "qualityFlagsPanel",
-  drawingPanelBtn: "drawingPanel",
-  importPanelBtn: "importPanel"
+  drawingPanelBtn: "drawingPanel"
 };
 
 const locateBtn = document.getElementById("locateBtn");
@@ -421,24 +417,6 @@ async function refreshFlags() {
   }).join("");
 }
 
-async function runCsvImport() {
-  if (!csvInput.files?.[0]) {
-    setStatus(statusEl, "Choose a CSV file first.", true);
-    return;
-  }
-  try {
-    const result = await importAttributesCsv({
-      supabase,
-      file: csvInput.files[0],
-      currentUserId: currentUser.id
-    });
-    setStatus(statusEl, `CSV processed. Batch ${result.batchId}, rows ${result.rowCount}.`);
-    await loadLayersFromDb();
-  } catch (error) {
-    setStatus(statusEl, error.message, true);
-  }
-}
-
 function bindEvents() {
   setupPanels();
 
@@ -453,7 +431,6 @@ function bindEvents() {
   measureLineBtn.addEventListener("click", () => startMeasure("LineString"));
   measureAreaBtn.addEventListener("click", () => startMeasure("Polygon"));
   stopDrawBtn.addEventListener("click", stopActiveTool);
-  importCsvBtn.addEventListener("click", runCsvImport);
 
   locateBtn.addEventListener("click", locateMe);
   printBtn.addEventListener("click", () => window.print());
@@ -501,7 +478,10 @@ async function initUser() {
     measureLineBtn.disabled = true;
     measureAreaBtn.disabled = true;
     stopDrawBtn.disabled = true;
-    importCsvBtn.disabled = true;
+    const sp = document.getElementById("surveyPreviewBtn");
+    const ss = document.getElementById("surveySaveBtn");
+    if (sp) sp.disabled = true;
+    if (ss) ss.disabled = true;
   }
   return true;
 }
@@ -553,6 +533,14 @@ async function initMap() {
 
   setupInfoPopup();
   bindEvents();
+  initSurveyImport({
+    map,
+    cfg,
+    setStatus,
+    statusEl,
+    loadLayersFromDb,
+    getManagementLocked: () => currentProfile?.role === "MANAGMENT"
+  });
   await loadLayersFromDb();
   await refreshFlags();
   map.on("moveend", async () => {

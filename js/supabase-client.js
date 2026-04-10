@@ -8,7 +8,11 @@ const fallbackCfg = {
   ALLOW_GUEST_PREVIEW: true
 };
 
-const cfg = { ...fallbackCfg, ...(window.VSL_CONFIG || {}) };
+const cfg = {
+  ...fallbackCfg,
+  SURVEY_FUNCTION_NAME: "vsl-survey-import",
+  ...(window.VSL_CONFIG || {})
+};
 
 export function createSupabaseClient() {
   if (!window.supabase?.createClient) {

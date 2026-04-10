@@ -1,4 +1,4 @@
-import { CRS_OPTIONS, registerProj4Defs, toLonLatFromCrs } from "./crs-definitions.js";
+import { CRS_OPTIONS, registerProj4Defs, toMap3857FromCrs } from "./crs-definitions.js";
 
 function isValidLonLat(lon, lat) {
   return Number.isFinite(lon) && Number.isFinite(lat) && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90;
@@ -156,18 +156,19 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
       return;
     }
     try {
-      const p4 = await ensureProj4();
-      const [lon, lat] = toLonLatFromCrs(p4, crs, east, north);
+      await ensureProj4();
+      const coord3857 = toMap3857FromCrs(crs, east, north);
+      const [lon, lat] = ol.proj.transform(coord3857, "EPSG:3857", "EPSG:4326");
       if (!isValidLonLat(lon, lat)) {
         setStatus(statusEl, `Resulting lon/lat out of range: ${lon}, ${lat}. Check CRS vs values.`, true);
         return;
       }
       const pt = new ol.Feature({
-        geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat]))
+        geometry: new ol.geom.Point(coord3857)
       });
       pt.set("label", `${east.toFixed(2)}, ${north.toFixed(2)}`);
       markersSource.addFeature(pt);
-      map.getView().animate({ center: ol.proj.fromLonLat([lon, lat]), zoom: 17, duration: 450 });
+      map.getView().animate({ center: coord3857, zoom: 17, duration: 450 });
       setStatus(
         statusEl,
         `Plotted WGS84 ${lon.toFixed(6)}, ${lat.toFixed(6)} (from ${crs}).`
@@ -200,7 +201,7 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
       return;
     }
     try {
-      const p4 = await ensureProj4();
+      await ensureProj4();
       const rows = await parseCsvFile(file);
       let ok = 0;
       let skipped = 0;
@@ -211,13 +212,14 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
           continue;
         }
         try {
-          const [lon, lat] = toLonLatFromCrs(p4, crs, n.east, n.north);
+          const coord3857 = toMap3857FromCrs(crs, n.east, n.north);
+          const [lon, lat] = ol.proj.transform(coord3857, "EPSG:3857", "EPSG:4326");
           if (!isValidLonLat(lon, lat)) {
             skipped++;
             continue;
           }
           const pt = new ol.Feature({
-            geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat]))
+            geometry: new ol.geom.Point(coord3857)
           });
           pt.set("label", n.label || String(ok + 1));
           markersSource.addFeature(pt);

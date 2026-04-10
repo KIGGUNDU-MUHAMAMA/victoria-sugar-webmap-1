@@ -26,18 +26,12 @@ export const PROJ4_DEFS = {
   "EPSG:21096": "+proj=utm +zone=36 +ellps=clrk80 +towgs84=-160,-6,-302,0,0,0,0 +units=m +no_defs"
 };
 
-let olProj4Hooked = false;
-
 /**
- * Register proj4 with OpenLayers, then add Uganda CRS defs (idempotent per proj4 instance).
- * Hooking OL ensures map plotting matches Survey preview (GeoJSON 4326→3857 path).
+ * Add Uganda CRS to proj4. (The full ol.js script does not ship ol/proj/proj4 — do not rely on
+ * ol.proj.transform for arbitrary EPSG codes; use toMap3857FromCrs instead.)
  */
 export function registerProj4Defs(proj4lib) {
   if (!proj4lib?.defs) return;
-  if (typeof ol !== "undefined" && ol.proj?.proj4?.register && !olProj4Hooked) {
-    ol.proj.proj4.register(proj4lib);
-    olProj4Hooked = true;
-  }
   for (const [code, def] of Object.entries(PROJ4_DEFS)) {
     try {
       proj4lib.defs(code, def);
@@ -62,22 +56,26 @@ export function toLonLatFromCrs(proj4lib, crs, easting, northing) {
 }
 
 /**
- * Map coordinate in EPSG:3857 for markers / view — same chain as ol.format.GeoJSON readFeature.
- * Call after registerProj4Defs(proj4lib).
+ * Map coordinate in EPSG:3857 for OpenLayers (map view). Uses proj4 for UTM / Arc 1960 so we do not
+ * depend on ol.proj.proj4 (not in default ol.js bundle). WGS84 geographic uses ol.proj.fromLonLat.
  */
-export function toMap3857FromCrs(crs, easting, northing) {
-  if (typeof ol === "undefined" || !ol.proj?.transform) {
-    throw new Error("OpenLayers is not loaded; cannot transform coordinates.");
-  }
+export function toMap3857FromCrs(proj4lib, crs, easting, northing) {
   const e = Number(easting);
   const n = Number(northing);
   if (crs === "EPSG:4326") {
-    return ol.proj.transform([e, n], "EPSG:4326", "EPSG:3857");
+    if (typeof ol === "undefined" || !ol.proj?.fromLonLat) {
+      throw new Error("OpenLayers is not loaded; cannot plot coordinates.");
+    }
+    return ol.proj.fromLonLat([e, n]);
   }
   if (!PROJ4_DEFS[crs]) {
     throw new Error(`Unknown CRS: ${crs}`);
   }
-  return ol.proj.transform([e, n], crs, "EPSG:3857");
+  const out = proj4lib(crs, "EPSG:3857", [e, n]);
+  if (!Number.isFinite(out[0]) || !Number.isFinite(out[1])) {
+    throw new Error("Transform produced invalid coordinates. Check CRS, easting, and northing.");
+  }
+  return [out[0], out[1]];
 }
 
 /**

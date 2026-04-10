@@ -156,8 +156,8 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
       return;
     }
     try {
-      await ensureProj4();
-      const coord3857 = toMap3857FromCrs(crs, east, north);
+      const p4 = await ensureProj4();
+      const coord3857 = toMap3857FromCrs(p4, crs, east, north);
       const [lon, lat] = ol.proj.transform(coord3857, "EPSG:3857", "EPSG:4326");
       if (!isValidLonLat(lon, lat)) {
         setStatus(statusEl, `Resulting lon/lat out of range: ${lon}, ${lat}. Check CRS vs values.`, true);
@@ -201,7 +201,7 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
       return;
     }
     try {
-      await ensureProj4();
+      const p4 = await ensureProj4();
       const rows = await parseCsvFile(file);
       let ok = 0;
       let skipped = 0;
@@ -212,7 +212,7 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
           continue;
         }
         try {
-          const coord3857 = toMap3857FromCrs(crs, n.east, n.north);
+          const coord3857 = toMap3857FromCrs(p4, crs, n.east, n.north);
           const [lon, lat] = ol.proj.transform(coord3857, "EPSG:3857", "EPSG:4326");
           if (!isValidLonLat(lon, lat)) {
             skipped++;

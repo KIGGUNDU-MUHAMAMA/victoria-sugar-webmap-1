@@ -10,17 +10,12 @@ const cfg = getConfig();
 const statusEl = document.getElementById("status");
 const panelHost = document.getElementById("panelHost");
 
-const flagNoteInput = document.getElementById("flagNoteInput");
-const flagFeatureBtn = document.getElementById("flagFeatureBtn");
-const refreshFlagsBtn = document.getElementById("refreshFlagsBtn");
-const flagList = document.getElementById("flagList");
 const drawBlockBtn = document.getElementById("drawBlockBtn");
 const drawParcelBtn = document.getElementById("drawParcelBtn");
 const measureLineBtn = document.getElementById("measureLineBtn");
 const measureAreaBtn = document.getElementById("measureAreaBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
 const panelButtons = {
-  qualityFlagsBtn: "qualityFlagsPanel",
   drawingPanelBtn: "drawingPanel"
 };
 
@@ -48,6 +43,28 @@ const editSource = new ol.source.Vector();
 /** Set by parcel search RPC; layer styles emphasize these ids after bbox reload. */
 const searchHighlight = { blockId: null, parcelId: null };
 
+/** Cultivation status → map colours (blocks & parcels when not search-highlighted). */
+const CULTIVATION_PALETTE = {
+  not_in_cane: { stroke: "#455a64", fill: "rgba(84, 110, 122, 0.32)", text: "#37474f" },
+  prepared: { stroke: "#4e342e", fill: "rgba(93, 64, 55, 0.3)", text: "#3e2723" },
+  planted: { stroke: "#1b5e20", fill: "rgba(46, 125, 50, 0.36)", text: "#1b5e20" },
+  standing: { stroke: "#0d3d0d", fill: "rgba(13, 61, 13, 0.4)", text: "#0d2f0d" },
+  harvested: { stroke: "#e65100", fill: "rgba(251, 192, 45, 0.42)", text: "#bf360c" },
+  replant_renovation: { stroke: "#4a148c", fill: "rgba(106, 27, 154, 0.32)", text: "#4a148c" }
+};
+
+function cultivationKeyFromFeature(feature) {
+  const s = feature.get("cultivation_status");
+  return s && CULTIVATION_PALETTE[s] ? s : "not_in_cane";
+}
+
+const parcelStatusState = {
+  panelOpen: false,
+  pickArmed: false,
+  selectedFeature: null,
+  selectedLayerType: null
+};
+
 function surveyFeatureAreaAcresText(feature) {
   const raw = feature.get("expected_area_acres");
   if (raw != null && raw !== "" && Number.isFinite(Number(raw))) {
@@ -72,20 +89,21 @@ const blocksLayer = new ol.layer.Vector({
       searchHighlight.blockId != null &&
       bid != null &&
       String(bid) === String(searchHighlight.blockId);
+    const pal = CULTIVATION_PALETTE[cultivationKeyFromFeature(feature)];
     const code = String(feature.get("block_code") ?? "").trim() || "—";
     const area = surveyFeatureAreaAcresText(feature);
     const text = area ? `${code}\n${area}` : code;
     return new ol.style.Style({
       stroke: new ol.style.Stroke(
-        hi ? { color: "#e65100", width: 4 } : { color: "#c62828", width: 2 }
+        hi ? { color: "#e65100", width: 4 } : { color: pal.stroke, width: 2 }
       ),
       fill: new ol.style.Fill({
-        color: hi ? "rgba(230, 81, 0, 0.14)" : "rgba(0, 0, 0, 0)"
+        color: hi ? "rgba(230, 81, 0, 0.14)" : pal.fill
       }),
       text: new ol.style.Text({
         text,
         font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: hi ? "#bf360c" : "#b71c1c" }),
+        fill: new ol.style.Fill({ color: hi ? "#bf360c" : pal.text }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
         overflow: true
       })
@@ -103,6 +121,7 @@ const parcelsLayer = new ol.layer.Vector({
       searchHighlight.parcelId != null &&
       pid != null &&
       String(pid) === String(searchHighlight.parcelId);
+    const pal = CULTIVATION_PALETTE[cultivationKeyFromFeature(feature)];
     const num = feature.get("parcel_no");
     const label =
       num != null && num !== ""
@@ -114,17 +133,15 @@ const parcelsLayer = new ol.layer.Vector({
     const text = area ? `${label}\n${area}` : label;
     return new ol.style.Style({
       stroke: new ol.style.Stroke(
-        hi
-          ? { color: "#f9a825", width: 4 }
-          : { color: "#1565c0", width: 2 }
+        hi ? { color: "#f9a825", width: 4 } : { color: pal.stroke, width: 2 }
       ),
       fill: new ol.style.Fill({
-        color: hi ? "rgba(249, 168, 37, 0.38)" : "rgba(21, 101, 192, 0.06)"
+        color: hi ? "rgba(249, 168, 37, 0.38)" : pal.fill
       }),
       text: new ol.style.Text({
         text,
         font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: hi ? "#f57f17" : "#0d47a1" }),
+        fill: new ol.style.Fill({ color: hi ? "#f57f17" : pal.text }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: hi ? 4 : 3 }),
         overflow: true
       })
@@ -222,6 +239,7 @@ function enableFallbackLayerSwitcher() {
 }
 
 function setActivePanel(panelId) {
+  closeParcelStatusPanel();
   closeParcelSearchPopover({ clearHighlight: true });
 
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
@@ -250,6 +268,267 @@ function setupPanels() {
   }
 }
 
+function getParcelStatusLayerMode() {
+  const r = document.querySelector("input[name='parcelStatusLayer']:checked");
+  return r?.value === "BLOCKS" ? "BLOCKS" : "PARCELS";
+}
+
+function setParcelStatusFormError(msg) {
+  const el = document.getElementById("parcelStatusFormError");
+  if (!el) return;
+  if (!msg) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function disarmParcelStatusPick() {
+  parcelStatusState.pickArmed = false;
+  const pickBtn = document.getElementById("parcelStatusPickBtn");
+  const cancelBtn = document.getElementById("parcelStatusCancelPickBtn");
+  const hint = document.getElementById("parcelStatusPickHint");
+  pickBtn?.classList.remove("picking-active");
+  if (cancelBtn) cancelBtn.hidden = true;
+  if (hint) {
+    hint.innerHTML =
+      "Choose <strong>Parcels</strong> or <strong>Blocks</strong>, then press <strong>Select on map</strong> and click a polygon.";
+  }
+}
+
+function renderParcelStatusPreview() {
+  const box = document.getElementById("parcelStatusPreview");
+  const sec = document.getElementById("parcelStatusSelectionSection");
+  const f = parcelStatusState.selectedFeature;
+  const lt = parcelStatusState.selectedLayerType;
+  if (!box || !sec) return;
+  if (!f || !lt) {
+    sec.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  sec.hidden = false;
+  const p = f.getProperties();
+  if (lt === "PARCELS") {
+    const bc = p.block_code ?? "—";
+    const pn = p.parcel_no ?? p.parcel_code ?? "—";
+    box.innerHTML = `<strong>Parcel</strong> in block <strong>${bc}</strong>, plot <strong>${pn}</strong><br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
+  } else {
+    const code = p.block_code ?? "—";
+    const name = p.block_name ?? "";
+    box.innerHTML = `<strong>Block</strong> <strong>${code}</strong>${name ? ` — ${name}` : ""}<br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
+  }
+}
+
+function syncParcelStatusFormFromSelection() {
+  const f = parcelStatusState.selectedFeature;
+  const sel = document.getElementById("parcelStatusSelect");
+  const ht = document.getElementById("parcelStatusHarvestTonnes");
+  const dt = document.getElementById("parcelStatusLastHarvest");
+  const notes = document.getElementById("parcelStatusNotes");
+  if (!f || !sel) return;
+  const st = cultivationKeyFromFeature(f);
+  sel.value = st;
+  const tonnes = f.get("harvest_tonnes");
+  if (ht) ht.value = tonnes != null && tonnes !== "" ? String(tonnes) : "";
+  const d = f.get("last_harvest_date");
+  if (dt) dt.value = d ? String(d).slice(0, 10) : "";
+  if (notes) notes.value = String(f.get("cultivation_notes") ?? "");
+  setParcelStatusFormError("");
+  renderParcelStatusPreview();
+}
+
+function clearParcelStatusSelection() {
+  parcelStatusState.selectedFeature = null;
+  parcelStatusState.selectedLayerType = null;
+  renderParcelStatusPreview();
+}
+
+function closeParcelStatusPanel() {
+  const panel = document.getElementById("parcelStatusPanel");
+  const btn = document.getElementById("parcelStatusBtn");
+  parcelStatusState.panelOpen = false;
+  disarmParcelStatusPick();
+  clearParcelStatusSelection();
+  if (panel) {
+    panel.hidden = true;
+    panel.setAttribute("aria-hidden", "true");
+  }
+  btn?.classList.remove("active");
+}
+
+function openParcelStatusPanel() {
+  const panel = document.getElementById("parcelStatusPanel");
+  const btn = document.getElementById("parcelStatusBtn");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.setAttribute("aria-hidden", "false");
+  parcelStatusState.panelOpen = true;
+  btn?.classList.add("active");
+  panelHost.classList.remove("visible");
+  for (const p of panelHost.querySelectorAll(".panel")) p.classList.remove("active");
+  for (const bId of Object.keys(panelButtons)) {
+    document.getElementById(bId)?.classList.remove("active");
+  }
+}
+
+function tryParcelStatusMapClick(evt) {
+  if (!parcelStatusState.pickArmed) return false;
+  const mode = getParcelStatusLayerMode();
+  const wantBlocks = mode === "BLOCKS";
+  const wantParcels = mode === "PARCELS";
+  let hits = map.getFeaturesAtPixel(evt.pixel, {
+    layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer,
+    hitTolerance: 8
+  });
+  if (hits == null) hits = [];
+  if (!Array.isArray(hits)) hits = [hits];
+  let hit = null;
+  let layerHit = null;
+  if (wantParcels) {
+    const h = hits.find((x) => x.layer === parcelsLayer);
+    if (h) {
+      hit = h.feature;
+      layerHit = "PARCELS";
+    }
+  } else if (wantBlocks) {
+    const h = hits.find((x) => x.layer === blocksLayer);
+    if (h) {
+      hit = h.feature;
+      layerHit = "BLOCKS";
+    }
+  }
+  if (!hit) {
+    setStatus(statusEl, `Click a ${wantParcels ? "parcel" : "block"} polygon.`, true);
+    return true;
+  }
+  parcelStatusState.selectedFeature = hit;
+  parcelStatusState.selectedLayerType = layerHit;
+  disarmParcelStatusPick();
+  syncParcelStatusFormFromSelection();
+  clearStatus(statusEl);
+  return true;
+}
+
+async function applyParcelStatusFromPanel() {
+  const f = parcelStatusState.selectedFeature;
+  const lt = parcelStatusState.selectedLayerType;
+  const applyBtn = document.getElementById("parcelStatusApplyBtn");
+  const sel = document.getElementById("parcelStatusSelect");
+  if (!f || !lt || !sel) {
+    setParcelStatusFormError("Select a feature on the map first.");
+    return;
+  }
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+    setParcelStatusFormError("Sign in to save changes.");
+    return;
+  }
+  if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
+    setParcelStatusFormError("Only Admin or Surveyor can save status.");
+    return;
+  }
+
+  const status = sel.value;
+  const htEl = document.getElementById("parcelStatusHarvestTonnes");
+  const dtEl = document.getElementById("parcelStatusLastHarvest");
+  const notesEl = document.getElementById("parcelStatusNotes");
+  const tonnesRaw = htEl?.value?.trim() ?? "";
+  const tonnes = tonnesRaw === "" ? null : parseNum(tonnesRaw);
+  if (tonnesRaw !== "" && (tonnes == null || tonnes < 0)) {
+    setParcelStatusFormError("Harvest tonnes must be a non-negative number or blank.");
+    return;
+  }
+  const lastHarvest = dtEl?.value?.trim() || null;
+  const notes = notesEl?.value?.trim() ?? "";
+
+  if (applyBtn) applyBtn.disabled = true;
+  setParcelStatusFormError("");
+
+  const { data, error } = await supabase.rpc("vsl_set_cultivation_status", {
+    p_layer_type: lt,
+    p_feature_id: f.getId(),
+    p_status: status,
+    p_harvest_tonnes: tonnes,
+    p_last_harvest_date: lastHarvest,
+    p_notes: notes || null
+  });
+
+  if (applyBtn) applyBtn.disabled = false;
+
+  if (error) {
+    setParcelStatusFormError(error.message || "Save failed.");
+    return;
+  }
+  if (!data || data.success !== true) {
+    setParcelStatusFormError(String((data && data.error) || "Save failed."));
+    return;
+  }
+
+  const savedId = f.getId();
+  const savedLt = lt;
+  await loadLayersFromDb();
+  blocksLayer.changed();
+  parcelsLayer.changed();
+  const src = savedLt === "PARCELS" ? parcelsSource : blocksSource;
+  const nf = src.getFeatures().find((x) => String(x.getId()) === String(savedId));
+  if (nf) {
+    parcelStatusState.selectedFeature = nf;
+    parcelStatusState.selectedLayerType = savedLt;
+    syncParcelStatusFormFromSelection();
+  } else {
+    clearParcelStatusSelection();
+  }
+  setStatus(statusEl, "Cultivation status saved.");
+}
+
+function setupParcelStatusPanel() {
+  const toolbarBtn = document.getElementById("parcelStatusBtn");
+  const closeBtn = document.getElementById("parcelStatusCloseBtn");
+  const pickBtn = document.getElementById("parcelStatusPickBtn");
+  const cancelPickBtn = document.getElementById("parcelStatusCancelPickBtn");
+  const applyBtn = document.getElementById("parcelStatusApplyBtn");
+  const layerRadios = document.querySelectorAll("input[name='parcelStatusLayer']");
+
+  toolbarBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (parcelStatusState.panelOpen) closeParcelStatusPanel();
+    else openParcelStatusPanel();
+  });
+  closeBtn?.addEventListener("click", () => closeParcelStatusPanel());
+
+  pickBtn?.addEventListener("click", () => {
+    if (!parcelStatusState.panelOpen) openParcelStatusPanel();
+    parcelStatusState.pickArmed = true;
+    pickBtn.classList.add("picking-active");
+    if (cancelPickBtn) cancelPickBtn.hidden = false;
+    const hint = document.getElementById("parcelStatusPickHint");
+    if (hint) {
+      const mode = getParcelStatusLayerMode();
+      hint.innerHTML =
+        mode === "BLOCKS"
+          ? "Click a <strong>block</strong> boundary on the map."
+          : "Click a <strong>parcel</strong> (plot) on the map.";
+    }
+    setStatus(statusEl, mode === "BLOCKS" ? "Click a block on the map." : "Click a parcel on the map.");
+  });
+
+  cancelPickBtn?.addEventListener("click", () => {
+    disarmParcelStatusPick();
+    clearStatus(statusEl);
+  });
+
+  layerRadios.forEach((r) => {
+    r.addEventListener("change", () => {
+      disarmParcelStatusPick();
+      clearParcelStatusSelection();
+    });
+  });
+
+  applyBtn?.addEventListener("click", () => applyParcelStatusFromPanel());
+}
+
 function setupInfoPopup() {
   const popupEl = document.createElement("div");
   popupEl.className = "map-popup";
@@ -262,6 +541,10 @@ function setupInfoPopup() {
 
   map.on("singleclick", (evt) => {
     if (document.getElementById("coordExtractDrawer")?.dataset.picking === "1") {
+      return;
+    }
+
+    if (tryParcelStatusMapClick(evt)) {
       return;
     }
 
@@ -703,53 +986,10 @@ function locateMe() {
   }, (err) => setStatus(statusEl, err.message, true), { enableHighAccuracy: true, timeout: 9000 });
 }
 
-async function submitFlag() {
-  if (!selectedFeature || !selectedLayerType) {
-    setStatus(statusEl, "Select a BLOCK/PARCEL before flagging.", true);
-    return;
-  }
-  const note = flagNoteInput.value.trim();
-  if (!note) {
-    setStatus(statusEl, "Flag note is required.", true);
-    return;
-  }
-  const { error } = await supabase.from("vsl_flags").insert({
-    layer_type: selectedLayerType,
-    target_id: String(selectedFeature.getId() || ""),
-    note,
-    status: "open",
-    created_by: currentUser.id
-  });
-  if (error) {
-    setStatus(statusEl, `Flag submit failed: ${error.message}`, true);
-    return;
-  }
-  flagNoteInput.value = "";
-  await refreshFlags();
-  setStatus(statusEl, "Flag submitted.");
-}
-
-async function refreshFlags() {
-  const { data, error } = await supabase
-    .from("vsl_flags")
-    .select("id, layer_type, target_id, note, status, created_at")
-    .order("created_at", { ascending: false })
-    .limit(20);
-  if (error) {
-    setStatus(statusEl, `Could not load flags: ${error.message}`, true);
-    return;
-  }
-  flagList.innerHTML = (data || []).map((row) => {
-    return `<div class="flag-item"><strong>${row.layer_type}</strong> #${row.target_id}<br>${row.note}</div>`;
-  }).join("");
-}
-
 function bindEvents() {
   setupPanels();
   setupParcelSearchPopover();
-
-  flagFeatureBtn.addEventListener("click", submitFlag);
-  refreshFlagsBtn.addEventListener("click", refreshFlags);
+  setupParcelStatusPanel();
 
   drawBlockBtn.addEventListener("click", () => drawGeometry("BLOCKS"));
   drawParcelBtn.addEventListener("click", () => drawGeometry("PARCELS"));
@@ -779,6 +1019,10 @@ async function initUser() {
       isAuthenticated = false;
       currentUser = { id: "guest" };
       currentProfile = { role: "GUEST" };
+      const psBanner = document.getElementById("parcelStatusReadOnlyBanner");
+      const psApply = document.getElementById("parcelStatusApplyBtn");
+      if (psBanner) psBanner.hidden = false;
+      if (psApply) psApply.disabled = true;
       return true;
     }
     window.location.href = "./login.html";
@@ -797,6 +1041,13 @@ async function initUser() {
     return false;
   }
   currentProfile = profile;
+  const psBanner = document.getElementById("parcelStatusReadOnlyBanner");
+  const psApply = document.getElementById("parcelStatusApplyBtn");
+  const statusReadonly =
+    currentProfile.role === "MANAGMENT";
+  if (psBanner) psBanner.hidden = !statusReadonly;
+  if (psApply) psApply.disabled = statusReadonly;
+
   if (currentProfile.role === "MANAGMENT") {
     drawBlockBtn.disabled = true;
     drawParcelBtn.disabled = true;
@@ -878,7 +1129,6 @@ async function initMap() {
     stopActiveTool
   });
   await loadLayersFromDb();
-  await refreshFlags();
   map.on("moveend", async () => {
     await loadLayersFromDb();
   });

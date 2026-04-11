@@ -25,6 +25,80 @@
   <div id="map"></div>
   <div class="map-frame"></div>
 
+  <aside id="parcelStatusPanel" class="parcel-status-panel" aria-hidden="true" hidden>
+    <div class="parcel-status-panel__inner">
+      <header class="parcel-status-panel__head">
+        <div class="parcel-status-panel__head-text">
+          <h2 class="parcel-status-panel__title">Parcel status</h2>
+          <p class="parcel-status-panel__subtitle">Crop cycle for blocks and plots. Choose layer, select on map, then update.</p>
+        </div>
+        <button type="button" class="parcel-status-panel__close" id="parcelStatusCloseBtn" aria-label="Close panel">&times;</button>
+      </header>
+
+      <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
+        Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
+      </div>
+
+      <section class="parcel-status-panel__section" aria-labelledby="parcelStatusLayerLegend">
+        <span id="parcelStatusLayerLegend" class="parcel-status-panel__section-label">Layer</span>
+        <div class="parcel-status-layer-row" role="radiogroup" aria-label="Target layer">
+          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerParcels" value="PARCELS" checked> Parcels <span class="parcel-status-hint">(default)</span></label>
+          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerBlocks" value="BLOCKS"> Blocks</label>
+        </div>
+      </section>
+
+      <section class="parcel-status-panel__section">
+        <button type="button" class="btn-secondary parcel-status-pick-btn" id="parcelStatusPickBtn">
+          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on map
+        </button>
+        <button type="button" class="btn-secondary parcel-status-cancel-pick" id="parcelStatusCancelPickBtn" hidden>Cancel picking</button>
+        <p id="parcelStatusPickHint" class="parcel-status-panel__hint" role="status">Choose Parcels or Blocks, then press <strong>Select on map</strong> and click a polygon.</p>
+      </section>
+
+      <section id="parcelStatusSelectionSection" class="parcel-status-panel__section" hidden>
+        <span class="parcel-status-panel__section-label">Selection</span>
+        <div id="parcelStatusPreview" class="parcel-status-preview" role="region" aria-live="polite"></div>
+
+        <label class="parcel-status-field-label" for="parcelStatusSelect">Cultivation status</label>
+        <select id="parcelStatusSelect" class="parcel-status-select">
+          <option value="not_in_cane">Not in cane</option>
+          <option value="prepared">Prepared</option>
+          <option value="planted">Planted</option>
+          <option value="standing">Standing</option>
+          <option value="harvested">Harvested</option>
+          <option value="replant_renovation">Replant / renovation</option>
+        </select>
+
+        <details class="parcel-status-details">
+          <summary>Harvest &amp; notes (optional)</summary>
+          <label class="parcel-status-field-label" for="parcelStatusHarvestTonnes">Harvest (tonnes cane), optional</label>
+          <input id="parcelStatusHarvestTonnes" type="number" step="0.001" min="0" placeholder="e.g. 450">
+
+          <label class="parcel-status-field-label" for="parcelStatusLastHarvest">Last harvest date</label>
+          <input id="parcelStatusLastHarvest" type="date">
+
+          <label class="parcel-status-field-label" for="parcelStatusNotes">Notes</label>
+          <textarea id="parcelStatusNotes" rows="2" placeholder="Variety, ratoon class, agronomy notes…"></textarea>
+        </details>
+
+        <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
+        <button type="button" id="parcelStatusApplyBtn">Apply to selection</button>
+      </section>
+
+      <section class="parcel-status-panel__legend" aria-label="Map colour legend">
+        <span class="parcel-status-panel__section-label">Map colours</span>
+        <ul class="parcel-status-legend-list">
+          <li><span class="parcel-status-swatch" data-status="not_in_cane"></span> Not in cane</li>
+          <li><span class="parcel-status-swatch" data-status="prepared"></span> Prepared</li>
+          <li><span class="parcel-status-swatch" data-status="planted"></span> Planted</li>
+          <li><span class="parcel-status-swatch" data-status="standing"></span> Standing</li>
+          <li><span class="parcel-status-swatch" data-status="harvested"></span> Harvested</li>
+          <li><span class="parcel-status-swatch" data-status="replant_renovation"></span> Replant / renovation</li>
+        </ul>
+      </section>
+    </div>
+  </aside>
+
   <div class="project-toolbar">
     <div class="project-brand">
       <div class="project-title-row">
@@ -49,8 +123,8 @@
       <button type="button" class="control-btn" id="infoBtn" title="Feature Info">
         <i class="fas fa-circle-info"></i><span class="btn-label">Info</span>
       </button>
-      <button type="button" class="control-btn" id="qualityFlagsBtn" title="Flags">
-        <i class="fas fa-flag-checkered"></i><span class="btn-label">Flags</span>
+      <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
+        <i class="fas fa-chart-simple"></i><span class="btn-label">Status</span>
       </button>
       <button type="button" class="control-btn" id="coordSearchBtn" title="Coordinate Search">
         <i class="fas fa-crosshairs"></i><span class="btn-label">Coords</span>
@@ -245,16 +319,7 @@
   </aside>
 
   <aside class="side-panel" id="panelHost">
-    <div class="panel active" id="qualityFlagsPanel">
-      <h3>Flags</h3>
-      <p class="small">Applies to BLOCKS and PARCELS only.</p>
-      <input id="flagNoteInput" type="text" placeholder="Flag note">
-      <button id="flagFeatureBtn" type="button">Flag Selected Feature</button>
-      <button id="refreshFlagsBtn" class="btn-secondary" type="button">Refresh Flags</button>
-      <div id="flagList" class="flags-list"></div>
-    </div>
-
-    <div class="panel" id="drawingPanel">
+    <div class="panel active" id="drawingPanel">
       <h3>Drawing and Measuring</h3>
       <div class="inline">
         <button id="drawBlockBtn" type="button">Draw Block</button>

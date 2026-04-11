@@ -3,6 +3,7 @@ import { clearStatus, parseNum, setStatus } from "./utils.js";
 import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
+import { initPrintComposer } from "./print-composer.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -1787,7 +1788,6 @@ function bindEvents() {
   });
 
   locateBtn.addEventListener("click", locateMe);
-  printBtn.addEventListener("click", () => window.print());
   fullscreenBtn.addEventListener("click", () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen();
     else document.exitFullscreen();
@@ -1906,6 +1906,16 @@ async function initMap() {
 
   setupInfoPopup();
   bindEvents();
+  initPrintComposer({
+    getMap: () => map,
+    getBaseGroup: () => baseGroupRef,
+    blocksSource,
+    parcelsSource,
+    blocksLayer,
+    parcelsLayer,
+    setStatus,
+    statusEl
+  });
   const surveyImportHandles = initSurveyImport({
     map,
     cfg,

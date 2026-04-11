@@ -116,7 +116,7 @@
       <button type="button" class="control-btn" id="locateBtn" title="Locate Me">
         <i class="fas fa-location-crosshairs"></i><span class="btn-label">Locate</span>
       </button>
-      <button type="button" class="control-btn" id="printBtn" title="Print Map">
+      <button type="button" class="control-btn" id="printBtn" title="Export map to PDF">
         <i class="fas fa-print"></i><span class="btn-label">Print</span>
       </button>
       <button type="button" class="control-btn" id="fullscreenBtn" title="Full Screen">
@@ -416,6 +416,60 @@
       <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
     </div>
   </aside>
+
+  <div id="printComposerModal" class="print-composer" hidden aria-hidden="true">
+    <div class="print-composer__backdrop" id="printComposerBackdrop" tabindex="-1"></div>
+    <div class="print-composer__shell" role="dialog" aria-modal="true" aria-labelledby="printComposerTitle">
+      <header class="print-composer__header">
+        <div class="print-composer__header-text">
+          <h2 id="printComposerTitle" class="print-composer__title">Map export to PDF</h2>
+          <p class="print-composer__subtitle">Frame the preview, add sheet details, then download a branded PDF. The preview uses the same basemap as the main map until you change it and use <strong>Match main map</strong>.</p>
+        </div>
+        <button type="button" class="print-composer__close" id="printComposerCloseBtn" aria-label="Close">&times;</button>
+      </header>
+      <div class="print-composer__body">
+        <aside class="print-composer__sidebar">
+          <section class="print-composer__section">
+            <h3 class="print-composer__section-title">Sheet details</h3>
+            <p class="print-composer__hint small">These lines appear in the PDF footer for filing and field records.</p>
+            <label class="print-composer__label" for="printSheetTitle">Sheet title <span class="print-composer__opt">optional</span></label>
+            <input id="printSheetTitle" type="text" class="print-composer__input" placeholder="e.g. Block 14 — pre-harvest sketch" autocomplete="off">
+            <label class="print-composer__label" for="printBlockRef">Block reference</label>
+            <input id="printBlockRef" type="text" class="print-composer__input" placeholder="Block code or name" autocomplete="off">
+            <label class="print-composer__label" for="printParcelRef">Plot / parcel reference</label>
+            <input id="printParcelRef" type="text" class="print-composer__input" placeholder="Plot numbers, parcel ID, or short label" autocomplete="off">
+            <label class="print-composer__label" for="printLocationNotes">Location or job notes</label>
+            <textarea id="printLocationNotes" class="print-composer__textarea" rows="2" placeholder="Estate, shift, agronomist, or job reference"></textarea>
+          </section>
+          <section class="print-composer__section">
+            <h3 class="print-composer__section-title">Grid on preview</h3>
+            <label class="print-composer__check">
+              <input type="checkbox" id="printGridShow"> Show coordinate grid on preview
+            </label>
+            <label class="print-composer__label" for="printGridCrs">Grid / label CRS</label>
+            <select id="printGridCrs" class="print-composer__input"></select>
+            <label class="print-composer__label" for="printGridSpacing">Grid spacing (metres, projected CRS only)</label>
+            <input id="printGridSpacing" type="number" class="print-composer__input" min="25" step="25" value="500">
+            <p class="print-composer__hint small">WGS84 geographic uses a latitude / longitude graticule. UTM / Arc 1960 options draw straight lines in that projection. Pan or zoom the preview to refresh a projected grid.</p>
+          </section>
+          <div class="print-composer__sync-row">
+            <button type="button" class="btn-secondary print-composer__sync-btn" id="printComposerSyncBtn">Match main map</button>
+          </div>
+          <p class="print-composer__hint small">Wait for imagery to finish loading before downloading PDF.</p>
+          <div class="print-composer__actions">
+            <button type="button" class="btn-secondary" id="printComposerCancelBtn">Cancel</button>
+            <button type="button" id="printComposerExportBtn">Download PDF</button>
+          </div>
+        </aside>
+        <div class="print-composer__map-col">
+          <div class="print-composer__map-frame">
+            <div id="printPreviewMap" class="print-composer__map"></div>
+          </div>
+          <p class="print-composer__map-hint">Pan and zoom here. No toolbar or layer list — only what will be printed (basemap, blocks, parcels, optional grid).</p>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="status" class="status map-status" hidden></div>
 

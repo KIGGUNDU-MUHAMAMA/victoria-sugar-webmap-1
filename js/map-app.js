@@ -324,27 +324,28 @@ function buildLayerTree() {
     graticuleLayer = new ol.layer.Graticule({
       title: "Lat / lon grid",
       visible: true,
-      maxLines: 80,
+      maxLines: 12,
+      targetSize: 300,
       strokeStyle: new ol.style.Stroke({
-        color: "rgba(255, 255, 255, 0.72)",
+        color: "rgba(34, 78, 34, 0.42)",
         width: 1,
-        lineDash: [4, 8]
+        lineDash: [10, 14]
       }),
       showLabels: true,
       lonLabelStyle: new ol.style.Text({
-        font: "600 11px Inter, system-ui, sans-serif",
-        fill: new ol.style.Fill({ color: "#1d2a1d" }),
-        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.92)", width: 3 }),
+        font: "600 10px Inter, system-ui, sans-serif",
+        fill: new ol.style.Fill({ color: "#1b3d1b" }),
+        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.88)", width: 2.5 }),
         textBaseline: "bottom"
       }),
       latLabelStyle: new ol.style.Text({
-        font: "600 11px Inter, system-ui, sans-serif",
-        fill: new ol.style.Fill({ color: "#1d2a1d" }),
-        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.92)", width: 3 }),
+        font: "600 10px Inter, system-ui, sans-serif",
+        fill: new ol.style.Fill({ color: "#1b3d1b" }),
+        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.88)", width: 2.5 }),
         textAlign: "end"
       }),
-      lonLabelFormatter: (lon) => `${lon.toFixed(2)}°`,
-      latLabelFormatter: (lat) => `${lat.toFixed(2)}°`,
+      lonLabelFormatter: (lon) => `${lon.toFixed(1)}°`,
+      latLabelFormatter: (lat) => `${lat.toFixed(1)}°`,
       zIndex: 0
     });
   }
@@ -392,6 +393,7 @@ function enableFallbackLayerSwitcher() {
 function setActivePanel(panelId) {
   closeParcelStatusPanel();
   closeInfoHelpPopover();
+  closePlaceSearchCard();
   closeParcelSearchPopover({ clearHighlight: true });
 
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
@@ -516,6 +518,7 @@ function openParcelStatusPanel() {
   const btn = document.getElementById("parcelStatusBtn");
   if (!panel) return;
   closeInfoHelpPopover();
+  closePlaceSearchCard();
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
   parcelStatusState.panelOpen = true;
@@ -803,6 +806,7 @@ function openInfoHelpPopover() {
   const btn = document.getElementById("infoBtn");
   if (!pop || !btn || infoHelpPopoverOpen) return;
   closeInfoPopup();
+  closePlaceSearchCard();
   selectedFeature = null;
   selectedLayerType = null;
   pop.hidden = false;
@@ -845,6 +849,216 @@ function setupInfoHelpPopover() {
   closeBtn?.addEventListener("click", () => closeInfoHelpPopover());
   window.addEventListener("resize", () => {
     if (infoHelpPopoverOpen) positionInfoHelpPopover();
+  });
+}
+
+let placeSearchOpen = false;
+let placeSearchOutsideHandler = null;
+let placeSearchEscapeHandler = null;
+let lastNominatimRequestAt = 0;
+
+function setPlaceSearchError(msg) {
+  const el = document.getElementById("placeSearchError");
+  if (!el) return;
+  if (!msg) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function closePlaceSearchCard() {
+  const card = document.getElementById("placeSearchCard");
+  const fab = document.getElementById("placeSearchFab");
+  const results = document.getElementById("placeSearchResults");
+  if (placeSearchOutsideHandler) {
+    document.removeEventListener("pointerdown", placeSearchOutsideHandler, true);
+    placeSearchOutsideHandler = null;
+  }
+  if (placeSearchEscapeHandler) {
+    document.removeEventListener("keydown", placeSearchEscapeHandler, true);
+    placeSearchEscapeHandler = null;
+  }
+  placeSearchOpen = false;
+  if (card) {
+    card.hidden = true;
+    card.setAttribute("aria-hidden", "true");
+  }
+  fab?.classList.remove("place-search-fab--open");
+  fab?.setAttribute("aria-expanded", "false");
+  if (results) {
+    results.innerHTML = "";
+    results.hidden = true;
+  }
+  setPlaceSearchError("");
+}
+
+function openPlaceSearchCard() {
+  const card = document.getElementById("placeSearchCard");
+  const fab = document.getElementById("placeSearchFab");
+  if (!card || !fab || placeSearchOpen) return;
+  closeInfoHelpPopover();
+  closeParcelSearchPopover({ clearHighlight: true });
+  card.hidden = false;
+  card.setAttribute("aria-hidden", "false");
+  fab.classList.add("place-search-fab--open");
+  fab.setAttribute("aria-expanded", "true");
+  placeSearchOpen = true;
+
+  placeSearchOutsideHandler = (ev) => {
+    const dock = document.getElementById("placeSearchDock");
+    if (!dock || dock.contains(ev.target)) return;
+    closePlaceSearchCard();
+  };
+  document.addEventListener("pointerdown", placeSearchOutsideHandler, true);
+
+  placeSearchEscapeHandler = (ev) => {
+    if (ev.key === "Escape" && placeSearchOpen) {
+      ev.preventDefault();
+      closePlaceSearchCard();
+    }
+  };
+  document.addEventListener("keydown", placeSearchEscapeHandler, true);
+
+  requestAnimationFrame(() => {
+    document.getElementById("placeSearchInput")?.focus();
+  });
+}
+
+function togglePlaceSearchCard() {
+  if (placeSearchOpen) closePlaceSearchCard();
+  else openPlaceSearchCard();
+}
+
+function renderPlaceResults(items) {
+  const ul = document.getElementById("placeSearchResults");
+  if (!ul) return;
+  ul.innerHTML = "";
+  if (!items || !items.length) {
+    ul.hidden = true;
+    setPlaceSearchError("No places found. Try a different spelling or broader name.");
+    return;
+  }
+  setPlaceSearchError("");
+  ul.hidden = false;
+  for (const item of items) {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "place-search-result-btn";
+    const name = escapeHtml(item.display_name || "Unnamed");
+    const typeLabel = item.type ? escapeHtml(String(item.type)) : "";
+    const typeHtml = typeLabel
+      ? `<span class="place-search-result-type">${typeLabel}</span>`
+      : "";
+    b.innerHTML = `<span class="place-search-result-name">${name}</span>${typeHtml}`;
+    b.addEventListener("click", () => {
+      flyToNominatimResult(item);
+      closePlaceSearchCard();
+      clearStatus(statusEl);
+      setStatus(statusEl, `Showing: ${item.display_name ?? "place"}`);
+    });
+    li.appendChild(b);
+    ul.appendChild(li);
+  }
+}
+
+function flyToNominatimResult(item) {
+  if (!map) return;
+  const lon = parseFloat(item.lon);
+  const lat = parseFloat(item.lat);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+  const bb = item.boundingbox;
+  if (bb && bb.length === 4) {
+    const south = parseFloat(bb[0]);
+    const north = parseFloat(bb[1]);
+    const west = parseFloat(bb[2]);
+    const east = parseFloat(bb[3]);
+    if ([south, north, west, east].every(Number.isFinite)) {
+      const sw = ol.proj.fromLonLat([west, south]);
+      const ne = ol.proj.fromLonLat([east, north]);
+      const extent = ol.extent.boundingExtent([sw, ne]);
+      let afterOnce = false;
+      const after = () => {
+        if (afterOnce) return;
+        afterOnce = true;
+        loadLayersFromDb();
+      };
+      map.getView().fit(extent, {
+        padding: [72, 72, 100, 72],
+        maxZoom: 17,
+        duration: 900,
+        callback: after
+      });
+      window.setTimeout(after, 1300);
+      return;
+    }
+  }
+  map.getView().animate({
+    center: ol.proj.fromLonLat([lon, lat]),
+    zoom: Math.max(map.getView().getZoom() || 10, 13),
+    duration: 750
+  });
+  window.setTimeout(() => loadLayersFromDb(), 850);
+}
+
+async function runPlaceSearchQuery() {
+  const input = document.getElementById("placeSearchInput");
+  const goBtn = document.getElementById("placeSearchGoBtn");
+  const q = input?.value?.trim() ?? "";
+  setPlaceSearchError("");
+  if (!q) {
+    setPlaceSearchError("Type a place name, then Search.");
+    return;
+  }
+  const now = Date.now();
+  if (now - lastNominatimRequestAt < 1100) {
+    setPlaceSearchError("Please wait a moment between searches.");
+    return;
+  }
+  lastNominatimRequestAt = now;
+
+  if (goBtn) goBtn.disabled = true;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=7&addressdetails=0`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "en" },
+      referrerPolicy: "strict-origin-when-cross-origin"
+    });
+    if (!res.ok) throw new Error(`Search failed (${res.status})`);
+    const data = await res.json();
+    renderPlaceResults(Array.isArray(data) ? data : []);
+  } catch (e) {
+    setPlaceSearchError(e.message || "Search could not complete. Check your connection.");
+    const ul = document.getElementById("placeSearchResults");
+    if (ul) {
+      ul.innerHTML = "";
+      ul.hidden = true;
+    }
+  } finally {
+    if (goBtn) goBtn.disabled = false;
+  }
+}
+
+function setupPlaceSearch() {
+  const fab = document.getElementById("placeSearchFab");
+  const closeBtn = document.getElementById("placeSearchCloseBtn");
+  const goBtn = document.getElementById("placeSearchGoBtn");
+  const input = document.getElementById("placeSearchInput");
+
+  fab?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePlaceSearchCard();
+  });
+  closeBtn?.addEventListener("click", () => closePlaceSearchCard());
+  goBtn?.addEventListener("click", () => void runPlaceSearchQuery());
+  input?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void runPlaceSearchQuery();
+    }
   });
 }
 
@@ -969,6 +1183,7 @@ function positionParcelSearchPopover() {
 function closeParcelSearchPopover(options = {}) {
   const { clearHighlight = true } = options;
   closeInfoHelpPopover();
+  closePlaceSearchCard();
   const pop = document.getElementById("parcelSearchPopover");
   const btn = document.getElementById("parcelSearchBtn");
   if (parcelSearchOutsideHandler) {
@@ -994,6 +1209,7 @@ function openParcelSearchPopover() {
   if (!pop || !btn || parcelSearchPopoverOpen) return;
 
   closeInfoHelpPopover();
+  closePlaceSearchCard();
   pop.hidden = false;
   btn.classList.add("active");
   btn.setAttribute("aria-expanded", "true");
@@ -1262,6 +1478,7 @@ function bindEvents() {
   setupParcelSearchPopover();
   setupParcelStatusPanel();
   setupInfoHelpPopover();
+  setupPlaceSearch();
 
   drawBlockBtn.addEventListener("click", () => drawGeometry("BLOCKS"));
   drawParcelBtn.addEventListener("click", () => drawGeometry("PARCELS"));

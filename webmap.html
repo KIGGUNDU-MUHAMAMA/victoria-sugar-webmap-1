@@ -183,7 +183,8 @@
           <li>Click a <strong>block</strong> or <strong>parcel</strong> polygon to open a summary card at the click location.</li>
           <li>The card lists codes, area, geometry status, cultivation status, harvest fields, and notes when present.</li>
           <li>Use <strong>×</strong> on the card or press <strong>Escape</strong> to close it.</li>
-          <li><strong>Lat / lon grid</strong> (REFERENCE in the layer list) overlays degree lines; toggle it there if the map feels busy.</li>
+          <li><strong>Lat / lon grid</strong> (REFERENCE in the layer list) is sparse by default; toggle it off there if you need a cleaner view.</li>
+          <li><strong>Place</strong> at the bottom opens a place-name search (OpenStreetMap) to fly the map like a quick “Google Earth” lookup.</li>
         </ul>
       </div>
     </div>
@@ -350,6 +351,34 @@
   </aside>
 
   <div id="status" class="status map-status" hidden></div>
+
+  <div id="placeSearchDock" class="place-search-dock">
+    <div id="placeSearchCard" class="place-search-card" hidden role="dialog" aria-modal="true" aria-labelledby="placeSearchTitle">
+      <header class="place-search-card__head">
+        <div>
+          <h2 id="placeSearchTitle" class="place-search-card__title">Find a place</h2>
+          <p class="place-search-card__subtitle">Search worldwide place names (OpenStreetMap).</p>
+        </div>
+        <button type="button" class="place-search-card__close" id="placeSearchCloseBtn" aria-label="Close place search">&times;</button>
+      </header>
+      <div class="place-search-card__field">
+        <label class="visually-hidden" for="placeSearchInput">Place or address</label>
+        <input id="placeSearchInput" type="search" class="place-search-input" placeholder="Town, road, landmark…" autocomplete="off" enterkeyhint="search">
+        <button type="button" id="placeSearchGoBtn" class="place-search-go">Search</button>
+      </div>
+      <p id="placeSearchError" class="place-search-error" role="alert" hidden></p>
+      <ul id="placeSearchResults" class="place-search-results" hidden></ul>
+      <p class="place-search-attrib">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors · Nominatim</p>
+    </div>
+    <button type="button" id="placeSearchFab" class="place-search-fab" aria-expanded="false" aria-controls="placeSearchCard" title="Find a place on the map">
+      <span class="place-search-fab__glow" aria-hidden="true"></span>
+      <span class="place-search-fab__inner">
+        <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i>
+        <span class="place-search-fab__text">Place</span>
+      </span>
+    </button>
+  </div>
+
   <div id="fallbackLayerSwitcher" class="fallback-switcher" hidden>
     <h4>SURVEY LAYERS</h4>
     <label><input type="checkbox" id="fbBlocks" checked> BLOCKS</label>

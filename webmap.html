@@ -361,20 +361,57 @@
     </div>
   </aside>
 
-  <aside class="side-panel" id="panelHost">
+  <aside class="side-panel" id="panelHost" aria-label="Draw and measure tools">
     <div class="panel active" id="drawingPanel">
-      <h3>Drawing and Measuring</h3>
-      <div class="inline">
-        <button id="drawBlockBtn" type="button">Draw Block</button>
-        <button id="drawParcelBtn" type="button">Draw Parcel</button>
-      </div>
-      <div class="inline">
-        <button id="measureLineBtn" class="btn-secondary" type="button">Measure Line</button>
-        <button id="measureAreaBtn" class="btn-secondary" type="button">Measure Area</button>
-      </div>
-      <button id="stopDrawBtn" class="btn-secondary" type="button">Stop Tool</button>
-    </div>
+      <header class="draw-tools__head">
+        <h3 class="draw-tools__title">Draw and measure</h3>
+        <p class="draw-tools__lede small">
+          Secondary to <strong>Survey</strong> for bulk CSV updates. Use this for quick digitizing or checks on the map.
+        </p>
+      </header>
 
+      <section class="draw-tools__section" aria-labelledby="drawCadastralTitle">
+        <h4 id="drawCadastralTitle" class="draw-tools__section-title">Cadastral drawing</h4>
+        <div class="draw-tools__field">
+          <label class="draw-tools__label" for="drawBlockCodeInput">Block (for draw block)</label>
+          <input id="drawBlockCodeInput" type="text" class="draw-tools__input" placeholder="Code or name, e.g. 12" autocomplete="off">
+        </div>
+        <div class="draw-tools__field">
+          <label class="draw-tools__label" for="drawParcelBlockInput">Parent block (for draw parcel)</label>
+          <input id="drawParcelBlockInput" type="text" class="draw-tools__input" placeholder="Block code or number" autocomplete="off">
+        </div>
+        <div class="draw-tools__field">
+          <label class="draw-tools__label" for="drawParcelNoOverride">Parcel number <span class="draw-tools__opt">optional</span></label>
+          <input id="drawParcelNoOverride" type="number" min="1" step="1" class="draw-tools__input" placeholder="Leave blank for next free number">
+        </div>
+        <p class="draw-tools__hint small">Parcels: the server assigns the next free plot number in that block when the field above is empty.</p>
+        <div class="draw-tools__snap" role="group" aria-label="Snapping while drawing">
+          <span class="draw-tools__snap-legend">Snap to</span>
+          <label class="draw-tools__check"><input type="checkbox" id="snapBlocksCb" checked> Blocks</label>
+          <label class="draw-tools__check"><input type="checkbox" id="snapParcelsCb" checked> Parcels</label>
+          <label class="draw-tools__check"><input type="checkbox" id="snapSurveyCb" checked> Survey preview</label>
+        </div>
+        <div class="draw-tools__btn-row">
+          <button id="drawBlockBtn" type="button">Draw block</button>
+          <button id="drawParcelBtn" type="button">Draw parcel</button>
+        </div>
+      </section>
+
+      <section class="draw-tools__section" aria-labelledby="drawMeasureTitle">
+        <h4 id="drawMeasureTitle" class="draw-tools__section-title">Measure</h4>
+        <p class="draw-tools__hint small">Uses geodesic lengths and area. Same snap options as above apply while measuring.</p>
+        <div class="draw-tools__btn-row">
+          <button id="measureLineBtn" class="btn-secondary" type="button">Distance</button>
+          <button id="measureAreaBtn" class="btn-secondary" type="button">Area</button>
+        </div>
+        <button id="clearMeasuresBtn" class="btn-secondary draw-tools__full-btn" type="button">Clear measurements</button>
+      </section>
+
+      <div class="draw-tools__footer">
+        <button id="stopDrawBtn" class="btn-secondary draw-tools__full-btn" type="button">Stop active tool</button>
+      </div>
+      <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+    </div>
   </aside>
 
   <div id="status" class="status map-status" hidden></div>

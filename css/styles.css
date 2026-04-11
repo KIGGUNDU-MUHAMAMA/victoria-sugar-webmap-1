@@ -568,26 +568,37 @@ button:hover {
 
 .side-panel {
   position: fixed;
-  right: 12px;
-  top: 118px;
-  width: 340px;
-  max-height: calc(100vh - 82px);
+  left: 0;
+  top: 0;
+  width: min(25vw, 420px);
+  min-width: 260px;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
   overflow: auto;
-  z-index: 1200;
+  z-index: 1180;
   display: none;
+  background: rgba(252, 253, 251, 0.98);
+  border-right: 1px solid rgba(78, 112, 61, 0.28);
+  box-shadow: 6px 0 28px rgba(20, 40, 24, 0.08);
 }
 
 .side-panel.visible {
   display: block;
 }
 
+.map-viewport-wrap.map-viewport-wrap--draw-dock {
+  padding-left: min(25vw, 420px);
+}
+
 .panel {
   display: none;
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 0.8rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0.85rem 1rem 1.1rem;
+  box-shadow: none;
+  min-height: 100%;
 }
 
 .panel.active {
@@ -597,6 +608,143 @@ button:hover {
 .panel h3 {
   margin: 0 0 0.6rem;
   font-size: 1rem;
+}
+
+/* Draw & measure dock (secondary to Survey import) */
+.draw-tools__head {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.draw-tools__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.draw-tools__lede {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.draw-tools__section {
+  margin-bottom: 1.15rem;
+}
+
+.draw-tools__section-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary-2);
+}
+
+.draw-tools__field {
+  margin-bottom: 0.55rem;
+}
+
+.draw-tools__label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.draw-tools__opt {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.draw-tools__input {
+  width: 100%;
+  margin-top: 0;
+  font-size: 0.88rem;
+}
+
+.draw-tools__hint {
+  margin: 0 0 0.55rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.draw-tools__snap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.5rem 0.55rem;
+  margin-bottom: 0.65rem;
+  border-radius: 10px;
+  background: rgba(232, 245, 226, 0.55);
+  border: 1px solid rgba(78, 112, 61, 0.2);
+}
+
+.draw-tools__snap-legend {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary-2);
+  width: 100%;
+  margin-bottom: 0.15rem;
+}
+
+.draw-tools__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.draw-tools__check input {
+  width: auto;
+  margin: 0;
+}
+
+.draw-tools__btn-row {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.draw-tools__btn-row > * {
+  flex: 1;
+}
+
+.draw-tools__full-btn {
+  width: 100%;
+  margin-top: 0.45rem;
+}
+
+.draw-tools__footer {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.draw-tools__feedback {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  min-height: 2.5rem;
+  white-space: pre-wrap;
+}
+
+.draw-tools__feedback.draw-tools__feedback--error {
+  background: #fff5f5;
+  border-color: rgba(179, 54, 54, 0.35);
+  color: var(--danger);
 }
 
 .inline {
@@ -884,7 +1032,7 @@ button:hover {
   width: min(380px, 26vw);
   min-width: 280px;
   height: calc(100vh - 96px);
-  z-index: 1155;
+  z-index: 1220;
   background: rgba(255, 255, 255, 0.97);
   border-right: 1px solid var(--border);
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
@@ -1602,10 +1750,15 @@ button:hover {
     min-width: auto;
   }
 
+  .map-viewport-wrap.map-viewport-wrap--draw-dock {
+    padding-left: 0;
+  }
+
   .side-panel {
-    width: calc(100vw - 24px);
-    right: 12px;
-    top: 130px;
+    width: min(100%, 360px);
+    min-width: unset;
+    max-width: 100%;
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.12);
   }
 
   .layer-switcher {

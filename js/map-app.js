@@ -15,6 +15,14 @@ const drawParcelBtn = document.getElementById("drawParcelBtn");
 const measureLineBtn = document.getElementById("measureLineBtn");
 const measureAreaBtn = document.getElementById("measureAreaBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
+const drawBlockCodeInput = document.getElementById("drawBlockCodeInput");
+const drawParcelBlockInput = document.getElementById("drawParcelBlockInput");
+const drawParcelNoOverride = document.getElementById("drawParcelNoOverride");
+const snapBlocksCb = document.getElementById("snapBlocksCb");
+const snapParcelsCb = document.getElementById("snapParcelsCb");
+const snapSurveyCb = document.getElementById("snapSurveyCb");
+const clearMeasuresBtn = document.getElementById("clearMeasuresBtn");
+const drawToolsFeedback = document.getElementById("drawToolsFeedback");
 const panelButtons = {
   drawingPanelBtn: "drawingPanel"
 };
@@ -33,8 +41,13 @@ let isAuthenticated = false;
 let selectedFeature = null;
 let selectedLayerType = null;
 let activeInteraction = null;
+let activeSnapInteractions = [];
+/** Survey CSV preview vector sources (for snap); set after initSurveyImport */
+let surveyPreviewSnapSources = null;
 let infoOverlay;
 let baseGroupRef;
+
+const MAP_DRAW_PROJ = "EPSG:3857";
 
 const blocksSource = new ol.source.Vector();
 const parcelsSource = new ol.source.Vector();
@@ -267,6 +280,88 @@ const sketchLayer = new ol.layer.Vector({
     fill: new ol.style.Fill({ color: "rgba(141, 106, 58, 0.15)" })
   })
 });
+sketchLayer.setZIndex(920);
+
+const measureSource = new ol.source.Vector();
+
+function formatGroundLengthM(m) {
+  if (!Number.isFinite(m)) return "—";
+  if (m >= 1000) return `${(m / 1000).toFixed(3)} km`;
+  if (m >= 1) return `${m.toFixed(1)} m`;
+  return `${m.toFixed(2)} m`;
+}
+
+function buildLineMeasureStyles(feature) {
+  const geometry = feature.getGeometry();
+  if (!geometry || geometry.getType() !== "LineString") return [];
+  const coords = geometry.getCoordinates();
+  const styles = [
+    new ol.style.Style({
+      geometry,
+      stroke: new ol.style.Stroke({ color: "#5d4037", width: 3 }),
+      zIndex: 0
+    })
+  ];
+  for (let i = 0; i < coords.length - 1; i += 1) {
+    const seg = new ol.geom.LineString([coords[i], coords[i + 1]]);
+    const lenM = ol.sphere.getLength(seg, { projection: MAP_DRAW_PROJ });
+    const mid = seg.getCoordinateAt(0.5);
+    styles.push(
+      new ol.style.Style({
+        geometry: new ol.geom.Point(mid),
+        text: new ol.style.Text({
+          text: formatGroundLengthM(lenM),
+          font: "600 11px Inter, system-ui, sans-serif",
+          fill: new ol.style.Fill({ color: "#1d2a1d" }),
+          stroke: new ol.style.Stroke({ color: "#fff", width: 3 }),
+          padding: [2, 4, 2, 4]
+        }),
+        zIndex: 2
+      })
+    );
+  }
+  return styles;
+}
+
+function buildAreaMeasureStyles(feature) {
+  const geometry = feature.getGeometry();
+  if (!geometry || geometry.getType() !== "Polygon") return [];
+  const areaM2 = ol.sphere.getArea(geometry, { projection: MAP_DRAW_PROJ });
+  const ha = areaM2 / 10000;
+  const ip = geometry.getInteriorPoint();
+  return [
+    new ol.style.Style({
+      geometry,
+      stroke: new ol.style.Stroke({ color: "#4e342e", width: 2.5 }),
+      fill: new ol.style.Fill({ color: "rgba(78, 52, 46, 0.14)" }),
+      zIndex: 0
+    }),
+    new ol.style.Style({
+      geometry: ip,
+      text: new ol.style.Text({
+        text: `${ha.toFixed(3)} ha`,
+        font: "700 12px Inter, system-ui, sans-serif",
+        fill: new ol.style.Fill({ color: "#3e2723" }),
+        stroke: new ol.style.Stroke({ color: "#fff", width: 4 })
+      }),
+      zIndex: 2
+    })
+  ];
+}
+
+const measureLayer = new ol.layer.Vector({
+  title: "Measurements",
+  visible: true,
+  source: measureSource,
+  style: (feature) => {
+    const k = feature.get("_measureKind");
+    if (k === "distance") return buildLineMeasureStyles(feature);
+    if (k === "area") return buildAreaMeasureStyles(feature);
+    return [];
+  }
+});
+measureLayer.setZIndex(930);
+measureLayer.set("displayInLayerSwitcher", false);
 
 function createBasemapLayer(title, source, visible = false) {
   return new ol.layer.Tile({
@@ -364,7 +459,7 @@ function buildLayerTree() {
   // Order = bottom → top. Tile basemaps must be below vector layers or opaque maps hide polygons.
   const stack = [baseGroup];
   if (referenceGroup) stack.push(referenceGroup);
-  stack.push(overlaysGroup, sketchLayer);
+  stack.push(overlaysGroup, sketchLayer, measureLayer);
   return stack;
 }
 
@@ -413,6 +508,64 @@ function setActivePanel(panelId) {
   }
   for (const [btnId, pId] of Object.entries(panelButtons)) {
     document.getElementById(btnId)?.classList.toggle("active", pId === panelId);
+  }
+  syncDrawToolsMapInset();
+}
+
+function setDrawToolsFeedback(message, isError) {
+  if (!drawToolsFeedback) return;
+  drawToolsFeedback.textContent = message || "";
+  drawToolsFeedback.classList.toggle("draw-tools__feedback--error", !!isError && !!message);
+}
+
+function syncDrawToolsMapInset() {
+  const wrap = document.querySelector(".map-viewport-wrap");
+  if (!wrap) return;
+  const drawOpen =
+    panelHost.classList.contains("visible") &&
+    document.getElementById("drawingPanel")?.classList.contains("active");
+  wrap.classList.toggle("map-viewport-wrap--draw-dock", !!drawOpen);
+  requestAnimationFrame(() => {
+    map?.updateSize();
+  });
+}
+
+function readSnapOptions() {
+  return {
+    snapBlocks: !!snapBlocksCb?.checked,
+    snapParcels: !!snapParcelsCb?.checked,
+    snapSurvey: !!snapSurveyCb?.checked
+  };
+}
+
+function detachSnapInteractions() {
+  if (!map) return;
+  for (const s of activeSnapInteractions) {
+    map.removeInteraction(s);
+  }
+  activeSnapInteractions = [];
+}
+
+function attachSnapInteractions(opts) {
+  detachSnapInteractions();
+  if (!map || !opts) return;
+  const tol = 12;
+  if (opts.snapBlocks) {
+    activeSnapInteractions.push(new ol.interaction.Snap({ source: blocksSource, pixelTolerance: tol }));
+  }
+  if (opts.snapParcels) {
+    activeSnapInteractions.push(new ol.interaction.Snap({ source: parcelsSource, pixelTolerance: tol }));
+  }
+  if (opts.snapSurvey && surveyPreviewSnapSources) {
+    activeSnapInteractions.push(
+      new ol.interaction.Snap({ source: surveyPreviewSnapSources.polySource, pixelTolerance: tol })
+    );
+    activeSnapInteractions.push(
+      new ol.interaction.Snap({ source: surveyPreviewSnapSources.pointSource, pixelTolerance: tol })
+    );
+  }
+  for (const s of activeSnapInteractions) {
+    map.addInteraction(s);
   }
 }
 
@@ -1417,7 +1570,8 @@ function setupParcelSearchPopover() {
 }
 
 function stopActiveTool() {
-  if (activeInteraction) {
+  detachSnapInteractions();
+  if (activeInteraction && map) {
     map.removeInteraction(activeInteraction);
     activeInteraction = null;
   }
@@ -1425,38 +1579,83 @@ function stopActiveTool() {
 
 function drawGeometry(layerType) {
   stopActiveTool();
+  setDrawToolsFeedback("", false);
+  if (layerType === "BLOCKS") {
+    const code = drawBlockCodeInput?.value?.trim() ?? "";
+    if (!code) {
+      setDrawToolsFeedback("Enter a block code or name before drawing.", true);
+      setStatus(statusEl, "Enter block code before draw block.", true);
+      return;
+    }
+  } else {
+    const blk = drawParcelBlockInput?.value?.trim() ?? "";
+    if (!blk) {
+      setDrawToolsFeedback("Enter the parent block code or number before drawing.", true);
+      setStatus(statusEl, "Enter parent block before draw parcel.", true);
+      return;
+    }
+    const overrideRaw = drawParcelNoOverride?.value?.trim() ?? "";
+    if (overrideRaw !== "" && !/^\d+$/.test(overrideRaw)) {
+      setDrawToolsFeedback("Parcel number override must be a whole number.", true);
+      return;
+    }
+  }
+
   const draw = new ol.interaction.Draw({ source: editSource, type: "Polygon" });
   draw.on("drawend", async (evt) => {
+    map.removeInteraction(draw);
+    activeInteraction = null;
+    detachSnapInteractions();
     const feature = evt.feature;
     editSource.clear(true);
-    await saveGeometry(feature, layerType);
+    let blockCode = "";
+    let parcelNoOverride = null;
+    if (layerType === "BLOCKS") {
+      blockCode = drawBlockCodeInput?.value?.trim() ?? "";
+    } else {
+      blockCode = drawParcelBlockInput?.value?.trim() ?? "";
+      const o = drawParcelNoOverride?.value?.trim() ?? "";
+      parcelNoOverride = o === "" ? null : parseInt(o, 10);
+    }
+    await saveGeometry(feature, layerType, { blockCode, parcelNoOverride });
   });
   activeInteraction = draw;
   map.addInteraction(draw);
+  attachSnapInteractions(readSnapOptions());
+  setDrawToolsFeedback(
+    layerType === "BLOCKS"
+      ? "Click corners, double-click to finish the block polygon."
+      : "Click corners, double-click to finish the parcel polygon.",
+    false
+  );
+  setStatus(statusEl, `Drawing ${layerType === "BLOCKS" ? "block" : "parcel"}…`);
 }
 
-async function saveGeometry(feature, layerType) {
+async function saveGeometry(feature, layerType, opts = {}) {
+  const { blockCode: blockCodeRaw, parcelNoOverride } = opts;
+  const blockCode = String(blockCodeRaw ?? "").trim();
+  if (!blockCode) {
+    setDrawToolsFeedback("Block code is missing.", true);
+    setStatus(statusEl, "Block code is required.", true);
+    return;
+  }
+
   const geojson = new ol.format.GeoJSON().writeFeatureObject(feature, {
     featureProjection: "EPSG:3857",
     dataProjection: "EPSG:4326"
   });
 
-  const blockCode = layerType === "BLOCKS"
-    ? prompt("Enter block_code:", "")
-    : prompt("Enter parent block_code:", "");
-  if (!blockCode) return;
-
   let parcelNo = null;
   if (layerType === "PARCELS") {
-    const no = prompt("Optional parcel number (blank = auto):", "");
-    parcelNo = no ? Number(no) : null;
-    if (no && !Number.isInteger(parcelNo)) {
-      setStatus(statusEl, "Parcel number must be an integer.", true);
+    parcelNo = parcelNoOverride;
+    if (parcelNo != null && (!Number.isInteger(parcelNo) || parcelNo < 1)) {
+      setDrawToolsFeedback("Parcel number must be a positive whole number.", true);
+      setStatus(statusEl, "Invalid parcel number.", true);
       return;
     }
   }
 
-  const { error } = await supabase.rpc("vsl_upsert_geometry", {
+  const { data: savedId, error } = await supabase.rpc("vsl_upsert_geometry", {
     p_layer_type: layerType,
     p_block_code: blockCode,
     p_parcel_no: parcelNo,
@@ -1464,11 +1663,35 @@ async function saveGeometry(feature, layerType) {
     p_user_id: currentUser.id
   });
   if (error) {
+    setDrawToolsFeedback(error.message, true);
     setStatus(statusEl, `Save failed: ${error.message}`, true);
     return;
   }
   await loadLayersFromDb();
-  setStatus(statusEl, `${layerType} saved.`);
+  if (layerType === "PARCELS" && parcelNo == null && savedId) {
+    const { data: row } = await supabase
+      .from("vsl_parcels")
+      .select("parcel_no")
+      .eq("id", savedId)
+      .maybeSingle();
+    if (row?.parcel_no != null) {
+      const msg = `Parcel saved as plot ${row.parcel_no} in block ${blockCode}.`;
+      setDrawToolsFeedback(msg, false);
+      setStatus(statusEl, msg);
+    } else {
+      const msg = `Parcel saved in block ${blockCode}.`;
+      setDrawToolsFeedback(msg, false);
+      setStatus(statusEl, msg);
+    }
+  } else if (layerType === "PARCELS") {
+    const msg = `Parcel ${parcelNo} saved in block ${blockCode}.`;
+    setDrawToolsFeedback(msg, false);
+    setStatus(statusEl, msg);
+  } else {
+    const msg = `Block ${blockCode} geometry saved.`;
+    setDrawToolsFeedback(msg, false);
+    setStatus(statusEl, msg);
+  }
 }
 
 function startMeasure(type) {
@@ -1476,17 +1699,40 @@ function startMeasure(type) {
   editSource.clear(true);
   const draw = new ol.interaction.Draw({ source: editSource, type });
   draw.on("drawend", (evt) => {
+    map.removeInteraction(draw);
+    activeInteraction = null;
+    detachSnapInteractions();
     const geom = evt.feature.getGeometry();
+    editSource.removeFeature(evt.feature);
     if (type === "LineString") {
-      const km = ol.sphere.getLength(geom) / 1000;
-      setStatus(statusEl, `Length: ${km.toFixed(3)} km`);
+      const feat = new ol.Feature({ geometry: geom.clone() });
+      feat.set("_measureKind", "distance");
+      const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
+      measureSource.addFeature(feat);
+      const msg = `Total length: ${formatGroundLengthM(totalM)}. Segment labels are on the map.`;
+      setDrawToolsFeedback(msg, false);
+      setStatus(statusEl, msg);
     } else {
-      const acres = ol.sphere.getArea(geom) * 0.000247105;
-      setStatus(statusEl, `Area: ${acres.toFixed(2)} acres`);
+      const feat = new ol.Feature({ geometry: geom.clone() });
+      feat.set("_measureKind", "area");
+      const areaM2 = ol.sphere.getArea(geom, { projection: MAP_DRAW_PROJ });
+      const ha = areaM2 / 10000;
+      measureSource.addFeature(feat);
+      const msg = `Area: ${ha.toFixed(3)} ha`;
+      setDrawToolsFeedback(msg, false);
+      setStatus(statusEl, msg);
     }
   });
   activeInteraction = draw;
   map.addInteraction(draw);
+  attachSnapInteractions(readSnapOptions());
+  setDrawToolsFeedback(
+    type === "LineString"
+      ? "Draw a path; double-click to finish. Snaps use the checkboxes above."
+      : "Draw a polygon; double-click to finish.",
+    false
+  );
+  setStatus(statusEl, type === "LineString" ? "Measuring distance…" : "Measuring area…");
 }
 
 function locateMe() {
@@ -1512,6 +1758,11 @@ function bindEvents() {
   measureLineBtn.addEventListener("click", () => startMeasure("LineString"));
   measureAreaBtn.addEventListener("click", () => startMeasure("Polygon"));
   stopDrawBtn.addEventListener("click", stopActiveTool);
+  clearMeasuresBtn?.addEventListener("click", () => {
+    measureSource.clear(true);
+    setDrawToolsFeedback("Measurements cleared.", false);
+    setStatus(statusEl, "Measurements cleared.");
+  });
 
   locateBtn.addEventListener("click", locateMe);
   printBtn.addEventListener("click", () => window.print());
@@ -1567,6 +1818,17 @@ async function initUser() {
     measureLineBtn.disabled = true;
     measureAreaBtn.disabled = true;
     stopDrawBtn.disabled = true;
+    clearMeasuresBtn.disabled = true;
+    for (const el of [
+      drawBlockCodeInput,
+      drawParcelBlockInput,
+      drawParcelNoOverride,
+      snapBlocksCb,
+      snapParcelsCb,
+      snapSurveyCb
+    ]) {
+      if (el) el.disabled = true;
+    }
     const sp = document.getElementById("surveyPreviewBtn");
     const ss = document.getElementById("surveySaveBtn");
     if (sp) sp.disabled = true;
@@ -1622,7 +1884,7 @@ async function initMap() {
 
   setupInfoPopup();
   bindEvents();
-  initSurveyImport({
+  const surveyImportHandles = initSurveyImport({
     map,
     cfg,
     setStatus,
@@ -1632,6 +1894,7 @@ async function initMap() {
     blocksSource,
     parcelsSource
   });
+  surveyPreviewSnapSources = surveyImportHandles?.getPreviewSnapSources?.() ?? null;
   initCoordSearchDrawer({
     map,
     setStatus,

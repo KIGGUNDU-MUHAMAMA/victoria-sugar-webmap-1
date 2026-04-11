@@ -124,7 +124,7 @@ export function initSurveyImport({
   const previewBtn = document.getElementById("surveyPreviewBtn");
   const saveBtn = document.getElementById("surveySaveBtn");
 
-  if (!drawer || !toggleBtn) return;
+  if (!drawer || !toggleBtn) return null;
 
   CRS_OPTIONS.forEach((o) => {
     const opt = document.createElement("option");
@@ -409,4 +409,10 @@ export function initSurveyImport({
   });
 
   updateLayerFields();
+
+  return {
+    getPreviewSnapSources() {
+      return { polySource, pointSource };
+    }
+  };
 }

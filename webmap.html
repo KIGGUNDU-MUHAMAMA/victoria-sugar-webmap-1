@@ -423,7 +423,7 @@
       <header class="print-composer__header">
         <div class="print-composer__header-text">
           <h2 id="printComposerTitle" class="print-composer__title">Map export to PDF</h2>
-          <p class="print-composer__subtitle">Frame the preview, add sheet details, then download a branded PDF. The preview uses the same basemap as the main map until you change it and use <strong>Match main map</strong>.</p>
+          <p class="print-composer__subtitle">Frame the preview map, add sheet details, then use <strong>Preview PDF</strong> to verify the layout before <strong>Print to PDF</strong>. The preview uses the same basemap as the main map until you change it and use <strong>Match main map</strong>.</p>
         </div>
         <button type="button" class="print-composer__close" id="printComposerCloseBtn" aria-label="Close">&times;</button>
       </header>
@@ -455,9 +455,10 @@
           <div class="print-composer__sync-row">
             <button type="button" class="btn-secondary print-composer__sync-btn" id="printComposerSyncBtn">Match main map</button>
           </div>
-          <p class="print-composer__hint small">Wait for imagery to finish loading before downloading PDF.</p>
+          <p class="print-composer__hint small">Wait for imagery to finish loading, then use <strong>Preview PDF</strong> to check the export before printing.</p>
           <div class="print-composer__actions">
             <button type="button" class="btn-secondary" id="printComposerCancelBtn">Cancel</button>
+            <button type="button" class="btn-secondary" id="printComposerPreviewBtn">Preview PDF</button>
             <button type="button" id="printComposerExportBtn">Print to PDF</button>
           </div>
         </aside>
@@ -466,6 +467,13 @@
             <div id="printPreviewMap" class="print-composer__map"></div>
           </div>
           <p class="print-composer__map-hint">Pan and zoom here. No toolbar or layer list — only what will be printed (basemap, blocks, parcels, optional grid).</p>
+          <div id="printPdfPreviewWrap" class="print-composer__pdf-preview" hidden>
+            <div class="print-composer__pdf-preview-bar">
+              <span class="print-composer__pdf-preview-label">PDF preview</span>
+            </div>
+            <iframe id="printPdfPreviewFrame" class="print-composer__pdf-preview-frame" title="PDF export preview"></iframe>
+            <p id="printPdfPreviewNote" class="print-composer__pdf-preview-note" hidden></p>
+          </div>
         </div>
       </div>
     </div>

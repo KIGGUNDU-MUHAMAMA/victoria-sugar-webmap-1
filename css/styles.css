@@ -973,6 +973,21 @@ body.print-composer-open {
 
 .print-composer__actions > * {
   flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .print-composer__actions {
+    flex-wrap: wrap;
+  }
+
+  .print-composer__actions > * {
+    flex: 1 1 calc(50% - 0.25rem);
+  }
+
+  .print-composer__actions #printComposerExportBtn {
+    flex: 1 1 100%;
+  }
 }
 
 .print-composer__map-col {
@@ -1007,6 +1022,52 @@ body.print-composer-open {
   font-size: 0.78rem;
   color: var(--muted);
   line-height: 1.35;
+}
+
+.print-composer__pdf-preview {
+  margin-top: 0.65rem;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(78, 112, 61, 0.35);
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(12, 40, 28, 0.08);
+}
+
+.print-composer__pdf-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  background: linear-gradient(95deg, rgba(232, 245, 226, 0.9), rgba(255, 255, 255, 0.95));
+  border-bottom: 1px solid rgba(78, 112, 61, 0.2);
+}
+
+.print-composer__pdf-preview-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--primary-2);
+}
+
+.print-composer__pdf-preview-frame {
+  display: block;
+  width: 100%;
+  height: min(360px, 38vh);
+  min-height: 220px;
+  border: 0;
+  background: #f4f6f2;
+}
+
+.print-composer__pdf-preview-note {
+  margin: 0;
+  padding: 0.45rem 0.65rem 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #6a4a12;
+  background: rgba(255, 236, 200, 0.55);
+  border-top: 1px solid rgba(200, 160, 80, 0.35);
 }
 
 @media (max-width: 960px) {

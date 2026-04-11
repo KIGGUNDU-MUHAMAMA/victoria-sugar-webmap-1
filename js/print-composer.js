@@ -11,6 +11,7 @@ let previewMap = null;
 let gridLayer = null;
 let gridSource = null;
 let proj4lib = null;
+let pdfPreviewBlobUrl = null;
 
 function $(id) {
   return document.getElementById(id);
@@ -36,20 +37,25 @@ function cloneBasemapLayer(tileLayer) {
   if (!src) return null;
   return new ol.layer.Tile({
     source: src,
-    opacity: tileLayer.getOpacity()
+    opacity: tileLayer.getOpacity(),
+    zIndex: 0
   });
 }
 
-function cloneVectorLayerWithStyle(vectorLayer, source) {
+function cloneVectorLayerWithStyle(vectorLayer, source, zIndex) {
   const st = vectorLayer.getStyle();
   return new ol.layer.Vector({
     source,
     style: typeof st === "function" ? st : st,
-    zIndex: vectorLayer.getZIndex?.() ?? 100
+    zIndex: zIndex ?? vectorLayer.getZIndex?.() ?? 100
   });
 }
 
 function disposePreviewMap() {
+  disposePdfPreview();
+  setPdfPreviewNote("");
+  const wrap = $("printPdfPreviewWrap");
+  if (wrap) wrap.hidden = true;
   if (previewMap) {
     previewMap.setTarget(null);
     previewMap = null;
@@ -83,8 +89,93 @@ function buildGraticuleLayer() {
     }),
     lonLabelFormatter: (lon) => `${lon.toFixed(2)}°`,
     latLabelFormatter: (lat) => `${lat.toFixed(2)}°`,
-    zIndex: 500
+    zIndex: 480
   });
+}
+
+function disposePdfPreview() {
+  if (pdfPreviewBlobUrl) {
+    URL.revokeObjectURL(pdfPreviewBlobUrl);
+    pdfPreviewBlobUrl = null;
+  }
+  const frame = $("printPdfPreviewFrame");
+  if (frame) frame.removeAttribute("src");
+}
+
+function setPdfPreviewNote(text) {
+  const el = $("printPdfPreviewNote");
+  if (!el) return;
+  if (!text) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.textContent = text;
+  el.hidden = false;
+}
+
+function invalidatePdfPreviewIfShown(reason) {
+  const wrap = $("printPdfPreviewWrap");
+  const hadSrc = Boolean($("printPdfPreviewFrame")?.getAttribute("src"));
+  disposePdfPreview();
+  if (hadSrc && wrap && !wrap.hidden) {
+    setPdfPreviewNote(reason || "Export changed — use Preview PDF again before printing.");
+  } else {
+    setPdfPreviewNote("");
+  }
+}
+
+/**
+ * OpenLayers can stack several canvases (tiles, vectors, graticule). Composite them in DOM order.
+ */
+function compositeMapViewportToDataUrl(map, mimeType = "image/jpeg", quality = 0.9) {
+  const viewport = map.getViewport();
+  const size = map.getSize();
+  if (!viewport || !size || size[0] < 2 || size[1] < 2) return null;
+
+  const canvases = Array.from(viewport.querySelectorAll("canvas")).filter((c) => c.width > 0 && c.height > 0);
+  if (!canvases.length) return null;
+
+  const out = document.createElement("canvas");
+  out.width = Math.round(size[0]);
+  out.height = Math.round(size[1]);
+  const ctx = out.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#dde8d9";
+  ctx.fillRect(0, 0, out.width, out.height);
+
+  const vpRect = viewport.getBoundingClientRect();
+  for (const c of canvases) {
+    const r = c.getBoundingClientRect();
+    const x = Math.round(r.left - vpRect.left);
+    const y = Math.round(r.top - vpRect.top);
+    const w = Math.round(r.width);
+    const h = Math.round(r.height);
+    if (w < 1 || h < 1) continue;
+    try {
+      ctx.drawImage(c, 0, 0, c.width, c.height, x, y, w, h);
+    } catch {
+      /* tainted sub-canvas — skip */
+    }
+  }
+
+  try {
+    return out.toDataURL(mimeType, quality);
+  } catch {
+    return null;
+  }
+}
+
+async function waitForMapRenderStable(map, cycles = 3) {
+  for (let i = 0; i < cycles; i += 1) {
+    await new Promise((resolve) => {
+      map.once("rendercomplete", resolve);
+    });
+  }
+  map.renderSync();
+  await new Promise(requestAnimationFrame);
+  await new Promise((r) => setTimeout(r, 120));
 }
 
 /**
@@ -176,7 +267,7 @@ function refreshGridLayer() {
         lineDash: [4, 6]
       })
     }),
-    zIndex: 500
+    zIndex: 460
   });
   previewMap.addLayer(gridLayer);
   void updateProjectedGrid(previewMap, crs, spacing).then(() => previewMap.renderSync());
@@ -194,12 +285,13 @@ function syncPreviewFromMain() {
   } else {
     layers.push(
       new ol.layer.Tile({
-        source: new ol.source.OSM()
+        source: new ol.source.OSM(),
+        zIndex: 0
       })
     );
   }
-  layers.push(cloneVectorLayerWithStyle(deps.blocksLayer, deps.blocksSource));
-  layers.push(cloneVectorLayerWithStyle(deps.parcelsLayer, deps.parcelsSource));
+  layers.push(cloneVectorLayerWithStyle(deps.blocksLayer, deps.blocksSource, 420));
+  layers.push(cloneVectorLayerWithStyle(deps.parcelsLayer, deps.parcelsSource, 440));
 
   gridSource = new ol.source.Vector();
   gridLayer = null;
@@ -211,6 +303,7 @@ function syncPreviewFromMain() {
   previewMap.getView().setRotation(v.getRotation());
   previewMap.updateSize();
   previewMap.renderSync();
+  invalidatePdfPreviewIfShown("Matched main map — use Preview PDF again if you had a draft open.");
 }
 
 function createPreviewMap() {
@@ -229,12 +322,13 @@ function createPreviewMap() {
   } else {
     layers.push(
       new ol.layer.Tile({
-        source: new ol.source.OSM()
+        source: new ol.source.OSM(),
+        zIndex: 0
       })
     );
   }
-  layers.push(cloneVectorLayerWithStyle(deps.blocksLayer, deps.blocksSource));
-  layers.push(cloneVectorLayerWithStyle(deps.parcelsLayer, deps.parcelsSource));
+  layers.push(cloneVectorLayerWithStyle(deps.blocksLayer, deps.blocksSource, 420));
+  layers.push(cloneVectorLayerWithStyle(deps.parcelsLayer, deps.parcelsSource, 440));
 
   previewMap = new ol.Map({
     target,
@@ -249,6 +343,7 @@ function createPreviewMap() {
   });
   refreshGridLayer();
   previewMap.on("moveend", () => {
+    invalidatePdfPreviewIfShown("Map view changed — use Preview PDF again.");
     if (!$("printGridShow")?.checked) return;
     const crs = $("printGridCrs")?.value;
     if (!crs || crs === "EPSG:4326" || !gridSource) return;
@@ -310,113 +405,211 @@ async function loadPdfLibs() {
   return window.__vslPdfLibs;
 }
 
-async function exportPdf() {
+function drawGraphicFooter(pdf, opts) {
+  const {
+    margin,
+    pageW,
+    pageH,
+    footerH,
+    blockRef,
+    parcelRef,
+    locationNotes,
+    crsLabel,
+    crsValue,
+    gridOn,
+    spacingM,
+    scaleDen
+  } = opts;
+  const footerTop = pageH - margin - footerH;
+  const bandW = pageW - margin * 2;
+  const mid = pageW / 2 + 1;
+
+  pdf.setFillColor(248, 252, 245);
+  pdf.roundedRect(margin, footerTop, bandW, footerH, 3.2, 3.2, "F");
+  pdf.setDrawColor(86, 118, 72);
+  pdf.setLineWidth(0.4);
+  pdf.roundedRect(margin, footerTop, bandW, footerH, 3.2, 3.2, "S");
+
+  pdf.setFillColor(44, 108, 74);
+  pdf.rect(margin, footerTop + 2.2, 3, footerH - 4.4, "F");
+
+  pdf.setDrawColor(118, 156, 96);
+  pdf.setLineWidth(0.5);
+  pdf.line(margin + 6, footerTop + 6, pageW - margin - 4, footerTop + 6);
+
+  const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const spacingTxt = crsValue === "EPSG:4326" ? "Graticule (auto spacing)" : `${spacingM} m`;
+  const gridSummary = gridOn ? `On · ${crsLabel || crsValue || "—"} · ${spacingTxt}` : "Off";
+
+  function kvColumn(startX, startY, maxValW, entries) {
+    let y = startY;
+    for (const [label, value] of entries) {
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(6.4);
+      pdf.setTextColor(88, 108, 88);
+      pdf.text(String(label).toUpperCase(), startX, y);
+      y += 3.2;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.9);
+      pdf.setTextColor(28, 44, 30);
+      const lines = pdf.splitTextToSize(value || "—", maxValW);
+      pdf.text(lines, startX, y);
+      y += lines.length * 3.65 + 2;
+    }
+    return y;
+  }
+
+  const leftW = mid - margin - 16;
+  const rightW = pageW - margin - mid - 10;
+  kvColumn(margin + 7, footerTop + 11, leftW, [
+    ["Block reference", blockRef],
+    ["Plot / parcel reference", parcelRef],
+    ["Location or job notes", locationNotes]
+  ]);
+  kvColumn(mid + 6, footerTop + 11, rightW, [
+    ["Coordinate grid", gridSummary],
+    ["Approximate scale", scaleDen != null ? `1 : ${scaleDen.toLocaleString()}` : "—"],
+    ["Exported (UTC)", ts]
+  ]);
+
+  pdf.setFillColor(68, 124, 82);
+  pdf.rect(margin + 6, footerTop + footerH - 3.4, bandW - 12, 2, "F");
+}
+
+async function buildPdfDocument() {
+  if (!previewMap) throw new Error("Preview map not ready.");
+  const { jsPDF: PdfCtor, QRCode } = await loadPdfLibs();
+  await waitForMapRenderStable(previewMap, 3);
+
+  let mapImg = compositeMapViewportToDataUrl(previewMap, "image/jpeg", 0.9);
+  if (!mapImg) {
+    const canvas = previewMap.getViewport().querySelector("canvas");
+    if (!canvas) throw new Error("Map canvas not ready. Wait for tiles, then try again.");
+    mapImg = canvas.toDataURL("image/jpeg", 0.88);
+  }
+
+  const logoUrl = new URL("./assets/victoria-sugar-logo.jpg", window.location.href).href;
+  let logoData = null;
+  try {
+    const res = await fetch(logoUrl);
+    const blob = await res.blob();
+    logoData = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    logoData = null;
+  }
+
+  const qrDataUrl = await QRCode.toDataURL(PRINT_QR_URL, {
+    width: 112,
+    margin: 1,
+    color: { dark: "#1a4d2e", light: "#ffffff" }
+  });
+
+  const sheetTitle = $("printSheetTitle")?.value?.trim() || "";
+  const blockRef = $("printBlockRef")?.value?.trim() || "";
+  const parcelRef = $("printParcelRef")?.value?.trim() || "";
+  const locationNotes = $("printLocationNotes")?.value?.trim() || "";
+  const crsLabel = $("printGridCrs")?.selectedOptions?.[0]?.textContent || "";
+  const crsValue = $("printGridCrs")?.value || "";
+  const gridOn = Boolean($("printGridShow")?.checked);
+  const spacingM = $("printGridSpacing")?.value || "500";
+  const scaleDen = approximateScaleDenominator();
+
+  const pdf = new PdfCtor({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = 12;
+  const headerH = 28;
+  const footerH = 46;
+  const mapTop = margin + headerH + 4;
+  const mapBottom = pageH - margin - footerH - 4;
+  const mapLeft = margin;
+  const mapW = pageW - margin * 2;
+  const mapH = mapBottom - mapTop;
+
+  pdf.setFillColor(245, 250, 242);
+  pdf.rect(0, 0, pageW, headerH + 6, "F");
+  pdf.setDrawColor(62, 107, 62);
+  pdf.setLineWidth(0.6);
+  pdf.line(margin, headerH + 6, pageW - margin, headerH + 6);
+
+  if (logoData) {
+    pdf.addImage(logoData, "JPEG", margin, 6, 22, 18);
+  }
+  pdf.setTextColor(26, 60, 40);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(15);
+  pdf.text("VICTORIA SUGAR LTD", margin + (logoData ? 28 : 0), 12);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9.2);
+  pdf.setTextColor(55, 75, 55);
+  const tag = "Land intelligence platform for sugarcane blocks and parcels.";
+  pdf.text(tag, margin + (logoData ? 28 : 0), 19);
+  if (sheetTitle) {
+    pdf.setFontSize(10);
+    pdf.setTextColor(40, 90, 50);
+    pdf.text(sheetTitle, margin + (logoData ? 28 : 0), 25);
+  }
+  pdf.addImage(qrDataUrl, "PNG", pageW - margin - 24, 5, 22, 22);
+
+  pdf.setDrawColor(78, 112, 61);
+  pdf.setLineWidth(0.85);
+  pdf.roundedRect(mapLeft - 1.5, mapTop - 1.5, mapW + 3, mapH + 3, 2, 2, "S");
+  pdf.addImage(mapImg, "JPEG", mapLeft, mapTop, mapW, mapH);
+
+  drawGraphicFooter(pdf, {
+    margin,
+    pageW,
+    pageH,
+    footerH,
+    blockRef,
+    parcelRef,
+    locationNotes,
+    crsLabel,
+    crsValue,
+    gridOn,
+    spacingM,
+    scaleDen
+  });
+
+  const safeName = (sheetTitle || "victoria-sugar-map-export")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 48);
+  return { pdf, safeName: safeName || "map-export" };
+}
+
+async function runPreviewPdf() {
+  if (!previewMap) return;
+  const { setStatus, statusEl } = deps;
+  setStatus(statusEl, "Building PDF preview…");
+  try {
+    const { pdf } = await buildPdfDocument();
+    disposePdfPreview();
+    const blob = pdf.output("blob");
+    pdfPreviewBlobUrl = URL.createObjectURL(blob);
+    const frame = $("printPdfPreviewFrame");
+    const wrap = $("printPdfPreviewWrap");
+    if (frame) frame.src = pdfPreviewBlobUrl;
+    if (wrap) wrap.hidden = false;
+    setPdfPreviewNote("");
+    setStatus(statusEl, "Preview ready. Use Print to PDF when the layout looks correct.");
+  } catch (e) {
+    deps.setStatus(deps.statusEl, e.message || "PDF preview failed.", true);
+  }
+}
+
+async function runExportPdf() {
   if (!previewMap) return;
   const { setStatus, statusEl } = deps;
   setStatus(statusEl, "Preparing PDF…");
   try {
-    const { jsPDF: PdfCtor, QRCode } = await loadPdfLibs();
-    await new Promise((r) => previewMap.once("rendercomplete", r));
-    await new Promise((r) => setTimeout(r, 450));
-
-    const canvas = previewMap.getViewport().querySelector("canvas");
-    if (!canvas) throw new Error("Map canvas not ready. Wait for tiles, then try again.");
-    const mapImg = canvas.toDataURL("image/jpeg", 0.88);
-
-    const logoUrl = new URL("./assets/victoria-sugar-logo.jpg", window.location.href).href;
-    let logoData = null;
-    try {
-      const res = await fetch(logoUrl);
-      const blob = await res.blob();
-      logoData = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = reject;
-        r.readAsDataURL(blob);
-      });
-    } catch {
-      logoData = null;
-    }
-
-    const qrDataUrl = await QRCode.toDataURL(PRINT_QR_URL, {
-      width: 112,
-      margin: 1,
-      color: { dark: "#1a4d2e", light: "#ffffff" }
-    });
-
-    const sheetTitle = $("printSheetTitle")?.value?.trim() || "";
-    const blockRef = $("printBlockRef")?.value?.trim() || "";
-    const parcelRef = $("printParcelRef")?.value?.trim() || "";
-    const locationNotes = $("printLocationNotes")?.value?.trim() || "";
-    const crsLabel = $("printGridCrs")?.selectedOptions?.[0]?.textContent || "";
-    const scaleDen = approximateScaleDenominator();
-
-    const pdf = new PdfCtor({ orientation: "landscape", unit: "mm", format: "a4" });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 12;
-    const headerH = 28;
-    const footerH = 26;
-    const mapTop = margin + headerH + 4;
-    const mapBottom = pageH - margin - footerH - 4;
-    const mapLeft = margin;
-    const mapW = pageW - margin * 2;
-    const mapH = mapBottom - mapTop;
-
-    pdf.setFillColor(245, 250, 242);
-    pdf.rect(0, 0, pageW, headerH + 6, "F");
-    pdf.setDrawColor(62, 107, 62);
-    pdf.setLineWidth(0.6);
-    pdf.line(margin, headerH + 6, pageW - margin, headerH + 6);
-
-    if (logoData) {
-      pdf.addImage(logoData, "JPEG", margin, 6, 22, 18);
-    }
-    pdf.setTextColor(26, 60, 40);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(15);
-    pdf.text("VICTORIA SUGAR LTD", margin + (logoData ? 28 : 0), 12);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9.2);
-    pdf.setTextColor(55, 75, 55);
-    const tag = "Land intelligence platform for sugarcane blocks and parcels.";
-    pdf.text(tag, margin + (logoData ? 28 : 0), 19);
-    if (sheetTitle) {
-      pdf.setFontSize(10);
-      pdf.setTextColor(40, 90, 50);
-      pdf.text(sheetTitle, margin + (logoData ? 28 : 0), 25);
-    }
-    pdf.addImage(qrDataUrl, "PNG", pageW - margin - 24, 5, 22, 22);
-
-    pdf.setDrawColor(78, 112, 61);
-    pdf.setLineWidth(0.85);
-    pdf.roundedRect(mapLeft - 1.5, mapTop - 1.5, mapW + 3, mapH + 3, 2, 2, "S");
-    pdf.addImage(mapImg, "JPEG", mapLeft, mapTop, mapW, mapH);
-
-    pdf.setFontSize(8.5);
-    pdf.setTextColor(45, 55, 45);
-    let fy = pageH - margin - footerH + 4;
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Sheet details", margin, fy);
-    fy += 5;
-    pdf.setFont("helvetica", "normal");
-    const lines = [
-      `Block reference: ${blockRef || "—"}`,
-      `Plot / parcel reference: ${parcelRef || "—"}`,
-      `Location / job notes: ${locationNotes || "—"}`,
-      `Approx. scale 1 : ${scaleDen != null ? scaleDen.toLocaleString() : "—"}  |  Grid CRS: ${crsLabel || "—"}`,
-      `Exported: ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC`
-    ];
-    for (const line of lines) {
-      pdf.text(line, margin, fy);
-      fy += 4.2;
-    }
-
-    const safeName = (sheetTitle || "victoria-sugar-map-export")
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .slice(0, 48);
-    pdf.save(`${safeName || "map-export"}.pdf`);
+    const { pdf, safeName } = await buildPdfDocument();
+    pdf.save(`${safeName}.pdf`);
     setStatus(statusEl, "PDF downloaded.");
   } catch (e) {
     deps.setStatus(deps.statusEl, e.message || "PDF export failed.", true);
@@ -426,13 +619,21 @@ async function exportPdf() {
 function wireForm() {
   $("printGridShow")?.addEventListener("change", () => {
     if (previewMap) refreshGridLayer();
+    invalidatePdfPreviewIfShown("Grid options changed — use Preview PDF again.");
   });
   $("printGridCrs")?.addEventListener("change", () => {
     if (previewMap) refreshGridLayer();
+    invalidatePdfPreviewIfShown("Grid options changed — use Preview PDF again.");
   });
   $("printGridSpacing")?.addEventListener("change", () => {
     if (previewMap && $("printGridCrs")?.value !== "EPSG:4326") refreshGridLayer();
+    invalidatePdfPreviewIfShown("Grid options changed — use Preview PDF again.");
   });
+  for (const id of ["printSheetTitle", "printBlockRef", "printParcelRef", "printLocationNotes"]) {
+    $(id)?.addEventListener("input", () => {
+      invalidatePdfPreviewIfShown("Sheet details changed — use Preview PDF again.");
+    });
+  }
 }
 
 let printComposerWired = false;
@@ -445,14 +646,18 @@ export function initPrintComposer(options) {
 
   window.addEventListener("resize", () => {
     const m = $("printComposerModal");
-    if (m && !m.hidden && previewMap) previewMap.updateSize();
+    if (m && !m.hidden && previewMap) {
+      previewMap.updateSize();
+      invalidatePdfPreviewIfShown("Map panel was resized — use Preview PDF again.");
+    }
   });
 
   $("printComposerCloseBtn")?.addEventListener("click", () => closeModal());
   $("printComposerCancelBtn")?.addEventListener("click", () => closeModal());
   $("printComposerBackdrop")?.addEventListener("click", () => closeModal());
   $("printComposerSyncBtn")?.addEventListener("click", () => syncPreviewFromMain());
-  $("printComposerExportBtn")?.addEventListener("click", () => void exportPdf());
+  $("printComposerPreviewBtn")?.addEventListener("click", () => void runPreviewPdf());
+  $("printComposerExportBtn")?.addEventListener("click", () => void runExportPdf());
 
   const crsSel = $("printGridCrs");
   if (crsSel && !crsSel.options.length) {

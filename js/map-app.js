@@ -65,6 +65,115 @@ const parcelStatusState = {
   selectedLayerType: null
 };
 
+const CULTIVATION_STATUS_LABELS = {
+  not_in_cane: "Not in cane",
+  prepared: "Prepared",
+  planted: "Planted",
+  standing: "Standing",
+  harvested: "Harvested",
+  replant_renovation: "Replant / renovation"
+};
+
+const INFO_FIELD_LABELS = {
+  block_code: "Block code",
+  block_name: "Block name",
+  estate_name: "Estate / project",
+  parcel_no: "Plot number",
+  parcel_code: "Plot code",
+  parcel_label: "Plot label",
+  expected_area_acres: "Expected area",
+  geometry_status: "Geometry status",
+  cultivation_status: "Cultivation status",
+  harvest_tonnes: "Harvest (tonnes cane)",
+  last_harvest_date: "Last harvest date",
+  cultivation_notes: "Notes",
+  cultivation_updated_at: "Status last updated"
+};
+
+const INFO_BLOCK_FIELD_ORDER = [
+  "block_code",
+  "block_name",
+  "estate_name",
+  "expected_area_acres",
+  "geometry_status",
+  "cultivation_status",
+  "harvest_tonnes",
+  "last_harvest_date",
+  "cultivation_notes",
+  "cultivation_updated_at"
+];
+
+const INFO_PARCEL_FIELD_ORDER = [
+  "block_code",
+  "parcel_no",
+  "parcel_code",
+  "parcel_label",
+  "expected_area_acres",
+  "geometry_status",
+  "cultivation_status",
+  "harvest_tonnes",
+  "last_harvest_date",
+  "cultivation_notes",
+  "cultivation_updated_at"
+];
+
+let infoHelpPopoverOpen = false;
+let infoHelpOutsideHandler = null;
+let infoHelpEscapeHandler = null;
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatInfoFieldValue(key, val) {
+  if (val == null || val === "") return "—";
+  if (key === "expected_area_acres" && Number.isFinite(Number(val))) {
+    return `${Number(val).toFixed(2)} ac`;
+  }
+  if (key === "harvest_tonnes" && Number.isFinite(Number(val))) {
+    return `${Number(val).toLocaleString(undefined, { maximumFractionDigits: 3 })} t`;
+  }
+  if (key === "cultivation_status") {
+    return CULTIVATION_STATUS_LABELS[String(val)] || escapeHtml(val);
+  }
+  if (key === "last_harvest_date" || key === "cultivation_updated_at") {
+    const t = String(val);
+    return escapeHtml(t.length > 16 ? t.slice(0, 16) : t);
+  }
+  return escapeHtml(val);
+}
+
+function buildFeatureInfoPopupHtml(layerType, feature) {
+  const props = feature.getProperties();
+  const order = layerType === "PARCELS" ? INFO_PARCEL_FIELD_ORDER : INFO_BLOCK_FIELD_ORDER;
+  const badge = layerType === "PARCELS" ? "Parcel" : "Block";
+  const rows = order
+    .map((key) => {
+      const raw = props[key];
+      if (raw == null || raw === "") return null;
+      const label = INFO_FIELD_LABELS[key] || key;
+      const display = formatInfoFieldValue(key, raw);
+      return `<div class="map-popup__row"><span class="map-popup__dt">${escapeHtml(label)}</span><span class="map-popup__dd">${display}</span></div>`;
+    })
+    .filter(Boolean)
+    .join("");
+  const body =
+    rows ||
+    `<p class="map-popup__empty">No attributes loaded for this feature. Zoom in or reload layers.</p>`;
+  return `
+    <div class="map-popup__inner">
+      <header class="map-popup__head">
+        <span class="map-popup__badge">${badge}</span>
+        <button type="button" class="map-popup__close" aria-label="Close details">&times;</button>
+      </header>
+      <div class="map-popup__grid">${body}</div>
+    </div>`;
+}
+
 function surveyFeatureAreaAcresText(feature) {
   const raw = feature.get("expected_area_acres");
   if (raw != null && raw !== "" && Number.isFinite(Number(raw))) {
@@ -210,10 +319,52 @@ function buildLayerTree() {
     ]
   });
 
+  let graticuleLayer = null;
+  if (typeof ol !== "undefined" && ol.layer && typeof ol.layer.Graticule === "function") {
+    graticuleLayer = new ol.layer.Graticule({
+      title: "Lat / lon grid",
+      visible: true,
+      maxLines: 80,
+      strokeStyle: new ol.style.Stroke({
+        color: "rgba(255, 255, 255, 0.72)",
+        width: 1,
+        lineDash: [4, 8]
+      }),
+      showLabels: true,
+      lonLabelStyle: new ol.style.Text({
+        font: "600 11px Inter, system-ui, sans-serif",
+        fill: new ol.style.Fill({ color: "#1d2a1d" }),
+        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.92)", width: 3 }),
+        textBaseline: "bottom"
+      }),
+      latLabelStyle: new ol.style.Text({
+        font: "600 11px Inter, system-ui, sans-serif",
+        fill: new ol.style.Fill({ color: "#1d2a1d" }),
+        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.92)", width: 3 }),
+        textAlign: "end"
+      }),
+      lonLabelFormatter: (lon) => `${lon.toFixed(2)}°`,
+      latLabelFormatter: (lat) => `${lat.toFixed(2)}°`,
+      zIndex: 0
+    });
+  }
+
+  const referenceGroup =
+    graticuleLayer != null
+      ? new ol.layer.Group({
+          title: "REFERENCE",
+          fold: "open",
+          layers: [graticuleLayer]
+        })
+      : null;
+
   sketchLayer.set("displayInLayerSwitcher", false);
   baseGroupRef = baseGroup;
   // Order = bottom → top. Tile basemaps must be below vector layers or opaque maps hide polygons.
-  return [baseGroup, overlaysGroup, sketchLayer];
+  const stack = [baseGroup];
+  if (referenceGroup) stack.push(referenceGroup);
+  stack.push(overlaysGroup, sketchLayer);
+  return stack;
 }
 
 function setBasemapByTitle(targetTitle) {
@@ -240,6 +391,7 @@ function enableFallbackLayerSwitcher() {
 
 function setActivePanel(panelId) {
   closeParcelStatusPanel();
+  closeInfoHelpPopover();
   closeParcelSearchPopover({ clearHighlight: true });
 
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
@@ -363,6 +515,7 @@ function openParcelStatusPanel() {
   const panel = document.getElementById("parcelStatusPanel");
   const btn = document.getElementById("parcelStatusBtn");
   if (!panel) return;
+  closeInfoHelpPopover();
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
   parcelStatusState.panelOpen = true;
@@ -532,15 +685,43 @@ function setupParcelStatusPanel() {
   applyBtn?.addEventListener("click", () => applyParcelStatusFromPanel());
 }
 
+function closeInfoPopup() {
+  if (!infoOverlay) return;
+  const el = typeof infoOverlay.getElement === "function" ? infoOverlay.getElement() : null;
+  if (el) el.innerHTML = "";
+  infoOverlay.setPosition(undefined);
+}
+
 function setupInfoPopup() {
   const popupEl = document.createElement("div");
-  popupEl.className = "map-popup";
+  popupEl.className = "map-popup map-popup--feature";
+  popupEl.setAttribute("role", "dialog");
+  popupEl.setAttribute("aria-label", "Feature details");
+
   infoOverlay = new ol.Overlay({
     element: popupEl,
-    offset: [10, 10],
-    positioning: "bottom-left"
+    offset: [0, -14],
+    positioning: "bottom-center",
+    autoPan: true
   });
   map.addOverlay(infoOverlay);
+
+  popupEl.addEventListener("click", (ev) => {
+    if (ev.target.closest(".map-popup__close")) {
+      closeInfoPopup();
+      selectedFeature = null;
+      selectedLayerType = null;
+    }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape") return;
+    if (infoOverlay && infoOverlay.getPosition() !== undefined) {
+      closeInfoPopup();
+      selectedFeature = null;
+      selectedLayerType = null;
+    }
+  });
 
   map.on("singleclick", (evt) => {
     if (document.getElementById("coordExtractDrawer")?.dataset.picking === "1") {
@@ -566,19 +747,104 @@ function setupInfoPopup() {
         selectedFeature = feature;
         selectedLayerType = isBlocks ? "BLOCKS" : "PARCELS";
 
-        const props = feature.getProperties();
-        const infoRows = Object.entries(props)
-          .filter(([k]) => k !== "geometry")
-          .slice(0, 10)
-          .map(([k, v]) => `<div><strong>${k}:</strong> ${String(v ?? "")}</div>`)
-          .join("");
-
-        popupEl.innerHTML = `<div><strong>${selectedLayerType}</strong></div>${infoRows}`;
+        popupEl.innerHTML = buildFeatureInfoPopupHtml(selectedLayerType, feature);
         infoOverlay.setPosition(evt.coordinate);
         return true;
       },
-      { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer }
+      { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 6 }
     );
+  });
+}
+
+function positionInfoHelpPopover() {
+  const btn = document.getElementById("infoBtn");
+  const pop = document.getElementById("infoHelpPopover");
+  if (!btn || !pop || pop.hidden) return;
+  const r = btn.getBoundingClientRect();
+  const gap = 10;
+  const margin = 12;
+  pop.style.position = "fixed";
+  pop.style.zIndex = "1250";
+  const measured = pop.getBoundingClientRect();
+  const w = measured.width || 300;
+  const h = measured.height || 200;
+  let left = r.left;
+  if (left + w > window.innerWidth - margin) {
+    left = Math.max(margin, window.innerWidth - w - margin);
+  }
+  if (left < margin) left = margin;
+  let top = r.bottom + gap;
+  if (top + h > window.innerHeight - margin) {
+    top = Math.max(margin, r.top - gap - h);
+  }
+  pop.style.top = `${Math.round(top)}px`;
+  pop.style.left = `${Math.round(left)}px`;
+}
+
+function closeInfoHelpPopover() {
+  const pop = document.getElementById("infoHelpPopover");
+  const btn = document.getElementById("infoBtn");
+  if (infoHelpOutsideHandler) {
+    document.removeEventListener("pointerdown", infoHelpOutsideHandler, true);
+    infoHelpOutsideHandler = null;
+  }
+  if (infoHelpEscapeHandler) {
+    document.removeEventListener("keydown", infoHelpEscapeHandler, true);
+    infoHelpEscapeHandler = null;
+  }
+  infoHelpPopoverOpen = false;
+  if (pop) pop.hidden = true;
+  btn?.classList.remove("active");
+  btn?.setAttribute("aria-expanded", "false");
+}
+
+function openInfoHelpPopover() {
+  const pop = document.getElementById("infoHelpPopover");
+  const btn = document.getElementById("infoBtn");
+  if (!pop || !btn || infoHelpPopoverOpen) return;
+  closeInfoPopup();
+  selectedFeature = null;
+  selectedLayerType = null;
+  pop.hidden = false;
+  btn.classList.add("active");
+  btn.setAttribute("aria-expanded", "true");
+  infoHelpPopoverOpen = true;
+
+  infoHelpOutsideHandler = (ev) => {
+    if (!infoHelpPopoverOpen) return;
+    if (pop.contains(ev.target) || btn.contains(ev.target)) return;
+    closeInfoHelpPopover();
+  };
+  document.addEventListener("pointerdown", infoHelpOutsideHandler, true);
+
+  infoHelpEscapeHandler = (ev) => {
+    if (ev.key === "Escape" && infoHelpPopoverOpen) {
+      ev.preventDefault();
+      closeInfoHelpPopover();
+    }
+  };
+  document.addEventListener("keydown", infoHelpEscapeHandler, true);
+
+  requestAnimationFrame(() => {
+    positionInfoHelpPopover();
+  });
+}
+
+function toggleInfoHelpPopover() {
+  if (infoHelpPopoverOpen) closeInfoHelpPopover();
+  else openInfoHelpPopover();
+}
+
+function setupInfoHelpPopover() {
+  const btn = document.getElementById("infoBtn");
+  const closeBtn = document.getElementById("infoHelpCloseBtn");
+  btn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleInfoHelpPopover();
+  });
+  closeBtn?.addEventListener("click", () => closeInfoHelpPopover());
+  window.addEventListener("resize", () => {
+    if (infoHelpPopoverOpen) positionInfoHelpPopover();
   });
 }
 
@@ -702,6 +968,7 @@ function positionParcelSearchPopover() {
 
 function closeParcelSearchPopover(options = {}) {
   const { clearHighlight = true } = options;
+  closeInfoHelpPopover();
   const pop = document.getElementById("parcelSearchPopover");
   const btn = document.getElementById("parcelSearchBtn");
   if (parcelSearchOutsideHandler) {
@@ -726,6 +993,7 @@ function openParcelSearchPopover() {
   const blockInput = document.getElementById("parcelSearchBlockInput");
   if (!pop || !btn || parcelSearchPopoverOpen) return;
 
+  closeInfoHelpPopover();
   pop.hidden = false;
   btn.classList.add("active");
   btn.setAttribute("aria-expanded", "true");
@@ -993,6 +1261,7 @@ function bindEvents() {
   setupPanels();
   setupParcelSearchPopover();
   setupParcelStatusPanel();
+  setupInfoHelpPopover();
 
   drawBlockBtn.addEventListener("click", () => drawGeometry("BLOCKS"));
   drawParcelBtn.addEventListener("click", () => drawGeometry("PARCELS"));
@@ -1005,9 +1274,6 @@ function bindEvents() {
   fullscreenBtn.addEventListener("click", () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen();
     else document.exitFullscreen();
-  });
-  infoBtn.addEventListener("click", () => {
-    setStatus(statusEl, "Click any BLOCK/PARCEL on map to inspect its details.");
   });
   logoutBtn.addEventListener("click", async () => {
     await supabase.auth.signOut();

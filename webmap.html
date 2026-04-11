@@ -120,7 +120,7 @@
       <button type="button" class="control-btn" id="fullscreenBtn" title="Full Screen">
         <i class="fas fa-expand"></i><span class="btn-label">Full</span>
       </button>
-      <button type="button" class="control-btn" id="infoBtn" title="Feature Info">
+      <button type="button" class="control-btn" id="infoBtn" title="How identify works" aria-expanded="false" aria-controls="infoHelpPopover">
         <i class="fas fa-circle-info"></i><span class="btn-label">Info</span>
       </button>
       <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
@@ -170,6 +170,21 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="infoHelpPopover" class="info-help-popover" hidden role="dialog" aria-modal="true" aria-labelledby="infoHelpTitle">
+      <div class="info-help-popover__card">
+        <header class="info-help-popover__head">
+          <h2 id="infoHelpTitle" class="info-help-popover__title">Identify features</h2>
+          <button type="button" class="info-help-popover__close" id="infoHelpCloseBtn" aria-label="Close">&times;</button>
+        </header>
+        <ul class="info-help-popover__list">
+          <li>Click a <strong>block</strong> or <strong>parcel</strong> polygon to open a summary card at the click location.</li>
+          <li>The card lists codes, area, geometry status, cultivation status, harvest fields, and notes when present.</li>
+          <li>Use <strong>×</strong> on the card or press <strong>Escape</strong> to close it.</li>
+          <li><strong>Lat / lon grid</strong> (REFERENCE in the layer list) overlays degree lines; toggle it there if the map feels busy.</li>
+        </ul>
       </div>
     </div>
   </div>

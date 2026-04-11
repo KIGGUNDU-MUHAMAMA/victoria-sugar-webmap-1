@@ -569,10 +569,31 @@ function attachSnapInteractions(opts) {
   }
 }
 
+function closeDrawToolsPanel() {
+  stopActiveTool();
+  panelHost.classList.remove("visible");
+  for (const p of panelHost.querySelectorAll(".panel")) p.classList.remove("active");
+  for (const bId of Object.keys(panelButtons)) {
+    document.getElementById(bId)?.classList.remove("active");
+  }
+  syncDrawToolsMapInset();
+}
+
 function setupPanels() {
   for (const [btnId, panelId] of Object.entries(panelButtons)) {
-    document.getElementById(btnId)?.addEventListener("click", () => setActivePanel(panelId));
+    document.getElementById(btnId)?.addEventListener("click", () => {
+      if (
+        btnId === "drawingPanelBtn" &&
+        panelHost.classList.contains("visible") &&
+        document.getElementById("drawingPanel")?.classList.contains("active")
+      ) {
+        closeDrawToolsPanel();
+        return;
+      }
+      setActivePanel(panelId);
+    });
   }
+  document.getElementById("drawPanelCloseBtn")?.addEventListener("click", () => closeDrawToolsPanel());
 }
 
 function getParcelStatusLayerMode() {

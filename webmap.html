@@ -364,10 +364,13 @@
   <aside class="side-panel" id="panelHost" aria-label="Draw and measure tools">
     <div class="panel active" id="drawingPanel">
       <header class="draw-tools__head">
-        <h3 class="draw-tools__title">Draw and measure</h3>
-        <p class="draw-tools__lede small">
-          Secondary to <strong>Survey</strong> for bulk CSV updates. Use this for quick digitizing or checks on the map.
-        </p>
+        <div class="draw-tools__head-text">
+          <h3 class="draw-tools__title">Draw and measure</h3>
+          <p class="draw-tools__lede small">
+            Secondary to <strong>Survey</strong> for bulk CSV updates. Use this for quick digitizing or checks on the map.
+          </p>
+        </div>
+        <button type="button" class="draw-tools__close" id="drawPanelCloseBtn" aria-label="Close draw panel">&times;</button>
       </header>
 
       <section class="draw-tools__section" aria-labelledby="drawCadastralTitle">

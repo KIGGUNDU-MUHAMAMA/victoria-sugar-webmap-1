@@ -10,6 +10,8 @@ let deps = null;
 let previewMap = null;
 let gridLayer = null;
 let gridSource = null;
+let gridCornerLayer = null;
+let gridCornerSource = null;
 let proj4lib = null;
 let pdfPreviewBlobUrl = null;
 
@@ -62,6 +64,8 @@ function disposePreviewMap() {
   }
   gridLayer = null;
   gridSource = null;
+  gridCornerLayer = null;
+  gridCornerSource = null;
 }
 
 function buildGraticuleLayer() {
@@ -167,19 +171,57 @@ function compositeMapViewportToDataUrl(map, mimeType = "image/jpeg", quality = 0
   }
 }
 
+/**
+ * Wait for render cycles. Always schedules a fresh render first — otherwise after the first export
+ * OpenLayers may not emit rendercomplete again and the PDF step would hang indefinitely.
+ */
 async function waitForMapRenderStable(map, cycles = 3) {
-  for (let i = 0; i < cycles; i += 1) {
-    await new Promise((resolve) => {
-      map.once("rendercomplete", resolve);
+  const waitOnce = (timeoutMs = 4000) =>
+    new Promise((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(tid);
+        map.un("rendercomplete", onRc);
+        resolve();
+      };
+      const onRc = () => {
+        clearTimeout(tid);
+        done();
+      };
+      const tid = setTimeout(done, timeoutMs);
+      map.once("rendercomplete", onRc);
+      try {
+        map.getView().changed();
+        map.getLayers().forEach((ly) => {
+          ly.changed();
+        });
+        map.render();
+      } catch {
+        done();
+      }
     });
+
+  for (let i = 0; i < cycles; i += 1) {
+    await waitOnce();
   }
   map.renderSync();
   await new Promise(requestAnimationFrame);
   await new Promise((r) => setTimeout(r, 120));
 }
 
+function formatProjectedGridValue(v) {
+  const a = Math.abs(Number(v) || 0);
+  if (a >= 100000) return `${Math.round(v)}`;
+  if (a >= 10000) return `${Math.round(v)}`;
+  if (a >= 1000) return `${Number(v).toFixed(1)}`;
+  return `${Number(v).toFixed(2)}`;
+}
+
 /**
  * Simple projected grid in map CRS (Web Mercator edges labeled in selected CRS at corners).
+ * Adds point labels at line midpoints so easting/northing values appear in exports.
  */
 async function updateProjectedGrid(pMap, crs, spacingM) {
   if (!gridSource || !pMap || crs === "EPSG:4326") return;
@@ -215,6 +257,8 @@ async function updateProjectedGrid(pMap, crs, spacingM) {
   const e1 = Math.ceil(maxE / s) * s;
   const n0 = Math.floor(minN / s) * s;
   const n1 = Math.ceil(maxN / s) * s;
+  const midE = (e0 + e1) / 2;
+  const midN = (n0 + n1) / 2;
   const features = [];
   const maxLines = 40;
   let nLines = 0;
@@ -224,6 +268,14 @@ async function updateProjectedGrid(pMap, crs, spacingM) {
     const ll1 = p4(crs, "EPSG:4326", [e, n1]);
     const g = new ol.geom.LineString([ol.proj.fromLonLat(ll0), ol.proj.fromLonLat(ll1)]);
     features.push(new ol.Feature({ geometry: g }));
+    const llMid = p4(crs, "EPSG:4326", [e, midN]);
+    features.push(
+      new ol.Feature({
+        geometry: new ol.geom.Point(ol.proj.fromLonLat(llMid)),
+        label: formatProjectedGridValue(e),
+        kind: "easting"
+      })
+    );
   }
   nLines = 0;
   for (let n = n0; n <= n1 && nLines < maxLines; n += s) {
@@ -232,8 +284,47 @@ async function updateProjectedGrid(pMap, crs, spacingM) {
     const ll1 = p4(crs, "EPSG:4326", [e1, n]);
     const g = new ol.geom.LineString([ol.proj.fromLonLat(ll0), ol.proj.fromLonLat(ll1)]);
     features.push(new ol.Feature({ geometry: g }));
+    const llMid = p4(crs, "EPSG:4326", [midE, n]);
+    features.push(
+      new ol.Feature({
+        geometry: new ol.geom.Point(ol.proj.fromLonLat(llMid)),
+        label: formatProjectedGridValue(n),
+        kind: "northing"
+      })
+    );
   }
   gridSource.addFeatures(features);
+}
+
+function refreshGeographicCornerLabels() {
+  if (!previewMap || !gridCornerSource) return;
+  gridCornerSource.clear(true);
+  const view = previewMap.getView();
+  const size = previewMap.getSize();
+  if (!size) return;
+  const ext = view.calculateExtent(size);
+  const w = ext[2] - ext[0];
+  const h = ext[3] - ext[1];
+  const inset = Math.max(24, Math.min(w, h) * 0.05);
+  const corners = [
+    { xy: [ext[0] + inset, ext[1] + inset], ta: "left", tb: "bottom", ox: 2, oy: -2 },
+    { xy: [ext[2] - inset, ext[1] + inset], ta: "right", tb: "bottom", ox: -2, oy: -2 },
+    { xy: [ext[2] - inset, ext[3] - inset], ta: "right", tb: "top", ox: -2, oy: 2 },
+    { xy: [ext[0] + inset, ext[3] - inset], ta: "left", tb: "top", ox: 2, oy: 2 }
+  ];
+  const feats = corners.map((c) => {
+    const ll = ol.proj.toLonLat(c.xy);
+    const label = `${ll[0].toFixed(3)}°, ${ll[1].toFixed(3)}°`;
+    return new ol.Feature({
+      geometry: new ol.geom.Point(c.xy),
+      label,
+      ta: c.ta,
+      tb: c.tb,
+      ox: c.ox,
+      oy: c.oy
+    });
+  });
+  gridCornerSource.addFeatures(feats);
 }
 
 function refreshGridLayer() {
@@ -242,6 +333,11 @@ function refreshGridLayer() {
   const crs = $("printGridCrs")?.value || "EPSG:4326";
   const spacing = parseFloat($("printGridSpacing")?.value || "500");
 
+  if (gridCornerLayer) {
+    previewMap.removeLayer(gridCornerLayer);
+    gridCornerLayer = null;
+    gridCornerSource = null;
+  }
   if (gridLayer) {
     previewMap.removeLayer(gridLayer);
     gridLayer = null;
@@ -255,18 +351,57 @@ function refreshGridLayer() {
       gridLayer = grat;
       previewMap.addLayer(gridLayer);
     }
+    gridCornerSource = new ol.source.Vector();
+    gridCornerLayer = new ol.layer.Vector({
+      source: gridCornerSource,
+      zIndex: 490,
+      style: (feature) =>
+        new ol.style.Style({
+          text: new ol.style.Text({
+            text: feature.get("label") || "",
+            font: "600 9px Inter, system-ui, sans-serif",
+            fill: new ol.style.Fill({ color: "#0f2d1c" }),
+            stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.9)", width: 2.4 }),
+            textAlign: feature.get("ta") || "center",
+            textBaseline: feature.get("tb") || "middle",
+            offsetX: feature.get("ox") || 0,
+            offsetY: feature.get("oy") || 0
+          })
+        })
+    });
+    previewMap.addLayer(gridCornerLayer);
+    refreshGeographicCornerLabels();
     return;
   }
 
+  const lineStroke = new ol.style.Stroke({
+    color: "rgba(12, 74, 52, 0.5)",
+    width: 1,
+    lineDash: [4, 6]
+  });
+  const labelFill = new ol.style.Fill({ color: "#082818" });
+  const labelHalo = new ol.style.Stroke({ color: "rgba(255,255,255,0.9)", width: 2.5 });
+
   gridLayer = new ol.layer.Vector({
     source: gridSource,
-    style: new ol.style.Style({
-      stroke: new ol.style.Stroke({
-        color: "rgba(12, 74, 52, 0.45)",
-        width: 1,
-        lineDash: [4, 6]
-      })
-    }),
+    style(feature) {
+      if (feature.get("label")) {
+        const kind = feature.get("kind");
+        return new ol.style.Style({
+          text: new ol.style.Text({
+            text: String(feature.get("label")),
+            font: "600 10px Inter, system-ui, sans-serif",
+            fill: labelFill,
+            stroke: labelHalo,
+            offsetX: kind === "northing" ? -8 : 0,
+            offsetY: kind === "easting" ? -8 : 0
+          })
+        });
+      }
+      return new ol.style.Style({
+        stroke: lineStroke
+      });
+    },
     zIndex: 460
   });
   previewMap.addLayer(gridLayer);
@@ -346,7 +481,12 @@ function createPreviewMap() {
     invalidatePdfPreviewIfShown("Map view changed — use Preview PDF again.");
     if (!$("printGridShow")?.checked) return;
     const crs = $("printGridCrs")?.value;
-    if (!crs || crs === "EPSG:4326" || !gridSource) return;
+    if (crs === "EPSG:4326") {
+      refreshGeographicCornerLabels();
+      previewMap.renderSync();
+      return;
+    }
+    if (!crs || !gridSource) return;
     const spacing = parseFloat($("printGridSpacing")?.value || "500");
     void updateProjectedGrid(previewMap, crs, spacing).then(() => previewMap.renderSync());
   });
@@ -424,16 +564,16 @@ function drawGraphicFooter(pdf, opts) {
   const bandW = pageW - margin * 2;
   const mid = pageW / 2 + 1;
 
-  pdf.setFillColor(248, 252, 245);
+  pdf.setFillColor(238, 245, 252);
   pdf.roundedRect(margin, footerTop, bandW, footerH, 3.2, 3.2, "F");
-  pdf.setDrawColor(86, 118, 72);
+  pdf.setDrawColor(92, 128, 168);
   pdf.setLineWidth(0.4);
   pdf.roundedRect(margin, footerTop, bandW, footerH, 3.2, 3.2, "S");
 
-  pdf.setFillColor(44, 108, 74);
+  pdf.setFillColor(56, 108, 148);
   pdf.rect(margin, footerTop + 2.2, 3, footerH - 4.4, "F");
 
-  pdf.setDrawColor(118, 156, 96);
+  pdf.setDrawColor(120, 158, 198);
   pdf.setLineWidth(0.5);
   pdf.line(margin + 6, footerTop + 6, pageW - margin - 4, footerTop + 6);
 
@@ -446,12 +586,12 @@ function drawGraphicFooter(pdf, opts) {
     for (const [label, value] of entries) {
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(6.4);
-      pdf.setTextColor(88, 108, 88);
+      pdf.setTextColor(72, 98, 122);
       pdf.text(String(label).toUpperCase(), startX, y);
       y += 3.2;
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(7.9);
-      pdf.setTextColor(28, 44, 30);
+      pdf.setTextColor(28, 44, 58);
       const lines = pdf.splitTextToSize(value || "—", maxValW);
       pdf.text(lines, startX, y);
       y += lines.length * 3.65 + 2;
@@ -472,7 +612,7 @@ function drawGraphicFooter(pdf, opts) {
     ["Exported (UTC)", ts]
   ]);
 
-  pdf.setFillColor(68, 124, 82);
+  pdf.setFillColor(72, 124, 168);
   pdf.rect(margin + 6, footerTop + footerH - 3.4, bandW - 12, 2, "F");
 }
 
@@ -531,10 +671,16 @@ async function buildPdfDocument() {
   const mapW = pageW - margin * 2;
   const mapH = mapBottom - mapTop;
 
-  pdf.setFillColor(245, 250, 242);
+  pdf.setFillColor(232, 241, 250);
+  pdf.rect(0, 0, pageW, pageH, "F");
+  pdf.setDrawColor(68, 108, 148);
+  pdf.setLineWidth(0.55);
+  pdf.roundedRect(2.4, 2.4, pageW - 4.8, pageH - 4.8, 1.2, 1.2, "S");
+
+  pdf.setFillColor(226, 236, 248);
   pdf.rect(0, 0, pageW, headerH + 6, "F");
-  pdf.setDrawColor(62, 107, 62);
-  pdf.setLineWidth(0.6);
+  pdf.setDrawColor(88, 128, 168);
+  pdf.setLineWidth(0.5);
   pdf.line(margin, headerH + 6, pageW - margin, headerH + 6);
 
   if (logoData) {
@@ -556,8 +702,8 @@ async function buildPdfDocument() {
   }
   pdf.addImage(qrDataUrl, "PNG", pageW - margin - 24, 5, 22, 22);
 
-  pdf.setDrawColor(78, 112, 61);
-  pdf.setLineWidth(0.85);
+  pdf.setDrawColor(72, 118, 162);
+  pdf.setLineWidth(0.65);
   pdf.roundedRect(mapLeft - 1.5, mapTop - 1.5, mapW + 3, mapH + 3, 2, 2, "S");
   pdf.addImage(mapImg, "JPEG", mapLeft, mapTop, mapW, mapH);
 
@@ -590,7 +736,8 @@ async function runPreviewPdf() {
   try {
     const { pdf } = await buildPdfDocument();
     disposePdfPreview();
-    const blob = pdf.output("blob");
+    const ab = pdf.output("arraybuffer");
+    const blob = new Blob([ab], { type: "application/pdf" });
     pdfPreviewBlobUrl = URL.createObjectURL(blob);
     const frame = $("printPdfPreviewFrame");
     const wrap = $("printPdfPreviewWrap");

@@ -377,31 +377,34 @@ function openParcelStatusPanel() {
 function tryParcelStatusMapClick(evt) {
   if (!parcelStatusState.pickArmed) return false;
   const mode = getParcelStatusLayerMode();
-  const wantBlocks = mode === "BLOCKS";
-  const wantParcels = mode === "PARCELS";
-  let hits = map.getFeaturesAtPixel(evt.pixel, {
-    layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer,
-    hitTolerance: 8
-  });
-  if (hits == null) hits = [];
-  if (!Array.isArray(hits)) hits = [hits];
   let hit = null;
   let layerHit = null;
-  if (wantParcels) {
-    const h = hits.find((x) => x.layer === parcelsLayer);
-    if (h) {
-      hit = h.feature;
-      layerHit = "PARCELS";
-    }
-  } else if (wantBlocks) {
-    const h = hits.find((x) => x.layer === blocksLayer);
-    if (h) {
-      hit = h.feature;
-      layerHit = "BLOCKS";
-    }
+  const hitOpts = { hitTolerance: 12 };
+
+  if (mode === "PARCELS") {
+    map.forEachFeatureAtPixel(
+      evt.pixel,
+      (feature) => {
+        hit = feature;
+        return true;
+      },
+      { ...hitOpts, layerFilter: (layer) => layer === parcelsLayer }
+    );
+    if (hit) layerHit = "PARCELS";
+  } else {
+    map.forEachFeatureAtPixel(
+      evt.pixel,
+      (feature) => {
+        hit = feature;
+        return true;
+      },
+      { ...hitOpts, layerFilter: (layer) => layer === blocksLayer }
+    );
+    if (hit) layerHit = "BLOCKS";
   }
+
   if (!hit) {
-    setStatus(statusEl, `Click a ${wantParcels ? "parcel" : "block"} polygon.`, true);
+    setStatus(statusEl, `Click a ${mode === "PARCELS" ? "parcel" : "block"} polygon.`, true);
     return true;
   }
   parcelStatusState.selectedFeature = hit;
@@ -503,9 +506,9 @@ function setupParcelStatusPanel() {
     parcelStatusState.pickArmed = true;
     pickBtn.classList.add("picking-active");
     if (cancelPickBtn) cancelPickBtn.hidden = false;
+    const mode = getParcelStatusLayerMode();
     const hint = document.getElementById("parcelStatusPickHint");
     if (hint) {
-      const mode = getParcelStatusLayerMode();
       hint.innerHTML =
         mode === "BLOCKS"
           ? "Click a <strong>block</strong> boundary on the map."

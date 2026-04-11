@@ -22,8 +22,10 @@
 <body>
   <div class="map-loader" id="mapLoader"><div class="map-loader-spinner"></div></div>
 
-  <div id="map"></div>
-  <div class="map-frame"></div>
+  <div class="map-viewport-wrap">
+    <div id="map"></div>
+    <div class="map-frame" aria-hidden="true"></div>
+  </div>
 
   <aside id="parcelStatusPanel" class="parcel-status-panel" aria-hidden="true" hidden>
     <div class="parcel-status-panel__inner">

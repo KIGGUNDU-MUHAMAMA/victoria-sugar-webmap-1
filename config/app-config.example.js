@@ -23,4 +23,6 @@ window.VSL_CONFIG = {
   // SURVEY_FUNCTION_NAME: "quick-api",
   // Set true only for a public demo without login (layers need sql/004 + 005 for anon reads).
   // ALLOW_GUEST_PREVIEW: false
+  // Verbose console logging for vsl_get_features_bbox (default off).
+  // DEBUG_MAP_RPC: false
 };

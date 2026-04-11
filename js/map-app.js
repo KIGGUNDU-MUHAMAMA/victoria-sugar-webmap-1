@@ -1222,7 +1222,7 @@ async function loadLayersFromDb() {
   map.updateSize();
   const size = map.getSize();
   if (!size || size[0] < 2 || size[1] < 2) {
-    if (window.console && console.debug) {
+    if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
       console.debug("[Victoria map] Skipping bbox load: map size not ready yet");
     }
     return;
@@ -1280,8 +1280,9 @@ async function loadLayersFromDb() {
     if (row.layer_type === "PARCELS") parcelsSource.addFeature(feature);
     n += 1;
   }
-  if (window.console && typeof console.debug === "function") {
-    console.debug(`[Victoria map] vsl_get_features_bbox: ${n} feature(s) in view (${(data || []).length} row(s) from API)`);
+  const rowCount = (data || []).length;
+  if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
+    console.debug(`[Victoria map] vsl_get_features_bbox: ${n} feature(s) drawn, ${rowCount} row(s) from API`);
   }
 }
 

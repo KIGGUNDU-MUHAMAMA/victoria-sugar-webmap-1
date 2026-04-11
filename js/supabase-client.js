@@ -7,7 +7,9 @@ const fallbackCfg = {
   AREA_TOLERANCE_PERCENT: 5,
   // false = webmap requires sign-in (recommended so RLS applies and layers load reliably).
   // Override with ALLOW_GUEST_PREVIEW: true in config/app-config.js for public demo only.
-  ALLOW_GUEST_PREVIEW: false
+  ALLOW_GUEST_PREVIEW: false,
+  // When true, logs bbox RPC details to the browser console (verbose).
+  DEBUG_MAP_RPC: false
 };
 
 const cfg = {

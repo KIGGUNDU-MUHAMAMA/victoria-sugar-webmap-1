@@ -870,8 +870,8 @@ function setPlaceSearchError(msg) {
 }
 
 function closePlaceSearchCard() {
-  const card = document.getElementById("placeSearchCard");
-  const fab = document.getElementById("placeSearchFab");
+  const pop = document.getElementById("placeSearchPopover");
+  const btn = document.getElementById("placeSearchBtn");
   const results = document.getElementById("placeSearchResults");
   if (placeSearchOutsideHandler) {
     document.removeEventListener("pointerdown", placeSearchOutsideHandler, true);
@@ -882,12 +882,9 @@ function closePlaceSearchCard() {
     placeSearchEscapeHandler = null;
   }
   placeSearchOpen = false;
-  if (card) {
-    card.hidden = true;
-    card.setAttribute("aria-hidden", "true");
-  }
-  fab?.classList.remove("place-search-fab--open");
-  fab?.setAttribute("aria-expanded", "false");
+  if (pop) pop.hidden = true;
+  btn?.classList.remove("active");
+  btn?.setAttribute("aria-expanded", "false");
   if (results) {
     results.innerHTML = "";
     results.hidden = true;
@@ -896,20 +893,19 @@ function closePlaceSearchCard() {
 }
 
 function openPlaceSearchCard() {
-  const card = document.getElementById("placeSearchCard");
-  const fab = document.getElementById("placeSearchFab");
-  if (!card || !fab || placeSearchOpen) return;
+  const pop = document.getElementById("placeSearchPopover");
+  const btn = document.getElementById("placeSearchBtn");
+  if (!pop || !btn || placeSearchOpen) return;
   closeInfoHelpPopover();
   closeParcelSearchPopover({ clearHighlight: true });
-  card.hidden = false;
-  card.setAttribute("aria-hidden", "false");
-  fab.classList.add("place-search-fab--open");
-  fab.setAttribute("aria-expanded", "true");
+  pop.hidden = false;
+  btn.classList.add("active");
+  btn.setAttribute("aria-expanded", "true");
   placeSearchOpen = true;
 
   placeSearchOutsideHandler = (ev) => {
-    const dock = document.getElementById("placeSearchDock");
-    if (!dock || dock.contains(ev.target)) return;
+    if (!placeSearchOpen) return;
+    if (pop.contains(ev.target) || btn.contains(ev.target)) return;
     closePlaceSearchCard();
   };
   document.addEventListener("pointerdown", placeSearchOutsideHandler, true);
@@ -923,6 +919,8 @@ function openPlaceSearchCard() {
   document.addEventListener("keydown", placeSearchEscapeHandler, true);
 
   requestAnimationFrame(() => {
+    positionPlaceSearchPopover();
+    requestAnimationFrame(() => positionPlaceSearchPopover());
     document.getElementById("placeSearchInput")?.focus();
   });
 }
@@ -1043,12 +1041,12 @@ async function runPlaceSearchQuery() {
 }
 
 function setupPlaceSearch() {
-  const fab = document.getElementById("placeSearchFab");
+  const toolbarBtn = document.getElementById("placeSearchBtn");
   const closeBtn = document.getElementById("placeSearchCloseBtn");
   const goBtn = document.getElementById("placeSearchGoBtn");
   const input = document.getElementById("placeSearchInput");
 
-  fab?.addEventListener("click", (e) => {
+  toolbarBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
     togglePlaceSearchCard();
   });
@@ -1059,6 +1057,10 @@ function setupPlaceSearch() {
       e.preventDefault();
       void runPlaceSearchQuery();
     }
+  });
+
+  window.addEventListener("resize", () => {
+    if (placeSearchOpen) positionPlaceSearchPopover();
   });
 }
 
@@ -1158,6 +1160,31 @@ function setParcelSearchPopoverError(msg) {
 function positionParcelSearchPopover() {
   const btn = document.getElementById("parcelSearchBtn");
   const pop = document.getElementById("parcelSearchPopover");
+  if (!btn || !pop || pop.hidden) return;
+  const r = btn.getBoundingClientRect();
+  const gap = 10;
+  const margin = 12;
+  pop.style.position = "fixed";
+  pop.style.zIndex = "1250";
+  const measured = pop.getBoundingClientRect();
+  const w = measured.width || 300;
+  const h = measured.height || 260;
+  let left = r.left;
+  if (left + w > window.innerWidth - margin) {
+    left = Math.max(margin, window.innerWidth - w - margin);
+  }
+  if (left < margin) left = margin;
+  let top = r.bottom + gap;
+  if (top + h > window.innerHeight - margin) {
+    top = Math.max(margin, r.top - gap - h);
+  }
+  pop.style.top = `${Math.round(top)}px`;
+  pop.style.left = `${Math.round(left)}px`;
+}
+
+function positionPlaceSearchPopover() {
+  const btn = document.getElementById("placeSearchBtn");
+  const pop = document.getElementById("placeSearchPopover");
   if (!btn || !pop || pop.hidden) return;
   const r = btn.getBoundingClientRect();
   const gap = 10;
@@ -1605,7 +1632,14 @@ async function initMap() {
     blocksSource,
     parcelsSource
   });
-  initCoordSearchDrawer({ map, setStatus, statusEl });
+  initCoordSearchDrawer({
+    map,
+    setStatus,
+    statusEl,
+    onDrawerOpen: () => {
+      closePlaceSearchCard();
+    }
+  });
   initCoordExtractDrawer({
     map,
     parcelsLayer,

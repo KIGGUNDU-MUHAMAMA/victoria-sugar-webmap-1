@@ -1784,7 +1784,7 @@ async function initMap() {
       tipLabel: "Layers",
       groupSelectStyle: "children",
       activationMode: "click",
-      startActive: true
+      startActive: false
     });
     map.addControl(layerSwitcher);
     if (typeof layerSwitcher.renderPanel === "function") {

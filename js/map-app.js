@@ -140,8 +140,6 @@ let searchPanelEscapeHandler = null;
 
 // Legacy aliases kept for internal functions that still reference these names
 let parcelSearchDockOpen = false;
-const parcelSearchOutsideHandler = null;
-const parcelSearchEscapeHandler = null;
 
 let placeSearchOpen = false;
 
@@ -1242,38 +1240,6 @@ function setParcelSearchPopoverError(msg) {
   el.hidden = false;
 }
 
-function openParcelSearchDock() {
-  const dock = document.getElementById("parcelSearchDock");
-  const searchBtn = document.getElementById("parcelSearchBtn");
-  const blockInput = document.getElementById("parcelSearchBlockInput");
-  if (!dock || !searchBtn || parcelSearchDockOpen) return;
-  closeInfoHelpPopover();
-  closePlaceSearchCard();
-  dock.hidden = false;
-  searchBtn.classList.add("active");
-  searchBtn.setAttribute("aria-expanded", "true");
-  parcelSearchDockOpen = true;
-
-  parcelSearchOutsideHandler = (ev) => {
-    if (!parcelSearchDockOpen) return;
-    if (dock.contains(ev.target) || searchBtn.contains(ev.target)) return;
-    closeParcelSearchPopover({ clearHighlight: false });
-  };
-  document.addEventListener("pointerdown", parcelSearchOutsideHandler, true);
-
-  parcelSearchEscapeHandler = (ev) => {
-    if (ev.key === "Escape" && parcelSearchDockOpen) {
-      ev.preventDefault();
-      closeParcelSearchPopover({ clearHighlight: false });
-    }
-  };
-  document.addEventListener("keydown", parcelSearchEscapeHandler, true);
-
-  requestAnimationFrame(() => {
-    blockInput?.focus();
-    map?.updateSize();
-  });
-}
 
 function openSearchPanel(tab = "coords") {
   const panel = document.getElementById("searchPanel");

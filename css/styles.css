@@ -2684,6 +2684,11 @@ select.search-panel__input {
   .webmap-app .map-left-stack > .info-help-popover {
     display: none; /* on small phones these are hidden when search is active */
   }
+
+  /* Completely hide status updating panel on mobile as requested */
+  .map-status {
+    display: none !important;
+  }
 }
 
 /* Floating Locate Me Button */

@@ -1820,7 +1820,12 @@ async function initMap() {
     });
     map.addControl(layerSwitcher);
     if (typeof layerSwitcher.renderPanel === "function") {
-      setTimeout(() => layerSwitcher.renderPanel(), 0);
+      setTimeout(() => {
+        layerSwitcher.renderPanel();
+        if (typeof layerSwitcher.hidePanel === "function") {
+          layerSwitcher.hidePanel();
+        }
+      }, 0);
     }
   } else {
     console.warn("LayerSwitcher not found at ol.control.LayerSwitcher or window.LayerSwitcher");

@@ -19,13 +19,8 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5"></script>
   <script src="./config/app-config.js"></script>
 </head>
-<body>
+<body class="webmap-app webmap-app--sidebar">
   <div class="map-loader" id="mapLoader"><div class="map-loader-spinner"></div></div>
-
-  <div class="map-viewport-wrap">
-    <div id="map"></div>
-    <div class="map-frame" aria-hidden="true"></div>
-  </div>
 
   <aside id="parcelStatusPanel" class="parcel-status-panel" aria-hidden="true" hidden>
     <div class="parcel-status-panel__inner">
@@ -110,7 +105,7 @@
       <p>Land intelligence platform for sugarcane blocks and parcels.</p>
     </div>
     <div class="map-top-controls">
-      <button type="button" class="control-btn" id="parcelSearchBtn" title="Find block or plot on the map" aria-expanded="false" aria-haspopup="dialog" aria-controls="parcelSearchPopover">
+      <button type="button" class="control-btn" id="parcelSearchBtn" title="Focus block / plot search" aria-expanded="true" aria-controls="parcelSearchDock">
         <i class="fas fa-search-location"></i><span class="btn-label">Search</span>
       </button>
       <button type="button" class="control-btn" id="locateBtn" title="Locate Me">
@@ -149,38 +144,63 @@
         <i class="fas fa-right-from-bracket"></i><span class="btn-label">Sign Out</span>
       </button>
     </div>
+  </div>
 
-    <div id="parcelSearchPopover" class="parcel-search-popover" hidden role="dialog" aria-modal="true" aria-labelledby="parcelSearchPopoverTitle">
-      <div class="parcel-search-popover__card">
-        <header class="parcel-search-popover__head">
-          <div class="parcel-search-popover__title-row">
-            <span class="parcel-search-popover__icon" aria-hidden="true"><i class="fas fa-map-location-dot"></i></span>
-            <h2 id="parcelSearchPopoverTitle" class="parcel-search-popover__title">Find block or plot</h2>
-          </div>
-          <button type="button" class="parcel-search-popover__close" id="parcelSearchPopoverCloseBtn" aria-label="Close search">
-            <i class="fas fa-times"></i>
-          </button>
-        </header>
-        <p class="parcel-search-popover__hint"><strong>Block</strong> (code or name) is always required. Leave <strong>plot</strong> empty to zoom to the whole block. To find one plot, enter both block and plot number—the map will highlight that plot.</p>
-        <form id="parcelSearchForm" class="parcel-search-popover__form" novalidate>
-          <div class="parcel-search-popover__fields">
-            <label class="parcel-search-popover__label" for="parcelSearchBlockInput">Block <span class="parcel-search-popover__req">required</span></label>
-            <input id="parcelSearchBlockInput" name="block" type="text" class="parcel-search-popover__input" placeholder="Code or name, e.g. 12 or North field" autocomplete="off" required>
-            <label class="parcel-search-popover__label" for="parcelSearchNoInput">Plot <span class="parcel-search-popover__opt">optional</span></label>
-            <input id="parcelSearchNoInput" name="parcelNo" type="number" class="parcel-search-popover__input" min="1" step="1" placeholder="Leave blank for block only, or e.g. 3 for a plot" inputmode="numeric">
-          </div>
-          <p id="parcelSearchPopoverError" class="parcel-search-popover__error" role="alert" hidden></p>
-          <div class="parcel-search-popover__actions">
-            <button type="button" class="btn-secondary parcel-search-popover__btn-cancel" id="parcelSearchPopoverCancelBtn">Cancel</button>
-            <button type="submit" class="parcel-search-popover__btn-go" id="parcelSearchGoBtn">
-              <i class="fas fa-location-arrow" aria-hidden="true"></i> Go to map
-            </button>
-          </div>
-        </form>
+  <div class="map-main" id="mapMain">
+    <aside class="map-sidebar" id="mapSidebar" aria-label="Search and feature details">
+      <section id="parcelSearchDock" class="parcel-search-dock" aria-labelledby="parcelSearchPopoverTitle">
+        <div class="parcel-search-popover__card parcel-search-dock__card">
+          <header class="parcel-search-popover__head">
+            <div class="parcel-search-popover__title-row">
+              <span class="parcel-search-popover__icon" aria-hidden="true"><i class="fas fa-map-location-dot"></i></span>
+              <h2 id="parcelSearchPopoverTitle" class="parcel-search-popover__title">Block / plot</h2>
+            </div>
+          </header>
+          <form id="parcelSearchForm" class="parcel-search-popover__form" novalidate>
+            <div class="parcel-search-popover__fields">
+              <label class="parcel-search-popover__label" for="parcelSearchBlockInput">Block</label>
+              <input id="parcelSearchBlockInput" name="block" type="text" class="parcel-search-popover__input" placeholder="Code or name" autocomplete="off" required>
+              <label class="parcel-search-popover__label" for="parcelSearchNoInput">Plot</label>
+              <input id="parcelSearchNoInput" name="parcelNo" type="number" class="parcel-search-popover__input" min="1" step="1" placeholder="Optional — number" inputmode="numeric">
+            </div>
+            <p id="parcelSearchPopoverError" class="parcel-search-popover__error" role="alert" hidden></p>
+            <div class="parcel-search-popover__actions parcel-search-popover__actions--icons">
+              <button type="button" class="parcel-search-popover__btn-icon btn-secondary" id="parcelSearchPopoverCancelBtn" title="Clear highlight" aria-label="Clear highlight">
+                <i class="fas fa-eraser" aria-hidden="true"></i>
+              </button>
+              <button type="submit" class="parcel-search-popover__btn-go parcel-search-popover__btn-go--icon" id="parcelSearchGoBtn" title="Zoom to block or plot" aria-label="Zoom to block or plot">
+                <i class="fas fa-location-arrow" aria-hidden="true"></i>
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="featureInfoPanel" class="feature-info-panel" hidden role="region" aria-label="Selected map feature">
+        <div id="featureInfoPanelInner" class="feature-info-panel__inner"></div>
+      </section>
+
+      <div id="infoHelpPopover" class="info-help-popover info-help-popover--sidebar" hidden role="dialog" aria-modal="true" aria-labelledby="infoHelpTitle">
+        <div class="info-help-popover__card">
+          <header class="info-help-popover__head">
+            <h2 id="infoHelpTitle" class="info-help-popover__title">Identify</h2>
+            <button type="button" class="info-help-popover__close" id="infoHelpCloseBtn" aria-label="Close">&times;</button>
+          </header>
+          <ul class="info-help-popover__list">
+            <li>Click a <strong>block</strong> or <strong>parcel</strong> to see details here.</li>
+            <li>Close with <strong>×</strong> or <strong>Escape</strong>.</li>
+            <li>A <strong>lat/lon grid</strong> is always shown on the map.</li>
+            <li><strong>Place</strong> (toolbar) searches worldwide names to fly the map.</li>
+          </ul>
+        </div>
       </div>
-    </div>
+    </aside>
 
-    <div id="placeSearchPopover" class="place-search-popover" hidden role="dialog" aria-modal="true" aria-labelledby="placeSearchTitle">
+    <div class="map-viewport-wrap">
+      <div id="map"></div>
+      <div class="map-frame" aria-hidden="true"></div>
+    </div>
+  <div id="placeSearchPopover" class="place-search-popover" hidden role="dialog" aria-modal="true" aria-labelledby="placeSearchTitle">
       <div id="placeSearchCard" class="place-search-card">
         <header class="place-search-card__head">
           <div>
@@ -199,23 +219,6 @@
         <p class="place-search-attrib">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors · Nominatim</p>
       </div>
     </div>
-
-    <div id="infoHelpPopover" class="info-help-popover" hidden role="dialog" aria-modal="true" aria-labelledby="infoHelpTitle">
-      <div class="info-help-popover__card">
-        <header class="info-help-popover__head">
-          <h2 id="infoHelpTitle" class="info-help-popover__title">Identify features</h2>
-          <button type="button" class="info-help-popover__close" id="infoHelpCloseBtn" aria-label="Close">&times;</button>
-        </header>
-        <ul class="info-help-popover__list">
-          <li>Click a <strong>block</strong> or <strong>parcel</strong> polygon to open a summary card at the click location.</li>
-          <li>The card lists codes, area, geometry status, cultivation status, harvest fields, and notes when present.</li>
-          <li>Use <strong>×</strong> on the card or press <strong>Escape</strong> to close it.</li>
-          <li><strong>Lat / lon grid</strong> (REFERENCE in the layer list) is sparse by default; toggle it off there if you need a cleaner view.</li>
-          <li><strong>Place</strong> next to <strong>Coords</strong> opens a place-name search (OpenStreetMap) to fly the map like a quick “Google Earth” lookup.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
 
   <aside id="surveyDrawer" class="survey-drawer" aria-hidden="true">
     <div class="survey-drawer-inner">
@@ -450,7 +453,7 @@
             <select id="printGridCrs" class="print-composer__input"></select>
             <label class="print-composer__label" for="printGridSpacing">Grid spacing (metres, projected CRS only)</label>
             <input id="printGridSpacing" type="number" class="print-composer__input" min="25" step="25" value="500">
-            <p class="print-composer__hint small">WGS84 geographic uses a latitude / longitude graticule. UTM / Arc 1960 options draw straight lines in that projection. Pan or zoom the preview to refresh a projected grid.</p>
+            <p class="print-composer__hint small">WGS84 geographic shows a lon/lat graticule plus straight <strong>WGS 84 / UTM zone 36N</strong> meter grid lines (spacing below). Other CRS options draw only that projection’s grid. Pan or zoom the preview to refresh a projected grid.</p>
           </section>
           <div class="print-composer__sync-row">
             <button type="button" class="btn-secondary print-composer__sync-btn" id="printComposerSyncBtn">Match main map</button>
@@ -488,10 +491,8 @@
     <hr>
     <h4>Base Maps</h4>
     <label><input type="radio" name="fbBasemap" value="Google Satellite Hybrid" checked> Google Satellite Hybrid</label>
-    <label><input type="radio" name="fbBasemap" value="OpenStreetMap"> OpenStreetMap</label>
     <label><input type="radio" name="fbBasemap" value="Esri World Imagery"> Esri World Imagery</label>
-    <label><input type="radio" name="fbBasemap" value="Esri World Topo Map"> Esri World Topo Map</label>
-    <label><input type="radio" name="fbBasemap" value="Esri World Terrain"> Esri World Terrain</label>
+    <label><input type="radio" name="fbBasemap" value="No Basemap"> No Basemap</label>
   </div>
 
   <script type="module" src="./js/map-app.js"></script>

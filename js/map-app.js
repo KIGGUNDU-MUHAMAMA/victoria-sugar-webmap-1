@@ -45,7 +45,6 @@ let activeInteraction = null;
 let activeSnapInteractions = [];
 /** Survey CSV preview vector sources (for snap); set after initSurveyImport */
 let surveyPreviewSnapSources = null;
-let infoOverlay;
 let baseGroupRef;
 
 const MAP_DRAW_PROJ = "EPSG:3857";
@@ -378,21 +377,8 @@ function buildLayerTree() {
     url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     crossOrigin: "anonymous"
   }), true);
-  const osm = createBasemapLayer("OpenStreetMap", new ol.source.OSM(), false);
-  const osmHot = createBasemapLayer("OpenStreetMap HOT", new ol.source.XYZ({
-    url: "https://{a-c}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
-    crossOrigin: "anonymous"
-  }));
   const esriImagery = createBasemapLayer("Esri World Imagery", new ol.source.XYZ({
     url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    crossOrigin: "anonymous"
-  }));
-  const esriTopo = createBasemapLayer("Esri World Topo Map", new ol.source.XYZ({
-    url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-    crossOrigin: "anonymous"
-  }));
-  const esriTerrain = createBasemapLayer("Esri World Terrain", new ol.source.XYZ({
-    url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}",
     crossOrigin: "anonymous"
   }));
   const noBasemap = createBasemapLayer("No Basemap", new ol.source.XYZ({
@@ -408,17 +394,12 @@ function buildLayerTree() {
   const baseGroup = new ol.layer.Group({
     title: "Base Maps",
     fold: "open",
-    layers: [
-      googleHybrid, osm, osmHot,
-      esriImagery, esriTopo, esriTerrain,
-      noBasemap
-    ]
+    layers: [googleHybrid, esriImagery, noBasemap]
   });
 
   let graticuleLayer = null;
   if (typeof ol !== "undefined" && ol.layer && typeof ol.layer.Graticule === "function") {
     graticuleLayer = new ol.layer.Graticule({
-      title: "Lat / lon grid",
       visible: true,
       maxLines: 12,
       targetSize: 300,
@@ -444,22 +425,14 @@ function buildLayerTree() {
       latLabelFormatter: (lat) => `${lat.toFixed(1)}°`,
       zIndex: 0
     });
+    graticuleLayer.set("displayInLayerSwitcher", false);
   }
-
-  const referenceGroup =
-    graticuleLayer != null
-      ? new ol.layer.Group({
-          title: "REFERENCE",
-          fold: "open",
-          layers: [graticuleLayer]
-        })
-      : null;
 
   sketchLayer.set("displayInLayerSwitcher", false);
   baseGroupRef = baseGroup;
   // Order = bottom → top. Tile basemaps must be below vector layers or opaque maps hide polygons.
   const stack = [baseGroup];
-  if (referenceGroup) stack.push(referenceGroup);
+  if (graticuleLayer) stack.push(graticuleLayer);
   stack.push(overlaysGroup, sketchLayer, measureLayer);
   return stack;
 }
@@ -864,27 +837,18 @@ function setupParcelStatusPanel() {
 }
 
 function closeInfoPopup() {
-  if (!infoOverlay) return;
-  const el = typeof infoOverlay.getElement === "function" ? infoOverlay.getElement() : null;
-  if (el) el.innerHTML = "";
-  infoOverlay.setPosition(undefined);
+  const inner = document.getElementById("featureInfoPanelInner");
+  const panel = document.getElementById("featureInfoPanel");
+  if (inner) inner.innerHTML = "";
+  if (panel) panel.hidden = true;
 }
 
 function setupInfoPopup() {
-  const popupEl = document.createElement("div");
-  popupEl.className = "map-popup map-popup--feature";
-  popupEl.setAttribute("role", "dialog");
-  popupEl.setAttribute("aria-label", "Feature details");
+  const inner = document.getElementById("featureInfoPanelInner");
+  const panel = document.getElementById("featureInfoPanel");
+  if (!inner || !panel) return;
 
-  infoOverlay = new ol.Overlay({
-    element: popupEl,
-    offset: [0, -14],
-    positioning: "bottom-center",
-    autoPan: true
-  });
-  map.addOverlay(infoOverlay);
-
-  popupEl.addEventListener("click", (ev) => {
+  inner.addEventListener("click", (ev) => {
     if (ev.target.closest(".map-popup__close")) {
       closeInfoPopup();
       selectedFeature = null;
@@ -894,7 +858,7 @@ function setupInfoPopup() {
 
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
-    if (infoOverlay && infoOverlay.getPosition() !== undefined) {
+    if (!panel.hidden) {
       closeInfoPopup();
       selectedFeature = null;
       selectedLayerType = null;
@@ -912,8 +876,8 @@ function setupInfoPopup() {
 
     selectedFeature = null;
     selectedLayerType = null;
-    popupEl.innerHTML = "";
-    infoOverlay.setPosition(undefined);
+    inner.innerHTML = "";
+    panel.hidden = true;
 
     map.forEachFeatureAtPixel(
       evt.pixel,
@@ -925,8 +889,12 @@ function setupInfoPopup() {
         selectedFeature = feature;
         selectedLayerType = isBlocks ? "BLOCKS" : "PARCELS";
 
-        popupEl.innerHTML = buildFeatureInfoPopupHtml(selectedLayerType, feature);
-        infoOverlay.setPosition(evt.coordinate);
+        inner.innerHTML = `<div class="map-popup map-popup--feature map-popup--feature-dock">${buildFeatureInfoPopupHtml(
+          selectedLayerType,
+          feature
+        )}</div>`;
+        panel.hidden = false;
+        panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
         return true;
       },
       { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 6 }
@@ -935,28 +903,9 @@ function setupInfoPopup() {
 }
 
 function positionInfoHelpPopover() {
-  const btn = document.getElementById("infoBtn");
   const pop = document.getElementById("infoHelpPopover");
-  if (!btn || !pop || pop.hidden) return;
-  const r = btn.getBoundingClientRect();
-  const gap = 10;
-  const margin = 12;
-  pop.style.position = "fixed";
-  pop.style.zIndex = "1250";
-  const measured = pop.getBoundingClientRect();
-  const w = measured.width || 300;
-  const h = measured.height || 200;
-  let left = r.left;
-  if (left + w > window.innerWidth - margin) {
-    left = Math.max(margin, window.innerWidth - w - margin);
-  }
-  if (left < margin) left = margin;
-  let top = r.bottom + gap;
-  if (top + h > window.innerHeight - margin) {
-    top = Math.max(margin, r.top - gap - h);
-  }
-  pop.style.top = `${Math.round(top)}px`;
-  pop.style.left = `${Math.round(left)}px`;
+  if (!pop || pop.hidden) return;
+  pop.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 function closeInfoHelpPopover() {
@@ -1005,7 +954,7 @@ function openInfoHelpPopover() {
   document.addEventListener("keydown", infoHelpEscapeHandler, true);
 
   requestAnimationFrame(() => {
-    positionInfoHelpPopover();
+    pop.scrollIntoView({ block: "nearest", behavior: "smooth" });
   });
 }
 
@@ -1317,10 +1266,6 @@ function clearSearchHighlight() {
   }
 }
 
-let parcelSearchPopoverOpen = false;
-let parcelSearchOutsideHandler = null;
-let parcelSearchEscapeHandler = null;
-
 function setParcelSearchPopoverError(msg) {
   const el = document.getElementById("parcelSearchPopoverError");
   if (!el) return;
@@ -1333,29 +1278,15 @@ function setParcelSearchPopoverError(msg) {
   el.hidden = false;
 }
 
-function positionParcelSearchPopover() {
-  const btn = document.getElementById("parcelSearchBtn");
-  const pop = document.getElementById("parcelSearchPopover");
-  if (!btn || !pop || pop.hidden) return;
-  const r = btn.getBoundingClientRect();
-  const gap = 10;
-  const margin = 12;
-  pop.style.position = "fixed";
-  pop.style.zIndex = "1250";
-  const measured = pop.getBoundingClientRect();
-  const w = measured.width || 300;
-  const h = measured.height || 260;
-  let left = r.left;
-  if (left + w > window.innerWidth - margin) {
-    left = Math.max(margin, window.innerWidth - w - margin);
-  }
-  if (left < margin) left = margin;
-  let top = r.bottom + gap;
-  if (top + h > window.innerHeight - margin) {
-    top = Math.max(margin, r.top - gap - h);
-  }
-  pop.style.top = `${Math.round(top)}px`;
-  pop.style.left = `${Math.round(left)}px`;
+function focusParcelSearchDock() {
+  closeInfoHelpPopover();
+  closePlaceSearchCard();
+  const dock = document.getElementById("parcelSearchDock");
+  const blockInput = document.getElementById("parcelSearchBlockInput");
+  requestAnimationFrame(() => {
+    dock?.scrollIntoView({ block: "start", behavior: "smooth" });
+    blockInput?.focus();
+  });
 }
 
 function positionPlaceSearchPopover() {
@@ -1387,62 +1318,8 @@ function closeParcelSearchPopover(options = {}) {
   const { clearHighlight = true } = options;
   closeInfoHelpPopover();
   closePlaceSearchCard();
-  const pop = document.getElementById("parcelSearchPopover");
-  const btn = document.getElementById("parcelSearchBtn");
-  if (parcelSearchOutsideHandler) {
-    document.removeEventListener("pointerdown", parcelSearchOutsideHandler, true);
-    parcelSearchOutsideHandler = null;
-  }
-  if (parcelSearchEscapeHandler) {
-    document.removeEventListener("keydown", parcelSearchEscapeHandler, true);
-    parcelSearchEscapeHandler = null;
-  }
-  parcelSearchPopoverOpen = false;
-  if (pop) pop.hidden = true;
-  btn?.classList.remove("active");
-  btn?.setAttribute("aria-expanded", "false");
   setParcelSearchPopoverError("");
   if (clearHighlight) clearSearchHighlight();
-}
-
-function openParcelSearchPopover() {
-  const pop = document.getElementById("parcelSearchPopover");
-  const btn = document.getElementById("parcelSearchBtn");
-  const blockInput = document.getElementById("parcelSearchBlockInput");
-  if (!pop || !btn || parcelSearchPopoverOpen) return;
-
-  closeInfoHelpPopover();
-  closePlaceSearchCard();
-  pop.hidden = false;
-  btn.classList.add("active");
-  btn.setAttribute("aria-expanded", "true");
-  parcelSearchPopoverOpen = true;
-
-  parcelSearchOutsideHandler = (ev) => {
-    if (!parcelSearchPopoverOpen) return;
-    if (pop.contains(ev.target) || btn.contains(ev.target)) return;
-    closeParcelSearchPopover({ clearHighlight: true });
-  };
-  document.addEventListener("pointerdown", parcelSearchOutsideHandler, true);
-
-  parcelSearchEscapeHandler = (ev) => {
-    if (ev.key === "Escape" && parcelSearchPopoverOpen) {
-      ev.preventDefault();
-      closeParcelSearchPopover({ clearHighlight: true });
-    }
-  };
-  document.addEventListener("keydown", parcelSearchEscapeHandler, true);
-
-  requestAnimationFrame(() => {
-    positionParcelSearchPopover();
-    blockInput?.focus();
-    blockInput?.select?.();
-  });
-}
-
-function toggleParcelSearchPopover() {
-  if (parcelSearchPopoverOpen) closeParcelSearchPopover({ clearHighlight: true });
-  else openParcelSearchPopover();
 }
 
 async function runLocateParcelFromPopover() {
@@ -1540,7 +1417,7 @@ async function runLocateParcelFromPopover() {
       } else {
         setStatus(statusEl, `Block ${bc} — zoomed to block boundary.`);
       }
-      closeParcelSearchPopover({ clearHighlight: false });
+      setParcelSearchPopoverError("");
     } finally {
       goBtn.disabled = false;
       if (cancelBtn) cancelBtn.disabled = false;
@@ -1554,8 +1431,9 @@ async function runLocateParcelFromPopover() {
     finish();
   };
 
+  const sidebarPad = document.getElementById("mapSidebar")?.getBoundingClientRect().width ?? 300;
   const fitOpts = {
-    padding: [100, 100, 100, 100],
+    padding: [88, 96, 96, Math.min(360, sidebarPad + 24)],
     maxZoom: 19,
     duration: 1350,
     callback: () => safeFinish()
@@ -1571,24 +1449,21 @@ async function runLocateParcelFromPopover() {
 function setupParcelSearchPopover() {
   const searchBtn = document.getElementById("parcelSearchBtn");
   const form = document.getElementById("parcelSearchForm");
-  const closeBtn = document.getElementById("parcelSearchPopoverCloseBtn");
   const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
 
   searchBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    toggleParcelSearchPopover();
+    focusParcelSearchDock();
   });
 
-  closeBtn?.addEventListener("click", () => closeParcelSearchPopover({ clearHighlight: true }));
-  cancelBtn?.addEventListener("click", () => closeParcelSearchPopover({ clearHighlight: true }));
+  cancelBtn?.addEventListener("click", () => {
+    setParcelSearchPopoverError("");
+    clearSearchHighlight();
+  });
 
   form?.addEventListener("submit", (e) => {
     e.preventDefault();
     runLocateParcelFromPopover();
-  });
-
-  window.addEventListener("resize", () => {
-    if (parcelSearchPopoverOpen) positionParcelSearchPopover();
   });
 }
 
@@ -1796,6 +1671,8 @@ function bindEvents() {
     await supabase.auth.signOut();
     window.location.href = "./login.html";
   });
+
+  window.addEventListener("resize", () => map?.updateSize());
 }
 
 async function initUser() {
@@ -1896,10 +1773,10 @@ async function initMap() {
     googleLayer.getSource().on("tileloaderror", () => {
       errorCount += 1;
       if (errorCount >= 4 && googleLayer.getVisible()) {
-        setBasemapByTitle("OpenStreetMap");
-        const radio = fallbackLayerSwitcherEl?.querySelector("input[name='fbBasemap'][value='OpenStreetMap']");
+        setBasemapByTitle("Esri World Imagery");
+        const radio = fallbackLayerSwitcherEl?.querySelector("input[name='fbBasemap'][value='Esri World Imagery']");
         if (radio) radio.checked = true;
-        setStatus(statusEl, "Google Hybrid unavailable. Fell back to OpenStreetMap.", true);
+        setStatus(statusEl, "Google Hybrid unavailable. Fell back to Esri World Imagery.", true);
       }
     });
   }

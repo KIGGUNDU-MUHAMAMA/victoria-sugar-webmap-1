@@ -203,6 +203,121 @@ button:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
+/* Webmap: left sidebar (search + identify help + feature details) + map */
+.webmap-app.webmap-app--sidebar .map-main {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 86px;
+  bottom: 0;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  z-index: 0;
+}
+
+.webmap-app .map-sidebar {
+  flex: 0 0 min(300px, 36vw);
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: linear-gradient(180deg, #fdfffb 0%, #eef5ec 100%);
+  border-right: 1px solid var(--border);
+  padding: 10px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 5;
+}
+
+.webmap-app .map-viewport-wrap {
+  position: relative !important;
+  inset: auto !important;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  border-radius: 0 14px 14px 0;
+}
+
+.webmap-app .parcel-search-dock__card {
+  box-shadow: 0 2px 14px rgba(12, 40, 28, 0.08);
+}
+
+.webmap-app .parcel-search-popover__actions--icons {
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.webmap-app .parcel-search-popover__btn-icon,
+.webmap-app .parcel-search-popover__btn-go--icon {
+  flex: 0 0 auto !important;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+.webmap-app .parcel-search-popover__btn-go--icon {
+  min-width: 2.75rem;
+}
+
+.webmap-app .feature-info-panel {
+  border: 1px solid rgba(78, 112, 61, 0.28);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(12, 40, 28, 0.08);
+}
+
+.webmap-app .feature-info-panel__inner {
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+}
+
+.webmap-app .map-popup--feature-dock {
+  min-width: 0;
+  max-width: none;
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+}
+
+.webmap-app .info-help-popover--sidebar {
+  width: 100%;
+  max-width: none;
+  filter: none;
+}
+
+.webmap-app .info-help-popover--sidebar .info-help-popover__card {
+  box-shadow: 0 2px 12px rgba(12, 40, 28, 0.08);
+}
+
+@media (max-width: 900px) {
+  .webmap-app.webmap-app--sidebar .map-main {
+    flex-direction: column;
+    top: 86px;
+  }
+
+  .webmap-app .map-sidebar {
+    flex: 0 1 auto;
+    width: 100%;
+    max-height: min(40vh, 300px);
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .webmap-app .map-viewport-wrap {
+    flex: 1;
+    min-height: 0;
+    border-radius: 0 0 14px 14px;
+  }
+}
+
 .project-toolbar {
   position: fixed;
   top: 10px;

@@ -2490,6 +2490,19 @@ select.search-panel__input {
   transform: translateY(1px);
 }
 
+/* Armed / picking active state for the Extract tab */
+.search-panel__btn-primary--armed {
+  background: linear-gradient(135deg, #c87a10, #a05c08) !important;
+  box-shadow: 0 0 0 3px rgba(200, 122, 16, 0.3), 0 4px 14px rgba(160, 92, 8, 0.32) !important;
+  animation: armedPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes armedPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(200, 122, 16, 0.3), 0 4px 14px rgba(160, 92, 8, 0.28); }
+  50%       { box-shadow: 0 0 0 6px rgba(200, 122, 16, 0.18), 0 4px 18px rgba(160, 92, 8, 0.38); }
+}
+
+
 .search-panel__btn-secondary {
   width: 100%;
   margin: 0;

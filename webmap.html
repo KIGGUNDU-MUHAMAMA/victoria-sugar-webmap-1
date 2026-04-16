@@ -117,14 +117,8 @@
       <button type="button" class="control-btn" id="fullscreenBtn" title="Full Screen">
         <i class="fas fa-expand"></i><span class="btn-label">Full</span>
       </button>
-      <button type="button" class="control-btn" id="infoBtn" title="How identify works" aria-expanded="false" aria-controls="infoHelpPopover">
-        <i class="fas fa-circle-info"></i><span class="btn-label">Info</span>
-      </button>
       <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
         <i class="fas fa-chart-simple"></i><span class="btn-label">Status</span>
-      </button>
-      <button type="button" class="control-btn" id="coordExtractorMainBtn" title="Coordinate Extractor">
-        <i class="fas fa-draw-polygon"></i><span class="btn-label">Extract</span>
       </button>
       <button type="button" class="control-btn" id="drawingPanelBtn" title="Draw and Measure">
         <i class="fas fa-ruler-combined"></i><span class="btn-label">Draw</span>
@@ -172,6 +166,9 @@
           <button type="button" class="search-tab" id="tabPlace" role="tab" aria-selected="false" aria-controls="searchTabPlace" data-tab="place">
             <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i> Place
           </button>
+          <button type="button" class="search-tab" id="tabExtract" role="tab" aria-selected="false" aria-controls="searchTabExtract" data-tab="extract">
+            <i class="fas fa-draw-polygon" aria-hidden="true"></i> Extract
+          </button>
         </div>
 
         <!-- ── TAB 1: Coordinate Search ── -->
@@ -209,14 +206,6 @@
           <button type="button" id="coordClearMarkersBtn" class="search-panel__btn-secondary" style="margin-top:0.6rem">
             <i class="fas fa-eraser" aria-hidden="true"></i> Clear Markers
           </button>
-
-          <div class="coord-drawer-related">
-            <p class="extract-section-label">Export from map</p>
-            <button type="button" id="coordSearchOpenExtractBtn" class="btn-pick-parcel btn-pick-parcel--compact">
-              <i class="fas fa-download" aria-hidden="true"></i> Block / parcel export (CSV / DXF)
-            </button>
-            <p class="small extract-related-hint">Opens <strong>Extract</strong> to download block or parcel boundaries in your chosen CRS.</p>
-          </div>
         </div>
 
         <!-- ── TAB 2: Block / Parcel Search ── -->
@@ -252,6 +241,36 @@
           <p id="placeSearchError" class="search-panel__error" role="alert" hidden></p>
           <ul id="placeSearchResults" class="place-search-results" hidden></ul>
           <p class="search-panel__attrib">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors · Nominatim</p>
+        </div>
+        <!-- ── TAB 4: Extract ── -->
+        <div id="searchTabExtract" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabExtract" hidden>
+
+          <ol class="extract-step-list" aria-label="Steps">
+            <li><span class="extract-step-num">1</span> CRS &amp; file types</li>
+            <li><span class="extract-step-num">2</span> Arm picker</li>
+            <li><span class="extract-step-num">3</span> Click block or parcel → download</li>
+          </ol>
+
+          <label class="search-panel__label" for="coordExtractCrsSelect">Export coordinate system</label>
+          <select id="coordExtractCrsSelect" class="search-panel__input"></select>
+
+          <div class="coord-mode-row coord-export-formats" style="margin-top:0.55rem">
+            <label class="coord-mode-label"><input type="checkbox" id="coordExtractCsv" checked> CSV corners</label>
+            <label class="coord-mode-label"><input type="checkbox" id="coordExtractDxf" checked> DXF polyline</label>
+          </div>
+
+          <button type="button" id="coordExtractPickBtn" class="search-panel__btn-primary" style="margin-top:0.75rem">
+            <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on Map
+          </button>
+          <button type="button" id="coordExtractCancelPickBtn" class="search-panel__btn-secondary" style="margin-top:0.4rem" hidden>
+            <i class="fas fa-times" aria-hidden="true"></i> Cancel picking
+          </button>
+
+          <div id="coordExtractHint" class="extract-hint" role="status" aria-live="polite" style="margin-top:0.6rem">
+            Choose CRS and formats, then press <strong>Select on Map</strong> and click a <strong>block</strong> (red outline) or <strong>parcel</strong> (blue fill).
+          </div>
+
+          <div id="coordExtractLastExport" class="extract-last-export" hidden style="margin-top:0.5rem"></div>
         </div>
       </div>
     </section>
@@ -330,50 +349,8 @@
 
   <!-- coordSearchDrawer aside removed — coordinate search now lives inside #searchPanel tab 1 -->
 
-  <aside id="coordExtractDrawer" class="survey-drawer coord-extract-drawer" aria-hidden="true" data-picking="">
-    <div class="survey-drawer-inner">
-      <div class="survey-drawer-head">
-        <h2>Coordinate extractor</h2>
-        <button type="button" class="survey-close" id="coordExtractCloseBtn" aria-label="Close">&times;</button>
-      </div>
-      <p class="small">Export <strong>block</strong> or <strong>parcel</strong> boundary corners as CSV and/or DXF in your chosen CRS. Where a parcel sits on a block, the parcel is used.</p>
-
-      <ol class="extract-step-list" aria-label="Steps">
-        <li><span class="extract-step-num">1</span> CRS &amp; file types</li>
-        <li><span class="extract-step-num">2</span> Arm picker</li>
-        <li><span class="extract-step-num">3</span> Click block or parcel → download</li>
-      </ol>
-
-      <div class="extract-section">
-        <label class="extract-section-label" for="coordExtractCrsSelect">Export coordinate system</label>
-        <select id="coordExtractCrsSelect"></select>
-      </div>
-
-      <div class="extract-section">
-        <span class="extract-section-label">File types</span>
-        <div class="coord-mode-row coord-export-formats">
-          <label class="coord-mode-label"><input type="checkbox" id="coordExtractCsv" checked> CSV (corner table)</label>
-          <label class="coord-mode-label"><input type="checkbox" id="coordExtractDxf" checked> DXF (closed polyline)</label>
-        </div>
-      </div>
-
-      <hr class="extract-divider">
-
-      <div class="extract-section">
-        <span class="extract-section-label">Map selection</span>
-        <button type="button" id="coordExtractPickBtn" class="btn-pick-parcel">
-          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on map
-        </button>
-        <button type="button" id="coordExtractCancelPickBtn" class="btn-secondary extract-cancel-pick" hidden>Cancel picking</button>
-      </div>
-
-      <div id="coordExtractHint" class="extract-hint" role="status" aria-live="polite">
-        Choose CRS and formats, then press <strong>Select on map</strong> and click a block (red) or parcel (blue).
-      </div>
-
-      <div id="coordExtractLastExport" class="extract-last-export" hidden></div>
-    </div>
-  </aside>
+  <!-- coordExtractDrawer: state-only anchor for data-picking; no visible UI (Extract tab is now in #searchPanel) -->
+  <aside id="coordExtractDrawer" class="coord-extract-drawer" aria-hidden="true" data-picking="" style="display:none"></aside>
 
   <aside class="side-panel" id="panelHost" aria-label="Draw and measure tools">
     <div class="panel active" id="drawingPanel">

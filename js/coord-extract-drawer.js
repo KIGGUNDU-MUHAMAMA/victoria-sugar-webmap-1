@@ -149,11 +149,13 @@ export function initCoordExtractDrawer({
   blocksLayer,
   setStatus,
   statusEl,
-  stopActiveTool
+  stopActiveTool,
+  panelMode
 }) {
   const drawer = document.getElementById("coordExtractDrawer");
-  const toggleBtn = document.getElementById("coordExtractorMainBtn");
-  const closeBtn = document.getElementById("coordExtractCloseBtn");
+  // In panelMode the toggle button is the Search toolbar btn — no dedicated drawer toggle
+  const toggleBtn = panelMode ? null : document.getElementById("coordExtractorMainBtn");
+  const closeBtn = panelMode ? null : document.getElementById("coordExtractCloseBtn");
   const crsSelect = document.getElementById("coordExtractCrsSelect");
   const exportCsv = document.getElementById("coordExtractCsv");
   const exportDxf = document.getElementById("coordExtractDxf");
@@ -162,7 +164,11 @@ export function initCoordExtractDrawer({
   const hintEl = document.getElementById("coordExtractHint");
   const lastExportEl = document.getElementById("coordExtractLastExport");
 
-  if (!drawer || !toggleBtn) {
+  if (!drawer) {
+    return { closeDrawer: () => {} };
+  }
+  // In non-panelMode we need the toggle button
+  if (!panelMode && !toggleBtn) {
     return { closeDrawer: () => {} };
   }
 
@@ -196,7 +202,17 @@ export function initCoordExtractDrawer({
   function setPickingUi(armed) {
     pickingArmed = armed;
     drawer.dataset.picking = armed ? "1" : "";
-    pickBtn?.classList.toggle("btn-pick-parcel--armed", armed);
+    if (panelMode) {
+      // Visual feedback on the inline button
+      if (pickBtn) {
+        pickBtn.classList.toggle("search-panel__btn-primary--armed", armed);
+        pickBtn.innerHTML = armed
+          ? '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Picking…'
+          : '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on Map';
+      }
+    } else {
+      pickBtn?.classList.toggle("btn-pick-parcel--armed", armed);
+    }
     if (cancelPickBtn) cancelPickBtn.hidden = !armed;
   }
 
@@ -363,6 +379,12 @@ export function initCoordExtractDrawer({
   map.on("singleclick", onExtractSingleClick);
 
   function closeDrawer() {
+    if (panelMode) {
+      // In panelMode the search panel manages its own visibility;
+      // only disarm picking here.
+      disarmPicking();
+      return;
+    }
     disarmPicking();
     drawer.classList.remove("open");
     drawer.setAttribute("aria-hidden", "true");
@@ -371,6 +393,7 @@ export function initCoordExtractDrawer({
   }
 
   function openDrawer() {
+    if (panelMode) return; // panel open handled by map-app.js
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     toggleBtn.classList.add("active");
@@ -398,22 +421,33 @@ export function initCoordExtractDrawer({
     setStatus(statusEl, "Picking cancelled.");
   });
 
-  toggleBtn.addEventListener("click", () => {
-    if (drawer.classList.contains("open")) {
-      closeDrawer();
-    } else {
-      openDrawer();
-    }
-  });
-
-  closeBtn?.addEventListener("click", closeDrawer);
+  if (!panelMode) {
+    toggleBtn.addEventListener("click", () => {
+      if (drawer.classList.contains("open")) {
+        closeDrawer();
+      } else {
+        openDrawer();
+      }
+    });
+    closeBtn?.addEventListener("click", closeDrawer);
+  }
 
   function onForceClose() {
-    if (drawer.classList.contains("open")) closeDrawer();
+    if (panelMode) {
+      disarmPicking();
+    } else if (drawer.classList.contains("open")) {
+      closeDrawer();
+    }
   }
   window.addEventListener("vsl-force-close-extract-drawer", onForceClose);
 
   window.addEventListener("vsl-open-extract-drawer", () => {
+    if (panelMode) {
+      // When Extract is triggered by event in panelMode, just reset hint and disarm
+      disarmPicking();
+      resetIdleHint();
+      return;
+    }
     document.getElementById("surveyDrawer")?.classList.remove("open");
     document.getElementById("surveyPanelBtn")?.classList.remove("active");
     document.getElementById("coordSearchDrawer")?.classList.remove("open");

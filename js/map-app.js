@@ -1305,9 +1305,9 @@ function closeSearchPanel(options = {}) {
 }
 
 function activateSearchTab(tab) {
-  const tabs = ["coords", "parcel", "place"];
-  const tabElMap = { coords: "tabCoords", parcel: "tabParcel", place: "tabPlace" };
-  const bodyElMap = { coords: "searchTabCoords", parcel: "searchTabParcel", place: "searchTabPlace" };
+  const tabs = ["coords", "parcel", "place", "extract"];
+  const tabElMap = { coords: "tabCoords", parcel: "tabParcel", place: "tabPlace", extract: "tabExtract" };
+  const bodyElMap = { coords: "searchTabCoords", parcel: "searchTabParcel", place: "searchTabPlace", extract: "searchTabExtract" };
   tabs.forEach((t) => {
     const tabEl = document.getElementById(tabElMap[t]);
     const bodyEl = document.getElementById(bodyElMap[t]);
@@ -1318,7 +1318,7 @@ function activateSearchTab(tab) {
 }
 
 function setupSearchTabSwitching() {
-  ["tabCoords", "tabParcel", "tabPlace"].forEach((id) => {
+  ["tabCoords", "tabParcel", "tabPlace", "tabExtract"].forEach((id) => {
     const btn = document.getElementById(id);
     btn?.addEventListener("click", () => {
       const tab = btn.dataset.tab;
@@ -1675,8 +1675,10 @@ function bindEvents() {
   setupSearchTabSwitching();
   setupParcelSearchPopover();
   setupParcelStatusPanel();
-  setupInfoHelpPopover();
   setupPlaceSearch();
+
+  const searchCloseBtn = document.getElementById("searchPanelCloseBtn");
+  searchCloseBtn?.addEventListener("click", () => closeSearchPanel({ clearHighlight: false }));
 
   drawBlockBtn.addEventListener("click", () => drawGeometry("BLOCKS"));
   drawParcelBtn.addEventListener("click", () => drawGeometry("PARCELS"));
@@ -1848,7 +1850,8 @@ async function initMap() {
     blocksLayer,
     setStatus,
     statusEl,
-    stopActiveTool
+    stopActiveTool,
+    panelMode: true
   });
   await loadLayersFromDb();
   map.on("moveend", async () => {

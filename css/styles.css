@@ -1410,17 +1410,22 @@ body.print-composer-open {
 
 .map-status {
   position: fixed;
-  left: 12px;
-  bottom: 12px;
-  width: min(560px, calc(100vw - 24px));
-  background: rgba(255, 255, 255, 0.72);
+  top: 86px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(560px, calc(100vw - 24px));
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(47, 107, 47, 0.18);
-  border-radius: 10px;
-  z-index: 1150;
+  border-radius: 20px;
+  padding: 8px 16px;
+  z-index: 1200;
   font-size: 0.85rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  text-align: center;
+  pointer-events: none;
 }
 
 .layer-switcher {

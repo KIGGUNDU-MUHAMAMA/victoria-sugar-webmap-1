@@ -1659,14 +1659,46 @@ function startMeasure(type) {
   setStatus(statusEl, type === "LineString" ? "Measuring distance…" : "Measuring area…");
 }
 
+let userLocationLayer = null;
+
 function locateMe() {
   if (!navigator.geolocation) {
     setStatus(statusEl, "Geolocation is not supported in this browser.", true);
     return;
   }
+
+  if (!userLocationLayer && map) {
+    userLocationLayer = new ol.layer.Vector({
+      source: new ol.source.Vector(),
+      zIndex: 1100,
+      style: new ol.style.Style({
+        image: new ol.style.Circle({
+          radius: 8,
+          fill: new ol.style.Fill({ color: '#3b82f6' }), /* Blue dot */
+          stroke: new ol.style.Stroke({ color: '#ffffff', width: 3 })
+        })
+      })
+    });
+    userLocationLayer.set("displayInLayerSwitcher", false);
+    userLocationLayer.set("title", "My Location");
+    map.addLayer(userLocationLayer);
+  }
+
+  setStatus(statusEl, "Locating your device...");
+
   navigator.geolocation.getCurrentPosition((pos) => {
     const coord = ol.proj.fromLonLat([pos.coords.longitude, pos.coords.latitude]);
+    
+    if (userLocationLayer) {
+      userLocationLayer.getSource().clear();
+      userLocationLayer.getSource().addFeature(new ol.Feature({
+        geometry: new ol.geom.Point(coord)
+      }));
+    }
+
     map.getView().animate({ center: coord, zoom: 16, duration: 350 });
+    setStatus(statusEl, "Location found.");
+    setTimeout(() => clearStatus(statusEl), 3000); // Clear after 3s
   }, (err) => setStatus(statusEl, err.message, true), { enableHighAccuracy: true, timeout: 9000 });
 }
 

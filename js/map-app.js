@@ -11,14 +11,9 @@ const cfg = getConfig();
 const statusEl = document.getElementById("status");
 const panelHost = document.getElementById("panelHost");
 
-const drawBlockBtn = document.getElementById("drawBlockBtn");
-const drawParcelBtn = document.getElementById("drawParcelBtn");
 const measureLineBtn = document.getElementById("measureLineBtn");
 const measureAreaBtn = document.getElementById("measureAreaBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
-const drawBlockCodeInput = document.getElementById("drawBlockCodeInput");
-const drawParcelBlockInput = document.getElementById("drawParcelBlockInput");
-const drawParcelNoOverride = document.getElementById("drawParcelNoOverride");
 const snapBlocksCb = document.getElementById("snapBlocksCb");
 const snapParcelsCb = document.getElementById("snapParcelsCb");
 const snapSurveyCb = document.getElementById("snapSurveyCb");
@@ -1712,8 +1707,6 @@ function bindEvents() {
   const searchCloseBtn = document.getElementById("searchPanelCloseBtn");
   searchCloseBtn?.addEventListener("click", () => closeSearchPanel({ clearHighlight: false }));
 
-  drawBlockBtn.addEventListener("click", () => drawGeometry("BLOCKS"));
-  drawParcelBtn.addEventListener("click", () => drawGeometry("PARCELS"));
   measureLineBtn.addEventListener("click", () => startMeasure("LineString"));
   measureAreaBtn.addEventListener("click", () => startMeasure("Polygon"));
   stopDrawBtn.addEventListener("click", stopActiveTool);
@@ -1773,16 +1766,11 @@ async function initUser() {
   if (psApply) psApply.disabled = statusReadonly;
 
   if (currentProfile.role === "MANAGMENT") {
-    drawBlockBtn.disabled = true;
-    drawParcelBtn.disabled = true;
     measureLineBtn.disabled = true;
     measureAreaBtn.disabled = true;
     stopDrawBtn.disabled = true;
     clearMeasuresBtn.disabled = true;
     for (const el of [
-      drawBlockCodeInput,
-      drawParcelBlockInput,
-      drawParcelNoOverride,
       snapBlocksCb,
       snapParcelsCb,
       snapSurveyCb

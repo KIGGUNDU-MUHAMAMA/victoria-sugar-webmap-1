@@ -117,8 +117,8 @@
       <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
         <i class="fas fa-chart-simple"></i><span class="btn-label">Status</span>
       </button>
-      <button type="button" class="control-btn" id="drawingPanelBtn" title="Draw and Measure">
-        <i class="fas fa-ruler-combined"></i><span class="btn-label">Draw</span>
+      <button type="button" class="control-btn" id="drawingPanelBtn" title="Measure Distances and Area">
+        <i class="fas fa-ruler-combined"></i><span class="btn-label">Measure</span>
       </button>
       <button type="button" class="control-btn" id="surveyPanelBtn" title="Survey CSV import">
         <i class="fas fa-drafting-compass"></i><span class="btn-label">Survey</span>
@@ -356,44 +356,18 @@
     <div class="panel active" id="drawingPanel">
       <header class="draw-tools__head">
         <div class="draw-tools__head-text">
-          <h3 class="draw-tools__title">Draw and measure</h3>
-          <p class="draw-tools__lede small">
-            Secondary to <strong>Survey</strong> for bulk CSV updates. Use this for quick digitizing or checks on the map.
-          </p>
+          <h3 id="drawPanelTitle" class="draw-tools__title">Measure Tool</h3>
         </div>
         <button type="button" class="draw-tools__close" id="drawPanelCloseBtn" aria-label="Close draw panel">&times;</button>
       </header>
 
-      <section class="draw-tools__section" aria-labelledby="drawCadastralTitle">
-        <h4 id="drawCadastralTitle" class="draw-tools__section-title">Cadastral drawing</h4>
-        <div class="draw-tools__field">
-          <label class="draw-tools__label" for="drawBlockCodeInput">Block (for draw block)</label>
-          <input id="drawBlockCodeInput" type="text" class="draw-tools__input" placeholder="Code or name, e.g. 12" autocomplete="off">
-        </div>
-        <div class="draw-tools__field">
-          <label class="draw-tools__label" for="drawParcelBlockInput">Parent block (for draw parcel)</label>
-          <input id="drawParcelBlockInput" type="text" class="draw-tools__input" placeholder="Block code or number" autocomplete="off">
-        </div>
-        <div class="draw-tools__field">
-          <label class="draw-tools__label" for="drawParcelNoOverride">Parcel number <span class="draw-tools__opt">optional</span></label>
-          <input id="drawParcelNoOverride" type="number" min="1" step="1" class="draw-tools__input" placeholder="Leave blank for next free number">
-        </div>
-        <p class="draw-tools__hint small">Parcels: the server assigns the next free plot number in that block when the field above is empty.</p>
-        <div class="draw-tools__snap" role="group" aria-label="Snapping while drawing">
+      <section class="draw-tools__section" aria-labelledby="drawMeasureTitle">
+        <div class="draw-tools__snap" style="margin-bottom: 12px;" role="group" aria-label="Snapping while drawing">
           <span class="draw-tools__snap-legend">Snap to</span>
           <label class="draw-tools__check"><input type="checkbox" id="snapBlocksCb" checked> Blocks</label>
           <label class="draw-tools__check"><input type="checkbox" id="snapParcelsCb" checked> Parcels</label>
           <label class="draw-tools__check"><input type="checkbox" id="snapSurveyCb" checked> Survey preview</label>
         </div>
-        <div class="draw-tools__btn-row">
-          <button id="drawBlockBtn" type="button">Draw block</button>
-          <button id="drawParcelBtn" type="button">Draw parcel</button>
-        </div>
-      </section>
-
-      <section class="draw-tools__section" aria-labelledby="drawMeasureTitle">
-        <h4 id="drawMeasureTitle" class="draw-tools__section-title">Measure</h4>
-        <p class="draw-tools__hint small">Uses geodesic lengths and area. Same snap options as above apply while measuring.</p>
         <div class="draw-tools__btn-row">
           <button id="measureLineBtn" class="btn-secondary" type="button">Distance</button>
           <button id="measureAreaBtn" class="btn-secondary" type="button">Area</button>

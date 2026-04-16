@@ -134,9 +134,16 @@ let infoHelpPopoverOpen = false;
 let infoHelpOutsideHandler = null;
 let infoHelpEscapeHandler = null;
 
+let searchPanelOpen = false;
+let searchPanelOutsideHandler = null;
+let searchPanelEscapeHandler = null;
+
+// Legacy aliases kept for internal functions that still reference these names
 let parcelSearchDockOpen = false;
-let parcelSearchOutsideHandler = null;
-let parcelSearchEscapeHandler = null;
+const parcelSearchOutsideHandler = null;
+const parcelSearchEscapeHandler = null;
+
+let placeSearchOpen = false;
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -467,15 +474,9 @@ function setActivePanel(panelId) {
   closeParcelStatusPanel();
   closeInfoHelpPopover();
   closePlaceSearchCard();
-  closeParcelSearchPopover({ clearHighlight: true });
+  closeSearchPanel({ clearHighlight: true });
 
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
-
-  const coordDrawer = document.getElementById("coordSearchDrawer");
-  const coordBtn = document.getElementById("coordSearchBtn");
-  coordDrawer?.classList.remove("open");
-  coordBtn?.classList.remove("active");
-  coordDrawer?.setAttribute("aria-hidden", "true");
 
   const extractBtn = document.getElementById("coordExtractorMainBtn");
   extractBtn?.classList.remove("active");
@@ -981,10 +982,8 @@ function setupInfoHelpPopover() {
   });
 }
 
-let placeSearchOpen = false;
-let placeSearchOutsideHandler = null;
-let placeSearchEscapeHandler = null;
 let lastNominatimRequestAt = 0;
+
 
 function setPlaceSearchError(msg) {
   const el = document.getElementById("placeSearchError");
@@ -999,21 +998,9 @@ function setPlaceSearchError(msg) {
 }
 
 function closePlaceSearchCard() {
-  const pop = document.getElementById("placeSearchPopover");
-  const btn = document.getElementById("placeSearchBtn");
-  const results = document.getElementById("placeSearchResults");
-  if (placeSearchOutsideHandler) {
-    document.removeEventListener("pointerdown", placeSearchOutsideHandler, true);
-    placeSearchOutsideHandler = null;
-  }
-  if (placeSearchEscapeHandler) {
-    document.removeEventListener("keydown", placeSearchEscapeHandler, true);
-    placeSearchEscapeHandler = null;
-  }
+  // Place search is now inside the unified search panel; this is a no-op kept for compatibility
   placeSearchOpen = false;
-  if (pop) pop.hidden = true;
-  btn?.classList.remove("active");
-  btn?.setAttribute("aria-expanded", "false");
+  const results = document.getElementById("placeSearchResults");
   if (results) {
     results.innerHTML = "";
     results.hidden = true;
@@ -1022,41 +1009,24 @@ function closePlaceSearchCard() {
 }
 
 function openPlaceSearchCard() {
-  const pop = document.getElementById("placeSearchPopover");
-  const btn = document.getElementById("placeSearchBtn");
-  if (!pop || !btn || placeSearchOpen) return;
-  closeInfoHelpPopover();
-  closeParcelSearchPopover({ clearHighlight: true });
-  pop.hidden = false;
-  btn.classList.add("active");
-  btn.setAttribute("aria-expanded", "true");
+  // Now activates the Place tab inside the unified search panel instead of a floating popover
+  openSearchPanel("place");
   placeSearchOpen = true;
-
-  placeSearchOutsideHandler = (ev) => {
-    if (!placeSearchOpen) return;
-    if (pop.contains(ev.target) || btn.contains(ev.target)) return;
-    closePlaceSearchCard();
-  };
-  document.addEventListener("pointerdown", placeSearchOutsideHandler, true);
-
-  placeSearchEscapeHandler = (ev) => {
-    if (ev.key === "Escape" && placeSearchOpen) {
-      ev.preventDefault();
-      closePlaceSearchCard();
-    }
-  };
-  document.addEventListener("keydown", placeSearchEscapeHandler, true);
-
   requestAnimationFrame(() => {
-    positionPlaceSearchPopover();
-    requestAnimationFrame(() => positionPlaceSearchPopover());
     document.getElementById("placeSearchInput")?.focus();
   });
 }
 
 function togglePlaceSearchCard() {
-  if (placeSearchOpen) closePlaceSearchCard();
-  else openPlaceSearchCard();
+  if (searchPanelOpen) {
+    // If panel already open on place tab, close it
+    const placeTab = document.getElementById("tabPlace");
+    if (placeTab?.getAttribute("aria-selected") === "true") {
+      closeSearchPanel({ clearHighlight: false });
+      return;
+    }
+  }
+  openSearchPanel("place");
 }
 
 function renderPlaceResults(items) {
@@ -1170,26 +1140,15 @@ async function runPlaceSearchQuery() {
 }
 
 function setupPlaceSearch() {
-  const toolbarBtn = document.getElementById("placeSearchBtn");
-  const closeBtn = document.getElementById("placeSearchCloseBtn");
   const goBtn = document.getElementById("placeSearchGoBtn");
   const input = document.getElementById("placeSearchInput");
 
-  toolbarBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    togglePlaceSearchCard();
-  });
-  closeBtn?.addEventListener("click", () => closePlaceSearchCard());
   goBtn?.addEventListener("click", () => void runPlaceSearchQuery());
   input?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       void runPlaceSearchQuery();
     }
-  });
-
-  window.addEventListener("resize", () => {
-    if (placeSearchOpen) positionPlaceSearchPopover();
   });
 }
 
@@ -1316,50 +1275,102 @@ function openParcelSearchDock() {
   });
 }
 
-function positionPlaceSearchPopover() {
-  const btn = document.getElementById("placeSearchBtn");
-  const pop = document.getElementById("placeSearchPopover");
-  if (!btn || !pop || pop.hidden) return;
-  const r = btn.getBoundingClientRect();
-  const gap = 10;
-  const margin = 12;
-  pop.style.position = "fixed";
-  pop.style.zIndex = "1250";
-  const measured = pop.getBoundingClientRect();
-  const w = measured.width || 300;
-  const h = measured.height || 260;
-  let left = r.left;
-  if (left + w > window.innerWidth - margin) {
-    left = Math.max(margin, window.innerWidth - w - margin);
-  }
-  if (left < margin) left = margin;
-  let top = r.bottom + gap;
-  if (top + h > window.innerHeight - margin) {
-    top = Math.max(margin, r.top - gap - h);
-  }
-  pop.style.top = `${Math.round(top)}px`;
-  pop.style.left = `${Math.round(left)}px`;
+function openSearchPanel(tab = "coords") {
+  const panel = document.getElementById("searchPanel");
+  const btn = document.getElementById("searchPanelBtn");
+  if (!panel || !btn) return;
+  closeInfoHelpPopover();
+  closePlaceSearchCard();
+  panel.hidden = false;
+  btn.classList.add("active");
+  btn.setAttribute("aria-expanded", "true");
+  searchPanelOpen = true;
+  parcelSearchDockOpen = true; // keep legacy flag in sync for runLocateParcelFromPopover
+
+  // Activate the requested tab
+  activateSearchTab(tab);
+
+  // Keyboard close
+  searchPanelEscapeHandler = (ev) => {
+    if (ev.key === "Escape" && searchPanelOpen) {
+      ev.preventDefault();
+      closeSearchPanel({ clearHighlight: false });
+    }
+  };
+  document.addEventListener("keydown", searchPanelEscapeHandler, true);
+
+  searchPanelOutsideHandler = (ev) => {
+    if (!searchPanelOpen) return;
+    if (panel.contains(ev.target) || btn.contains(ev.target)) return;
+    closeSearchPanel({ clearHighlight: false });
+  };
+  document.addEventListener("pointerdown", searchPanelOutsideHandler, true);
+
+  requestAnimationFrame(() => {
+    // Focus first input of active tab
+    const activeTab = panel.querySelector(".search-panel__tab-body:not([hidden]) input, .search-panel__tab-body:not([hidden]) select");
+    activeTab?.focus();
+    map?.updateSize();
+  });
 }
 
-function closeParcelSearchPopover(options = {}) {
+function closeSearchPanel(options = {}) {
   const { clearHighlight = true } = options;
-  const dock = document.getElementById("parcelSearchDock");
-  const searchBtn = document.getElementById("parcelSearchBtn");
-  if (parcelSearchOutsideHandler) {
-    document.removeEventListener("pointerdown", parcelSearchOutsideHandler, true);
-    parcelSearchOutsideHandler = null;
+  const panel = document.getElementById("searchPanel");
+  const btn = document.getElementById("searchPanelBtn");
+  if (searchPanelOutsideHandler) {
+    document.removeEventListener("pointerdown", searchPanelOutsideHandler, true);
+    searchPanelOutsideHandler = null;
   }
-  if (parcelSearchEscapeHandler) {
-    document.removeEventListener("keydown", parcelSearchEscapeHandler, true);
-    parcelSearchEscapeHandler = null;
+  if (searchPanelEscapeHandler) {
+    document.removeEventListener("keydown", searchPanelEscapeHandler, true);
+    searchPanelEscapeHandler = null;
   }
+  searchPanelOpen = false;
   parcelSearchDockOpen = false;
-  if (dock) dock.hidden = true;
-  searchBtn?.classList.remove("active");
-  searchBtn?.setAttribute("aria-expanded", "false");
+  placeSearchOpen = false;
+  if (panel) panel.hidden = true;
+  btn?.classList.remove("active");
+  btn?.setAttribute("aria-expanded", "false");
   setParcelSearchPopoverError("");
+  setPlaceSearchError("");
   if (clearHighlight) clearSearchHighlight();
   map?.updateSize();
+}
+
+function activateSearchTab(tab) {
+  const tabs = ["coords", "parcel", "place"];
+  const tabElMap = { coords: "tabCoords", parcel: "tabParcel", place: "tabPlace" };
+  const bodyElMap = { coords: "searchTabCoords", parcel: "searchTabParcel", place: "searchTabPlace" };
+  tabs.forEach((t) => {
+    const tabEl = document.getElementById(tabElMap[t]);
+    const bodyEl = document.getElementById(bodyElMap[t]);
+    const active = t === tab;
+    if (tabEl) tabEl.setAttribute("aria-selected", String(active));
+    if (bodyEl) bodyEl.hidden = !active;
+  });
+}
+
+function setupSearchTabSwitching() {
+  ["tabCoords", "tabParcel", "tabPlace"].forEach((id) => {
+    const btn = document.getElementById(id);
+    btn?.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      if (tab) activateSearchTab(tab);
+    });
+  });
+}
+
+// Legacy: openParcelSearchDock now delegates to the unified panel
+function openParcelSearchDock() {
+  openSearchPanel("parcel");
+}
+
+// Legacy no-op kept so nothing breaks
+function positionPlaceSearchPopover() {}
+
+function closeParcelSearchPopover(options = {}) {
+  closeSearchPanel(options);
 }
 
 async function runLocateParcelFromPopover() {
@@ -1471,7 +1482,7 @@ async function runLocateParcelFromPopover() {
     finish();
   };
 
-  const dockEl = document.getElementById("parcelSearchDock");
+  const dockEl = document.getElementById("searchPanel");
   let leftPad = 96;
   if (dockEl && !dockEl.hidden) {
     const w = dockEl.getBoundingClientRect().width;
@@ -1492,23 +1503,17 @@ async function runLocateParcelFromPopover() {
 }
 
 function setupParcelSearchPopover() {
-  const searchBtn = document.getElementById("parcelSearchBtn");
+  const searchBtn = document.getElementById("searchPanelBtn");
   const form = document.getElementById("parcelSearchForm");
   const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
-  const closeBtn = document.getElementById("parcelSearchPopoverCloseBtn");
 
   searchBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (parcelSearchDockOpen) {
-      closeParcelSearchPopover({ clearHighlight: false });
+    if (searchPanelOpen) {
+      closeSearchPanel({ clearHighlight: false });
     } else {
-      openParcelSearchDock();
+      openSearchPanel("coords");
     }
-  });
-
-  closeBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closeParcelSearchPopover({ clearHighlight: false });
   });
 
   cancelBtn?.addEventListener("click", () => {
@@ -1701,6 +1706,7 @@ function locateMe() {
 
 function bindEvents() {
   setupPanels();
+  setupSearchTabSwitching();
   setupParcelSearchPopover();
   setupParcelStatusPanel();
   setupInfoHelpPopover();
@@ -1865,7 +1871,10 @@ async function initMap() {
     statusEl,
     onDrawerOpen: () => {
       closePlaceSearchCard();
-    }
+    },
+    // The coord search now lives inside #searchPanel; pass a no-op open/close
+    // so the module doesn't try to toggle a non-existent aside drawer.
+    panelMode: true
   });
   initCoordExtractDrawer({
     map,

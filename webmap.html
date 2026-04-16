@@ -105,8 +105,8 @@
       <p>Land intelligence platform for sugarcane blocks and parcels.</p>
     </div>
     <div class="map-top-controls">
-      <button type="button" class="control-btn" id="parcelSearchBtn" title="Block / plot search" aria-expanded="false" aria-controls="parcelSearchDock">
-        <i class="fas fa-search-location"></i><span class="btn-label">Search</span>
+      <button type="button" class="control-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
+        <i class="fas fa-magnifying-glass"></i><span class="btn-label">Search</span>
       </button>
       <button type="button" class="control-btn" id="locateBtn" title="Locate Me">
         <i class="fas fa-location-crosshairs"></i><span class="btn-label">Locate</span>
@@ -123,14 +123,6 @@
       <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
         <i class="fas fa-chart-simple"></i><span class="btn-label">Status</span>
       </button>
-      <div class="map-toolbar-cluster" role="group" aria-label="Coordinates and place name search">
-        <button type="button" class="control-btn" id="coordSearchBtn" title="Coordinate Search">
-          <i class="fas fa-crosshairs"></i><span class="btn-label">Coords</span>
-        </button>
-        <button type="button" class="control-btn control-btn--place" id="placeSearchBtn" title="Find a place on the map (OpenStreetMap)" aria-expanded="false" aria-haspopup="dialog" aria-controls="placeSearchPopover">
-          <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i><span class="btn-label">Place</span>
-        </button>
-      </div>
       <button type="button" class="control-btn" id="coordExtractorMainBtn" title="Coordinate Extractor">
         <i class="fas fa-draw-polygon"></i><span class="btn-label">Extract</span>
       </button>
@@ -154,36 +146,116 @@
   </div>
 
   <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
-    <section id="parcelSearchDock" class="parcel-search-dock parcel-search-panel--left" hidden aria-labelledby="parcelSearchPopoverTitle" role="dialog" aria-modal="true">
-        <div class="parcel-search-popover__card parcel-search-dock__card">
-          <header class="parcel-search-popover__head">
-            <div class="parcel-search-popover__title-row">
-              <span class="parcel-search-popover__icon" aria-hidden="true"><i class="fas fa-map-location-dot"></i></span>
-              <h2 id="parcelSearchPopoverTitle" class="parcel-search-popover__title">Block / plot</h2>
-            </div>
-            <button type="button" class="parcel-search-popover__close" id="parcelSearchPopoverCloseBtn" aria-label="Close search">
-              <i class="fas fa-times" aria-hidden="true"></i>
+
+    <!-- ═══ UNIFIED SEARCH PANEL ═══ -->
+    <section id="searchPanel" class="search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="searchPanelTitle">
+      <div class="search-panel__card">
+        <!-- Header -->
+        <header class="search-panel__head">
+          <div class="search-panel__head-inner">
+            <i class="fas fa-magnifying-glass search-panel__head-icon" aria-hidden="true"></i>
+            <h2 id="searchPanelTitle" class="search-panel__title">Search</h2>
+          </div>
+          <button type="button" class="search-panel__close" id="searchPanelCloseBtn" aria-label="Close search panel">
+            <i class="fas fa-times" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <!-- Tab pills -->
+        <div class="search-panel__tabs" role="tablist" aria-label="Search method">
+          <button type="button" class="search-tab" id="tabCoords" role="tab" aria-selected="true" aria-controls="searchTabCoords" data-tab="coords">
+            <i class="fas fa-crosshairs" aria-hidden="true"></i> Coordinates
+          </button>
+          <button type="button" class="search-tab" id="tabParcel" role="tab" aria-selected="false" aria-controls="searchTabParcel" data-tab="parcel">
+            <i class="fas fa-map-location-dot" aria-hidden="true"></i> Block / Parcel
+          </button>
+          <button type="button" class="search-tab" id="tabPlace" role="tab" aria-selected="false" aria-controls="searchTabPlace" data-tab="place">
+            <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i> Place
+          </button>
+        </div>
+
+        <!-- ── TAB 1: Coordinate Search ── -->
+        <div id="searchTabCoords" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabCoords">
+          <p class="search-panel__hint">Select a coordinate system, enter Easting &amp; Northing and plot on the map.</p>
+
+          <label class="search-panel__label" for="coordDrawerCrsSelect">Coordinate system</label>
+          <select id="coordDrawerCrsSelect" class="search-panel__input"></select>
+
+          <div class="coord-mode-row" role="radiogroup" aria-label="Input mode">
+            <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeSingle" value="single" checked> Single point</label>
+            <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeCsv" value="csv"> CSV points</label>
+          </div>
+
+          <div id="coordSingleBlock">
+            <label class="search-panel__label" for="coordDrawerEasting">Easting <span class="search-panel__muted">(or longitude for WGS84)</span></label>
+            <input id="coordDrawerEasting" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 500000" autocomplete="off">
+            <label class="search-panel__label" for="coordDrawerNorthing">Northing <span class="search-panel__muted">(or latitude for WGS84)</span></label>
+            <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 200000" autocomplete="off">
+            <button type="button" id="coordPlotSingleBtn" class="search-panel__btn-primary" style="margin-top:0.7rem">
+              <i class="fas fa-map-marker-alt" aria-hidden="true"></i> Plot on Map
             </button>
-          </header>
-          <form id="parcelSearchForm" class="parcel-search-popover__form" novalidate>
-            <div class="parcel-search-popover__fields">
-              <label class="parcel-search-popover__label" for="parcelSearchBlockInput">Block</label>
-              <input id="parcelSearchBlockInput" name="block" type="text" class="parcel-search-popover__input" placeholder="Code or name" autocomplete="off" required>
-              <label class="parcel-search-popover__label" for="parcelSearchNoInput">Plot</label>
-              <input id="parcelSearchNoInput" name="parcelNo" type="number" class="parcel-search-popover__input" min="1" step="1" placeholder="Optional — number" inputmode="numeric">
-            </div>
-            <p id="parcelSearchPopoverError" class="parcel-search-popover__error" role="alert" hidden></p>
-            <div class="parcel-search-popover__actions parcel-search-popover__actions--icons">
-              <button type="button" class="parcel-search-popover__btn-icon btn-secondary" id="parcelSearchPopoverCancelBtn" title="Clear highlight" aria-label="Clear highlight">
-                <i class="fas fa-eraser" aria-hidden="true"></i>
+          </div>
+
+          <div id="coordCsvBlock" hidden>
+            <p class="search-panel__hint">Columns: <code>eastings</code>, <code>northings</code>. Optional: <code>point_id</code>, <code>label</code>.</p>
+            <label class="search-panel__label" for="coordDrawerCsvInput">CSV file</label>
+            <input id="coordDrawerCsvInput" type="file" accept=".csv,text/csv" class="search-panel__input">
+            <div id="coordCsvDropzone" class="survey-dropzone">Drop CSV here</div>
+            <button type="button" id="coordPlotCsvBtn" class="search-panel__btn-primary" style="margin-top:0.6rem">
+              <i class="fas fa-upload" aria-hidden="true"></i> Plot CSV Points
+            </button>
+          </div>
+
+          <button type="button" id="coordClearMarkersBtn" class="search-panel__btn-secondary" style="margin-top:0.6rem">
+            <i class="fas fa-eraser" aria-hidden="true"></i> Clear Markers
+          </button>
+
+          <div class="coord-drawer-related">
+            <p class="extract-section-label">Export from map</p>
+            <button type="button" id="coordSearchOpenExtractBtn" class="btn-pick-parcel btn-pick-parcel--compact">
+              <i class="fas fa-download" aria-hidden="true"></i> Block / parcel export (CSV / DXF)
+            </button>
+            <p class="small extract-related-hint">Opens <strong>Extract</strong> to download block or parcel boundaries in your chosen CRS.</p>
+          </div>
+        </div>
+
+        <!-- ── TAB 2: Block / Parcel Search ── -->
+        <div id="searchTabParcel" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabParcel" hidden>
+          <p class="search-panel__hint">Enter a block code and an optional plot number. The map zooms and highlights the result.</p>
+          <form id="parcelSearchForm" novalidate>
+            <label class="search-panel__label" for="parcelSearchBlockInput">Block code or name</label>
+            <input id="parcelSearchBlockInput" name="block" type="text" class="search-panel__input" placeholder="e.g. 14 or North Block" autocomplete="off" required>
+            <label class="search-panel__label" for="parcelSearchNoInput">Plot number <span class="search-panel__muted">optional</span></label>
+            <input id="parcelSearchNoInput" name="parcelNo" type="number" class="search-panel__input" min="1" step="1" placeholder="e.g. 3" inputmode="numeric">
+            <p id="parcelSearchPopoverError" class="search-panel__error" role="alert" hidden></p>
+            <div class="search-panel__row" style="margin-top:0.75rem">
+              <button type="button" class="search-panel__btn-secondary" id="parcelSearchPopoverCancelBtn" title="Clear highlight">
+                <i class="fas fa-eraser" aria-hidden="true"></i> Clear
               </button>
-              <button type="submit" class="parcel-search-popover__btn-go parcel-search-popover__btn-go--icon" id="parcelSearchGoBtn" title="Zoom to block or plot" aria-label="Zoom to block or plot">
-                <i class="fas fa-location-arrow" aria-hidden="true"></i>
+              <button type="submit" class="search-panel__btn-primary" id="parcelSearchGoBtn">
+                <i class="fas fa-location-arrow" aria-hidden="true"></i> Go
               </button>
             </div>
           </form>
         </div>
+
+        <!-- ── TAB 3: Place Search ── -->
+        <div id="searchTabPlace" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabPlace" hidden>
+          <p class="search-panel__hint">Search worldwide place names via OpenStreetMap. The map flies to the location.</p>
+          <label class="visually-hidden" for="placeSearchInput">Place or address</label>
+          <div class="search-panel__place-row">
+            <input id="placeSearchInput" type="search" class="search-panel__input search-panel__place-input" placeholder="Town, road, landmark…" autocomplete="off" enterkeyhint="search">
+            <button type="button" id="placeSearchGoBtn" class="search-panel__btn-primary search-panel__place-go">
+              <i class="fas fa-search" aria-hidden="true"></i>
+            </button>
+          </div>
+          <p id="placeSearchError" class="search-panel__error" role="alert" hidden></p>
+          <ul id="placeSearchResults" class="place-search-results" hidden></ul>
+          <p class="search-panel__attrib">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors · Nominatim</p>
+        </div>
+      </div>
     </section>
+    <!-- ═══ END UNIFIED SEARCH PANEL ═══ -->
 
     <section id="featureInfoPanel" class="feature-info-panel" hidden role="region" aria-label="Selected map feature">
       <div id="featureInfoPanelInner" class="feature-info-panel__inner"></div>
@@ -199,31 +271,13 @@
           <li>Click a <strong>block</strong> or <strong>parcel</strong> to see details here.</li>
           <li>Close with <strong>×</strong> or <strong>Escape</strong>.</li>
           <li>A <strong>lat/lon grid</strong> is always shown on the map.</li>
-          <li><strong>Place</strong> (toolbar) searches worldwide names to fly the map.</li>
+          <li><strong>Search</strong> (toolbar) finds coordinates, parcels and place names.</li>
         </ul>
       </div>
     </div>
   </div>
 
-  <div id="placeSearchPopover" class="place-search-popover" hidden role="dialog" aria-modal="true" aria-labelledby="placeSearchTitle">
-      <div id="placeSearchCard" class="place-search-card">
-        <header class="place-search-card__head">
-          <div>
-            <h2 id="placeSearchTitle" class="place-search-card__title">Find a place</h2>
-            <p class="place-search-card__subtitle">Worldwide names via OpenStreetMap (Nominatim).</p>
-          </div>
-          <button type="button" class="place-search-card__close" id="placeSearchCloseBtn" aria-label="Close place search">&times;</button>
-        </header>
-        <div class="place-search-card__field">
-          <label class="visually-hidden" for="placeSearchInput">Place or address</label>
-          <input id="placeSearchInput" type="search" class="place-search-input" placeholder="Town, road, landmark…" autocomplete="off" enterkeyhint="search">
-          <button type="button" id="placeSearchGoBtn" class="place-search-go">Search</button>
-        </div>
-        <p id="placeSearchError" class="place-search-error" role="alert" hidden></p>
-        <ul id="placeSearchResults" class="place-search-results" hidden></ul>
-        <p class="place-search-attrib">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors · Nominatim</p>
-      </div>
-    </div>
+  <!-- place search popover removed — now lives inside #searchPanel tab 3 -->
 
   <aside id="surveyDrawer" class="survey-drawer" aria-hidden="true">
     <div class="survey-drawer-inner">
@@ -274,55 +328,7 @@
     </div>
   </aside>
 
-  <aside id="coordSearchDrawer" class="survey-drawer coord-search-drawer" aria-hidden="true">
-    <div class="survey-drawer-inner">
-      <div class="survey-drawer-head">
-        <h2>Coordinate search</h2>
-        <button type="button" class="survey-close" id="coordSearchCloseBtn" aria-label="Close">&times;</button>
-      </div>
-      <p class="small">Plot survey coordinates on the map. Pick the same CRS as your eastings/northings (or lon/lat for WGS84 geographic).</p>
-
-      <label for="coordDrawerCrsSelect">Coordinate system</label>
-      <select id="coordDrawerCrsSelect"></select>
-
-      <div class="coord-mode-row" role="radiogroup" aria-label="Input mode">
-        <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeSingle" value="single" checked> Single point</label>
-        <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeCsv" value="csv"> CSV points</label>
-      </div>
-
-      <div id="coordSingleBlock">
-        <label for="coordDrawerEasting">Easting (or longitude if WGS84 geographic)</label>
-        <input id="coordDrawerEasting" type="text" inputmode="decimal" placeholder="e.g. 500000 or 32.59" autocomplete="off">
-        <label for="coordDrawerNorthing">Northing (or latitude if WGS84 geographic)</label>
-        <input id="coordDrawerNorthing" type="text" inputmode="decimal" placeholder="e.g. 200000 or 0.35" autocomplete="off">
-        <div class="survey-actions" style="margin-top:0.6rem">
-          <button type="button" id="coordPlotSingleBtn" class="btn-secondary">Plot on map</button>
-        </div>
-      </div>
-
-      <div id="coordCsvBlock" hidden>
-        <p class="small">Columns: <code>eastings</code>, <code>northings</code> (or easting/northing). Optional: <code>point_id</code>, <code>label</code>.</p>
-        <label for="coordDrawerCsvInput">CSV file</label>
-        <input id="coordDrawerCsvInput" type="file" accept=".csv,text/csv">
-        <div id="coordCsvDropzone" class="survey-dropzone">Drop CSV here</div>
-        <div class="survey-actions" style="margin-top:0.6rem">
-          <button type="button" id="coordPlotCsvBtn" class="btn-secondary">Plot CSV points</button>
-        </div>
-      </div>
-
-      <div class="survey-actions" style="margin-top:0.75rem">
-        <button type="button" id="coordClearMarkersBtn">Clear markers</button>
-      </div>
-
-      <div class="coord-drawer-related">
-        <p class="extract-section-label">Export from map</p>
-        <button type="button" id="coordSearchOpenExtractBtn" class="btn-pick-parcel btn-pick-parcel--compact">
-          <i class="fas fa-download" aria-hidden="true"></i> Block / parcel export (CSV / DXF)
-        </button>
-        <p class="small extract-related-hint">Opens <strong>Extract</strong> to download block or parcel boundaries in your chosen CRS.</p>
-      </div>
-    </div>
-  </aside>
+  <!-- coordSearchDrawer aside removed — coordinate search now lives inside #searchPanel tab 1 -->
 
   <aside id="coordExtractDrawer" class="survey-drawer coord-extract-drawer" aria-hidden="true" data-picking="">
     <div class="survey-drawer-inner">

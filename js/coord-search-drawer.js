@@ -22,10 +22,11 @@ function normalizeCoordRow(row) {
   return { east, north, label };
 }
 
-export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, onDrawerClose }) {
-  const drawer = document.getElementById("coordSearchDrawer");
-  const toggleBtn = document.getElementById("coordSearchBtn");
-  const closeBtn = document.getElementById("coordSearchCloseBtn");
+export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, onDrawerClose, panelMode }) {
+  // In panelMode the coord UI lives inside #searchPanel; no aside drawer to toggle.
+  const drawer = panelMode ? null : document.getElementById("coordSearchDrawer");
+  const toggleBtn = panelMode ? null : document.getElementById("coordSearchBtn");
+  const closeBtn = panelMode ? null : document.getElementById("coordSearchCloseBtn");
   const crsSelect = document.getElementById("coordDrawerCrsSelect");
   const modeSingle = document.getElementById("coordModeSingle");
   const modeCsv = document.getElementById("coordModeCsv");
@@ -39,7 +40,8 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
   const plotCsvBtn = document.getElementById("coordPlotCsvBtn");
   const clearBtn = document.getElementById("coordClearMarkersBtn");
 
-  if (!drawer || !toggleBtn) return;
+  // In panel mode we just need the form elements — no drawer to open/close.
+  if (!panelMode && !drawer) return;
 
   CRS_OPTIONS.forEach((o) => {
     const opt = document.createElement("option");
@@ -88,6 +90,7 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
   }
 
   function closeDrawer() {
+    if (panelMode) return; // panel close is handled by map-app.js
     drawer.classList.remove("open");
     drawer.setAttribute("aria-hidden", "true");
     toggleBtn.classList.remove("active");
@@ -95,6 +98,7 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
   }
 
   function openDrawer() {
+    if (panelMode) return; // panel open is handled by map-app.js
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     toggleBtn.classList.add("active");
@@ -111,24 +115,26 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
   modeCsv?.addEventListener("change", updateModeUi);
   updateModeUi();
 
-  toggleBtn.addEventListener("click", () => {
-    if (drawer.classList.contains("open")) {
-      closeDrawer();
-    } else {
-      window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
-      document.getElementById("surveyDrawer")?.classList.remove("open");
-      document.getElementById("surveyPanelBtn")?.classList.remove("active");
-      openDrawer();
-    }
-  });
-
-  closeBtn?.addEventListener("click", closeDrawer);
+  if (!panelMode) {
+    toggleBtn.addEventListener("click", () => {
+      if (drawer.classList.contains("open")) {
+        closeDrawer();
+      } else {
+        window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
+        document.getElementById("surveyDrawer")?.classList.remove("open");
+        document.getElementById("surveyPanelBtn")?.classList.remove("active");
+        openDrawer();
+      }
+    });
+    closeBtn?.addEventListener("click", closeDrawer);
+  }
 
   document.getElementById("coordSearchOpenExtractBtn")?.addEventListener("click", () => {
     closeDrawer();
-    toggleBtn.classList.remove("active");
+    if (!panelMode) toggleBtn.classList.remove("active");
     window.dispatchEvent(new CustomEvent("vsl-open-extract-drawer"));
   });
+
 
   function fitToMarkers() {
     const extent = markersSource.getExtent();

@@ -203,7 +203,7 @@ button:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-/* Webmap: left sidebar (search + identify help + feature details) + map */
+/* Webmap: full-bleed map; left tools (search, identify, feature card) float in .map-left-stack */
 .webmap-app.webmap-app--sidebar .map-main {
   position: fixed;
   left: 0;
@@ -211,24 +211,35 @@ button:hover {
   top: 86px;
   bottom: 0;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   min-height: 0;
   z-index: 0;
 }
 
-.webmap-app .map-sidebar {
-  flex: 0 0 min(300px, 36vw);
-  max-width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  background: linear-gradient(180deg, #fdfffb 0%, #eef5ec 100%);
-  border-right: 1px solid var(--border);
-  padding: 10px 10px 14px;
+.webmap-app .map-left-stack {
+  position: fixed;
+  left: 12px;
+  top: 96px;
+  bottom: 12px;
+  z-index: 1150;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 5;
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100vh - 108px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: none;
+  align-items: stretch;
+}
+
+.webmap-app .map-left-stack > * {
+  pointer-events: auto;
+}
+
+.webmap-app #parcelSearchDock[hidden] {
+  display: none !important;
 }
 
 .webmap-app .map-viewport-wrap {
@@ -237,6 +248,7 @@ button:hover {
   flex: 1;
   min-height: 0;
   min-width: 0;
+  width: 100%;
   border-radius: 0 14px 14px 0;
 }
 
@@ -299,16 +311,14 @@ button:hover {
 
 @media (max-width: 900px) {
   .webmap-app.webmap-app--sidebar .map-main {
-    flex-direction: column;
     top: 86px;
   }
 
-  .webmap-app .map-sidebar {
-    flex: 0 1 auto;
-    width: 100%;
-    max-height: min(40vh, 300px);
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+  .webmap-app .map-left-stack {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: min(52vh, calc(100vh - 100px));
   }
 
   .webmap-app .map-viewport-wrap {

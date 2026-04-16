@@ -105,7 +105,7 @@
       <p>Land intelligence platform for sugarcane blocks and parcels.</p>
     </div>
     <div class="map-top-controls">
-      <button type="button" class="control-btn" id="parcelSearchBtn" title="Focus block / plot search" aria-expanded="true" aria-controls="parcelSearchDock">
+      <button type="button" class="control-btn" id="parcelSearchBtn" title="Block / plot search" aria-expanded="false" aria-controls="parcelSearchDock">
         <i class="fas fa-search-location"></i><span class="btn-label">Search</span>
       </button>
       <button type="button" class="control-btn" id="locateBtn" title="Locate Me">
@@ -147,14 +147,23 @@
   </div>
 
   <div class="map-main" id="mapMain">
-    <aside class="map-sidebar" id="mapSidebar" aria-label="Search and feature details">
-      <section id="parcelSearchDock" class="parcel-search-dock" aria-labelledby="parcelSearchPopoverTitle">
+    <div class="map-viewport-wrap">
+      <div id="map"></div>
+      <div class="map-frame" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
+    <section id="parcelSearchDock" class="parcel-search-dock parcel-search-panel--left" hidden aria-labelledby="parcelSearchPopoverTitle" role="dialog" aria-modal="true">
         <div class="parcel-search-popover__card parcel-search-dock__card">
           <header class="parcel-search-popover__head">
             <div class="parcel-search-popover__title-row">
               <span class="parcel-search-popover__icon" aria-hidden="true"><i class="fas fa-map-location-dot"></i></span>
               <h2 id="parcelSearchPopoverTitle" class="parcel-search-popover__title">Block / plot</h2>
             </div>
+            <button type="button" class="parcel-search-popover__close" id="parcelSearchPopoverCloseBtn" aria-label="Close search">
+              <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
           </header>
           <form id="parcelSearchForm" class="parcel-search-popover__form" novalidate>
             <div class="parcel-search-popover__fields">
@@ -174,32 +183,28 @@
             </div>
           </form>
         </div>
-      </section>
+    </section>
 
-      <section id="featureInfoPanel" class="feature-info-panel" hidden role="region" aria-label="Selected map feature">
-        <div id="featureInfoPanelInner" class="feature-info-panel__inner"></div>
-      </section>
+    <section id="featureInfoPanel" class="feature-info-panel" hidden role="region" aria-label="Selected map feature">
+      <div id="featureInfoPanelInner" class="feature-info-panel__inner"></div>
+    </section>
 
-      <div id="infoHelpPopover" class="info-help-popover info-help-popover--sidebar" hidden role="dialog" aria-modal="true" aria-labelledby="infoHelpTitle">
-        <div class="info-help-popover__card">
-          <header class="info-help-popover__head">
-            <h2 id="infoHelpTitle" class="info-help-popover__title">Identify</h2>
-            <button type="button" class="info-help-popover__close" id="infoHelpCloseBtn" aria-label="Close">&times;</button>
-          </header>
-          <ul class="info-help-popover__list">
-            <li>Click a <strong>block</strong> or <strong>parcel</strong> to see details here.</li>
-            <li>Close with <strong>×</strong> or <strong>Escape</strong>.</li>
-            <li>A <strong>lat/lon grid</strong> is always shown on the map.</li>
-            <li><strong>Place</strong> (toolbar) searches worldwide names to fly the map.</li>
-          </ul>
-        </div>
+    <div id="infoHelpPopover" class="info-help-popover info-help-popover--sidebar" hidden role="dialog" aria-modal="true" aria-labelledby="infoHelpTitle">
+      <div class="info-help-popover__card">
+        <header class="info-help-popover__head">
+          <h2 id="infoHelpTitle" class="info-help-popover__title">Identify</h2>
+          <button type="button" class="info-help-popover__close" id="infoHelpCloseBtn" aria-label="Close">&times;</button>
+        </header>
+        <ul class="info-help-popover__list">
+          <li>Click a <strong>block</strong> or <strong>parcel</strong> to see details here.</li>
+          <li>Close with <strong>×</strong> or <strong>Escape</strong>.</li>
+          <li>A <strong>lat/lon grid</strong> is always shown on the map.</li>
+          <li><strong>Place</strong> (toolbar) searches worldwide names to fly the map.</li>
+        </ul>
       </div>
-    </aside>
-
-    <div class="map-viewport-wrap">
-      <div id="map"></div>
-      <div class="map-frame" aria-hidden="true"></div>
     </div>
+  </div>
+
   <div id="placeSearchPopover" class="place-search-popover" hidden role="dialog" aria-modal="true" aria-labelledby="placeSearchTitle">
       <div id="placeSearchCard" class="place-search-card">
         <header class="place-search-card__head">

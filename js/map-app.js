@@ -134,6 +134,10 @@ let infoHelpPopoverOpen = false;
 let infoHelpOutsideHandler = null;
 let infoHelpEscapeHandler = null;
 
+let parcelSearchDockOpen = false;
+let parcelSearchOutsideHandler = null;
+let parcelSearchEscapeHandler = null;
+
 function escapeHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -929,6 +933,7 @@ function openInfoHelpPopover() {
   const pop = document.getElementById("infoHelpPopover");
   const btn = document.getElementById("infoBtn");
   if (!pop || !btn || infoHelpPopoverOpen) return;
+  closeParcelSearchPopover({ clearHighlight: false });
   closeInfoPopup();
   closePlaceSearchCard();
   selectedFeature = null;
@@ -1278,14 +1283,36 @@ function setParcelSearchPopoverError(msg) {
   el.hidden = false;
 }
 
-function focusParcelSearchDock() {
+function openParcelSearchDock() {
+  const dock = document.getElementById("parcelSearchDock");
+  const searchBtn = document.getElementById("parcelSearchBtn");
+  const blockInput = document.getElementById("parcelSearchBlockInput");
+  if (!dock || !searchBtn || parcelSearchDockOpen) return;
   closeInfoHelpPopover();
   closePlaceSearchCard();
-  const dock = document.getElementById("parcelSearchDock");
-  const blockInput = document.getElementById("parcelSearchBlockInput");
+  dock.hidden = false;
+  searchBtn.classList.add("active");
+  searchBtn.setAttribute("aria-expanded", "true");
+  parcelSearchDockOpen = true;
+
+  parcelSearchOutsideHandler = (ev) => {
+    if (!parcelSearchDockOpen) return;
+    if (dock.contains(ev.target) || searchBtn.contains(ev.target)) return;
+    closeParcelSearchPopover({ clearHighlight: false });
+  };
+  document.addEventListener("pointerdown", parcelSearchOutsideHandler, true);
+
+  parcelSearchEscapeHandler = (ev) => {
+    if (ev.key === "Escape" && parcelSearchDockOpen) {
+      ev.preventDefault();
+      closeParcelSearchPopover({ clearHighlight: false });
+    }
+  };
+  document.addEventListener("keydown", parcelSearchEscapeHandler, true);
+
   requestAnimationFrame(() => {
-    dock?.scrollIntoView({ block: "start", behavior: "smooth" });
     blockInput?.focus();
+    map?.updateSize();
   });
 }
 
@@ -1316,10 +1343,23 @@ function positionPlaceSearchPopover() {
 
 function closeParcelSearchPopover(options = {}) {
   const { clearHighlight = true } = options;
-  closeInfoHelpPopover();
-  closePlaceSearchCard();
+  const dock = document.getElementById("parcelSearchDock");
+  const searchBtn = document.getElementById("parcelSearchBtn");
+  if (parcelSearchOutsideHandler) {
+    document.removeEventListener("pointerdown", parcelSearchOutsideHandler, true);
+    parcelSearchOutsideHandler = null;
+  }
+  if (parcelSearchEscapeHandler) {
+    document.removeEventListener("keydown", parcelSearchEscapeHandler, true);
+    parcelSearchEscapeHandler = null;
+  }
+  parcelSearchDockOpen = false;
+  if (dock) dock.hidden = true;
+  searchBtn?.classList.remove("active");
+  searchBtn?.setAttribute("aria-expanded", "false");
   setParcelSearchPopoverError("");
   if (clearHighlight) clearSearchHighlight();
+  map?.updateSize();
 }
 
 async function runLocateParcelFromPopover() {
@@ -1431,9 +1471,14 @@ async function runLocateParcelFromPopover() {
     finish();
   };
 
-  const sidebarPad = document.getElementById("mapSidebar")?.getBoundingClientRect().width ?? 300;
+  const dockEl = document.getElementById("parcelSearchDock");
+  let leftPad = 96;
+  if (dockEl && !dockEl.hidden) {
+    const w = dockEl.getBoundingClientRect().width;
+    if (w > 0) leftPad = Math.min(360, Math.round(w + 24));
+  }
   const fitOpts = {
-    padding: [88, 96, 96, Math.min(360, sidebarPad + 24)],
+    padding: [88, 96, 96, leftPad],
     maxZoom: 19,
     duration: 1350,
     callback: () => safeFinish()
@@ -1450,10 +1495,20 @@ function setupParcelSearchPopover() {
   const searchBtn = document.getElementById("parcelSearchBtn");
   const form = document.getElementById("parcelSearchForm");
   const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
+  const closeBtn = document.getElementById("parcelSearchPopoverCloseBtn");
 
   searchBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    focusParcelSearchDock();
+    if (parcelSearchDockOpen) {
+      closeParcelSearchPopover({ clearHighlight: false });
+    } else {
+      openParcelSearchDock();
+    }
+  });
+
+  closeBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeParcelSearchPopover({ clearHighlight: false });
   });
 
   cancelBtn?.addEventListener("click", () => {

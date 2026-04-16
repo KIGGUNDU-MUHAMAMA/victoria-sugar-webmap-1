@@ -6,10 +6,16 @@ import { CRS_OPTIONS, registerProj4Defs, PROJ4_DEFS } from "./crs-definitions.js
 
 const PRINT_QR_URL = "https://farms.victoriasugarltd.xyz/webmap";
 
+/** Straight projected grid lines when WGS84 graticule is selected (same zone as default survey CRS). */
+const GEO_GRID_LINE_CRS = "EPSG:32636";
+
 let deps = null;
 let previewMap = null;
 let gridLayer = null;
-let gridSource = null;
+let gridProjLinesSource = null;
+let gridProjLabelsSource = null;
+let gridProjLinesLayer = null;
+let gridProjLabelsLayer = null;
 let gridCornerLayer = null;
 let gridCornerSource = null;
 let proj4lib = null;
@@ -63,7 +69,10 @@ function disposePreviewMap() {
     previewMap = null;
   }
   gridLayer = null;
-  gridSource = null;
+  gridProjLinesSource = null;
+  gridProjLabelsSource = null;
+  gridProjLinesLayer = null;
+  gridProjLabelsLayer = null;
   gridCornerLayer = null;
   gridCornerSource = null;
 }
@@ -93,7 +102,7 @@ function buildGraticuleLayer() {
     }),
     lonLabelFormatter: (lon) => `${lon.toFixed(2)}°`,
     latLabelFormatter: (lat) => `${lat.toFixed(2)}°`,
-    zIndex: 480
+    zIndex: 453
   });
 }
 
@@ -219,15 +228,105 @@ function formatProjectedGridValue(v) {
   return `${Number(v).toFixed(2)}`;
 }
 
+function intersectSegments2D(a, b, c, d) {
+  const x1 = a[0];
+  const y1 = a[1];
+  const x2 = b[0];
+  const y2 = b[1];
+  const x3 = c[0];
+  const y3 = c[1];
+  const x4 = d[0];
+  const y4 = d[1];
+  const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(den) < 1e-14) return null;
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+  const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
+  if (t >= -1e-8 && t <= 1 + 1e-8 && u >= -1e-8 && u <= 1 + 1e-8) {
+    return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+  }
+  return null;
+}
+
+function segmentExtentIntersections(p0, p1, ext) {
+  const [minX, minY, maxX, maxY] = ext;
+  const edges = [
+    [
+      [minX, minY],
+      [maxX, minY]
+    ],
+    [
+      [maxX, minY],
+      [maxX, maxY]
+    ],
+    [
+      [maxX, maxY],
+      [minX, maxY]
+    ],
+    [
+      [minX, maxY],
+      [minX, minY]
+    ]
+  ];
+  const raw = [];
+  for (const [e0, e1] of edges) {
+    const h = intersectSegments2D(p0, p1, e0, e1);
+    if (h) raw.push(h);
+  }
+  const eps = 1e-4 * Math.max(ext[2] - ext[0], ext[3] - ext[1], 1);
+  const out = [];
+  for (const p of raw) {
+    if (!out.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < eps)) out.push(p);
+  }
+  return out;
+}
+
+function pickEastingLabelXY(hits, ext) {
+  if (!hits.length) return null;
+  const [, minY, , maxY] = ext;
+  const eps = 1e-5 * Math.max(ext[3] - ext[1], 1);
+  const bottom = hits.filter((p) => Math.abs(p[1] - minY) <= eps);
+  if (bottom.length) return bottom[Math.floor(bottom.length / 2)];
+  const top = hits.filter((p) => Math.abs(p[1] - maxY) <= eps);
+  if (top.length) return top[Math.floor(top.length / 2)];
+  return hits[Math.floor(hits.length / 2)];
+}
+
+function pickNorthingLabelXY(hits, ext) {
+  if (!hits.length) return null;
+  const [minX, , maxX] = ext;
+  const eps = 1e-5 * Math.max(ext[2] - ext[0], 1);
+  const left = hits.filter((p) => Math.abs(p[0] - minX) <= eps);
+  if (left.length) return left[Math.floor(left.length / 2)];
+  const right = hits.filter((p) => Math.abs(p[0] - maxX) <= eps);
+  if (right.length) return right[Math.floor(right.length / 2)];
+  return hits[Math.floor(hits.length / 2)];
+}
+
+function eastingLabelTextProps(xy, ext) {
+  const [, minY, , maxY] = ext;
+  const eps = 1e-5 * Math.max(ext[3] - ext[1], 1);
+  if (Math.abs(xy[1] - minY) <= eps) return { ta: "center", tb: "top", ox: 0, oy: 6 };
+  if (Math.abs(xy[1] - maxY) <= eps) return { ta: "center", tb: "bottom", ox: 0, oy: -6 };
+  return { ta: "center", tb: "middle", ox: 0, oy: 0 };
+}
+
+function northingLabelTextProps(xy, ext) {
+  const [minX, , maxX] = ext;
+  const eps = 1e-5 * Math.max(ext[2] - ext[0], 1);
+  if (Math.abs(xy[0] - minX) <= eps) return { ta: "right", tb: "middle", ox: -6, oy: 0 };
+  if (Math.abs(xy[0] - maxX) <= eps) return { ta: "left", tb: "middle", ox: 6, oy: 0 };
+  return { ta: "center", tb: "middle", ox: 0, oy: 0 };
+}
+
 /**
- * Simple projected grid in map CRS (Web Mercator edges labeled in selected CRS at corners).
- * Adds point labels at line midpoints so easting/northing values appear in exports.
+ * Projected grid in map CRS: line features + label points placed on the preview extent edges.
  */
 async function updateProjectedGrid(pMap, crs, spacingM) {
-  if (!gridSource || !pMap || crs === "EPSG:4326") return;
-  if (!PROJ4_DEFS[crs]) return;
+  if (!gridProjLinesSource || !gridProjLabelsSource || !pMap) return;
+  if (crs === "EPSG:4326" || !PROJ4_DEFS[crs]) return;
   const p4 = await ensureProj4();
-  gridSource.clear(true);
+  gridProjLinesSource.clear(true);
+  gridProjLabelsSource.clear(true);
   const view = pMap.getView();
   const size = pMap.getSize();
   if (!size) return;
@@ -257,23 +356,29 @@ async function updateProjectedGrid(pMap, crs, spacingM) {
   const e1 = Math.ceil(maxE / s) * s;
   const n0 = Math.floor(minN / s) * s;
   const n1 = Math.ceil(maxN / s) * s;
-  const midE = (e0 + e1) / 2;
-  const midN = (n0 + n1) / 2;
-  const features = [];
+  const lineFeats = [];
+  const labelFeats = [];
   const maxLines = 40;
   let nLines = 0;
   for (let e = e0; e <= e1 && nLines < maxLines; e += s) {
     nLines += 1;
     const ll0 = p4(crs, "EPSG:4326", [e, n0]);
     const ll1 = p4(crs, "EPSG:4326", [e, n1]);
-    const g = new ol.geom.LineString([ol.proj.fromLonLat(ll0), ol.proj.fromLonLat(ll1)]);
-    features.push(new ol.Feature({ geometry: g }));
-    const llMid = p4(crs, "EPSG:4326", [e, midN]);
-    features.push(
+    const c0 = ol.proj.fromLonLat(ll0);
+    const c1 = ol.proj.fromLonLat(ll1);
+    lineFeats.push(new ol.Feature({ geometry: new ol.geom.LineString([c0, c1]) }));
+    const hits = segmentExtentIntersections(c0, c1, extent);
+    let xy = pickEastingLabelXY(hits, extent);
+    if (!xy) xy = [(c0[0] + c1[0]) / 2, (c0[1] + c1[1]) / 2];
+    const tp = eastingLabelTextProps(xy, extent);
+    labelFeats.push(
       new ol.Feature({
-        geometry: new ol.geom.Point(ol.proj.fromLonLat(llMid)),
+        geometry: new ol.geom.Point(xy),
         label: formatProjectedGridValue(e),
-        kind: "easting"
+        ta: tp.ta,
+        tb: tp.tb,
+        ox: tp.ox,
+        oy: tp.oy
       })
     );
   }
@@ -282,18 +387,26 @@ async function updateProjectedGrid(pMap, crs, spacingM) {
     nLines += 1;
     const ll0 = p4(crs, "EPSG:4326", [e0, n]);
     const ll1 = p4(crs, "EPSG:4326", [e1, n]);
-    const g = new ol.geom.LineString([ol.proj.fromLonLat(ll0), ol.proj.fromLonLat(ll1)]);
-    features.push(new ol.Feature({ geometry: g }));
-    const llMid = p4(crs, "EPSG:4326", [midE, n]);
-    features.push(
+    const c0 = ol.proj.fromLonLat(ll0);
+    const c1 = ol.proj.fromLonLat(ll1);
+    lineFeats.push(new ol.Feature({ geometry: new ol.geom.LineString([c0, c1]) }));
+    const hits = segmentExtentIntersections(c0, c1, extent);
+    let xy = pickNorthingLabelXY(hits, extent);
+    if (!xy) xy = [(c0[0] + c1[0]) / 2, (c0[1] + c1[1]) / 2];
+    const tp = northingLabelTextProps(xy, extent);
+    labelFeats.push(
       new ol.Feature({
-        geometry: new ol.geom.Point(ol.proj.fromLonLat(llMid)),
+        geometry: new ol.geom.Point(xy),
         label: formatProjectedGridValue(n),
-        kind: "northing"
+        ta: tp.ta,
+        tb: tp.tb,
+        ox: tp.ox,
+        oy: tp.oy
       })
     );
   }
-  gridSource.addFeatures(features);
+  gridProjLinesSource.addFeatures(lineFeats);
+  gridProjLabelsSource.addFeatures(labelFeats);
 }
 
 function refreshGeographicCornerLabels() {
@@ -327,6 +440,59 @@ function refreshGeographicCornerLabels() {
   gridCornerSource.addFeatures(feats);
 }
 
+function getGridProjLineStyles() {
+  return [
+    new ol.style.Style({
+      stroke: new ol.style.Stroke({
+        color: "rgba(255,255,255,0.94)",
+        width: 5,
+        lineCap: "round",
+        lineJoin: "round"
+      })
+    }),
+    new ol.style.Style({
+      stroke: new ol.style.Stroke({
+        color: "rgba(0, 88, 56, 0.96)",
+        width: 2.4,
+        lineDash: [10, 12],
+        lineCap: "round",
+        lineJoin: "round"
+      })
+    })
+  ];
+}
+
+function attachMeterGridVectorLayers() {
+  gridProjLinesLayer = new ol.layer.Vector({
+    source: gridProjLinesSource,
+    style: getGridProjLineStyles(),
+    zIndex: 456,
+    updateWhileAnimating: true,
+    updateWhileInteracting: true
+  });
+  gridProjLabelsLayer = new ol.layer.Vector({
+    source: gridProjLabelsSource,
+    zIndex: 482,
+    updateWhileAnimating: true,
+    updateWhileInteracting: true,
+    style: (feature) =>
+      new ol.style.Style({
+        text: new ol.style.Text({
+          text: String(feature.get("label") || ""),
+          font: "700 11px Inter, system-ui, sans-serif",
+          fill: new ol.style.Fill({ color: "#021208" }),
+          stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.96)", width: 3 }),
+          textAlign: feature.get("ta") || "center",
+          textBaseline: feature.get("tb") || "middle",
+          offsetX: feature.get("ox") || 0,
+          offsetY: feature.get("oy") || 0
+        })
+      })
+  });
+  previewMap.addLayer(gridProjLinesLayer);
+  previewMap.addLayer(gridProjLabelsLayer);
+}
+
 function refreshGridLayer() {
   if (!previewMap) return;
   const show = $("printGridShow")?.checked;
@@ -338,19 +504,32 @@ function refreshGridLayer() {
     gridCornerLayer = null;
     gridCornerSource = null;
   }
+  if (gridProjLabelsLayer) {
+    previewMap.removeLayer(gridProjLabelsLayer);
+    gridProjLabelsLayer = null;
+  }
+  if (gridProjLinesLayer) {
+    previewMap.removeLayer(gridProjLinesLayer);
+    gridProjLinesLayer = null;
+  }
   if (gridLayer) {
     previewMap.removeLayer(gridLayer);
     gridLayer = null;
   }
-  if (gridSource) gridSource.clear(true);
+  if (gridProjLinesSource) gridProjLinesSource.clear(true);
+  if (gridProjLabelsSource) gridProjLabelsSource.clear(true);
   if (!show) return;
 
   if (crs === "EPSG:4326") {
+    attachMeterGridVectorLayers();
+    void updateProjectedGrid(previewMap, GEO_GRID_LINE_CRS, spacing).then(() => previewMap.renderSync());
+
     const grat = buildGraticuleLayer();
     if (grat) {
       gridLayer = grat;
       previewMap.addLayer(gridLayer);
     }
+
     gridCornerSource = new ol.source.Vector();
     gridCornerLayer = new ol.layer.Vector({
       source: gridCornerSource,
@@ -374,37 +553,7 @@ function refreshGridLayer() {
     return;
   }
 
-  const lineStroke = new ol.style.Stroke({
-    color: "rgba(12, 74, 52, 0.5)",
-    width: 1,
-    lineDash: [4, 6]
-  });
-  const labelFill = new ol.style.Fill({ color: "#082818" });
-  const labelHalo = new ol.style.Stroke({ color: "rgba(255,255,255,0.9)", width: 2.5 });
-
-  gridLayer = new ol.layer.Vector({
-    source: gridSource,
-    style(feature) {
-      if (feature.get("label")) {
-        const kind = feature.get("kind");
-        return new ol.style.Style({
-          text: new ol.style.Text({
-            text: String(feature.get("label")),
-            font: "600 10px Inter, system-ui, sans-serif",
-            fill: labelFill,
-            stroke: labelHalo,
-            offsetX: kind === "northing" ? -8 : 0,
-            offsetY: kind === "easting" ? -8 : 0
-          })
-        });
-      }
-      return new ol.style.Style({
-        stroke: lineStroke
-      });
-    },
-    zIndex: 460
-  });
-  previewMap.addLayer(gridLayer);
+  attachMeterGridVectorLayers();
   void updateProjectedGrid(previewMap, crs, spacing).then(() => previewMap.renderSync());
 }
 
@@ -414,6 +563,11 @@ function syncPreviewFromMain() {
   const base = getActiveBasemapTileLayer(deps.getBaseGroup());
   const layers = previewMap.getLayers();
   layers.clear();
+  gridProjLinesLayer = null;
+  gridProjLabelsLayer = null;
+  gridLayer = null;
+  gridCornerLayer = null;
+  gridCornerSource = null;
   const baseClone = cloneBasemapLayer(base);
   if (baseClone) {
     layers.push(baseClone);
@@ -428,7 +582,8 @@ function syncPreviewFromMain() {
   layers.push(cloneVectorLayerWithStyle(deps.blocksLayer, deps.blocksSource, 420));
   layers.push(cloneVectorLayerWithStyle(deps.parcelsLayer, deps.parcelsSource, 440));
 
-  gridSource = new ol.source.Vector();
+  gridProjLinesSource = new ol.source.Vector();
+  gridProjLabelsSource = new ol.source.Vector();
   gridLayer = null;
   refreshGridLayer();
 
@@ -445,7 +600,8 @@ function createPreviewMap() {
   const target = $("printPreviewMap");
   if (!target) return;
   target.innerHTML = "";
-  gridSource = new ol.source.Vector();
+  gridProjLinesSource = new ol.source.Vector();
+  gridProjLabelsSource = new ol.source.Vector();
   gridLayer = null;
 
   const main = deps.getMap();
@@ -483,10 +639,11 @@ function createPreviewMap() {
     const crs = $("printGridCrs")?.value;
     if (crs === "EPSG:4326") {
       refreshGeographicCornerLabels();
-      previewMap.renderSync();
+      const spacingGeo = parseFloat($("printGridSpacing")?.value || "500");
+      void updateProjectedGrid(previewMap, GEO_GRID_LINE_CRS, spacingGeo).then(() => previewMap.renderSync());
       return;
     }
-    if (!crs || !gridSource) return;
+    if (!crs || !gridProjLinesSource) return;
     const spacing = parseFloat($("printGridSpacing")?.value || "500");
     void updateProjectedGrid(previewMap, crs, spacing).then(() => previewMap.renderSync());
   });

@@ -229,8 +229,9 @@ function surveyFeatureAreaAcresText(feature) {
 const blocksLayer = new ol.layer.Vector({
   title: "BLOCKS",
   visible: true,
+  declutter: true,
   source: blocksSource,
-  style: (feature) => {
+  style: (feature, resolution) => {
     const bid = feature.getId();
     const hi =
       searchHighlight.blockId != null &&
@@ -240,29 +241,29 @@ const blocksLayer = new ol.layer.Vector({
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
     let strokeColor = "#d32f2f"; 
-    let strokeWidth = 3; 
+    let strokeWidth = resolution > 10 && !hi ? 1.5 : (hi ? 5 : 3); 
     let textColor = "#d32f2f";
     
     if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
       fillColor = CULTIVATION_PALETTE[status].fill;
     }
 
-    const code = String(feature.get("block_code") ?? "").trim() || "—";
-    const text = code;
-    return new ol.style.Style({
-      stroke: new ol.style.Stroke(
-        hi ? { color: "#e65100", width: 5 } : { color: strokeColor, width: strokeWidth }
-      ),
-      fill: new ol.style.Fill({
-        color: hi ? "rgba(230, 81, 0, 0.14)" : fillColor
-      }),
-      text: new ol.style.Text({
-        text,
+    let textStyle = null;
+    if (hi || resolution <= 10) {
+      const code = String(feature.get("block_code") ?? "").trim() || "—";
+      textStyle = new ol.style.Text({
+        text: code,
         font: hi ? "700 13px Inter, sans-serif" : "600 12px Inter, sans-serif",
         fill: new ol.style.Fill({ color: hi ? "#bf360c" : textColor }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
         overflow: true
-      })
+      });
+    }
+
+    return new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: hi ? "#e65100" : strokeColor, width: strokeWidth }),
+      fill: new ol.style.Fill({ color: hi ? "rgba(230, 81, 0, 0.14)" : fillColor }),
+      text: textStyle
     });
   }
 });
@@ -270,8 +271,9 @@ const blocksLayer = new ol.layer.Vector({
 const parcelsLayer = new ol.layer.Vector({
   title: "PARCELS",
   visible: true,
+  declutter: true,
   source: parcelsSource,
-  style: (feature) => {
+  style: (feature, resolution) => {
     const pid = feature.getId();
     const hi =
       searchHighlight.parcelId != null &&
@@ -281,80 +283,54 @@ const parcelsLayer = new ol.layer.Vector({
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
     let strokeColor = "#2e7d32"; 
-    let strokeWidth = 2;
+    let strokeWidth = resolution > 5 && !hi ? 1 : (hi ? 4 : 2);
     let textColor = "#2e7d32";
 
     if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
       fillColor = CULTIVATION_PALETTE[status].fill;
     }
 
-    const num = feature.get("parcel_no");
-    const label =
-      num != null && num !== ""
-        ? String(num)
-        : String(feature.get("parcel_code") ?? "")
-            .replace(/^P-/i, "")
-            .trim() || "—";
-    const area = surveyFeatureAreaAcresText(feature);
-    const text = area ? `${label}\n${area}` : label;
-    
     const styles = [];
 
     styles.push(new ol.style.Style({
       stroke: new ol.style.Stroke(
-        hi ? { color: "#ffffff", width: 6 } : { color: "#ffffff", width: strokeWidth + 2 }
+        hi ? { color: "#ffffff", width: strokeWidth + 2 } : { color: "#ffffff", width: strokeWidth + 1.5 }
       ),
       fill: new ol.style.Fill({
         color: hi ? "rgba(249, 168, 37, 0.38)" : fillColor
       })
     }));
 
-    styles.push(new ol.style.Style({
-      stroke: new ol.style.Stroke(
-        hi ? { color: "#f9a825", width: 4 } : { color: strokeColor, width: strokeWidth }
-      ),
-      text: new ol.style.Text({
+    let textStyle = null;
+    if (hi || resolution <= 5) {
+      const num = feature.get("parcel_no");
+      const label =
+        num != null && num !== ""
+          ? String(num)
+          : String(feature.get("parcel_code") ?? "")
+              .replace(/^P-/i, "")
+              .trim() || "—";
+      const area = surveyFeatureAreaAcresText(feature);
+      const text = area ? `${label}\n${area}` : label;
+
+      textStyle = new ol.style.Text({
         text,
         font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
         fill: new ol.style.Fill({ color: hi ? "#f57f17" : textColor }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: hi ? 4 : 3 }),
         overflow: true
-      })
+      });
+    }
+
+    styles.push(new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: hi ? "#f9a825" : strokeColor, width: strokeWidth }),
+      text: textStyle
     }));
 
-    const geometry = feature.getGeometry();
-    if (geometry && geometry.getType() === "Polygon") {
-      const ring = geometry.getLinearRing(0);
-      if (ring) {
-        const coords = ring.getCoordinates();
-        for (let i = 0; i < coords.length - 1; i++) {
-          const pt1 = coords[i];
-          const pt2 = coords[i + 1];
-          const p1LonLat = ol.proj.transform(pt1, MAP_DRAW_PROJ, "EPSG:4326");
-          const p2LonLat = ol.proj.transform(pt2, MAP_DRAW_PROJ, "EPSG:4326");
-          const distMeters = vincentyDistanceMeters(p1LonLat[0], p1LonLat[1], p2LonLat[0], p2LonLat[1]);
-          
-          if (distMeters > 0) {
-            const segment = new ol.geom.LineString([pt1, pt2]);
-            styles.push(new ol.style.Style({
-              geometry: segment,
-              text: new ol.style.Text({
-                text: `${distMeters.toFixed(1)}m`,
-                font: "600 10px Inter, sans-serif",
-                fill: new ol.style.Fill({ color: "#1976d2" }),
-                stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
-                placement: "line",
-                textBaseline: "bottom",
-                offsetY: -2
-              })
-            }));
-          }
-        }
-      }
-    } else if (geometry && geometry.getType() === "MultiPolygon") {
-      const polys = geometry.getPolygons();
-      for (const poly of polys) {
-        const ring = poly.getLinearRing(0);
+    if (hi || resolution <= 2.5) {
+      const geometry = feature.getGeometry();
+      if (geometry && geometry.getType() === "Polygon") {
+        const ring = geometry.getLinearRing(0);
         if (ring) {
           const coords = ring.getCoordinates();
           for (let i = 0; i < coords.length - 1; i++) {
@@ -363,6 +339,7 @@ const parcelsLayer = new ol.layer.Vector({
             const p1LonLat = ol.proj.transform(pt1, MAP_DRAW_PROJ, "EPSG:4326");
             const p2LonLat = ol.proj.transform(pt2, MAP_DRAW_PROJ, "EPSG:4326");
             const distMeters = vincentyDistanceMeters(p1LonLat[0], p1LonLat[1], p2LonLat[0], p2LonLat[1]);
+            
             if (distMeters > 0) {
               const segment = new ol.geom.LineString([pt1, pt2]);
               styles.push(new ol.style.Style({
@@ -377,6 +354,36 @@ const parcelsLayer = new ol.layer.Vector({
                   offsetY: -2
                 })
               }));
+            }
+          }
+        }
+      } else if (geometry && geometry.getType() === "MultiPolygon") {
+        const polys = geometry.getPolygons();
+        for (const poly of polys) {
+          const ring = poly.getLinearRing(0);
+          if (ring) {
+            const coords = ring.getCoordinates();
+            for (let i = 0; i < coords.length - 1; i++) {
+              const pt1 = coords[i];
+              const pt2 = coords[i + 1];
+              const p1LonLat = ol.proj.transform(pt1, MAP_DRAW_PROJ, "EPSG:4326");
+              const p2LonLat = ol.proj.transform(pt2, MAP_DRAW_PROJ, "EPSG:4326");
+              const distMeters = vincentyDistanceMeters(p1LonLat[0], p1LonLat[1], p2LonLat[0], p2LonLat[1]);
+              if (distMeters > 0) {
+                const segment = new ol.geom.LineString([pt1, pt2]);
+                styles.push(new ol.style.Style({
+                  geometry: segment,
+                  text: new ol.style.Text({
+                    text: `${distMeters.toFixed(1)}m`,
+                    font: "600 10px Inter, sans-serif",
+                    fill: new ol.style.Fill({ color: "#1976d2" }),
+                    stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+                    placement: "line",
+                    textBaseline: "bottom",
+                    offsetY: -2
+                  })
+                }));
+              }
             }
           }
         }

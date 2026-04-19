@@ -1,5 +1,5 @@
 import { createSupabaseClient, getConfig } from "./supabase-client.js";
-import { clearStatus, parseNum, setStatus } from "./utils.js";
+import { clearStatus, parseNum, setStatus, vincentyDistanceMeters } from "./utils.js";
 import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
@@ -199,7 +199,7 @@ function surveyFeatureAreaAcresText(feature) {
   const g = feature.getGeometry();
   if (!g) return "";
   try {
-    return `${(ol.sphere.getArea(g) * 0.000247105).toFixed(2)} ac`;
+    return `${(ol.sphere.getArea(g, { projection: MAP_DRAW_PROJ }) * 0.000247105).toFixed(2)} ac`;
   } catch {
     return "";
   }
@@ -215,21 +215,31 @@ const blocksLayer = new ol.layer.Vector({
       searchHighlight.blockId != null &&
       bid != null &&
       String(bid) === String(searchHighlight.blockId);
-    const pal = CULTIVATION_PALETTE[cultivationKeyFromFeature(feature)];
+      
+    const status = feature.get("cultivation_status");
+    let fillColor = "transparent";
+    let strokeColor = "#d32f2f"; 
+    let strokeWidth = 3; 
+    let textColor = "#d32f2f";
+    
+    if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
+      fillColor = CULTIVATION_PALETTE[status].fill;
+    }
+
     const code = String(feature.get("block_code") ?? "").trim() || "—";
     const area = surveyFeatureAreaAcresText(feature);
     const text = area ? `${code}\n${area}` : code;
     return new ol.style.Style({
       stroke: new ol.style.Stroke(
-        hi ? { color: "#e65100", width: 4 } : { color: pal.stroke, width: 2 }
+        hi ? { color: "#e65100", width: 5 } : { color: strokeColor, width: strokeWidth }
       ),
       fill: new ol.style.Fill({
-        color: hi ? "rgba(230, 81, 0, 0.14)" : pal.fill
+        color: hi ? "rgba(230, 81, 0, 0.14)" : fillColor
       }),
       text: new ol.style.Text({
         text,
-        font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: hi ? "#bf360c" : pal.text }),
+        font: hi ? "700 13px Inter, sans-serif" : "600 12px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: hi ? "#bf360c" : textColor }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
         overflow: true
       })
@@ -247,7 +257,17 @@ const parcelsLayer = new ol.layer.Vector({
       searchHighlight.parcelId != null &&
       pid != null &&
       String(pid) === String(searchHighlight.parcelId);
-    const pal = CULTIVATION_PALETTE[cultivationKeyFromFeature(feature)];
+      
+    const status = feature.get("cultivation_status");
+    let fillColor = "transparent";
+    let strokeColor = "#2e7d32"; 
+    let strokeWidth = 2;
+    let textColor = "#2e7d32";
+
+    if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
+      fillColor = CULTIVATION_PALETTE[status].fill;
+    }
+
     const num = feature.get("parcel_no");
     const label =
       num != null && num !== ""
@@ -257,21 +277,95 @@ const parcelsLayer = new ol.layer.Vector({
             .trim() || "—";
     const area = surveyFeatureAreaAcresText(feature);
     const text = area ? `${label}\n${area}` : label;
-    return new ol.style.Style({
+    
+    const styles = [];
+
+    styles.push(new ol.style.Style({
       stroke: new ol.style.Stroke(
-        hi ? { color: "#f9a825", width: 4 } : { color: pal.stroke, width: 2 }
+        hi ? { color: "#ffffff", width: 6 } : { color: "#ffffff", width: strokeWidth + 2 }
       ),
       fill: new ol.style.Fill({
-        color: hi ? "rgba(249, 168, 37, 0.38)" : pal.fill
-      }),
+        color: hi ? "rgba(249, 168, 37, 0.38)" : fillColor
+      })
+    }));
+
+    styles.push(new ol.style.Style({
+      stroke: new ol.style.Stroke(
+        hi ? { color: "#f9a825", width: 4 } : { color: strokeColor, width: strokeWidth }
+      ),
       text: new ol.style.Text({
         text,
         font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: hi ? "#f57f17" : pal.text }),
+        fill: new ol.style.Fill({ color: hi ? "#f57f17" : textColor }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: hi ? 4 : 3 }),
         overflow: true
       })
-    });
+    }));
+
+    const geometry = feature.getGeometry();
+    if (geometry && geometry.getType() === "Polygon") {
+      const ring = geometry.getLinearRing(0);
+      if (ring) {
+        const coords = ring.getCoordinates();
+        for (let i = 0; i < coords.length - 1; i++) {
+          const pt1 = coords[i];
+          const pt2 = coords[i + 1];
+          const p1LonLat = ol.proj.transform(pt1, MAP_DRAW_PROJ, "EPSG:4326");
+          const p2LonLat = ol.proj.transform(pt2, MAP_DRAW_PROJ, "EPSG:4326");
+          const distMeters = vincentyDistanceMeters(p1LonLat[0], p1LonLat[1], p2LonLat[0], p2LonLat[1]);
+          
+          if (distMeters > 0) {
+            const midPoint = [
+              (pt1[0] + pt2[0]) / 2,
+              (pt1[1] + pt2[1]) / 2
+            ];
+            styles.push(new ol.style.Style({
+              geometry: new ol.geom.Point(midPoint),
+              text: new ol.style.Text({
+                text: `${distMeters.toFixed(1)}m`,
+                font: "600 10px Inter, sans-serif",
+                fill: new ol.style.Fill({ color: "#1976d2" }),
+                stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+                placement: "point"
+              })
+            }));
+          }
+        }
+      }
+    } else if (geometry && geometry.getType() === "MultiPolygon") {
+      const polys = geometry.getPolygons();
+      for (const poly of polys) {
+        const ring = poly.getLinearRing(0);
+        if (ring) {
+          const coords = ring.getCoordinates();
+          for (let i = 0; i < coords.length - 1; i++) {
+            const pt1 = coords[i];
+            const pt2 = coords[i + 1];
+            const p1LonLat = ol.proj.transform(pt1, MAP_DRAW_PROJ, "EPSG:4326");
+            const p2LonLat = ol.proj.transform(pt2, MAP_DRAW_PROJ, "EPSG:4326");
+            const distMeters = vincentyDistanceMeters(p1LonLat[0], p1LonLat[1], p2LonLat[0], p2LonLat[1]);
+            if (distMeters > 0) {
+              const midPoint = [
+                (pt1[0] + pt2[0]) / 2,
+                (pt1[1] + pt2[1]) / 2
+              ];
+              styles.push(new ol.style.Style({
+                geometry: new ol.geom.Point(midPoint),
+                text: new ol.style.Text({
+                  text: `${distMeters.toFixed(1)}m`,
+                  font: "600 10px Inter, sans-serif",
+                  fill: new ol.style.Fill({ color: "#1976d2" }),
+                  stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+                  placement: "point"
+                })
+              }));
+            }
+          }
+        }
+      }
+    }
+
+    return styles;
   }
 });
 
@@ -681,7 +775,7 @@ function tryParcelStatusMapClick(evt) {
   const mode = getParcelStatusLayerMode();
   let hit = null;
   let layerHit = null;
-  const hitOpts = { hitTolerance: 12 };
+  const hitOpts = { hitTolerance: 15 };
 
   if (mode === "PARCELS") {
     map.forEachFeatureAtPixel(
@@ -895,7 +989,7 @@ function setupInfoPopup() {
         panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
         return true;
       },
-      { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 6 }
+      { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 15 }
     );
   });
 }

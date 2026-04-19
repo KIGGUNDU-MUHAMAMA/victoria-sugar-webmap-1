@@ -1,5 +1,5 @@
 import { createSupabaseClient, getConfig } from "./supabase-client.js";
-import { clearStatus, parseNum, setStatus, vincentyDistanceMeters } from "./utils.js";
+import { clearStatus, parseNum, setStatus, vincentyDistanceMeters, computeUtmCartesianAreaAcres } from "./utils.js";
 import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
@@ -192,17 +192,33 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
 }
 
 function surveyFeatureAreaAcresText(feature) {
-  const raw = feature.get("expected_area_acres");
-  if (raw != null && raw !== "" && Number.isFinite(Number(raw))) {
-    return `${Number(raw).toFixed(2)} ac`;
+  let areaAcres = feature.get("_computed_utm_area_acres");
+  if (areaAcres !== undefined) {
+    return areaAcres > 0 ? `${areaAcres.toFixed(2)} ac` : "";
   }
   const g = feature.getGeometry();
   if (!g) return "";
+  areaAcres = 0;
   try {
-    return `${(ol.sphere.getArea(g, { projection: MAP_DRAW_PROJ }) * 0.000247105).toFixed(2)} ac`;
-  } catch {
-    return "";
-  }
+    if (g.getType() === "Polygon") {
+      const ring = g.getLinearRing(0);
+      if (ring) {
+        const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+        areaAcres = computeUtmCartesianAreaAcres(lonLats);
+      }
+    } else if (g.getType() === "MultiPolygon") {
+      const polys = g.getPolygons();
+      for (const poly of polys) {
+        const ring = poly.getLinearRing(0);
+        if (ring) {
+          const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+          areaAcres += computeUtmCartesianAreaAcres(lonLats);
+        }
+      }
+    }
+  } catch {}
+  feature.set("_computed_utm_area_acres", areaAcres, true);
+  return areaAcres > 0 ? `${areaAcres.toFixed(2)} ac` : "";
 }
 
 const blocksLayer = new ol.layer.Vector({
@@ -227,8 +243,7 @@ const blocksLayer = new ol.layer.Vector({
     }
 
     const code = String(feature.get("block_code") ?? "").trim() || "—";
-    const area = surveyFeatureAreaAcresText(feature);
-    const text = area ? `${code}\n${area}` : code;
+    const text = code;
     return new ol.style.Style({
       stroke: new ol.style.Stroke(
         hi ? { color: "#e65100", width: 5 } : { color: strokeColor, width: strokeWidth }
@@ -315,18 +330,17 @@ const parcelsLayer = new ol.layer.Vector({
           const distMeters = vincentyDistanceMeters(p1LonLat[0], p1LonLat[1], p2LonLat[0], p2LonLat[1]);
           
           if (distMeters > 0) {
-            const midPoint = [
-              (pt1[0] + pt2[0]) / 2,
-              (pt1[1] + pt2[1]) / 2
-            ];
+            const segment = new ol.geom.LineString([pt1, pt2]);
             styles.push(new ol.style.Style({
-              geometry: new ol.geom.Point(midPoint),
+              geometry: segment,
               text: new ol.style.Text({
                 text: `${distMeters.toFixed(1)}m`,
                 font: "600 10px Inter, sans-serif",
                 fill: new ol.style.Fill({ color: "#1976d2" }),
                 stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
-                placement: "point"
+                placement: "line",
+                textBaseline: "bottom",
+                offsetY: -2
               })
             }));
           }
@@ -345,18 +359,17 @@ const parcelsLayer = new ol.layer.Vector({
             const p2LonLat = ol.proj.transform(pt2, MAP_DRAW_PROJ, "EPSG:4326");
             const distMeters = vincentyDistanceMeters(p1LonLat[0], p1LonLat[1], p2LonLat[0], p2LonLat[1]);
             if (distMeters > 0) {
-              const midPoint = [
-                (pt1[0] + pt2[0]) / 2,
-                (pt1[1] + pt2[1]) / 2
-              ];
+              const segment = new ol.geom.LineString([pt1, pt2]);
               styles.push(new ol.style.Style({
-                geometry: new ol.geom.Point(midPoint),
+                geometry: segment,
                 text: new ol.style.Text({
                   text: `${distMeters.toFixed(1)}m`,
                   font: "600 10px Inter, sans-serif",
                   fill: new ol.style.Fill({ color: "#1976d2" }),
                   stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
-                  placement: "point"
+                  placement: "line",
+                  textBaseline: "bottom",
+                  offsetY: -2
                 })
               }));
             }

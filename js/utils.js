@@ -87,3 +87,56 @@ export function vincentyDistanceMeters(lon1, lat1, lon2, lat2) {
           (B / 6) * cos2SigmaM * (-3 + 4 * sinSigma * sinSigma) * (-3 + 4 * cos2SigmaM * cos2SigmaM)));
   return b * A * (sigma - deltaSigma);
 }
+
+export function wgs84ToUTM(lon, lat) {
+  const a = 6378137.0;
+  const f = 1 / 298.257223563;
+  const k0 = 0.9996;
+  const eSq = 2*f - f*f;
+  
+  const zone = Math.floor((lon + 180) / 6) + 1;
+  const lon0 = (zone - 1) * 6 - 180 + 3;
+  
+  const lonRad = toRadians(lon);
+  const latRad = toRadians(lat);
+  const lon0Rad = toRadians(lon0);
+  
+  const N = a / Math.sqrt(1 - eSq * Math.pow(Math.sin(latRad), 2));
+  const T = Math.pow(Math.tan(latRad), 2);
+  const C = eSq * Math.pow(Math.cos(latRad), 2) / (1 - eSq);
+  const A = Math.cos(latRad) * (lonRad - lon0Rad);
+  
+  const M = a * (
+    (1 - eSq/4 - 3*eSq*eSq/64 - 5*Math.pow(eSq,3)/256) * latRad
+    - (3*eSq/8 + 3*eSq*eSq/32 + 45*Math.pow(eSq,3)/1024) * Math.sin(2*latRad)
+    + (15*eSq*eSq/256 + 45*Math.pow(eSq,3)/1024) * Math.sin(4*latRad)
+    - (35*Math.pow(eSq,3)/3072) * Math.sin(6*latRad)
+  );
+  
+  const x = k0 * N * (
+    A + (1-T+C)*Math.pow(A,3)/6
+    + (5 - 18*T + T*T + 72*C - 58*eSq)*Math.pow(A,5)/120
+  ) + 500000.0;
+  
+  let y = k0 * (
+    M + N * Math.tan(latRad) * (
+      Math.pow(A,2)/2
+      + (5 - T + 9*C + 4*C*C)*Math.pow(A,4)/24
+      + (61 - 58*T + T*T + 600*C - 330*eSq)*Math.pow(A,6)/720
+    )
+  );
+  
+  if (lat < 0) y += 10000000.0;
+  
+  return [x, y];
+}
+
+export function computeUtmCartesianAreaAcres(lonLats) {
+  if (!lonLats || lonLats.length < 3) return 0;
+  const utmCoords = lonLats.map(pt => wgs84ToUTM(pt[0], pt[1]));
+  let area = 0;
+  for (let i = 0; i < utmCoords.length - 1; i++) {
+    area += utmCoords[i][0] * utmCoords[i+1][1] - utmCoords[i+1][0] * utmCoords[i][1];
+  }
+  return (Math.abs(area) / 2) * 0.000247105381;
+}

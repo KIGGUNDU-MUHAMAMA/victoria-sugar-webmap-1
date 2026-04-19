@@ -170,7 +170,12 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
   const badge = layerType === "PARCELS" ? "Parcel" : "Block";
   const rows = order
     .map((key) => {
-      const raw = props[key];
+      let raw = props[key];
+      if (key === "expected_area_acres") {
+        surveyFeatureAreaAcresText(feature);
+        const computed = feature.get("_computed_utm_area_acres");
+        if (computed) raw = computed;
+      }
       if (raw == null || raw === "") return null;
       const label = INFO_FIELD_LABELS[key] || key;
       const display = formatInfoFieldValue(key, raw);

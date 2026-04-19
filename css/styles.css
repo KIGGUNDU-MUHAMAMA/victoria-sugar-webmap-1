@@ -315,16 +315,50 @@ button:hover {
   }
 
   .webmap-app .map-left-stack {
+    top: auto;
+    bottom: 16px;
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: min(52vh, calc(100vh - 100px));
+    max-height: 45vh;
   }
 
   .webmap-app .map-viewport-wrap {
     flex: 1;
     min-height: 0;
     border-radius: 0 0 14px 14px;
+  }
+
+  /* Modern Bottom Sheet Layout for side panels on mobile */
+  .side-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 55vh;
+    border-radius: 20px 20px 0 0;
+    border-right: none;
+    border-top: 1px solid rgba(78, 112, 61, 0.28);
+    box-shadow: 0 -8px 32px rgba(20, 40, 24, 0.15);
+    z-index: 1250;
+  }
+
+  .parcel-status-panel {
+    top: auto !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 55vh;
+    border-radius: 20px 20px 0 0;
+    border-right: none;
+    border-top: 1px solid rgba(78, 112, 61, 0.28);
+    box-shadow: 0 -8px 32px rgba(20, 40, 24, 0.15);
+    margin: 0;
+    z-index: 1250;
   }
 }
 

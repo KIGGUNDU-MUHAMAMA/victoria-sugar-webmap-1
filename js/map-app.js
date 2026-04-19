@@ -238,7 +238,7 @@ const blocksLayer = new ol.layer.Vector({
       String(bid) === String(searchHighlight.blockId);
       
     const status = feature.get("cultivation_status");
-    let fillColor = "rgba(255, 255, 255, 0.01)";
+    let fillColor = "rgba(255, 255, 255, 0.05)";
     let strokeColor = "#d32f2f"; 
     let strokeWidth = 3; 
     let textColor = "#d32f2f";
@@ -279,7 +279,7 @@ const parcelsLayer = new ol.layer.Vector({
       String(pid) === String(searchHighlight.parcelId);
       
     const status = feature.get("cultivation_status");
-    let fillColor = "rgba(255, 255, 255, 0.01)";
+    let fillColor = "rgba(255, 255, 255, 0.05)";
     let strokeColor = "#2e7d32"; 
     let strokeWidth = 2;
     let textColor = "#2e7d32";
@@ -793,7 +793,7 @@ function tryParcelStatusMapClick(evt) {
   const mode = getParcelStatusLayerMode();
   let hit = null;
   let layerHit = null;
-  const hitOpts = { hitTolerance: 15 };
+  const hitOpts = { hitTolerance: 20 };
 
   if (mode === "PARCELS") {
     map.forEachFeatureAtPixel(
@@ -1007,7 +1007,7 @@ function setupInfoPopup() {
         panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
         return true;
       },
-      { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 15 }
+      { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 20 }
     );
   });
 }

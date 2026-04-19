@@ -241,7 +241,7 @@ const blocksLayer = new ol.layer.Vector({
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
     let strokeColor = "#d32f2f"; 
-    let strokeWidth = resolution > 10 && !hi ? 1.5 : (hi ? 5 : 3); 
+    let strokeWidth = resolution > 25 && !hi ? 1.5 : (hi ? 5 : 3); 
     let textColor = "#d32f2f";
     
     if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
@@ -249,7 +249,7 @@ const blocksLayer = new ol.layer.Vector({
     }
 
     let textStyle = null;
-    if (hi || resolution <= 10) {
+    if (hi || resolution <= 25) {
       const code = String(feature.get("block_code") ?? "").trim() || "—";
       textStyle = new ol.style.Text({
         text: code,
@@ -283,7 +283,7 @@ const parcelsLayer = new ol.layer.Vector({
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
     let strokeColor = "#2e7d32"; 
-    let strokeWidth = resolution > 5 && !hi ? 1 : (hi ? 4 : 2);
+    let strokeWidth = resolution > 12 && !hi ? 1 : (hi ? 4 : 2);
     let textColor = "#2e7d32";
 
     if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
@@ -302,7 +302,7 @@ const parcelsLayer = new ol.layer.Vector({
     }));
 
     let textStyle = null;
-    if (hi || resolution <= 5) {
+    if (hi || resolution <= 12) {
       const num = feature.get("parcel_no");
       const label =
         num != null && num !== ""
@@ -327,7 +327,7 @@ const parcelsLayer = new ol.layer.Vector({
       text: textStyle
     }));
 
-    if (hi || resolution <= 2.5) {
+    if (hi || resolution <= 4) {
       const geometry = feature.getGeometry();
       if (geometry && geometry.getType() === "Polygon") {
         const ring = geometry.getLinearRing(0);
@@ -1923,8 +1923,9 @@ async function initMap() {
     "EPSG:3857"
   );
   setTimeout(() => {
-    map.getView().fit(luweeroExtent, { padding: [20, 20, 20, 20], maxZoom: 16 });
-  }, 100);
+    map.updateSize();
+    map.getView().fit(luweeroExtent, { padding: [10, 10, 10, 10], maxZoom: 16 });
+  }, 400);
 
   const LayerSwitcherClass = ol.control.LayerSwitcher || window.LayerSwitcher;
   if (LayerSwitcherClass) {

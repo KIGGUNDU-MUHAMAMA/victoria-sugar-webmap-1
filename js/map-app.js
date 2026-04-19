@@ -238,7 +238,7 @@ const blocksLayer = new ol.layer.Vector({
       String(bid) === String(searchHighlight.blockId);
       
     const status = feature.get("cultivation_status");
-    let fillColor = "transparent";
+    let fillColor = "rgba(255, 255, 255, 0.01)";
     let strokeColor = "#d32f2f"; 
     let strokeWidth = 3; 
     let textColor = "#d32f2f";
@@ -279,7 +279,7 @@ const parcelsLayer = new ol.layer.Vector({
       String(pid) === String(searchHighlight.parcelId);
       
     const status = feature.get("cultivation_status");
-    let fillColor = "transparent";
+    let fillColor = "rgba(255, 255, 255, 0.01)";
     let strokeColor = "#2e7d32"; 
     let strokeWidth = 2;
     let textColor = "#2e7d32";
@@ -492,11 +492,11 @@ function buildLayerTree() {
   const googleHybrid = createBasemapLayer("Google Satellite Hybrid", new ol.source.XYZ({
     url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     crossOrigin: "anonymous"
-  }), true);
+  }), false);
   const esriImagery = createBasemapLayer("Esri World Imagery", new ol.source.XYZ({
     url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     crossOrigin: "anonymous"
-  }));
+  }), true);
   const noBasemap = createBasemapLayer("No Basemap", new ol.source.XYZ({
     url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
   }));
@@ -975,7 +975,7 @@ function setupInfoPopup() {
     }
   });
 
-  map.on("singleclick", (evt) => {
+  map.on("click", (evt) => {
     if (document.getElementById("coordExtractDrawer")?.dataset.picking === "1") {
       return;
     }
@@ -1909,6 +1909,15 @@ async function initMap() {
       new ol.control.ScaleLine()
     ]
   });
+
+  const luweeroExtent = ol.proj.transformExtent(
+    [32.24921182, 0.957816699, 32.5740272, 1.104066909],
+    "EPSG:4326",
+    "EPSG:3857"
+  );
+  setTimeout(() => {
+    map.getView().fit(luweeroExtent, { padding: [20, 20, 20, 20], maxZoom: 16 });
+  }, 100);
 
   const LayerSwitcherClass = ol.control.LayerSwitcher || window.LayerSwitcher;
   if (LayerSwitcherClass) {

@@ -1766,10 +1766,23 @@ function startMeasure(type) {
     } else {
       const feat = new ol.Feature({ geometry: geom.clone() });
       feat.set("_measureKind", "area");
-      const areaM2 = ol.sphere.getArea(geom, { projection: MAP_DRAW_PROJ });
-      const ha = areaM2 / 10000;
+      
+      let areaAcres = 0;
+      try {
+        const ring = geom.getLinearRing(0);
+        if (ring) {
+          const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+          areaAcres = computeUtmCartesianAreaAcres(lonLats);
+        }
+      } catch {}
+      
+      if (!areaAcres || areaAcres <= 0) {
+        const areaM2 = ol.sphere.getArea(geom, { projection: MAP_DRAW_PROJ });
+        areaAcres = (areaM2 / 10000) * 2.47105;
+      }
+      
       measureSource.addFeature(feat);
-      const msg = `Area: ${ha.toFixed(3)} ha`;
+      const msg = `Area: ${areaAcres.toFixed(2)} ac`;
       setDrawToolsFeedback(msg, false);
       setStatus(statusEl, msg);
     }

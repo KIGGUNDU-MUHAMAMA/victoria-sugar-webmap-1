@@ -449,8 +449,21 @@ function buildLineMeasureStyles(feature) {
 function buildAreaMeasureStyles(feature) {
   const geometry = feature.getGeometry();
   if (!geometry || geometry.getType() !== "Polygon") return [];
-  const areaM2 = ol.sphere.getArea(geometry, { projection: MAP_DRAW_PROJ });
-  const ha = areaM2 / 10000;
+  
+  let areaAcres = 0;
+  try {
+    const ring = geometry.getLinearRing(0);
+    if (ring) {
+      const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+      areaAcres = computeUtmCartesianAreaAcres(lonLats);
+    }
+  } catch {}
+  
+  if (!areaAcres || areaAcres <= 0) {
+    const areaM2 = ol.sphere.getArea(geometry, { projection: MAP_DRAW_PROJ });
+    areaAcres = (areaM2 / 10000) * 2.47105;
+  }
+
   const ip = geometry.getInteriorPoint();
   return [
     new ol.style.Style({
@@ -462,7 +475,7 @@ function buildAreaMeasureStyles(feature) {
     new ol.style.Style({
       geometry: ip,
       text: new ol.style.Text({
-        text: `${ha.toFixed(3)} ha`,
+        text: `${areaAcres.toFixed(2)} ac`,
         font: "700 12px Inter, system-ui, sans-serif",
         fill: new ol.style.Fill({ color: "#3e2723" }),
         stroke: new ol.style.Stroke({ color: "#fff", width: 4 })

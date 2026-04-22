@@ -140,8 +140,11 @@
         <i class="fas fa-location-crosshairs"></i>
       </button>
     </div>
+  </div>
 
-    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel sentinel-analytics--right-dock" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
+  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
+
+    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
       <div class="sentinel-analytics__card">
         <header class="search-panel__head">
           <div class="search-panel__head-inner">
@@ -208,16 +211,6 @@
               <button type="button" class="vsl-satellite-float__btn-ghost" id="vslWmsResetViewBtn">Reset view</button>
             </div>
           </div>
-
-          <section class="sentinel-analytics__section" aria-labelledby="sentinelBasemapLegend">
-            <h3 id="sentinelBasemapLegend" class="sentinel-analytics__section-title">Basemap</h3>
-            <div class="sentinel-analytics__radio-grid" role="radiogroup" aria-label="Basemap">
-              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="OpenStreetMap"> OSM</label>
-              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="Google Satellite Hybrid"> Google Hybrid</label>
-              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="Esri World Imagery" checked> Esri Satellite</label>
-              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="No Basemap"> None</label>
-            </div>
-          </section>
 
           <section class="sentinel-analytics__section" aria-labelledby="sentinelCloudLegend">
             <h3 id="sentinelCloudLegend" class="sentinel-analytics__section-title">Image quality (cloud)</h3>
@@ -308,9 +301,6 @@
         </div>
       </div>
     </section>
-  </div>
-
-  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
 
     <!-- ═══ UNIFIED SEARCH PANEL ═══ -->
     <section id="searchPanel" class="search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="searchPanelTitle">

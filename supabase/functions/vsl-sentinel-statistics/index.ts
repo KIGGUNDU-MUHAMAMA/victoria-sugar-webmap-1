@@ -28,35 +28,45 @@ function getStatisticsUrl(): string {
   );
 }
 
-/** SCL-based cloud/shadow/mask. Do not gate on dataMask: some scenes omit it and every pixel was masked. */
+/** SCL-based cloud/shadow/mask. CDSE Statistics API requires a dataMask output in setup() (see error COMMON_EXCEPTION). */
 const EVAL_NDVI = `//VERSION=3
 function setup() {
   return {
     input: [{ bands: ["B04", "B08", "SCL"] }],
-    output: [{ id: "default", sampleType: "FLOAT32", bands: 1 }],
+    output: [
+      { id: "default", sampleType: "FLOAT32", bands: 1 },
+      { id: "dataMask", sampleType: "UINT8", bands: 1 }
+    ],
   };
 }
 function evaluatePixel(s) {
   var c = s.SCL;
-  if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) return { default: [NaN] };
+  if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) {
+    return { default: [NaN], dataMask: [0] };
+  }
   var d = s.B08 + s.B04;
-  if (d == 0) return { default: [NaN] };
-  return { default: [(s.B08 - s.B04) / d] };
+  if (d == 0) return { default: [NaN], dataMask: [0] };
+  return { default: [(s.B08 - s.B04) / d], dataMask: [1] };
 }`;
 
 const EVAL_NDMI = `//VERSION=3
 function setup() {
   return {
     input: [{ bands: ["B8A", "B11", "SCL"] }],
-    output: [{ id: "default", sampleType: "FLOAT32", bands: 1 }],
+    output: [
+      { id: "default", sampleType: "FLOAT32", bands: 1 },
+      { id: "dataMask", sampleType: "UINT8", bands: 1 }
+    ],
   };
 }
 function evaluatePixel(s) {
   var c = s.SCL;
-  if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) return { default: [NaN] };
+  if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) {
+    return { default: [NaN], dataMask: [0] };
+  }
   var d = s.B8A + s.B11;
-  if (d == 0) return { default: [NaN] };
-  return { default: [(s.B8A - s.B11) / d] };
+  if (d == 0) return { default: [NaN], dataMask: [0] };
+  return { default: [(s.B8A - s.B11) / d], dataMask: [1] };
 }`;
 
 /** Red-edge NDRE — (B8 − B5) / (B8 + B5), SCL mask. */
@@ -64,15 +74,20 @@ const EVAL_NDRE = `//VERSION=3
 function setup() {
   return {
     input: [{ bands: ["B05", "B08", "SCL"] }],
-    output: [{ id: "default", sampleType: "FLOAT32", bands: 1 }],
+    output: [
+      { id: "default", sampleType: "FLOAT32", bands: 1 },
+      { id: "dataMask", sampleType: "UINT8", bands: 1 }
+    ],
   };
 }
 function evaluatePixel(s) {
   var c = s.SCL;
-  if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) return { default: [NaN] };
+  if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) {
+    return { default: [NaN], dataMask: [0] };
+  }
   var d = s.B08 + s.B05;
-  if (d == 0) return { default: [NaN] };
-  return { default: [(s.B08 - s.B05) / d] };
+  if (d == 0) return { default: [NaN], dataMask: [0] };
+  return { default: [(s.B08 - s.B05) / d], dataMask: [1] };
 }`;
 
 type IntervalRow = { from: string; to: string; mean: number | null; stDev?: number | null };

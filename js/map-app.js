@@ -2062,7 +2062,6 @@ async function initMap() {
     const sentinelCtl = initSentinelAnalytics({
       map,
       cfg,
-      setBasemapByTitle,
       getBaseGroup: () => baseGroupRef,
       sentinelLayer: sentinelHubLayer,
       blocksLayer,

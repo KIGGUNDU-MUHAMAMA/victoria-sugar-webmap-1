@@ -2756,28 +2756,12 @@ select.search-panel__input {
   transform: scale(0.95);
 }
 
-/* ═══ Sentinel-2 — right-docked single panel (WMS + basemap + reports) ═══ */
+/* ═══ Sentinel-2 — in .map-left-stack (WMS + reports; basemap via layer switcher) ═══ */
 .sentinel-analytics[hidden] {
   display: none !important;
 }
 
-/* Fixed right: one scroll; .sentinel-analytics__shell scrolls. */
-.webmap-app .sentinel-analytics--right-dock {
-  position: fixed;
-  right: 12px;
-  top: 96px;
-  bottom: 12px;
-  z-index: 1155;
-  width: min(360px, calc(100vw - 24px));
-  max-height: calc(100vh - 108px);
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 0;
-  box-sizing: border-box;
-  pointer-events: auto;
-  overflow: hidden;
-}
-
+/* One scroll: .sentinel-analytics__shell scrolls. */
 .webmap-app .map-left-stack > .sentinel-analytics {
   flex: 1 1 auto;
   min-height: 0;
@@ -3536,14 +3520,5 @@ select.search-panel__input {
     right: 0.35rem;
     top: 4.2rem;
     width: min(19rem, 94vw);
-  }
-
-  .webmap-app .sentinel-analytics--right-dock {
-    right: 8px;
-    left: 8px;
-    width: auto;
-    top: auto;
-    bottom: 8px;
-    max-height: min(52vh, 28rem);
   }
 }

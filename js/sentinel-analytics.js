@@ -143,7 +143,6 @@ function renderWmsLegend(legendEl, layerId) {
  * @param {object} opts
  * @param {import("ol/Map").default} opts.map
  * @param {object} opts.cfg
- * @param {function(string): void} opts.setBasemapByTitle
  * @param {() => import("ol/layer/Group").default | null} [opts.getBaseGroup]
  * @param {import("ol/layer/Tile").default} opts.sentinelLayer
  * @param {import("ol/layer/Vector").default} opts.blocksLayer
@@ -154,7 +153,6 @@ export function initSentinelAnalytics(opts) {
   const {
     map,
     cfg,
-    setBasemapByTitle,
     getBaseGroup,
     sentinelLayer,
     blocksLayer,
@@ -179,7 +177,6 @@ export function initSentinelAnalytics(opts) {
   const wmsContoursHook = document.getElementById("vslWmsContoursHook");
 
   const el = (id) => document.getElementById(id);
-  const basemapRadios = document.querySelectorAll("input[name='basemapChoice']");
   const opacityRangeLeft = el("sentinelOpacityRange");
   const opacityValueLeft = el("sentinelOpacityValue");
   const legendBody = el("sentinelLegendBody");
@@ -315,14 +312,21 @@ export function initSentinelAnalytics(opts) {
     applyWmsParams({});
   }
 
+  function getVisibleBasemapTitle() {
+    const bg = getBaseGroup?.();
+    if (bg) {
+      let t = "Basemap";
+      bg.getLayers().forEach((ly) => {
+        if (ly.getVisible() && ly.get("title")) t = String(ly.get("title"));
+      });
+      return t;
+    }
+    return "Basemap";
+  }
+
   function updateInfoLine() {
     if (!infoLine) return;
-    const basemap = (() => {
-      for (const r of basemapRadios) {
-        if (r.checked) return r.value;
-      }
-      return "Esri World Imagery";
-    })();
+    const basemap = getVisibleBasemapTitle();
     const tr = formatTimeRange(
       wmsTimeFrom && wmsTimeFrom.value,
       wmsTimeTo && wmsTimeTo.value
@@ -382,16 +386,6 @@ export function initSentinelAnalytics(opts) {
     }
     v.setZoom(Number(cfg.DEFAULT_ZOOM) > 0 ? Number(cfg.DEFAULT_ZOOM) : 11);
   });
-
-  for (const r of basemapRadios) {
-    r.addEventListener("change", () => {
-      if (r.checked) {
-        setBasemapByTitle(r.value);
-        updateInfoLine();
-        map.updateSize();
-      }
-    });
-  }
 
   if (opacityRangeLeft) {
     opacityRangeLeft.addEventListener(
@@ -540,13 +534,10 @@ export function initSentinelAnalytics(opts) {
 
   const bg = getBaseGroup?.();
   if (bg) {
-    let activeTitle = "Esri World Imagery";
-    bg.getLayers().forEach((ly) => {
-      if (ly.getVisible() && ly.get("title")) activeTitle = ly.get("title");
-    });
-    for (const r of basemapRadios) {
-      r.checked = r.value === activeTitle;
-    }
+    const layers = bg.getLayers();
+    const onBasemapVis = () => updateInfoLine();
+    layers.forEach((ly) => ly.on("change:visible", onBasemapVis));
+    layers.on("add", (e) => e.element.on("change:visible", onBasemapVis));
   }
 
   if (maxCcRange) {

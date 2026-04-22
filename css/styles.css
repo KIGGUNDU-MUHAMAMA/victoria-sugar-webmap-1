@@ -232,6 +232,7 @@ button:hover {
   -webkit-overflow-scrolling: touch;
   pointer-events: none;
   align-items: stretch;
+  min-height: 0;
 }
 
 .webmap-app .map-left-stack > * {
@@ -2760,9 +2761,18 @@ select.search-panel__input {
   display: none !important;
 }
 
+/* One scroll: panel fills the left stack; .sentinel-analytics__shell scrolls. */
+.webmap-app .map-left-stack > .sentinel-analytics {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .sentinel-analytics {
   width: 100%;
-  max-height: min(92vh, 920px);
   display: flex;
   flex-direction: column;
   font-size: 0.82rem;
@@ -2770,11 +2780,13 @@ select.search-panel__input {
   margin-bottom: 0.5rem;
   z-index: 5;
   animation: searchPanelIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  min-height: 0;
 }
 
 .sentinel-analytics__card {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
   background: linear-gradient(170deg, #ffffff 0%, #f5faf2 100%);
   border: 1px solid rgba(78, 112, 61, 0.28);
@@ -2802,11 +2814,57 @@ select.search-panel__input {
   display: flex;
   flex-direction: column;
   gap: 0;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  max-height: min(86vh, 860px);
+  overflow-x: hidden;
   padding: 0.45rem 0.7rem 0.75rem;
   -webkit-overflow-scrolling: touch;
+}
+
+.sentinel-analytics__report-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.35rem 0.25rem 0.2rem;
+  padding: 0.45rem 0.5rem 0.5rem;
+  border-radius: 10px;
+  background: linear-gradient(95deg, rgba(46, 90, 46, 0.14), rgba(21, 101, 192, 0.08));
+  border: 1px solid rgba(46, 90, 46, 0.35);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.sentinel-analytics__report-ribbon-ico {
+  font-size: 1.2rem;
+  color: #8b2323;
+  flex-shrink: 0;
+}
+
+.sentinel-analytics__report-ribbon-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.sentinel-analytics__report-ribbon-kicker {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #2d5a2d;
+  text-transform: uppercase;
+}
+
+.sentinel-analytics__report-ribbon-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text, #1a2e1a);
+  line-height: 1.2;
+}
+
+.sentinel-analytics__section--report {
+  padding-top: 0.3rem;
+  border-top: 2px solid rgba(46, 90, 46, 0.35);
 }
 
 .sentinel-report__row2 {
@@ -3100,11 +3158,8 @@ select.search-panel__input {
 }
 
 @media (max-width: 900px) {
-  .sentinel-analytics {
-    max-height: min(88vh, 720px);
-  }
-  .sentinel-analytics__shell {
-    max-height: min(80vh, 640px);
+  .webmap-app .map-left-stack > .sentinel-analytics {
+    max-height: 100%;
   }
 }
 

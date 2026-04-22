@@ -1,6 +1,6 @@
 /**
  * Copernicus Data Space WMS (OpenLayers TileWMS) — single instance, one LAYERS at a time.
- * Floating top-right controls + left panel (basemap, cloud, overlays, reports).
+ * Controls live in the right-docked Satellite panel (WMS, basemap, cloud, overlays, reports).
  */
 
 /** WMS LAYERS ids from the configured CDSE instance (exact names). */
@@ -94,7 +94,7 @@ function renderWmsLegend(legendEl, layerId) {
   if (!legendEl) return;
   if (!layerId || layerId === "off") {
     legendEl.innerHTML =
-      "<p class=\"sentinel-legend__placeholder\">Choose a layer in the top-right card.</p>";
+      "<p class=\"sentinel-legend__placeholder\">Choose a WMS layer above.</p>";
     return;
   }
   if (layerId === "NDVI" || layerId === "NDVI_ADVANCED") {
@@ -114,7 +114,7 @@ function renderWmsLegend(legendEl, layerId) {
   }
   if (layerId === "DEM") {
     legendEl.innerHTML =
-      "<p class=\"sentinel-legend__note\"><strong>Copernicus DEM</strong> — relief / elevation. <em>Contours and terrain tools:</em> planned. Adjust opacity in the same card.</p>";
+      "<p class=\"sentinel-legend__note\"><strong>Copernicus DEM</strong> — relief / elevation. <em>Contours:</em> planned. Adjust WMS opacity above.</p>";
     return;
   }
   if (layerId === "MOISTURE_STRESS" || layerId === "NDRE") {
@@ -449,7 +449,6 @@ export function initSentinelAnalytics(opts) {
 
   function closeSentinelPanel() {
     if (!panelRoot) return;
-    if (wmsFloat) wmsFloat.hidden = true;
     if (panelEscapeHandler) {
       document.removeEventListener("keydown", panelEscapeHandler, true);
       panelEscapeHandler = null;
@@ -468,7 +467,6 @@ export function initSentinelAnalytics(opts) {
   function openSentinelPanel() {
     if (!panelRoot) return;
     closeOtherPanels?.();
-    if (wmsFloat) wmsFloat.hidden = false;
     panelRoot.hidden = false;
     panelOpen = true;
     panelBtn?.classList.add("active");
@@ -482,8 +480,7 @@ export function initSentinelAnalytics(opts) {
     document.addEventListener("keydown", panelEscapeHandler, true);
     panelOutsideHandler = (ev) => {
       if (!panelOpen) return;
-      if (panelRoot.contains(ev.target) || panelBtn?.contains(ev.target) || wmsFloat?.contains(ev.target))
-        return;
+      if (panelRoot.contains(ev.target) || panelBtn?.contains(ev.target)) return;
       closeSentinelPanel();
     };
     document.addEventListener("pointerdown", panelOutsideHandler, true);
@@ -507,7 +504,6 @@ export function initSentinelAnalytics(opts) {
   });
 
   if (panelRoot) panelRoot.hidden = true;
-  if (wmsFloat) wmsFloat.hidden = true;
   panelBtn?.setAttribute("aria-expanded", "false");
 
   if (wmsContoursHook) {

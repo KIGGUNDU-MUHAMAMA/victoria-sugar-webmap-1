@@ -151,6 +151,17 @@ export function initFarmReports(opts) {
       : "Configure SUPABASE_URL in app-config to show the function endpoint.";
   }
 
+  async function getAccessTokenForFunctions() {
+    let {
+      data: { session }
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      const { data: ref } = await supabase.auth.refreshSession();
+      session = ref.session;
+    }
+    return session?.access_token || null;
+  }
+
   function invokeStatsErrorHelp(msg, httpStatus) {
     const m = (msg || "").toLowerCase();
     const isFetch = m.includes("failed to send") || m.includes("failed to fetch") || m.includes("networkerror");
@@ -263,7 +274,7 @@ export function initFarmReports(opts) {
   function kpiText(ndvi, ndre, ndmi) {
     const empty = (a) => !a || !a.length;
     if (empty(ndvi) && empty(ndre) && empty(ndmi)) {
-      return "Load satellite stats to see NDVI, NDRE, and NDMI.";
+      return "Load stats to see NDVI, NDRE, and NDMI.";
     }
     const n = (arr) => (arr && arr.length ? arr[arr.length - 1] : null);
     const nv = n(ndvi);
@@ -400,13 +411,19 @@ export function initFarmReports(opts) {
     if (setStatus) setStatus(statusEl, "Requesting satellite statistics (Copernicus)…");
     if (btnStats) btnStats.disabled = true;
     try {
+      const accessToken = await getAccessTokenForFunctions();
+      if (!accessToken) {
+        if (setStatus) setStatus(statusEl, "Sign in to load satellite statistics.", true);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke(fnName, {
         body: {
           block_id: bid,
           date_from: df,
           date_to: dt,
           interval: interval
-        }
+        },
+        headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (error) {
         const { httpStatus, detail: bodyDetail } = await readFunctionInvokeErrorDetail(error);

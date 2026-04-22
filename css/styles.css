@@ -2756,12 +2756,28 @@ select.search-panel__input {
   transform: scale(0.95);
 }
 
-/* ═══ Sentinel-2 — lives in .map-left-stack; ol layer switcher remains on the right ═══ */
+/* ═══ Sentinel-2 — right-docked single panel (WMS + basemap + reports) ═══ */
 .sentinel-analytics[hidden] {
   display: none !important;
 }
 
-/* One scroll: panel fills the left stack; .sentinel-analytics__shell scrolls. */
+/* Fixed right: one scroll; .sentinel-analytics__shell scrolls. */
+.webmap-app .sentinel-analytics--right-dock {
+  position: fixed;
+  right: 12px;
+  top: 96px;
+  bottom: 12px;
+  z-index: 1155;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100vh - 108px);
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+  box-sizing: border-box;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
 .webmap-app .map-left-stack > .sentinel-analytics {
   flex: 1 1 auto;
   min-height: 0;
@@ -3261,7 +3277,7 @@ select.search-panel__input {
   color: var(--danger);
 }
 
-/* ——— Copernicus WMS: floating top-right (single LAYERS + TIME range) ——— */
+/* ——— Copernicus WMS: was floating; default still fixed for backwards compat ——— */
 .vsl-satellite-float {
   position: fixed;
   top: 5.5rem;
@@ -3279,6 +3295,30 @@ select.search-panel__input {
   line-height: 1.4;
   padding: 0.65rem 0.7rem 0.75rem;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Embedded in #sentinelAnalyticsPanel: flow in panel, no second floating surface */
+.vsl-satellite-float--embedded {
+  position: static;
+  right: auto;
+  top: auto;
+  z-index: auto;
+  width: 100%;
+  max-height: none;
+  box-shadow: none;
+  margin: 0 0 0.25rem;
+  padding: 0.5rem 0.15rem 0.55rem;
+  border: none;
+  border-bottom: 1px dashed rgba(78, 112, 61, 0.2);
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.webmap-app--dark .vsl-satellite-float--embedded,
+.webmap-app[data-theme="dark"] .vsl-satellite-float--embedded {
+  background: transparent;
+  border-color: rgba(120, 180, 120, 0.2);
 }
 
 .webmap-app--dark .vsl-satellite-float,
@@ -3496,5 +3536,14 @@ select.search-panel__input {
     right: 0.35rem;
     top: 4.2rem;
     width: min(19rem, 94vw);
+  }
+
+  .webmap-app .sentinel-analytics--right-dock {
+    right: 8px;
+    left: 8px;
+    width: auto;
+    top: auto;
+    bottom: 8px;
+    max-height: min(52vh, 28rem);
   }
 }

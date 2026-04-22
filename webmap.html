@@ -135,73 +135,20 @@
   <div class="map-main" id="mapMain">
     <div class="map-viewport-wrap">
       <div id="map"></div>
-      <!-- Copernicus CDSE WMS: public instance URL; no auth headers in the browser. -->
-      <div id="vslWmsControlCard" class="vsl-satellite-float" hidden>
-        <div class="vsl-satellite-float__head">
-          <h3 class="vsl-satellite-float__title">Imagery &amp; analysis</h3>
-          <span id="vslWmsFloatSpinner" class="vsl-satellite-float__spinner" hidden aria-hidden="true" title="Loading tiles"></span>
-        </div>
-        <p class="vsl-satellite-float__hint vsl-satellite-float__hint--subtle">WMS <code>TIME</code> = start/end (UTC). One layer at a time.</p>
-        <div class="vsl-satellite-float__date-row">
-          <label class="vsl-satellite-float__lbl" for="vslWmsTimeFrom">From</label>
-          <input type="date" id="vslWmsTimeFrom" class="vsl-satellite-float__input" autocomplete="off">
-        </div>
-        <div class="vsl-satellite-float__date-row">
-          <label class="vsl-satellite-float__lbl" for="vslWmsTimeTo">To</label>
-          <input type="date" id="vslWmsTimeTo" class="vsl-satellite-float__input" autocomplete="off">
-        </div>
-        <div class="vsl-satellite-float__opacity">
-          <div class="vsl-satellite-float__row-between">
-            <span>Layer opacity <span class="vsl-satellite-float__muted">(0–100%)</span></span>
-            <span id="vslWmsOpacityValue" class="vsl-satellite-float__pct">88</span>
-          </div>
-          <label class="visually-hidden" for="vslWmsOpacityRange">WMS layer opacity</label>
-          <input type="range" id="vslWmsOpacityRange" class="vsl-satellite-float__range" min="0" max="100" value="88" step="1">
-        </div>
-        <div class="vsl-satellite-float__groups" role="group" aria-label="Active WMS layer">
-          <p class="vsl-satellite-float__group-title">Satellite</p>
-          <div class="vsl-satellite-float__picks">
-            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="TRUE_COLOR" aria-pressed="false">True color</button>
-            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="FALSE_COLOR" aria-pressed="false">False color</button>
-          </div>
-          <p class="vsl-satellite-float__group-title">Vegetation</p>
-          <div class="vsl-satellite-float__picks">
-            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI" aria-pressed="false">NDVI</button>
-            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI_ADVANCED" aria-pressed="false">NDVI adv.</button>
-            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDRE" aria-pressed="false">NDRE</button>
-          </div>
-          <p class="vsl-satellite-float__group-title">Farm decision</p>
-          <div class="vsl-satellite-float__picks">
-            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="MOISTURE_STRESS" aria-pressed="false">Moisture stress</button>
-          </div>
-          <p class="vsl-satellite-float__group-title">Terrain</p>
-          <div class="vsl-satellite-float__picks">
-            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="DEM" aria-pressed="false">DEM</button>
-            <label class="vsl-satellite-float__chk"><input type="checkbox" id="vslWmsContoursHook" disabled> Contours (soon)</label>
-          </div>
-        </div>
-        <div class="vsl-satellite-float__row-actions">
-          <button type="button" class="vsl-wms-pick vsl-wms-pick--off" id="vslWmsOffBtn" title="Turn off WMS" aria-pressed="false">Off</button>
-          <button type="button" class="vsl-satellite-float__btn-ghost" id="vslWmsResetViewBtn">Reset view</button>
-        </div>
-      </div>
       <div class="map-frame" aria-hidden="true"></div>
       <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
         <i class="fas fa-location-crosshairs"></i>
       </button>
     </div>
-  </div>
 
-  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
-
-    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
+    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel sentinel-analytics--right-dock" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
       <div class="sentinel-analytics__card">
         <header class="search-panel__head">
           <div class="search-panel__head-inner">
             <i class="fas fa-satellite search-panel__head-icon" style="color:#1565c0" aria-hidden="true"></i>
             <div>
               <h2 id="sentinelAnalyticsTitle" class="search-panel__title">Satellite</h2>
-              <p class="sentinel-analytics__subtitle">Sentinel-2 · Copernicus Data Space</p>
+              <p class="sentinel-analytics__subtitle">Sentinel-2 · CDSE WMS + reports</p>
             </div>
           </div>
           <button type="button" class="search-panel__close" id="sentinelPanelCloseBtn" aria-label="Close satellite panel">&times;</button>
@@ -210,6 +157,56 @@
           <div id="sentinelTileSpinner" class="sentinel-analytics__loading" hidden aria-live="polite">
             <span class="sentinel-analytics__spinner" aria-hidden="true"></span>
             <span>Loading tiles…</span>
+          </div>
+
+          <div id="vslWmsControlCard" class="vsl-satellite-float vsl-satellite-float--embedded" aria-label="WMS layers">
+            <div class="vsl-satellite-float__head">
+              <h3 class="vsl-satellite-float__title">Layers (WMS)</h3>
+              <span id="vslWmsFloatSpinner" class="vsl-satellite-float__spinner" hidden aria-hidden="true" title="Loading tiles"></span>
+            </div>
+            <p class="vsl-satellite-float__hint vsl-satellite-float__hint--subtle">Time range (UTC). One layer; blend with basemap using opacity.</p>
+            <div class="vsl-satellite-float__date-row">
+              <label class="vsl-satellite-float__lbl" for="vslWmsTimeFrom">From</label>
+              <input type="date" id="vslWmsTimeFrom" class="vsl-satellite-float__input" autocomplete="off">
+            </div>
+            <div class="vsl-satellite-float__date-row">
+              <label class="vsl-satellite-float__lbl" for="vslWmsTimeTo">To</label>
+              <input type="date" id="vslWmsTimeTo" class="vsl-satellite-float__input" autocomplete="off">
+            </div>
+            <div class="vsl-satellite-float__opacity">
+              <div class="vsl-satellite-float__row-between">
+                <span>Layer opacity <span class="vsl-satellite-float__muted">(0–100%)</span></span>
+                <span id="vslWmsOpacityValue" class="vsl-satellite-float__pct">88</span>
+              </div>
+              <label class="visually-hidden" for="vslWmsOpacityRange">WMS layer opacity</label>
+              <input type="range" id="vslWmsOpacityRange" class="vsl-satellite-float__range" min="0" max="100" value="88" step="1">
+            </div>
+            <div class="vsl-satellite-float__groups" role="group" aria-label="Active WMS layer">
+              <p class="vsl-satellite-float__group-title">Satellite</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="TRUE_COLOR" aria-pressed="false">True color</button>
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="FALSE_COLOR" aria-pressed="false">False color</button>
+              </div>
+              <p class="vsl-satellite-float__group-title">Vegetation</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI" aria-pressed="false">NDVI</button>
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI_ADVANCED" aria-pressed="false">NDVI adv.</button>
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDRE" aria-pressed="false">NDRE</button>
+              </div>
+              <p class="vsl-satellite-float__group-title">Farm decision</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="MOISTURE_STRESS" aria-pressed="false">Moisture stress</button>
+              </div>
+              <p class="vsl-satellite-float__group-title">Terrain</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="DEM" aria-pressed="false">DEM</button>
+                <label class="vsl-satellite-float__chk"><input type="checkbox" id="vslWmsContoursHook" disabled> Contours (soon)</label>
+              </div>
+            </div>
+            <div class="vsl-satellite-float__row-actions">
+              <button type="button" class="vsl-wms-pick vsl-wms-pick--off" id="vslWmsOffBtn" title="Turn off WMS" aria-pressed="false">Off</button>
+              <button type="button" class="vsl-satellite-float__btn-ghost" id="vslWmsResetViewBtn">Reset view</button>
+            </div>
           </div>
 
           <section class="sentinel-analytics__section" aria-labelledby="sentinelBasemapLegend">
@@ -222,14 +219,8 @@
             </div>
           </section>
 
-          <section class="sentinel-analytics__section" aria-labelledby="sentinelProductLegend">
-            <h3 id="sentinelProductLegend" class="sentinel-analytics__section-title">Imagery (WMS)</h3>
-            <p class="sentinel-analytics__hint">Use the <strong>Imagery &amp; analysis</strong> card (top right on the map) to choose the active WMS layer: true/false colour, NDVI, NDRE, moisture, or DEM. One layer at a time; blend with the basemap using the opacity control there. Default <code>TIME</code> is the last 30 days.</p>
-          </section>
-
           <section class="sentinel-analytics__section" aria-labelledby="sentinelCloudLegend">
             <h3 id="sentinelCloudLegend" class="sentinel-analytics__section-title">Image quality (cloud)</h3>
-            <p class="sentinel-analytics__hint">CDSE / Sentinel Hub <strong>MAXCC</strong> limits mean cloud %; <strong>mosaic priority</strong> controls how tiles stack. Values are per-request (not stored in the layer file).</p>
             <div class="sentinel-analytics__row-between">
               <span>Max mean cloud <span class="sentinel-analytics__muted">(%)</span></span>
               <span id="sentinelMaxCcValue" class="sentinel-analytics__pct">25</span>
@@ -267,17 +258,15 @@
             <p id="sentinelInfoLine" class="sentinel-analytics__info">—</p>
           </section>
 
-          <div class="sentinel-analytics__report-ribbon" id="sentinelReportSectionAnchor" role="region" aria-label="Block reports and PDF">
+          <div class="sentinel-analytics__report-ribbon" id="sentinelReportSectionAnchor" role="region" aria-label="Block report">
             <i class="fas fa-file-pdf sentinel-analytics__report-ribbon-ico" aria-hidden="true"></i>
             <div class="sentinel-analytics__report-ribbon-text">
-              <span class="sentinel-analytics__report-ribbon-kicker">Reports</span>
+              <span class="sentinel-analytics__report-ribbon-kicker">Report</span>
               <span class="sentinel-analytics__report-ribbon-title">Block PDF + NDVI / NDRE / NDMI</span>
             </div>
           </div>
           <section class="sentinel-analytics__section sentinel-analytics__section--report" aria-labelledby="sentinelBlockReportTitle">
             <h3 id="sentinelBlockReportTitle" class="visually-hidden">Block report</h3>
-            <p class="sentinel-analytics__hint">One block, then dates and time step. Use <strong>Load satellite stats</strong> for a preview, then <strong>Download PDF</strong>. This is <em>not</em> the same as the sample <code>quick-responder</code> function — see endpoint below. The Edge Function needs <strong>Copernicus Data Space</strong> OAuth client ID/secret (see Supabase secrets), and a <strong>signed-in</strong> user.</p>
-            <p id="sentinelReportEndpointHint" class="sentinel-analytics__hint sentinel-analytics__endpoint-hint" aria-live="polite">Loading endpoint…</p>
             <label class="search-panel__label" for="sentinelReportBlockFilter">Filter / block</label>
             <div class="sentinel-report__row2">
               <input type="search" id="sentinelReportBlockFilter" class="search-panel__input" placeholder="Filter by code, name" autocomplete="off" style="margin-bottom:0.35rem">
@@ -307,18 +296,21 @@
               <option value="P1M">1 month (fewer steps)</option>
             </select>
             <div class="sentinel-report__actions" style="margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.4rem">
-              <button type="button" class="search-panel__btn-secondary" id="sentinelReportLoadStatsBtn">Load satellite stats (preview)</button>
-              <button type="button" class="search-panel__btn-primary" id="sentinelReportPdfBtn">Download PDF report</button>
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportLoadStatsBtn">Load stats</button>
+              <button type="button" class="search-panel__btn-primary" id="sentinelReportPdfBtn">Download PDF</button>
             </div>
-            <p id="sentinelReportKpi" class="farm-report__summary" role="status" style="margin-top:0.5rem">Choose a block and load stats for NDVI, NDRE, and NDMI preview.</p>
+            <p id="sentinelReportKpi" class="farm-report__summary" role="status" style="margin-top:0.5rem">—</p>
             <p id="sentinelReportPreviewText" class="sentinel-analytics__hint" style="margin-top:0.25rem"></p>
             <div id="sentinelReportChartWrap" class="sentinel-report__chart-wrap" style="display:none; margin-top:0.4rem; height:200px; position:relative">
-              <canvas id="sentinelReportChart" width="400" height="200" aria-label="NDVI and NDMI chart"></canvas>
+              <canvas id="sentinelReportChart" width="400" height="200" aria-label="NDVI, NDRE, and NDMI chart"></canvas>
             </div>
           </section>
         </div>
       </div>
     </section>
+  </div>
+
+  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
 
     <!-- ═══ UNIFIED SEARCH PANEL ═══ -->
     <section id="searchPanel" class="search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="searchPanelTitle">

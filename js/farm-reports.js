@@ -49,6 +49,64 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * @param {unknown} error - e.g. FunctionsHttpError: `context` is the fetch Response, not `{ body: string }`.
+ * @returns {Promise<{ httpStatus: number | null, detail: string }>}
+ */
+async function readFunctionInvokeErrorDetail(error) {
+  const ex = error && typeof error === "object" ? error : null;
+  if (!ex || !("context" in ex)) {
+    return { httpStatus: null, detail: "" };
+  }
+  const ctx = /** @type {{ context?: unknown }} */ (ex).context;
+  if (ctx == null) {
+    return { httpStatus: null, detail: "" };
+  }
+  if (typeof ctx === "object" && ctx !== null && "body" in ctx) {
+    const b = /** @type {{ body?: string; status?: number }} */ (ctx).body;
+    if (typeof b === "string" && b) {
+      const httpStatus =
+        typeof (/** @type {{ status?: number }} */ (ctx)).status === "number"
+          ? (/** @type {{ status: number }} */ (ctx)).status
+          : null;
+      let detail = b;
+      try {
+        const j = /** @type {{ error?: string; message?: string }} */ (JSON.parse(b));
+        if (j && typeof j === "object") {
+          if (typeof j.error === "string" && j.error) detail = j.error;
+          else if (typeof j.message === "string" && j.message) detail = j.message;
+        }
+      } catch { /* not JSON */ }
+      return { httpStatus, detail };
+    }
+  }
+  const r = /** @type {Response} */ (ctx);
+  if (typeof r.status !== "number") {
+    return { httpStatus: null, detail: "" };
+  }
+  const httpStatus = r.status;
+  if (typeof r.text !== "function" && typeof r.json !== "function") {
+    return { httpStatus, detail: "" };
+  }
+  let raw = "";
+  try {
+    raw = r.clone && typeof r.clone === "function" ? await r.clone().text() : await r.text();
+  } catch {
+    return { httpStatus, detail: "" };
+  }
+  if (!raw) return { httpStatus, detail: "" };
+  let detail = "";
+  try {
+    const j = /** @type {{ error?: string; message?: string }} */ (JSON.parse(raw));
+    if (j && typeof j === "object") {
+      if (typeof j.error === "string" && j.error) detail = j.error;
+      else if (typeof j.message === "string" && j.message) detail = j.message;
+    }
+  } catch { /* not JSON */ }
+  if (!detail && raw.length < 800) detail = raw;
+  return { httpStatus, detail };
+}
+
 let statsChart = null;
 let lastStats = null;
 let lastKpis = { ndvi: null, ndmi: null };
@@ -93,12 +151,29 @@ export function initFarmReports(opts) {
       : "Configure SUPABASE_URL in app-config to show the function endpoint.";
   }
 
-  function invokeStatsErrorHelp(msg) {
+  function invokeStatsErrorHelp(msg, httpStatus) {
     const m = (msg || "").toLowerCase();
     const isFetch = m.includes("failed to send") || m.includes("failed to fetch") || m.includes("networkerror");
     let s = functionsUrl
       ? ` Request URL: ${functionsUrl}.`
       : " ";
+    if (typeof httpStatus === "number" && !Number.isNaN(httpStatus)) {
+      if (httpStatus === 401) {
+        s +=
+          " 401: session/JWT not accepted. Sign in again, or the Edge Function is set to verify JWT and you are not sending a user session. For local tests only, you can set verify_jwt = false in config.toml (not for production).";
+      } else if (httpStatus === 400) {
+        s += " 400: bad request (missing fields, or block/geometry not found).";
+      } else if (httpStatus === 404) {
+        s += " 404: function name or project URL may be wrong (see SENTINEL_STATS_FUNCTION / SUPABASE_URL).";
+      } else if (httpStatus === 502) {
+        s +=
+          " 502: upstream failed (often Sentinel Hub OAuth or Statistics API). Check SENTINEL_HUB_* secrets and function logs in Supabase.";
+      } else if (httpStatus === 500) {
+        s += " 500: function threw or missing env/DB. Read the error text above and check Edge Function logs.";
+      } else if (httpStatus >= 400) {
+        s += ` ${httpStatus}: see error text and Edge Function logs.`;
+      }
+    }
     if (isFetch) {
       s +=
         " This usually means the browser could not reach that URL: the function is missing (404 deploy), a firewall/ad-blocker blocked it, CORS, or the site is offline. It is not the same as quick-responder — deploy vsl-sentinel-statistics from this repo, or set SENTINEL_STATS_FUNCTION to the function name you actually deployed (with the stats code inside).";
@@ -301,26 +376,34 @@ export function initFarmReports(opts) {
         }
       });
       if (error) {
-        let extra = "";
-        if (data && typeof data === "object" && data !== null && "error" in data) {
-          extra = ` — ${String(/** @type {{ error: string }} */ (data).error)}`;
-        } else {
-          const body = (error && typeof error === "object" && "context" in error && (/** @type {{ context?: { body?: string } }} */ (error).context))?.body;
-          if (body && typeof body === "string") {
-            try {
-              const j = JSON.parse(body);
-              if (j && j.error) extra = ` — ${j.error}`;
-            } catch {
-              if (body.length < 400) extra = ` — ${body}`;
-            }
-          }
-        }
-        const msg = (error && error.message) || String(error);
+        const { httpStatus, detail: bodyDetail } = await readFunctionInvokeErrorDetail(error);
+        const fromData =
+          data && typeof data === "object" && data !== null && "error" in data
+            ? String(/** @type {{ error: string }} */ (data).error)
+            : "";
+        const errMsg = (error && error.message) || String(error);
+        const serverText = (bodyDetail || fromData).trim();
+        const display = serverText
+          ? (httpStatus != null ? `${serverText} (HTTP ${httpStatus})` : serverText)
+          : httpStatus != null
+            ? `${errMsg} (HTTP ${httpStatus})`
+            : errMsg;
         if (setStatus) {
-          setStatus(statusEl, `Satellite stats: ${msg}${extra}${invokeStatsErrorHelp(msg)}`, true);
+          setStatus(
+            statusEl,
+            `Satellite stats: ${display}${invokeStatsErrorHelp(errMsg, httpStatus)}`,
+            true
+          );
         }
         if (typeof console !== "undefined" && console.error) {
-          console.error("[vsl block report] functions.invoke failed", { fnName, functionsUrl, error, data });
+          console.error("[vsl block report] functions.invoke failed", {
+            fnName,
+            functionsUrl,
+            error,
+            data,
+            httpStatus,
+            bodyDetail: bodyDetail || null
+          });
         }
         return;
       }

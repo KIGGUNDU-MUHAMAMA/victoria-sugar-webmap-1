@@ -2762,7 +2762,7 @@ select.search-panel__input {
 
 .sentinel-analytics {
   width: 100%;
-  max-height: min(72vh, 640px);
+  max-height: min(92vh, 920px);
   display: flex;
   flex-direction: column;
   font-size: 0.82rem;
@@ -2804,9 +2804,35 @@ select.search-panel__input {
   gap: 0;
   min-height: 0;
   overflow-y: auto;
-  max-height: min(60vh, 520px);
+  max-height: min(86vh, 860px);
   padding: 0.45rem 0.7rem 0.75rem;
   -webkit-overflow-scrolling: touch;
+}
+
+.sentinel-report__row2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.sentinel-report__row2 .search-panel__input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  margin-bottom: 0;
+}
+
+.sentinel-report__dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem 0.6rem;
+  margin: 0.4rem 0 0.15rem;
+}
+
+.sentinel-report__chart-wrap canvas {
+  max-width: 100%;
+  height: 200px !important;
 }
 
 .sentinel-analytics__loading {
@@ -3075,10 +3101,10 @@ select.search-panel__input {
 
 @media (max-width: 900px) {
   .sentinel-analytics {
-    max-height: min(50vh, 480px);
+    max-height: min(88vh, 720px);
   }
   .sentinel-analytics__shell {
-    max-height: min(44vh, 400px);
+    max-height: min(80vh, 640px);
   }
 }
 

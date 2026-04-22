@@ -2,3 +2,6 @@
 
 [functions.vsl-survey-import]
 verify_jwt = false
+
+[functions.vsl-sentinel-statistics]
+verify_jwt = true

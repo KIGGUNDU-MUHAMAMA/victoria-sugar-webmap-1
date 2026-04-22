@@ -1,10 +1,9 @@
 /**
- * Farm intelligence PDF reports — Victoria Sugar Ltd
- * Block multi-select, lightweight Supabase reads (vsl_blocks / vsl_parcels), client aggregations, multi-page PDF.
- * Dependencies (globals): window.jspdf.jsPDF, autotable on jsPDF, window.html2canvas
+ * Block report (one block) — database agronomics + Sentinel-2 (NDVI, NDMI) from Edge Function.
+ * UI lives inside #sentinelAnalyticsPanel. PDF: jspdf + autotable, html2canvas, Chart.js.
  */
 
-/* global ol — OpenLayers from CDN in webmap.html */
+/* global ol, Chart, window — globals from webmap */
 
 const CULTIVATION_LABELS = {
   not_in_cane: "Not in cane",
@@ -42,84 +41,67 @@ function sumHarvestTonnes(parcels) {
   return { sum: s, n };
 }
 
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+let statsChart = null;
+let lastStats = null;
+let lastKpis = { ndvi: null, ndmi: null };
+
 /**
  * @param {object} opts
  * @param {import("ol/Map").default} opts.map
- * @param {ReturnType<import("@supabase/supabase-js")["createClient"]>} opts.supabase
+ * @param {import("@supabase/supabase-js").SupabaseClient} opts.supabase
  * @param {import("ol/source/Vector").default} opts.blocksSource
  * @param {function(string, boolean=): void} [opts.setStatus]
  * @param {HTMLElement} [opts.statusEl]
  * @param {() => { email?: string, role?: string } | null} [opts.getCurrentUser]
- * @param {() => void} [opts.onOpenPanel]
- * @param {() => void} [opts.onClosePanel]
+ * @param {object} [opts.cfg] - expects SENTINEL_STATS_FUNCTION name
  */
 export function initFarmReports(opts) {
-  const { map, supabase, blocksSource, setStatus, statusEl, getCurrentUser, onOpenPanel, onClosePanel } = opts;
+  const { map, supabase, blocksSource, setStatus, statusEl, getCurrentUser, cfg } = opts;
 
-  const panel = document.getElementById("farmReportPanel");
-  const panelBtn = document.getElementById("farmReportPanelBtn");
-  const closeBtn = document.getElementById("farmReportPanelCloseBtn");
-  const listEl = document.getElementById("farmReportBlockList");
-  const filterInput = document.getElementById("farmReportBlockFilter");
-  const summaryEl = document.getElementById("farmReportSummary");
-  const genBtn = document.getElementById("farmReportGenerateBtn");
-  const selectAllBtn = document.getElementById("farmReportSelectAll");
-  const clearBtn = document.getElementById("farmReportClearSelection");
-  const refreshBtn = document.getElementById("farmReportRefreshList");
+  const blockSelect = document.getElementById("sentinelReportBlockSelect");
+  const blockFilter = document.getElementById("sentinelReportBlockFilter");
+  const dateFromIn = document.getElementById("sentinelReportDateFrom");
+  const dateToIn = document.getElementById("sentinelReportDateTo");
+  const btnPreset3m = document.getElementById("sentinelReportPreset3m");
+  const btnPreset6m = document.getElementById("sentinelReportPreset6m");
+  const btnPreset12m = document.getElementById("sentinelReportPreset12m");
+  const intervalSel = document.getElementById("sentinelReportInterval");
+  const btnStats = document.getElementById("sentinelReportLoadStatsBtn");
+  const btnPdf = document.getElementById("sentinelReportPdfBtn");
+  const previewKpi = document.getElementById("sentinelReportKpi");
+  const previewText = document.getElementById("sentinelReportPreviewText");
+  const chartCanvas = document.getElementById("sentinelReportChart");
+  const chartWrap = document.getElementById("sentinelReportChartWrap");
+  const refreshBlocksBtn = document.getElementById("sentinelReportRefreshBlocks");
+
+  const fnName = (cfg && cfg.SENTINEL_STATS_FUNCTION) || "vsl-sentinel-statistics";
 
   let blockRows = [];
   let filterText = "";
-  let panelOpen = false;
-  let outsideHandler = null;
-  let escapeHandler = null;
+  const selectedBlockId = { current: null };
 
-  /** @type {Set<string>} */
-  const selectedIds = new Set();
-
-  function setPanelOpen(open) {
-    panelOpen = open;
-    if (panel) panel.hidden = !open;
-    panelBtn?.classList.toggle("active", open);
-    panelBtn?.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) onOpenPanel?.();
-    else onClosePanel?.();
-    map?.updateSize();
+  function setDatesMonthsBack(m) {
+    const end = new Date();
+    const start = new Date(end.getTime());
+    start.setMonth(start.getMonth() - m);
+    if (dateFromIn) dateFromIn.value = start.toISOString().slice(0, 10);
+    if (dateToIn) dateToIn.value = end.toISOString().slice(0, 10);
+  }
+  if (dateFromIn && !dateFromIn.value && dateToIn && !dateToIn.value) {
+    setDatesMonthsBack(6);
   }
 
-  function closePanel() {
-    if (escapeHandler) {
-      document.removeEventListener("keydown", escapeHandler, true);
-      escapeHandler = null;
-    }
-    if (outsideHandler) {
-      document.removeEventListener("pointerdown", outsideHandler, true);
-      outsideHandler = null;
-    }
-    setPanelOpen(false);
-  }
-
-  function openPanel() {
-    if (!panel) return;
-    setPanelOpen(true);
-    void loadBlockList();
-    escapeHandler = (ev) => {
-      if (ev.key === "Escape" && panelOpen) {
-        ev.preventDefault();
-        closePanel();
-      }
-    };
-    document.addEventListener("keydown", escapeHandler, true);
-    outsideHandler = (ev) => {
-      if (!panelOpen) return;
-      if (panel?.contains(ev.target) || panelBtn?.contains(ev.target)) return;
-      closePanel();
-    };
-    document.addEventListener("pointerdown", outsideHandler, true);
-  }
-
-  function togglePanel() {
-    if (panelOpen) closePanel();
-    else openPanel();
+  function currentBlockId() {
+    if (blockSelect && blockSelect.value) return String(blockSelect.value);
+    return selectedBlockId.current;
   }
 
   function matchesFilter(row) {
@@ -138,104 +120,192 @@ export function initFarmReports(opts) {
     );
   }
 
-  function renderList() {
-    if (!listEl) return;
+  function renderBlockOptions() {
+    if (!blockSelect) return;
     const rows = blockRows.filter(matchesFilter);
-    if (rows.length === 0) {
-      listEl.innerHTML = `<p class="farm-report__empty">No blocks match. Try refreshing or clear the filter.</p>`;
-      return;
-    }
-    listEl.innerHTML = rows
-      .map(
-        (r) => `
-      <label class="farm-report__row">
-        <input type="checkbox" class="farm-report__cb" data-block-id="${String(r.id)}" ${
-          selectedIds.has(String(r.id)) ? "checked" : ""
-        }>
-        <span class="farm-report__row-txt">
-          <strong>${escapeHtml(String(r.block_code))}</strong>
-          <span class="farm-report__muted"> — ${escapeHtml(String(r.block_name ?? "—"))}</span>
-        </span>
-      </label>`
-      )
-      .join("");
-    listEl.querySelectorAll(".farm-report__cb").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        const id = cb.getAttribute("data-block-id");
-        if (!id) return;
-        if (cb.checked) selectedIds.add(id);
-        else selectedIds.delete(id);
-        updateSummary();
-      });
-    });
-  }
-
-  function escapeHtml(s) {
-    return String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function updateSummary() {
-    if (!summaryEl) return;
-    const n = selectedIds.size;
-    if (n === 0) {
-      summaryEl.textContent = "Select one or more blocks, then generate the PDF.";
-      return;
-    }
-    const sel = blockRows.filter((r) => selectedIds.has(String(r.id)));
-    const ac = sel.reduce((a, r) => a + (Number(r.expected_area_acres) || 0), 0);
-    summaryEl.textContent = `${n} block(s) selected — ${fmtNum(ac, 1)} ac expected (DB). Report will add parcel-level cultivation and harvest totals.`;
+    const cur = currentBlockId();
+    blockSelect.innerHTML =
+      `<option value="">${rows.length ? "— Choose one block —" : "No blocks (check filter)"}</option>` +
+      rows
+        .map(
+          (r) =>
+            `<option value="${escapeHtml(String(r.id))}" ${
+              String(r.id) === cur ? "selected" : ""
+            }>${escapeHtml(String(r.block_code))} — ${escapeHtml(
+              String(r.block_name ?? "—")
+            )}</option>`
+        )
+        .join("");
   }
 
   async function loadBlockList() {
-    if (!listEl) return;
-    listEl.innerHTML = `<p class="farm-report__empty">Loading blocks…</p>`;
     const { data, error } = await supabase
       .from("vsl_blocks")
-      .select("id, block_code, block_name, estate_name, expected_area_acres, cultivation_status, geometry_status")
+      .select("id, block_code, block_name, estate_name, expected_area_acres, geometry_status, cultivation_status")
       .order("block_code", { ascending: true });
     if (error) {
-      listEl.innerHTML = `<p class="farm-report__error">Could not load blocks: ${escapeHtml(error.message)}</p>`;
-      if (setStatus) setStatus(statusEl, `Report: ${error.message}`, true);
+      if (setStatus) setStatus(statusEl, `Report blocks: ${error.message}`, true);
       return;
     }
     blockRows = data || [];
-    renderList();
-    updateSummary();
+    renderBlockOptions();
   }
 
-  filterInput?.addEventListener("input", () => {
-    filterText = filterInput.value?.trim() ?? "";
-    renderList();
+  blockSelect?.addEventListener("change", () => {
+    selectedBlockId.current = blockSelect.value || null;
   });
+  blockFilter?.addEventListener("input", () => {
+    filterText = (blockFilter.value || "").trim().toLowerCase();
+    renderBlockOptions();
+  });
+  refreshBlocksBtn?.addEventListener("click", () => void loadBlockList());
+  btnPreset3m?.addEventListener("click", () => setDatesMonthsBack(3));
+  btnPreset6m?.addEventListener("click", () => setDatesMonthsBack(6));
+  btnPreset12m?.addEventListener("click", () => setDatesMonthsBack(12));
 
-  selectAllBtn?.addEventListener("click", () => {
-    for (const r of blockRows.filter(matchesFilter)) {
-      selectedIds.add(String(r.id));
+  function kpiText(ndvi, ndmi) {
+    if (!ndvi && !ndmi) return "Load satellite stats to see NDVI and NDMI.";
+    const n = (arr) => (arr && arr.length ? arr[arr.length - 1] : null);
+    const nv = n(ndvi);
+    const nm = n(ndmi);
+    lastKpis = { ndvi: nv?.mean ?? null, ndmi: nm?.mean ?? null };
+    return `Latest period (chronological order): NDVI mean ${nv?.mean != null ? fmtNum(nv.mean, 3) : "—"} — canopy vigour. NDMI mean ${nm?.mean != null ? fmtNum(nm.mean, 3) : "—"} — relative moisture (NIR–SWIR; interpret with field checks). Cloud–masked S2 L2A, ${fnName}.`;
+  }
+
+  function alignSeries(a, b) {
+    const toKey = (r) => String((r && (r.to || r.from)) || "");
+    const bmap = new Map((b || []).map((r) => [toKey(r), r]));
+    const labels = [];
+    const yN = [];
+    const yM = [];
+    for (const r of a || []) {
+      const k = toKey(r);
+      labels.push(k ? k.slice(0, 10) : "—");
+      yN.push(r && r.mean != null && Number.isFinite(r.mean) ? r.mean : null);
+      const o = bmap.get(k);
+      yM.push(o && o.mean != null && Number.isFinite(o.mean) ? o.mean : null);
     }
-    renderList();
-    updateSummary();
-  });
+    return { labels, yN, yM };
+  }
 
-  clearBtn?.addEventListener("click", () => {
-    selectedIds.clear();
-    renderList();
-    updateSummary();
-  });
+  function drawChart(ndvi, ndmi) {
+    if (!chartCanvas) return;
+    const Chart = window.Chart;
+    if (!Chart) {
+      if (previewText) previewText.textContent = "Chart.js not loaded; stats table still available in PDF.";
+      return;
+    }
+    const { labels, yN, yM } = alignSeries(ndvi, ndmi);
+    if (statsChart) {
+      statsChart.destroy();
+      statsChart = null;
+    }
+    if (labels.length === 0) {
+      if (chartWrap) chartWrap.style.display = "none";
+      return;
+    }
+    if (chartWrap) chartWrap.style.display = "block";
+    const ctx = chartCanvas.getContext("2d");
+    if (!ctx) return;
+    statsChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "NDVI (vigour)",
+            data: yN,
+            borderColor: "rgb(34, 100, 34)",
+            backgroundColor: "rgba(34, 100, 34, 0.12)",
+            spanGaps: true,
+            tension: 0.15,
+            yAxisID: "y"
+          },
+          {
+            label: "NDMI (moisture index)",
+            data: yM,
+            borderColor: "rgb(21, 101, 192)",
+            backgroundColor: "rgba(21, 101, 192, 0.08)",
+            spanGaps: true,
+            tension: 0.15,
+            yAxisID: "y1"
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          y: { type: "linear", position: "left", title: { display: true, text: "NDVI" }, min: -0.2, max: 1 },
+          y1: { type: "linear", position: "right", title: { display: true, text: "NDMI" }, min: -1, max: 1, grid: { drawOnChartArea: false } }
+        }
+      }
+    });
+  }
 
-  refreshBtn?.addEventListener("click", () => void loadBlockList());
+  function chartToPng() {
+    if (!chartCanvas) return null;
+    try {
+      return chartCanvas.toDataURL("image/png", 0.9);
+    } catch {
+      return null;
+    }
+  }
 
-  panelBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    togglePanel();
-  });
-  closeBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closePanel();
-  });
+  async function runStats() {
+    const bid = currentBlockId();
+    if (!bid) {
+      if (setStatus) setStatus(statusEl, "Choose one block for the report.", true);
+      return;
+    }
+    const df = dateFromIn?.value;
+    const dt = dateToIn?.value;
+    if (!df || !dt) {
+      if (setStatus) setStatus(statusEl, "Set date from / to for Sentinel statistics.", true);
+      return;
+    }
+    const interval = (intervalSel && intervalSel.value) || "P16D";
+    lastStats = null;
+    if (setStatus) setStatus(statusEl, "Requesting satellite statistics (Sentinel Hub)…");
+    if (btnStats) btnStats.disabled = true;
+    try {
+      const { data, error } = await supabase.functions.invoke(fnName, {
+        body: {
+          block_id: bid,
+          date_from: df,
+          date_to: dt,
+          interval: interval
+        }
+      });
+      if (error) {
+        const msg = error.message || String(error);
+        if (setStatus) setStatus(statusEl, `Satellite stats: ${msg}`, true);
+        return;
+      }
+      if (data && data.success === false) {
+        if (setStatus) setStatus(statusEl, (data && data.error) || "Stats failed", true);
+        return;
+      }
+      if (!data || !Array.isArray(data.ndvi_intervals)) {
+        if (setStatus) setStatus(statusEl, "Unexpected response from stats function.", true);
+        return;
+      }
+      lastStats = data;
+      const ndvi = data.ndvi_intervals || [];
+      const ndmi = data.ndmi_intervals || [];
+      if (previewKpi) previewKpi.textContent = kpiText(ndvi, ndmi);
+      if (previewText) {
+        previewText.textContent = `Block ${data.block?.block_code || "—"} · ${ndvi.length} time step(s) · Interval ${data.interval || interval} · S2 L2A (cloud-filtered, SCL).`;
+      }
+      drawChart(ndvi, ndmi);
+      if (setStatus) setStatus(statusEl, "Satellite statistics loaded.");
+    } catch (e) {
+      if (setStatus) setStatus(statusEl, (e && e.message) || "Stats request failed", true);
+    } finally {
+      if (btnStats) btnStats.disabled = false;
+    }
+  }
 
   async function captureMapDataUrl() {
     const html2canvas = window.html2canvas;
@@ -262,24 +332,18 @@ export function initFarmReports(opts) {
     });
   }
 
-  function fitToSelectedBlockFeatures(ids) {
+  function fitToBlockId(id) {
     if (!map || !blocksSource) return;
-    const want = new Set(ids.map(String));
-    const feats = blocksSource.getFeatures().filter((f) => want.has(String(f.getId())));
-    if (feats.length === 0) return;
+    const f = blocksSource.getFeatures().find((x) => String(x.getId()) === String(id));
+    if (!f) return;
+    const g = f.getGeometry();
+    if (!g) return;
     const ext = ol.extent.createEmpty();
-    for (const f of feats) {
-      const g = f.getGeometry();
-      if (g) ol.extent.extend(ext, g.getExtent());
-    }
+    ol.extent.extend(ext, g.getExtent());
     if (ol.extent.isEmpty(ext)) return;
     map.getView().fit(ext, { padding: [36, 36, 36, 36], maxZoom: 17, duration: 500 });
   }
 
-  /**
-   * @param {import("jspdf").jsPDF} doc
-   * @param {string} title
-   */
   function addHeaderFooter(doc, title) {
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
@@ -308,180 +372,214 @@ export function initFarmReports(opts) {
     doc.text("Page " + String(doc.getNumberOfPages()), pageW - margin - 8, footY, { align: "right" });
   }
 
-  genBtn?.addEventListener("click", () => void generateReportPdf());
-
   async function generateReportPdf() {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) {
       if (setStatus) setStatus(statusEl, "PDF engine not loaded.", true);
       return;
     }
-    const ids = [...selectedIds];
-    if (ids.length === 0) {
-      if (setStatus) setStatus(statusEl, "Select at least one block for the report.", true);
+    const bid = currentBlockId();
+    if (!bid) {
+      if (setStatus) setStatus(statusEl, "Choose one block.", true);
       return;
     }
-    genBtn.disabled = true;
+    if (btnPdf) btnPdf.disabled = true;
     if (setStatus) setStatus(statusEl, "Building report…");
-
     try {
       const { data: blockData, error: e1 } = await supabase
         .from("vsl_blocks")
         .select(
           "id, block_code, block_name, estate_name, expected_area_acres, geometry_status, cultivation_status, harvest_tonnes, last_harvest_date, cultivation_updated_at"
         )
-        .in("id", ids);
+        .eq("id", bid)
+        .single();
       if (e1) throw e1;
-      const blocks = blockData || [];
+      const bl = blockData;
+      if (!bl) throw new Error("Block not found");
       const { data: parcelData, error: e2 } = await supabase
         .from("vsl_parcels")
         .select("block_id, parcel_no, expected_area_acres, cultivation_status, harvest_tonnes, last_harvest_date, geometry_status")
-        .in("block_id", ids);
+        .eq("block_id", bid);
       if (e2) throw e2;
       const parcels = parcelData || [];
 
-      fitToSelectedBlockFeatures(ids);
+      if (!lastStats || !lastStats.ndvi_intervals) {
+        await runStats();
+      }
+      const statPayload = lastStats;
+      if (!statPayload || !Array.isArray(statPayload.ndvi_intervals)) {
+        if (setStatus) setStatus(statusEl, "Satellite statistics failed or returned no intervals. Check Edge Function and dates.", true);
+        return;
+      }
+
+      fitToBlockId(bid);
       const mapImg = await captureMapDataUrl();
+      const chartPng = chartToPng();
 
       const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
       const pageW = doc.internal.pageSize.getWidth();
       const margin = 14;
       const contentW = pageW - margin * 2;
 
-      addHeaderFooter(doc, "Agronomic summary (selected blocks)");
+      addHeaderFooter(doc, `Block ${bl.block_code} — summary`);
       let y0 = 36;
-
       doc.setFontSize(8.5);
       doc.setTextColor(50, 50, 50);
-      const idList = blocks
-        .map((b) => b.block_code)
-        .filter(Boolean)
-        .join(", ");
-      doc.text(`Blocks: ${idList || "—"}`, margin, y0);
-      y0 += 5;
-      const totalAc = blocks.reduce((a, b) => a + (Number(b.expected_area_acres) || 0), 0);
-      const pAc = parcels.reduce((a, p) => a + (Number(p.expected_area_acres) || 0), 0);
-      const harvest = sumHarvestTonnes(parcels);
       doc.text(
-        `Expected area (blocks): ${fmtNum(totalAc, 1)} ac · Plots in scope: ${parcels.length} · Sum expected plot acres: ${fmtNum(pAc, 1)} ac`,
+        `Block ${bl.block_code} — ${String(bl.block_name || "—")} · Estate: ${String(bl.estate_name || "—")}`,
         margin,
         y0
       );
       y0 += 5;
-      doc.text(
-        `Recorded harvest (plots, where entered): ${harvest.n > 0 ? fmtNum(harvest.sum, 2) + " t across " + harvest.n + " plot(s)" : "—"}`,
-        margin,
-        y0
-      );
+      {
+        const h = sumHarvestTonnes(parcels);
+        doc.text(
+          `Expected area (block): ${fmtNum(bl.expected_area_acres, 1)} ac · Plots: ${
+            parcels.length
+          } · Harvest (plots, where entered): ${h.n > 0 ? fmtNum(h.sum, 2) + " t" : "—"}`,
+          margin,
+          y0
+        );
+      }
       y0 += 8;
-
       if (mapImg) {
-        const imgW = contentW;
-        const imgH = 95;
         try {
-          doc.addImage(mapImg, "JPEG", margin, y0, imgW, imgH);
+          doc.addImage(mapImg, "JPEG", margin, y0, contentW, 88);
         } catch {
           doc.text("Map image could not be embedded.", margin, y0);
         }
-        y0 += imgH + 6;
+        y0 += 94;
       } else {
         doc.setFontSize(8);
-        doc.text("Map capture unavailable (tiles may block snapshot).", margin, y0);
+        doc.text("Map capture unavailable.", margin, y0);
         y0 += 8;
       }
-
       doc.setFontSize(7.5);
       doc.setTextColor(90, 90, 90);
-      doc.text("Map extent zooms to selected blocks when geometries are loaded in the current session.", margin, y0);
-      y0 += 6;
+      doc.text("Map extent: selected block. Sentinel statistics use the block polygon (EPSG:4326).", margin, y0);
+      y0 += 8;
 
       doc.addPage();
-      addHeaderFooter(doc, "Cultivation overview");
+      addHeaderFooter(doc, "Cultivation & Sentinel-2 indices");
       y0 = 36;
-
       const pCounts = countByKey(parcels, "cultivation_status");
       const pBody = Object.keys(pCounts)
         .sort()
         .map((k) => [CULTIVATION_LABELS[k] || k, String(pCounts[k])]);
       doc.setFontSize(9);
       doc.setTextColor(30, 30, 30);
-      doc.text("Parcels in selection — cultivation status (count)", margin, y0);
+      doc.text("Parcels — cultivation status (count)", margin, y0);
       y0 += 4;
       doc.autoTable({
         startY: y0,
-        head: [["Status", "Parcel count"]],
+        head: [["Status", "Plot count"]],
         body: pBody.length ? pBody : [["—", "0"]],
         margin: { left: margin, right: margin },
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: [34, 78, 34] }
       });
-      y0 = doc.lastAutoTable.finalY + 10;
+      y0 = doc.lastAutoTable.finalY + 8;
 
-      doc.setFontSize(9);
-      doc.text("Key interpretation (sugarcane operations)", margin, y0);
-      y0 += 4;
+      doc.setFontSize(8);
+      doc.text(
+        `Sentinel-2 L2A · ${String(statPayload.time_range?.from || "").slice(0, 10)} → ${String(
+          statPayload.time_range?.to || ""
+        ).slice(0, 10)} · Step ${String(statPayload.interval || "P16D")} · SCL cloud/veg mask; NDMI = (B8A−B11)/(B8A+B11).`,
+        margin,
+        y0,
+        { maxWidth: contentW }
+      );
+      y0 += 10;
+
+      const ndmiByTo = new Map(
+        (statPayload.ndmi_intervals || []).map((r) => [String((r && r.to) || r.from || ""), r])
+      );
+      const rows = (statPayload.ndvi_intervals || []).map((r) => {
+        const k = String((r && r.to) || r.from || "");
+        const o = ndmiByTo.get(k) || {};
+        return [
+          k ? k.slice(0, 10) : "—",
+          r.mean != null ? fmtNum(r.mean, 3) : "—",
+          o.mean != null ? fmtNum(o.mean, 3) : "—"
+        ];
+      });
+      doc.autoTable({
+        startY: y0,
+        head: [["Period end (UTC)", "NDVI mean", "NDMI mean"]],
+        body: rows.length
+          ? rows
+          : [["—", "—", "—"]],
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 7.5, cellPadding: 1.5 },
+        headStyles: { fillColor: [22, 70, 22] }
+      });
+      y0 = doc.lastAutoTable.finalY + 6;
+      if (chartPng) {
+        try {
+          doc.addImage(chartPng, "PNG", margin, y0, contentW, 70);
+        } catch {
+          /* */
+        }
+        y0 += 75;
+      }
       doc.setFontSize(7.5);
       doc.setTextColor(60, 60, 60);
-      const bullets = [
-        "Standing / harvested shares indicate crop cycle position for the selected area.",
-        "Replant or renovation flags areas needing follow-up in the field and in planning.",
-        "Use harvest tonnes only where they have been recorded at plot level; gaps are normal early in the season."
-      ];
-      for (const b of bullets) {
-        doc.text("• " + b, margin, y0, { maxWidth: contentW });
-        y0 += 5;
-      }
-      y0 += 4;
+      doc.text(
+        "NDVI indicates green biomass; NDMI is sensitive to moisture—compare with weather, irrigation, and field scouting.",
+        margin,
+        y0,
+        { maxWidth: contentW }
+      );
+      y0 += 10;
 
-      /** Per-block */
-      for (const bl of blocks.sort((a, b) => String(a.block_code).localeCompare(String(b.block_code), undefined, { numeric: true }))) {
-        const bParcels = parcels.filter((p) => String(p.block_id) === String(bl.id));
-        doc.addPage();
-        addHeaderFooter(doc, `Block ${bl.block_code}`);
-        y0 = 36;
-        doc.setFontSize(9);
-        doc.setTextColor(20, 20, 20);
-        doc.text(`Name: ${String(bl.block_name || "—")} · Estate: ${String(bl.estate_name || "—")}`, margin, y0);
-        y0 += 5;
-        doc.setFontSize(7.5);
-        doc.setTextColor(60, 60, 60);
-        doc.text(
-          `Block cultiv.: ${CULTIVATION_LABELS[bl.cultivation_status] || bl.cultivation_status} · Block harvest (if any): ${
-            bl.harvest_tonnes != null ? fmtNum(bl.harvest_tonnes, 2) + " t" : "—"
-          }`,
-          margin,
-          y0
-        );
-        y0 += 6;
-        doc.autoTable({
-          startY: y0,
-          head: [["Plot", "Area (ac)", "Cultivation", "Harvest (t)", "Last harvest"]],
-          body: bParcels.length
-            ? bParcels
-                .sort((a, b) => (Number(a.parcel_no) || 0) - (Number(b.parcel_no) || 0))
-                .map((p) => [
-                  String(p.parcel_no),
-                  fmtNum(p.expected_area_acres, 2),
-                  CULTIVATION_LABELS[p.cultivation_status] || p.cultivation_status,
-                  p.harvest_tonnes != null ? fmtNum(p.harvest_tonnes, 2) : "—",
-                  p.last_harvest_date != null ? String(p.last_harvest_date).slice(0, 10) : "—"
-                ])
-            : [["—", "—", "—", "—", "—"]],
-          margin: { left: margin, right: margin },
-          styles: { fontSize: 7.5, cellPadding: 1.5 },
-          headStyles: { fillColor: [46, 90, 46] }
-        });
-      }
+      doc.addPage();
+      addHeaderFooter(doc, `Block ${bl.block_code} — plots`);
+      y0 = 36;
+      doc.setFontSize(7.5);
+      doc.setTextColor(60, 60, 60);
+      doc.text(
+        `Block cultiv.: ${CULTIVATION_LABELS[bl.cultivation_status] || bl.cultivation_status} · Block harvest: ${
+          bl.harvest_tonnes != null ? fmtNum(bl.harvest_tonnes, 2) + " t" : "—"
+        }`,
+        margin,
+        y0
+      );
+      y0 += 6;
+      const bParcels = parcels
+        .slice()
+        .sort((a, b) => (Number(a.parcel_no) || 0) - (Number(b.parcel_no) || 0));
+      doc.autoTable({
+        startY: y0,
+        head: [["Plot", "Area (ac)", "Cultivation", "Harvest (t)", "Last harvest"]],
+        body: bParcels.length
+          ? bParcels.map((p) => [
+              String(p.parcel_no),
+              fmtNum(p.expected_area_acres, 2),
+              CULTIVATION_LABELS[p.cultivation_status] || p.cultivation_status,
+              p.harvest_tonnes != null ? fmtNum(p.harvest_tonnes, 2) : "—",
+              p.last_harvest_date != null ? String(p.last_harvest_date).slice(0, 10) : "—"
+            ])
+          : [["—", "—", "—", "—", "—"]],
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 7.5, cellPadding: 1.5 },
+        headStyles: { fillColor: [46, 90, 46] }
+      });
 
-      const fname = `VSL_farm_report_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const fname = `VSL_block_${String(bl.block_code).replace(/[^\w.-]+/g, "_")}_${
+        new Date().toISOString().slice(0, 10)
+      }.pdf`;
       doc.save(fname);
       if (setStatus) setStatus(statusEl, "Report downloaded.");
     } catch (e) {
       if (setStatus) setStatus(statusEl, (e && e.message) || "Report failed", true);
     } finally {
-      genBtn.disabled = false;
+      if (btnPdf) btnPdf.disabled = false;
     }
   }
 
-  return { close: closePanel, open: openPanel };
+  btnStats?.addEventListener("click", () => void runStats());
+  btnPdf?.addEventListener("click", () => void generateReportPdf());
+  void loadBlockList();
+
+  return { close: () => {}, open: () => {} };
 }

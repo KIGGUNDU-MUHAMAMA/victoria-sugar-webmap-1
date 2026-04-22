@@ -46,7 +46,6 @@ let baseGroupRef;
 let sentinelHubLayer;
 /** Set by initSentinelAnalytics so openSearchPanel can close the Sentinel dock. */
 let vslCloseSentinelPanel = () => {};
-let vslCloseFarmReport = () => {};
 
 const MAP_DRAW_PROJ = "EPSG:3857";
 
@@ -643,7 +642,6 @@ function setActivePanel(panelId) {
   closeInfoHelpPopover();
   closePlaceSearchCard();
   vslCloseSentinelPanel();
-  vslCloseFarmReport();
   closeSearchPanel({ clearHighlight: true });
 
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
@@ -1418,7 +1416,6 @@ function openSearchPanel(tab = "coords") {
   const btn = document.getElementById("searchPanelBtn");
   if (!panel || !btn) return;
   vslCloseSentinelPanel();
-  vslCloseFarmReport();
   closeInfoHelpPopover();
   closePlaceSearchCard();
   panel.hidden = false;
@@ -2073,7 +2070,6 @@ async function initMap() {
       getSurveyPreviewLayers: () => surveyImportHandles?.getPreviewLayers?.() ?? null,
       closeOtherPanels: () => {
         closeSearchPanel({ clearHighlight: false });
-        vslCloseFarmReport();
       }
     });
     if (sentinelCtl?.close) {
@@ -2081,21 +2077,15 @@ async function initMap() {
     }
   }
 
-  const farmReportCtl = initFarmReports({
+  initFarmReports({
     map,
     supabase,
     blocksSource,
+    cfg,
     setStatus,
     statusEl,
-    getCurrentUser: () => currentUser,
-    onOpenPanel: () => {
-      vslCloseSentinelPanel();
-      closeSearchPanel({ clearHighlight: false });
-    }
+    getCurrentUser: () => currentUser
   });
-  if (farmReportCtl?.close) {
-    vslCloseFarmReport = farmReportCtl.close;
-  }
 
   initCoordSearchDrawer({
     map,

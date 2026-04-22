@@ -41,6 +41,14 @@ gh repo create victoria-sugar-webmap --public --source=. --push
    - For **guest / anon** Survey preview and save, turn **off** JWT verification for that function (Dashboard → Edge Functions → your function → Settings). Writes still use the **service role** inside the function.
 
    - CSV format: `docs/survey_points_template.csv`.
+3. **Block report + Sentinel statistics (Edge Function `vsl-sentinel-statistics`):**
+   - Deploy: `supabase functions deploy vsl-sentinel-statistics`
+   - Dashboard → Edge Functions → `vsl-sentinel-statistics` → **Secrets** (never commit these):
+     - `SENTINEL_HUB_CLIENT_ID` — OAuth client ID from Sentinel Hub / Planet account
+     - `SENTINEL_HUB_CLIENT_SECRET` — OAuth client secret (create in the same dashboard)
+     - Optional: `SENTINEL_HUB_TOKEN_URL` — only if your provider uses a non-default token endpoint
+   - JWT verification should stay **on** (default). Users must be **signed in** so the function can validate the session; the function reads `vsl_blocks.geom` (EPSG:4326) under the user’s RLS.
+   - Override the function name in `config/app-config.js` if needed: `SENTINEL_STATS_FUNCTION: "vsl-sentinel-statistics"` (matches the built-in default in `js/supabase-client.js`).
 4. In Supabase Auth settings, set Site URL:
    - `https://victoriasugarltd.xyz`
 5. Add Redirect URLs:

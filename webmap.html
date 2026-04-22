@@ -108,11 +108,8 @@
       <button type="button" class="control-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
         <i class="fas fa-magnifying-glass"></i><span class="btn-label">Search</span>
       </button>
-      <button type="button" class="control-btn" id="sentinelPanelBtn" title="Satellite analysis (Sentinel-2)" aria-expanded="false" aria-controls="sentinelAnalyticsPanel">
+      <button type="button" class="control-btn" id="sentinelPanelBtn" title="Satellite analysis (Sentinel-2) and block report" aria-expanded="false" aria-controls="sentinelAnalyticsPanel">
         <i class="fas fa-satellite" aria-hidden="true"></i><span class="btn-label">Satellite</span>
-      </button>
-      <button type="button" class="control-btn" id="farmReportPanelBtn" title="Farm report — block summaries (PDF)" aria-expanded="false" aria-controls="farmReportPanel">
-        <i class="fas fa-file-pdf" aria-hidden="true"></i><span class="btn-label">Report</span>
       </button>
       <button type="button" class="control-btn" id="printBtn" title="Export map to PDF" hidden style="display: none !important;">
         <i class="fas fa-print"></i><span class="btn-label">Print</span>
@@ -255,36 +252,48 @@
           <section class="sentinel-analytics__section sentinel-analytics__section--info" aria-label="Layer information">
             <p id="sentinelInfoLine" class="sentinel-analytics__info">—</p>
           </section>
-        </div>
-      </div>
-    </section>
 
-    <section id="farmReportPanel" class="search-panel farm-report" hidden role="dialog" aria-modal="true" aria-labelledby="farmReportTitle">
-      <div class="search-panel__card">
-        <header class="search-panel__head">
-          <div class="search-panel__head-inner">
-            <i class="fas fa-file-pdf search-panel__head-icon" style="color:var(--primary-2)" aria-hidden="true"></i>
-            <div>
-              <h2 id="farmReportTitle" class="search-panel__title">Farm report</h2>
-              <p class="farm-report__subtitle">Block &amp; plot summary (PDF) — no extra tokens, database only</p>
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelBlockReportTitle">
+            <h3 id="sentinelBlockReportTitle" class="sentinel-analytics__section-title">Block report (PDF + Sentinel stats)</h3>
+            <p class="sentinel-analytics__hint">One block at a time. Set the period and step, load NDVI/NDMI from Sentinel-2 L2A (server-side, masked), then download the PDF. Requires Edge Function <code>vsl-sentinel-statistics</code> and SH OAuth secrets.</p>
+            <label class="search-panel__label" for="sentinelReportBlockFilter">Filter / block</label>
+            <div class="sentinel-report__row2">
+              <input type="search" id="sentinelReportBlockFilter" class="search-panel__input" placeholder="Filter by code, name" autocomplete="off" style="margin-bottom:0.35rem">
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportRefreshBlocks" title="Reload blocks">Refresh list</button>
             </div>
-          </div>
-          <button type="button" class="search-panel__close" id="farmReportPanelCloseBtn" aria-label="Close farm report panel">&times;</button>
-        </header>
-        <div class="farm-report__body">
-          <p class="search-panel__hint">Select one or more blocks. The first pages include a map capture and the main agronomic numbers; following pages list cultivation and plot detail.</p>
-          <label class="search-panel__label" for="farmReportBlockFilter">Filter blocks</label>
-          <input type="search" id="farmReportBlockFilter" class="search-panel__input" placeholder="Code, name, or estate" autocomplete="off">
-          <div class="farm-report__actions" role="group" aria-label="Block list actions">
-            <button type="button" class="search-panel__btn-secondary" id="farmReportSelectAll">All visible</button>
-            <button type="button" class="search-panel__btn-secondary" id="farmReportClearSelection">Clear</button>
-            <button type="button" class="search-panel__btn-secondary" id="farmReportRefreshList" title="Reload list from database">Refresh</button>
-          </div>
-          <div id="farmReportBlockList" class="farm-report__list" role="list"></div>
-          <p id="farmReportSummary" class="farm-report__summary" role="status"></p>
-          <button type="button" class="search-panel__btn-primary" id="farmReportGenerateBtn">
-            <i class="fas fa-download" aria-hidden="true"></i> Download PDF report
-          </button>
+            <label class="visually-hidden" for="sentinelReportBlockSelect">Block for report</label>
+            <select id="sentinelReportBlockSelect" class="sentinel-analytics__select" aria-label="Block for report"></select>
+            <div class="sentinel-report__dates">
+              <div>
+                <label class="search-panel__label" for="sentinelReportDateFrom">From</label>
+                <input type="date" id="sentinelReportDateFrom" class="search-panel__input" required>
+              </div>
+              <div>
+                <label class="search-panel__label" for="sentinelReportDateTo">To</label>
+                <input type="date" id="sentinelReportDateTo" class="search-panel__input" required>
+              </div>
+            </div>
+            <div class="farm-report__actions" style="margin:0.35rem 0" role="group" aria-label="Date presets">
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportPreset3m">3 mo</button>
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportPreset6m">6 mo</button>
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportPreset12m">12 mo</button>
+            </div>
+            <label class="search-panel__label" for="sentinelReportInterval">Time step (aggregation)</label>
+            <select id="sentinelReportInterval" class="sentinel-analytics__select" aria-label="Statistics interval">
+              <option value="P10D">10 days (more steps)</option>
+              <option value="P16D" selected>16 days (Sentinel-2–friendly)</option>
+              <option value="P1M">1 month (fewer steps)</option>
+            </select>
+            <div class="sentinel-report__actions" style="margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.4rem">
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportLoadStatsBtn">Load satellite stats (preview)</button>
+              <button type="button" class="search-panel__btn-primary" id="sentinelReportPdfBtn">Download PDF report</button>
+            </div>
+            <p id="sentinelReportKpi" class="farm-report__summary" role="status" style="margin-top:0.5rem">Choose a block and load stats for NDVI/NDMI preview.</p>
+            <p id="sentinelReportPreviewText" class="sentinel-analytics__hint" style="margin-top:0.25rem"></p>
+            <div id="sentinelReportChartWrap" class="sentinel-report__chart-wrap" style="display:none; margin-top:0.4rem; height:200px; position:relative">
+              <canvas id="sentinelReportChart" width="400" height="200" aria-label="NDVI and NDMI chart"></canvas>
+            </div>
+          </section>
         </div>
       </div>
     </section>
@@ -606,6 +615,7 @@
     <label><input type="radio" name="fbBasemap" value="No Basemap"> No Basemap</label>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>

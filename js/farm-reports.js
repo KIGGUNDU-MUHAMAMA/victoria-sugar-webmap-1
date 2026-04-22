@@ -83,6 +83,28 @@ export function initFarmReports(opts) {
   const refreshBlocksBtn = document.getElementById("sentinelReportRefreshBlocks");
 
   const fnName = (cfg && cfg.SENTINEL_STATS_FUNCTION) || "vsl-sentinel-statistics";
+  const supabaseBase = (cfg && cfg.SUPABASE_URL) ? String(cfg.SUPABASE_URL).replace(/\/$/, "") : "";
+  const functionsUrl = supabaseBase ? `${supabaseBase}/functions/v1/${fnName}` : "";
+
+  const endpointHintEl = document.getElementById("sentinelReportEndpointHint");
+  if (endpointHintEl) {
+    endpointHintEl.textContent = functionsUrl
+      ? `Report calls: ${functionsUrl} (set SENTINEL_STATS_FUNCTION in app-config if you used a different function name).`
+      : "Configure SUPABASE_URL in app-config to show the function endpoint.";
+  }
+
+  function invokeStatsErrorHelp(msg) {
+    const m = (msg || "").toLowerCase();
+    const isFetch = m.includes("failed to send") || m.includes("failed to fetch") || m.includes("networkerror");
+    let s = functionsUrl
+      ? ` Request URL: ${functionsUrl}.`
+      : " ";
+    if (isFetch) {
+      s +=
+        " This usually means the browser could not reach that URL: the function is missing (404 deploy), a firewall/ad-blocker blocked it, CORS, or the site is offline. It is not the same as quick-responder — deploy vsl-sentinel-statistics from this repo, or set SENTINEL_STATS_FUNCTION to the function name you actually deployed (with the stats code inside).";
+    }
+    return s;
+  }
 
   let blockRows = [];
   let filterText = "";
@@ -294,7 +316,12 @@ export function initFarmReports(opts) {
           }
         }
         const msg = (error && error.message) || String(error);
-        if (setStatus) setStatus(statusEl, `Satellite stats: ${msg}${extra}`, true);
+        if (setStatus) {
+          setStatus(statusEl, `Satellite stats: ${msg}${extra}${invokeStatsErrorHelp(msg)}`, true);
+        }
+        if (typeof console !== "undefined" && console.error) {
+          console.error("[vsl block report] functions.invoke failed", { fnName, functionsUrl, error, data });
+        }
         return;
       }
       if (data && data.success === false) {

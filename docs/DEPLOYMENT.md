@@ -43,6 +43,7 @@ gh repo create victoria-sugar-webmap --public --source=. --push
 
    - CSV format: `docs/survey_points_template.csv`.
 3. **Block report + Sentinel statistics (Edge Function `vsl-sentinel-statistics`):**
+   - The webmap calls **`https://<project>.supabase.co/functions/v1/vsl-sentinel-statistics`** (not `quick-responder`). The dashboard “sample” `quick-responder` is a different function; a successful curl to `quick-responder` does **not** prove the report works.
    - Deploy: `supabase functions deploy vsl-sentinel-statistics`
    - Dashboard → Edge Functions → `vsl-sentinel-statistics` → **Secrets** (never commit these):
      - `SENTINEL_HUB_CLIENT_ID` — OAuth client ID from Sentinel Hub / Planet account

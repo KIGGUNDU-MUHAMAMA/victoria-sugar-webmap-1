@@ -262,7 +262,8 @@
           </div>
           <section class="sentinel-analytics__section sentinel-analytics__section--report" aria-labelledby="sentinelBlockReportTitle">
             <h3 id="sentinelBlockReportTitle" class="visually-hidden">Block report</h3>
-            <p class="sentinel-analytics__hint">One block, then dates and time step. Use <strong>Load satellite stats</strong> for a preview, then <strong>Download PDF</strong>. Needs Edge Function <code>vsl-sentinel-statistics</code> + Sentinel Hub OAuth secrets, and a <strong>signed-in</strong> user.</p>
+            <p class="sentinel-analytics__hint">One block, then dates and time step. Use <strong>Load satellite stats</strong> for a preview, then <strong>Download PDF</strong>. This is <em>not</em> the same as the sample <code>quick-responder</code> function — see endpoint below. Needs Sentinel Hub OAuth secrets on the stats function, and a <strong>signed-in</strong> user.</p>
+            <p id="sentinelReportEndpointHint" class="sentinel-analytics__hint sentinel-analytics__endpoint-hint" aria-live="polite">Loading endpoint…</p>
             <label class="search-panel__label" for="sentinelReportBlockFilter">Filter / block</label>
             <div class="sentinel-report__row2">
               <input type="search" id="sentinelReportBlockFilter" class="search-panel__input" placeholder="Filter by code, name" autocomplete="off" style="margin-bottom:0.35rem">

@@ -2867,6 +2867,17 @@ select.search-panel__input {
   border-top: 2px solid rgba(46, 90, 46, 0.35);
 }
 
+.sentinel-analytics__endpoint-hint {
+  font-size: 0.62rem !important;
+  line-height: 1.35;
+  color: #1565c0;
+  background: rgba(21, 101, 192, 0.06);
+  border-radius: 6px;
+  padding: 0.35rem 0.4rem;
+  border: 1px dashed rgba(21, 101, 192, 0.35);
+  word-break: break-all;
+}
+
 .sentinel-report__row2 {
   display: flex;
   flex-wrap: wrap;

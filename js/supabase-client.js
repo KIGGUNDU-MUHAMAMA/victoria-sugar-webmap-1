@@ -29,7 +29,10 @@ const cfg = {
   ...fallbackCfg,
   /** Must match the function name in Supabase (e.g. quick-api or vsl-survey-import). */
   SURVEY_FUNCTION_NAME: "quick-api",
-  /** Block Sentinel statistics (NDVI/NDMI). Deploy: supabase functions deploy vsl-sentinel-statistics */
+  /**
+   * Name segment in URL: …/functions/v1/&lt;THIS&gt; — must match a deployed function with the vsl-sentinel-statistics code.
+   * It is NOT "quick-responder" unless you set this to "quick-responder" and deploy that same stats code there.
+   */
   SENTINEL_STATS_FUNCTION: "vsl-sentinel-statistics",
   ...(window.VSL_CONFIG || {})
 };

@@ -111,6 +111,9 @@
       <button type="button" class="control-btn" id="sentinelPanelBtn" title="Satellite analysis (Sentinel-2)" aria-expanded="false" aria-controls="sentinelAnalyticsPanel">
         <i class="fas fa-satellite" aria-hidden="true"></i><span class="btn-label">Satellite</span>
       </button>
+      <button type="button" class="control-btn" id="farmReportPanelBtn" title="Farm report — block summaries (PDF)" aria-expanded="false" aria-controls="farmReportPanel">
+        <i class="fas fa-file-pdf" aria-hidden="true"></i><span class="btn-label">Report</span>
+      </button>
       <button type="button" class="control-btn" id="printBtn" title="Export map to PDF" hidden style="display: none !important;">
         <i class="fas fa-print"></i><span class="btn-label">Print</span>
       </button>
@@ -252,6 +255,36 @@
           <section class="sentinel-analytics__section sentinel-analytics__section--info" aria-label="Layer information">
             <p id="sentinelInfoLine" class="sentinel-analytics__info">—</p>
           </section>
+        </div>
+      </div>
+    </section>
+
+    <section id="farmReportPanel" class="search-panel farm-report" hidden role="dialog" aria-modal="true" aria-labelledby="farmReportTitle">
+      <div class="search-panel__card">
+        <header class="search-panel__head">
+          <div class="search-panel__head-inner">
+            <i class="fas fa-file-pdf search-panel__head-icon" style="color:var(--primary-2)" aria-hidden="true"></i>
+            <div>
+              <h2 id="farmReportTitle" class="search-panel__title">Farm report</h2>
+              <p class="farm-report__subtitle">Block &amp; plot summary (PDF) — no extra tokens, database only</p>
+            </div>
+          </div>
+          <button type="button" class="search-panel__close" id="farmReportPanelCloseBtn" aria-label="Close farm report panel">&times;</button>
+        </header>
+        <div class="farm-report__body">
+          <p class="search-panel__hint">Select one or more blocks. The first pages include a map capture and the main agronomic numbers; following pages list cultivation and plot detail.</p>
+          <label class="search-panel__label" for="farmReportBlockFilter">Filter blocks</label>
+          <input type="search" id="farmReportBlockFilter" class="search-panel__input" placeholder="Code, name, or estate" autocomplete="off">
+          <div class="farm-report__actions" role="group" aria-label="Block list actions">
+            <button type="button" class="search-panel__btn-secondary" id="farmReportSelectAll">All visible</button>
+            <button type="button" class="search-panel__btn-secondary" id="farmReportClearSelection">Clear</button>
+            <button type="button" class="search-panel__btn-secondary" id="farmReportRefreshList" title="Reload list from database">Refresh</button>
+          </div>
+          <div id="farmReportBlockList" class="farm-report__list" role="list"></div>
+          <p id="farmReportSummary" class="farm-report__summary" role="status"></p>
+          <button type="button" class="search-panel__btn-primary" id="farmReportGenerateBtn">
+            <i class="fas fa-download" aria-hidden="true"></i> Download PDF report
+          </button>
         </div>
       </div>
     </section>
@@ -573,6 +606,9 @@
     <label><input type="radio" name="fbBasemap" value="No Basemap"> No Basemap</label>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script type="module" src="./js/map-app.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@ import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initPrintComposer } from "./print-composer.js";
 import { initSentinelAnalytics, buildSentinelTimeline, getSentinelWmsAuxParams } from "./sentinel-analytics.js";
+import { initFarmReports } from "./farm-reports.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -45,6 +46,7 @@ let baseGroupRef;
 let sentinelHubLayer;
 /** Set by initSentinelAnalytics so openSearchPanel can close the Sentinel dock. */
 let vslCloseSentinelPanel = () => {};
+let vslCloseFarmReport = () => {};
 
 const MAP_DRAW_PROJ = "EPSG:3857";
 
@@ -641,6 +643,7 @@ function setActivePanel(panelId) {
   closeInfoHelpPopover();
   closePlaceSearchCard();
   vslCloseSentinelPanel();
+  vslCloseFarmReport();
   closeSearchPanel({ clearHighlight: true });
 
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
@@ -1415,6 +1418,7 @@ function openSearchPanel(tab = "coords") {
   const btn = document.getElementById("searchPanelBtn");
   if (!panel || !btn) return;
   vslCloseSentinelPanel();
+  vslCloseFarmReport();
   closeInfoHelpPopover();
   closePlaceSearchCard();
   panel.hidden = false;
@@ -2069,11 +2073,28 @@ async function initMap() {
       getSurveyPreviewLayers: () => surveyImportHandles?.getPreviewLayers?.() ?? null,
       closeOtherPanels: () => {
         closeSearchPanel({ clearHighlight: false });
+        vslCloseFarmReport();
       }
     });
     if (sentinelCtl?.close) {
       vslCloseSentinelPanel = sentinelCtl.close;
     }
+  }
+
+  const farmReportCtl = initFarmReports({
+    map,
+    supabase,
+    blocksSource,
+    setStatus,
+    statusEl,
+    getCurrentUser: () => currentUser,
+    onOpenPanel: () => {
+      vslCloseSentinelPanel();
+      closeSearchPanel({ clearHighlight: false });
+    }
+  });
+  if (farmReportCtl?.close) {
+    vslCloseFarmReport = farmReportCtl.close;
   }
 
   initCoordSearchDrawer({

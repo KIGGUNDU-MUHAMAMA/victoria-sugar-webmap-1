@@ -279,8 +279,22 @@ export function initFarmReports(opts) {
         }
       });
       if (error) {
-        const msg = error.message || String(error);
-        if (setStatus) setStatus(statusEl, `Satellite stats: ${msg}`, true);
+        let extra = "";
+        if (data && typeof data === "object" && data !== null && "error" in data) {
+          extra = ` — ${String(/** @type {{ error: string }} */ (data).error)}`;
+        } else {
+          const body = (error && typeof error === "object" && "context" in error && (/** @type {{ context?: { body?: string } }} */ (error).context))?.body;
+          if (body && typeof body === "string") {
+            try {
+              const j = JSON.parse(body);
+              if (j && j.error) extra = ` — ${j.error}`;
+            } catch {
+              if (body.length < 400) extra = ` — ${body}`;
+            }
+          }
+        }
+        const msg = (error && error.message) || String(error);
+        if (setStatus) setStatus(statusEl, `Satellite stats: ${msg}${extra}`, true);
         return;
       }
       if (data && data.success === false) {
@@ -408,7 +422,13 @@ export function initFarmReports(opts) {
       }
       const statPayload = lastStats;
       if (!statPayload || !Array.isArray(statPayload.ndvi_intervals)) {
-        if (setStatus) setStatus(statusEl, "Satellite statistics failed or returned no intervals. Check Edge Function and dates.", true);
+        if (setStatus) {
+          setStatus(
+            statusEl,
+            "No satellite data in the response. Sign in, run SQL 010 (GeoJSON), set SENTINEL_HUB_* on the function, and pick a block with saved geometry. Then try Load stats again.",
+            true
+          );
+        }
         return;
       }
 

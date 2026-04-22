@@ -19,6 +19,7 @@ gh repo create victoria-sugar-webmap --public --source=. --push
    - `sql/002_vsl_survey_batch.sql` (batch polygon upsert for Survey import; **Edge Function only**)
    - `sql/004_vsl_anon_read_map_layers.sql` (lets **guest / anon** users see BLOCKS and PARCELS on the map; without it, saves work but the map stays empty when not logged in)
    - `sql/005_vsl_get_features_bbox_definer.sql` (recommended: makes `vsl_get_features_bbox` **SECURITY DEFINER** so guest map load works even if RLS policies are easy to misconfigure; safe because results are still limited to the map viewport bbox)
+   - `sql/010_vsl_block_geojson_for_stats.sql` (**required** for **vsl-sentinel-statistics**: returns `st_asgeojson(geom)` so the Edge Function always gets valid GeoJSON for the block polygon)
 3. **Survey import (Edge Function):**
    - Install [Supabase CLI](https://supabase.com/docs/guides/cli), then from the repo root:
 

@@ -15,15 +15,15 @@ const SH_STATS_URL = "https://services.sentinel-hub.com/api/v1/statistics";
 const SH_TOKEN_DEFAULT =
   "https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token";
 
+/** SCL-based cloud/shadow/mask. Do not gate on dataMask: some scenes omit it and every pixel was masked. */
 const EVAL_NDVI = `//VERSION=3
 function setup() {
   return {
-    input: [{ bands: ["B04", "B08", "SCL", "dataMask"] }],
+    input: [{ bands: ["B04", "B08", "SCL"] }],
     output: [{ id: "default", sampleType: "FLOAT32", bands: 1 }],
   };
 }
 function evaluatePixel(s) {
-  if (!s.dataMask) return { default: [NaN] };
   var c = s.SCL;
   if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) return { default: [NaN] };
   var d = s.B08 + s.B04;
@@ -34,12 +34,11 @@ function evaluatePixel(s) {
 const EVAL_NDMI = `//VERSION=3
 function setup() {
   return {
-    input: [{ bands: ["B8A", "B11", "SCL", "dataMask"] }],
+    input: [{ bands: ["B8A", "B11", "SCL"] }],
     output: [{ id: "default", sampleType: "FLOAT32", bands: 1 }],
   };
 }
 function evaluatePixel(s) {
-  if (!s.dataMask) return { default: [NaN] };
   var c = s.SCL;
   if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) return { default: [NaN] };
   var d = s.B8A + s.B11;
@@ -69,6 +68,10 @@ function extractBandMean(node: unknown): number | null {
   if (typeof node === "object" && !Array.isArray(node)) {
     const o = node as Record<string, unknown>;
     if (typeof o.mean === "number" && Number.isFinite(o.mean)) return o.mean;
+    if (o.stats && typeof o.stats === "object") {
+      const st = o.stats as { mean?: number };
+      if (typeof st.mean === "number" && Number.isFinite(st.mean)) return st.mean;
+    }
     for (const v of Object.values(o)) {
       const m = extractBandMean(v);
       if (m != null) return m;
@@ -85,7 +88,8 @@ function extractBandMean(node: unknown): number | null {
 
 function parseStatisticsIntervals(json: unknown): IntervalRow[] {
   const out: IntervalRow[] = [];
-  const data = (json as { data?: unknown[] })?.data;
+  const root = json as { data?: unknown[]; results?: unknown[]; aggregations?: unknown[] };
+  const data = root?.data ?? root?.results ?? root?.aggregations;
   if (!Array.isArray(data)) return out;
   for (const item of data) {
     const row = item as { interval?: { from?: string; to?: string }; outputs?: unknown };
@@ -243,25 +247,67 @@ Deno.serve(async (req) => {
   const tFrom = dateFrom.includes("T") ? dateFrom : `${dateFrom}T00:00:00.000Z`;
   const tTo = dateTo.includes("T") ? dateTo : `${dateTo}T23:59:59.000Z`;
 
-  const { data: blockRow, error: bErr } = await supabase
+  const { data: meta, error: metaErr } = await supabase
     .from("vsl_blocks")
-    .select("id, block_code, block_name, geom")
+    .select("id, block_code, block_name")
     .eq("id", blockId)
     .maybeSingle();
-  if (bErr) {
-    return fail(500, bErr.message);
+  if (metaErr) {
+    return fail(500, `Database: ${metaErr.message}`);
   }
-  if (blockRow == null || (blockRow as { geom?: unknown }).geom == null) {
-    return fail(400, "Block not found or has no captured geometry in EPSG:4326.");
+  if (!meta) {
+    return fail(400, "Block not found, or your account cannot read it (RLS). Sign in with a user that can read vsl_blocks.");
   }
 
-  let rawGeom: unknown = (blockRow as { geom: unknown }).geom;
-  if (typeof rawGeom === "string") {
-    try {
-      rawGeom = JSON.parse(rawGeom);
-    } catch {
-      return fail(500, "Block geometry is not valid GeoJSON");
+  let rawGeom: unknown = null;
+
+  const { data: geoRpc, error: rpcErr } = await supabase.rpc("vsl_block_geojson_for_stats", {
+    p_block_id: blockId,
+  });
+  if (rpcErr) {
+    if (String(rpcErr.message || "").includes("function") && String(rpcErr.message || "").includes("does not exist")) {
+      return fail(
+        500,
+        "Run sql/010_vsl_block_geojson_for_stats.sql in the Supabase SQL editor (GeoJSON helper for block geometry)."
+      );
     }
+    return fail(500, `RPC vsl_block_geojson_for_stats: ${rpcErr.message}`);
+  }
+  if (geoRpc && typeof geoRpc === "object" && "type" in (geoRpc as object)) {
+    rawGeom = geoRpc;
+  }
+
+  if (rawGeom == null) {
+    const { data: rowG, error: gErr } = await supabase
+      .from("vsl_blocks")
+      .select("geom")
+      .eq("id", blockId)
+      .maybeSingle();
+    if (gErr) {
+      return fail(500, gErr.message);
+    }
+    const g = (rowG as { geom?: unknown })?.geom;
+    if (g != null) {
+      if (typeof g === "string") {
+        try {
+          rawGeom = JSON.parse(g);
+        } catch {
+          return fail(
+            500,
+            "Block geometry could not be read as GeoJSON. Apply sql/010_vsl_block_geojson_for_stats.sql and redeploy."
+          );
+        }
+      } else {
+        rawGeom = g;
+      }
+    }
+  }
+
+  if (rawGeom == null) {
+    return fail(
+      400,
+      "This block has no saved polygon (geom is null). Draw the block boundary on the map and save before running the report."
+    );
   }
 
   let geometry: { type: "Polygon"; coordinates: number[][][] };
@@ -301,9 +347,9 @@ Deno.serve(async (req) => {
 
   return ok({
     block: {
-      id: blockRow.id,
-      block_code: blockRow.block_code,
-      block_name: blockRow.block_name,
+      id: meta.id,
+      block_code: meta.block_code,
+      block_name: meta.block_name,
     },
     interval: interval,
     time_range: { from: tFrom, to: tTo },

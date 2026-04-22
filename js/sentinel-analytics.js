@@ -10,6 +10,48 @@ const SENTINEL_PRODUCT_TO_SH = {
   falseColor: "2_FALSE_COLOR"
 };
 
+/**
+ * WMS “aux” params (Sentinel Hub). MAXCC = max mean cloud %; PRIORITY mosaics overlapping tiles.
+ * @param {object} cfg
+ * @param {{ maxcc?: number, priority?: string }} [overrides] UI sliders / selects
+ */
+export function getSentinelWmsAuxParams(cfg, overrides = {}) {
+  const m =
+    overrides.maxcc != null
+      ? Number(overrides.maxcc)
+      : Number(cfg.SENTINEL_MAX_CLOUD_COVER) >= 0
+        ? Number(cfg.SENTINEL_MAX_CLOUD_COVER)
+        : 25;
+  const MAXCC = Math.min(100, Math.max(0, m));
+  const PRIORITY = String(
+    overrides.priority != null ? overrides.priority : cfg.SENTINEL_TILE_PRIORITY || "leastCC"
+  );
+  return { MAXCC, PRIORITY };
+}
+
+/**
+ * Newest first (index 0 ≈ most recent). Manual override via cfg.SENTINEL_TIMELINE.
+ */
+export function buildSentinelTimeline(cfg) {
+  if (Array.isArray(cfg.SENTINEL_TIMELINE) && cfg.SENTINEL_TIMELINE.length > 0) {
+    return cfg.SENTINEL_TIMELINE.map((d) => String(d).slice(0, 10));
+  }
+  const stepDays = Number(cfg.SENTINEL_TIMELINE_STEP_DAYS) > 0 ? Number(cfg.SENTINEL_TIMELINE_STEP_DAYS) : 14;
+  const monthsBack = Number(cfg.SENTINEL_TIMELINE_MONTHS_BACK) > 0 ? Number(cfg.SENTINEL_TIMELINE_MONTHS_BACK) : 24;
+  const end = new Date();
+  const start = new Date(end.getTime());
+  start.setMonth(start.getMonth() - monthsBack);
+  const out = [];
+  for (let t = end.getTime(); t >= start.getTime(); t -= stepDays * 864e5) {
+    const cur = new Date(t);
+    out.push(cur.toISOString().slice(0, 10));
+  }
+  if (out.length === 0) {
+    out.push(new Date().toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 function debounce(fn, ms) {
   let t;
   return function debounced(...args) {
@@ -72,17 +114,16 @@ export function initSentinelAnalytics(opts) {
     sentinelLayer,
     blocksLayer,
     parcelsLayer,
-    getSurveyPreviewLayers
+    getSurveyPreviewLayers,
+    closeOtherPanels
   } = opts;
 
-  if (!map || !sentinelLayer) return;
+  if (!map || !sentinelLayer) return null;
 
   const source = sentinelLayer.getSource();
-  if (!source || typeof source.updateParams !== "function") return;
+  if (!source || typeof source.updateParams !== "function") return null;
 
-  const timeline = Array.isArray(cfg.SENTINEL_TIMELINE) && cfg.SENTINEL_TIMELINE.length
-    ? cfg.SENTINEL_TIMELINE.map((d) => String(d).slice(0, 10))
-    : ["2024-06-15", "2024-03-01", "2023-11-01"];
+  const timeline = buildSentinelTimeline(cfg);
 
   const el = (id) => document.getElementById(id);
   const basemapRadios = document.querySelectorAll("input[name='basemapChoice']");
@@ -104,13 +145,26 @@ export function initSentinelAnalytics(opts) {
   const ovBlocks = el("overlayBlocksCb");
   const ovParcels = el("overlayParcelsCb");
   const ovSurvey = el("overlaySurveyCb");
-  const panelToggle = el("sentinelPanelToggle");
+  const panelBtn = el("sentinelPanelBtn");
   const panelRoot = el("sentinelAnalyticsPanel");
-  const panelShell = el("sentinelAnalyticsShell");
+  const closePanelBtn = el("sentinelPanelCloseBtn");
+  const maxCcRange = el("sentinelMaxCcRange");
+  const maxCcValue = el("sentinelMaxCcValue");
+  const prioritySelect = el("sentinelPrioritySelect");
+
+  function readAuxOverrides() {
+    return {
+      maxcc: maxCcRange ? parseInt(maxCcRange.value, 10) : undefined,
+      priority: prioritySelect?.value
+    };
+  }
 
   let productMode = "off";
   let playTimer = null;
   let pendingTiles = 0;
+  let panelOpen = false;
+  let panelOutsideHandler = null;
+  let panelEscapeHandler = null;
 
   function updateTileSpinner() {
     if (!tileSpinner) return;
@@ -205,9 +259,12 @@ export function initSentinelAnalytics(opts) {
       sentinelLayer.setOpacity(targetOp * 0.4);
     }
 
+    const aux = getSentinelWmsAuxParams(cfg, readAuxOverrides());
     source.updateParams({
       LAYERS: layersParam,
-      TIME: timeStr
+      TIME: timeStr,
+      MAXCC: aux.MAXCC,
+      PRIORITY: aux.PRIORITY
     });
     if (typeof source.refresh === "function") source.refresh();
     sentinelLayer.setVisible(true);
@@ -255,10 +312,14 @@ export function initSentinelAnalytics(opts) {
     }
     if (playBtn) {
       playBtn.setAttribute("aria-pressed", "false");
-      playBtn.innerHTML = "<i class=\"fas fa-play\" aria-hidden=\"true\"></i> Play";
+      playBtn.innerHTML =
+        "<i class=\"fas fa-backward\" aria-hidden=\"true\"></i> Play back in time";
     }
   }
 
+  /**
+   * Timeline is newest first: index+1 = older. Animation steps toward older images (seasonal / historical view).
+   */
   function startPlay() {
     if (playTimer) {
       stopPlay();
@@ -356,6 +417,15 @@ export function initSentinelAnalytics(opts) {
     else startPlay();
   });
 
+  const onCloudOrPriority = debounce(() => {
+    if (maxCcValue && maxCcRange) maxCcValue.textContent = maxCcRange.value;
+    if (productMode !== "off") {
+      setSentinelProduct(productMode, { skipRadios: true, skipDateFlash: true });
+    }
+  }, 100);
+  maxCcRange?.addEventListener("input", onCloudOrPriority);
+  prioritySelect?.addEventListener("change", onCloudOrPriority);
+
   // ——— Overlays (vectors)
   if (ovBlocks) {
     ovBlocks.checked = blocksLayer.getVisible();
@@ -391,17 +461,69 @@ export function initSentinelAnalytics(opts) {
     }
   }
 
-  // ——— Collapse
-  if (panelToggle && panelRoot) {
-    let collapsed = false;
-    panelToggle.addEventListener("click", () => {
-      collapsed = !collapsed;
-      panelRoot.classList.toggle("sentinel-analytics--collapsed", collapsed);
-      panelToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      if (panelShell) panelShell.hidden = collapsed;
-      requestAnimationFrame(() => map.updateSize());
+  // ——— Toolbar: docked left panel (layer switcher stays on the right)
+  function closeSentinelPanel() {
+    if (!panelRoot) return;
+    stopPlay();
+    if (panelEscapeHandler) {
+      document.removeEventListener("keydown", panelEscapeHandler, true);
+      panelEscapeHandler = null;
+    }
+    if (panelOutsideHandler) {
+      document.removeEventListener("pointerdown", panelOutsideHandler, true);
+      panelOutsideHandler = null;
+    }
+    panelOpen = false;
+    panelRoot.hidden = true;
+    panelBtn?.classList.remove("active");
+    panelBtn?.setAttribute("aria-expanded", "false");
+    map?.updateSize();
+  }
+
+  function openSentinelPanel() {
+    if (!panelRoot) return;
+    closeOtherPanels?.();
+    stopPlay();
+    panelRoot.hidden = false;
+    panelOpen = true;
+    panelBtn?.classList.add("active");
+    panelBtn?.setAttribute("aria-expanded", "true");
+    panelEscapeHandler = (ev) => {
+      if (ev.key === "Escape" && panelOpen) {
+        ev.preventDefault();
+        closeSentinelPanel();
+      }
+    };
+    document.addEventListener("keydown", panelEscapeHandler, true);
+    panelOutsideHandler = (ev) => {
+      if (!panelOpen) return;
+      if (panelRoot.contains(ev.target) || panelBtn?.contains(ev.target)) return;
+      closeSentinelPanel();
+    };
+    document.addEventListener("pointerdown", panelOutsideHandler, true);
+    requestAnimationFrame(() => {
+      map?.updateSize();
     });
   }
+
+  function toggleSentinelPanel() {
+    if (panelOpen) closeSentinelPanel();
+    else openSentinelPanel();
+  }
+
+  panelBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleSentinelPanel();
+  });
+  closePanelBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeSentinelPanel();
+  });
+
+  if (panelRoot) {
+    panelRoot.hidden = true;
+  }
+  panelBtn?.setAttribute("aria-expanded", "false");
 
   // ——— Init UI from layer / map state
   if (dateRange) {
@@ -457,5 +579,18 @@ export function initSentinelAnalytics(opts) {
     }
   }
 
+  if (maxCcRange) {
+    const d0 = getSentinelWmsAuxParams(cfg, {});
+    maxCcRange.value = String(Math.round(d0.MAXCC));
+    if (maxCcValue) maxCcValue.textContent = String(Math.round(d0.MAXCC));
+  }
+  if (prioritySelect) {
+    const d1 = getSentinelWmsAuxParams(cfg, {});
+    if ([...prioritySelect.options].some((o) => o.value === d1.PRIORITY)) {
+      prioritySelect.value = d1.PRIORITY;
+    }
+  }
+
   updateInfoLine();
+  return { close: closeSentinelPanel };
 }

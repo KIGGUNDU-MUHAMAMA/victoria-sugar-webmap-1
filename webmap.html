@@ -108,6 +108,9 @@
       <button type="button" class="control-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
         <i class="fas fa-magnifying-glass"></i><span class="btn-label">Search</span>
       </button>
+      <button type="button" class="control-btn" id="sentinelPanelBtn" title="Satellite analysis (Sentinel-2)" aria-expanded="false" aria-controls="sentinelAnalyticsPanel">
+        <i class="fas fa-satellite" aria-hidden="true"></i><span class="btn-label">Satellite</span>
+      </button>
       <button type="button" class="control-btn" id="printBtn" title="Export map to PDF" hidden style="display: none !important;">
         <i class="fas fa-print"></i><span class="btn-label">Print</span>
       </button>
@@ -139,103 +142,119 @@
     </div>
   </div>
 
-  <!-- Sentinel-2 (Sentinel Hub WMS) — radiometric analysis; not a basemap -->
-  <aside id="sentinelAnalyticsPanel" class="sentinel-analytics" aria-label="Sentinel-2 satellite analysis">
-    <div class="sentinel-analytics__header">
-      <div class="sentinel-analytics__title-row">
-        <span class="sentinel-analytics__badge" aria-hidden="true"><i class="fas fa-satellite"></i></span>
-        <div>
-          <h2 class="sentinel-analytics__title">Satellite analysis</h2>
-          <p class="sentinel-analytics__subtitle">Sentinel-2 · Sentinel Hub</p>
-        </div>
-      </div>
-      <button type="button" class="sentinel-analytics__collapse-btn" id="sentinelPanelToggle" aria-expanded="true" aria-controls="sentinelAnalyticsShell" title="Collapse panel">
-        <i class="fas fa-chevron-right sentinel-analytics__collapse-icon" aria-hidden="true"></i>
-      </button>
-    </div>
-
-    <div id="sentinelAnalyticsShell" class="sentinel-analytics__shell">
-      <div id="sentinelTileSpinner" class="sentinel-analytics__loading" hidden aria-live="polite">
-        <span class="sentinel-analytics__spinner" aria-hidden="true"></span>
-        <span>Loading tiles…</span>
-      </div>
-
-      <section class="sentinel-analytics__section" aria-labelledby="sentinelBasemapLegend">
-        <h3 id="sentinelBasemapLegend" class="sentinel-analytics__section-title">Basemap</h3>
-        <div class="sentinel-analytics__radio-grid" role="radiogroup" aria-label="Basemap">
-          <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="OpenStreetMap"> OSM</label>
-          <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="Google Satellite Hybrid"> Google Hybrid</label>
-          <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="Esri World Imagery" checked> Esri Satellite</label>
-          <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="No Basemap"> None</label>
-        </div>
-      </section>
-
-      <section class="sentinel-analytics__section" aria-labelledby="sentinelProductLegend">
-        <h3 id="sentinelProductLegend" class="sentinel-analytics__section-title">Sentinel-2 product</h3>
-        <p class="sentinel-analytics__hint">One analysis layer at a time. Use opacity to blend over the basemap.</p>
-        <div class="sentinel-analytics__radio-grid sentinel-analytics__radio-grid--compact" role="radiogroup" aria-label="Sentinel-2 product">
-          <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="off" checked> Off</label>
-          <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="trueColor"> True colour</label>
-          <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="ndvi"> NDVI</label>
-          <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="falseColor"> False colour</label>
-        </div>
-        <div class="sentinel-mode-btns" role="group" aria-label="Quick analysis mode">
-          <button type="button" class="sentinel-mode-btn" id="sentinelModeNatural" title="Natural colour">
-            <i class="fas fa-earth-americas" aria-hidden="true"></i> Natural
-          </button>
-          <button type="button" class="sentinel-mode-btn" id="sentinelModeNdvi" title="Vegetation index">
-            <i class="fas fa-leaf" aria-hidden="true"></i> NDVI
-          </button>
-          <button type="button" class="sentinel-mode-btn" id="sentinelModeStress" title="Crop stress / vigour (false colour)">
-            <i class="fas fa-fire-flame-simple" aria-hidden="true"></i> Stress
-          </button>
-        </div>
-      </section>
-
-      <section class="sentinel-analytics__section" aria-labelledby="sentinelOpacityLegend">
-        <div class="sentinel-analytics__row-between">
-          <h3 id="sentinelOpacityLegend" class="sentinel-analytics__section-title sentinel-analytics__section-title--inline">Opacity</h3>
-          <span id="sentinelOpacityValue" class="sentinel-analytics__pct">88</span>
-        </div>
-        <label class="visually-hidden" for="sentinelOpacityRange">Sentinel-2 layer opacity percent</label>
-        <input type="range" id="sentinelOpacityRange" class="sentinel-analytics__range" min="0" max="100" value="88">
-      </section>
-
-      <section class="sentinel-analytics__section" aria-labelledby="sentinelTimeLegend">
-        <h3 id="sentinelTimeLegend" class="sentinel-analytics__section-title">Acquisition date</h3>
-        <p class="sentinel-analytics__date-readout">Selected: <strong id="sentinelDateLabel">—</strong></p>
-        <label class="visually-hidden" for="sentinelDateRange">Time position</label>
-        <input type="range" id="sentinelDateRange" class="sentinel-analytics__range" min="0" max="4" value="0" step="1">
-        <label class="sentinel-analytics__select-label" for="sentinelDateSelect">Jump to date</label>
-        <select id="sentinelDateSelect" class="sentinel-analytics__select"></select>
-        <div class="sentinel-analytics__play-row">
-          <button type="button" class="sentinel-analytics__play" id="sentinelPlayBtn" aria-pressed="false">
-            <i class="fas fa-play" aria-hidden="true"></i> Play
-          </button>
-        </div>
-      </section>
-
-      <section class="sentinel-analytics__section" aria-labelledby="sentinelOverlayLegend">
-        <h3 id="sentinelOverlayLegend" class="sentinel-analytics__section-title">Overlays</h3>
-        <div class="sentinel-analytics__checks">
-          <label class="sentinel-check"><input type="checkbox" id="overlayBlocksCb" checked> Block boundaries</label>
-          <label class="sentinel-check"><input type="checkbox" id="overlayParcelsCb" checked> Parcels (plantation)</label>
-          <label class="sentinel-check"><input type="checkbox" id="overlaySurveyCb" checked> Survey import preview</label>
-        </div>
-      </section>
-
-      <section class="sentinel-analytics__section" aria-labelledby="sentinelLegendTitle">
-        <h3 id="sentinelLegendTitle" class="sentinel-analytics__section-title">Legend</h3>
-        <div id="sentinelLegendBody" class="sentinel-legend"></div>
-      </section>
-
-      <section class="sentinel-analytics__section sentinel-analytics__section--info" aria-label="Layer information">
-        <p id="sentinelInfoLine" class="sentinel-analytics__info">—</p>
-      </section>
-    </div>
-  </aside>
-
   <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
+
+    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
+      <div class="sentinel-analytics__card">
+        <header class="search-panel__head">
+          <div class="search-panel__head-inner">
+            <i class="fas fa-satellite search-panel__head-icon" style="color:#1565c0" aria-hidden="true"></i>
+            <div>
+              <h2 id="sentinelAnalyticsTitle" class="search-panel__title">Satellite</h2>
+              <p class="sentinel-analytics__subtitle">Sentinel-2 · Sentinel Hub</p>
+            </div>
+          </div>
+          <button type="button" class="search-panel__close" id="sentinelPanelCloseBtn" aria-label="Close satellite panel">&times;</button>
+        </header>
+        <div id="sentinelAnalyticsShell" class="sentinel-analytics__shell">
+          <div id="sentinelTileSpinner" class="sentinel-analytics__loading" hidden aria-live="polite">
+            <span class="sentinel-analytics__spinner" aria-hidden="true"></span>
+            <span>Loading tiles…</span>
+          </div>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelBasemapLegend">
+            <h3 id="sentinelBasemapLegend" class="sentinel-analytics__section-title">Basemap</h3>
+            <div class="sentinel-analytics__radio-grid" role="radiogroup" aria-label="Basemap">
+              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="OpenStreetMap"> OSM</label>
+              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="Google Satellite Hybrid"> Google Hybrid</label>
+              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="Esri World Imagery" checked> Esri Satellite</label>
+              <label class="sentinel-radio"><input type="radio" name="basemapChoice" value="No Basemap"> None</label>
+            </div>
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelProductLegend">
+            <h3 id="sentinelProductLegend" class="sentinel-analytics__section-title">Sentinel-2 product</h3>
+            <p class="sentinel-analytics__hint">One layer at a time. First date in the list is the <strong>most recent</strong> (auto-generated to today if not configured). Blend with the basemap using opacity.</p>
+            <div class="sentinel-analytics__radio-grid sentinel-analytics__radio-grid--compact" role="radiogroup" aria-label="Sentinel-2 product">
+              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="off" checked> Off</label>
+              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="trueColor"> True colour</label>
+              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="ndvi"> NDVI</label>
+              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="falseColor"> False colour</label>
+            </div>
+            <div class="sentinel-mode-btns" role="group" aria-label="Quick analysis mode">
+              <button type="button" class="sentinel-mode-btn" id="sentinelModeNatural" title="Natural colour">
+                <i class="fas fa-earth-americas" aria-hidden="true"></i> Natural
+              </button>
+              <button type="button" class="sentinel-mode-btn" id="sentinelModeNdvi" title="Vegetation index">
+                <i class="fas fa-leaf" aria-hidden="true"></i> NDVI
+              </button>
+              <button type="button" class="sentinel-mode-btn" id="sentinelModeStress" title="False colour (stress)">
+                <i class="fas fa-fire-flame-simple" aria-hidden="true"></i> Stress
+              </button>
+            </div>
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelCloudLegend">
+            <h3 id="sentinelCloudLegend" class="sentinel-analytics__section-title">Image quality (cloud)</h3>
+            <p class="sentinel-analytics__hint">Sentinel Hub <strong>MAXCC</strong> limits mean cloud %; <strong>mosaic priority</strong> controls how tiles stack. Values are per-request (not stored in the layer file).</p>
+            <div class="sentinel-analytics__row-between">
+              <span>Max mean cloud <span class="sentinel-analytics__muted">(%)</span></span>
+              <span id="sentinelMaxCcValue" class="sentinel-analytics__pct">25</span>
+            </div>
+            <label class="visually-hidden" for="sentinelMaxCcRange">Maximum mean cloud cover percent</label>
+            <input type="range" id="sentinelMaxCcRange" class="sentinel-analytics__range" min="0" max="100" value="25" step="1">
+            <label class="sentinel-analytics__select-label" for="sentinelPrioritySelect">Mosaic priority</label>
+            <select id="sentinelPrioritySelect" class="sentinel-analytics__select" aria-label="Mosaic priority">
+              <option value="leastCC">Least cloudy (recommended)</option>
+              <option value="mostRecent">Newest on top</option>
+              <option value="leastTimeDifference">Least time difference</option>
+            </select>
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelOpacityLegend">
+            <div class="sentinel-analytics__row-between">
+              <h3 id="sentinelOpacityLegend" class="sentinel-analytics__section-title sentinel-analytics__section-title--inline">Opacity</h3>
+              <span id="sentinelOpacityValue" class="sentinel-analytics__pct">88</span>
+            </div>
+            <label class="visually-hidden" for="sentinelOpacityRange">Sentinel-2 layer opacity percent</label>
+            <input type="range" id="sentinelOpacityRange" class="sentinel-analytics__range" min="0" max="100" value="88">
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelTimeLegend">
+            <h3 id="sentinelTimeLegend" class="sentinel-analytics__section-title">Time</h3>
+            <p class="sentinel-analytics__hint">Dates are <strong>newest first</strong>. <strong>Play back in time</strong> steps to older images.</p>
+            <p class="sentinel-analytics__date-readout">Selected: <strong id="sentinelDateLabel">—</strong></p>
+            <label class="visually-hidden" for="sentinelDateRange">Time position</label>
+            <input type="range" id="sentinelDateRange" class="sentinel-analytics__range" min="0" max="30" value="0" step="1">
+            <label class="sentinel-analytics__select-label" for="sentinelDateSelect">Jump to date</label>
+            <select id="sentinelDateSelect" class="sentinel-analytics__select"></select>
+            <div class="sentinel-analytics__play-row">
+              <button type="button" class="sentinel-analytics__play" id="sentinelPlayBtn" aria-pressed="false" title="Animate backward through dates (older scenes)">
+                <i class="fas fa-backward" aria-hidden="true"></i> Play back in time
+              </button>
+            </div>
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelOverlayLegend">
+            <h3 id="sentinelOverlayLegend" class="sentinel-analytics__section-title">Overlays</h3>
+            <div class="sentinel-analytics__checks">
+              <label class="sentinel-check"><input type="checkbox" id="overlayBlocksCb" checked> Block boundaries</label>
+              <label class="sentinel-check"><input type="checkbox" id="overlayParcelsCb" checked> Parcels (plantation)</label>
+              <label class="sentinel-check"><input type="checkbox" id="overlaySurveyCb" checked> Survey import preview</label>
+            </div>
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelLegendTitle">
+            <h3 id="sentinelLegendTitle" class="sentinel-analytics__section-title">Legend</h3>
+            <div id="sentinelLegendBody" class="sentinel-legend"></div>
+          </section>
+
+          <section class="sentinel-analytics__section sentinel-analytics__section--info" aria-label="Layer information">
+            <p id="sentinelInfoLine" class="sentinel-analytics__info">—</p>
+          </section>
+        </div>
+      </div>
+    </section>
 
     <!-- ═══ UNIFIED SEARCH PANEL ═══ -->
     <section id="searchPanel" class="search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="searchPanelTitle">

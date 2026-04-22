@@ -13,16 +13,16 @@ const fallbackCfg = {
   /** Sentinel Hub OGC WMS (instance in dashboard). Override in app-config.js if needed. */
   SENTINEL_HUB_WMS_BASE: "https://services.sentinel-hub.com/ogc/wms/03c5e367-bc3d-46bc-8deb-fa7e280926b6",
   /**
-   * Manual YYYY-MM-DD list (newest first recommended). Replace later with catalog API results.
-   * Dates must have Sentinel-2 coverage for your area of interest.
+   * Optional manual YYYY-MM-DD list, newest first. If empty or omitted, dates are auto-generated
+   * (every SENTINEL_TIMELINE_STEP_DAYS) from today back SENTINEL_TIMELINE_MONTHS_BACK.
    */
-  SENTINEL_TIMELINE: [
-    "2024-10-15",
-    "2024-08-20",
-    "2024-06-01",
-    "2024-04-10",
-    "2023-12-01"
-  ]
+  SENTINEL_TIMELINE: [],
+  SENTINEL_TIMELINE_STEP_DAYS: 14,
+  SENTINEL_TIMELINE_MONTHS_BACK: 24,
+  /** Sentinel Hub WMS: max mean cloud % (0–100). */
+  SENTINEL_MAX_CLOUD_COVER: 25,
+  /** Sentinel Hub WMS: mostRecent | leastCC | leastRecent | leastTimeDifference | maximumViewingElevation */
+  SENTINEL_TILE_PRIORITY: "leastCC"
 };
 
 const cfg = {

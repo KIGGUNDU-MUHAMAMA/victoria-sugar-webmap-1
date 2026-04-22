@@ -2755,79 +2755,32 @@ select.search-panel__input {
   transform: scale(0.95);
 }
 
-/* ═══ Sentinel-2 (Sentinel Hub) analysis dock — right side ═══ */
+/* ═══ Sentinel-2 — lives in .map-left-stack; ol layer switcher remains on the right ═══ */
+.sentinel-analytics[hidden] {
+  display: none !important;
+}
+
 .sentinel-analytics {
-  position: fixed;
-  top: 96px;
-  right: 12px;
-  z-index: 1140;
-  width: min(360px, calc(100vw - 24px));
-  max-height: min(calc(100vh - 110px), 640px);
+  width: 100%;
+  max-height: min(72vh, 640px);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(165deg, #ffffff 0%, #f6faf4 100%);
-  border: 1px solid rgba(78, 112, 61, 0.28);
-  border-radius: 14px;
-  box-shadow: 0 8px 28px rgba(12, 40, 28, 0.12);
   font-size: 0.82rem;
   color: var(--text, #1a2e1a);
-  transition: width 0.2s ease, max-height 0.2s ease;
+  margin-bottom: 0.5rem;
+  z-index: 5;
+  animation: searchPanelIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.sentinel-analytics--collapsed {
-  width: 48px;
-  max-height: none;
+.sentinel-analytics__card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: linear-gradient(170deg, #ffffff 0%, #f5faf2 100%);
+  border: 1px solid rgba(78, 112, 61, 0.28);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(12, 40, 28, 0.13);
   overflow: hidden;
-}
-
-.sentinel-analytics--collapsed .sentinel-analytics__header {
-  border-radius: 14px;
-}
-
-.sentinel-analytics--collapsed .sentinel-analytics__title-row > div,
-.sentinel-analytics--collapsed .sentinel-analytics__subtitle {
-  display: none;
-}
-
-.sentinel-analytics--collapsed .sentinel-analytics__collapse-icon {
-  transform: rotate(180deg);
-}
-
-.sentinel-analytics__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.65rem 0.7rem 0.55rem;
-  border-bottom: 1px solid rgba(78, 112, 61, 0.15);
-}
-
-.sentinel-analytics__title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.sentinel-analytics__badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  border-radius: 10px;
-  background: linear-gradient(145deg, #1e3a5f, #0d1f33);
-  color: #7ecbff;
-  font-size: 0.95rem;
-  flex-shrink: 0;
-}
-
-.sentinel-analytics__title {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
 }
 
 .sentinel-analytics__subtitle {
@@ -2836,27 +2789,13 @@ select.search-panel__input {
   color: var(--muted, #5c6b5a);
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
 }
 
-.sentinel-analytics__collapse-btn {
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 8px;
-  border: 1px solid var(--border, #c8d4c0);
-  background: #fff;
+.sentinel-analytics__muted {
   color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-
-.sentinel-analytics__collapse-btn:hover {
-  background: #eef5ec;
-  color: var(--text);
+  font-weight: 500;
+  font-size: 0.85em;
 }
 
 .sentinel-analytics__shell {
@@ -2865,7 +2804,8 @@ select.search-panel__input {
   gap: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.45rem 0.65rem 0.7rem;
+  max-height: min(60vh, 520px);
+  padding: 0.45rem 0.7rem 0.75rem;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -3135,11 +3075,9 @@ select.search-panel__input {
 
 @media (max-width: 900px) {
   .sentinel-analytics {
-    top: auto;
-    right: 8px;
-    left: 8px;
-    bottom: 8px;
-    width: auto;
-    max-height: 42vh;
+    max-height: min(50vh, 480px);
+  }
+  .sentinel-analytics__shell {
+    max-height: min(44vh, 400px);
   }
 }

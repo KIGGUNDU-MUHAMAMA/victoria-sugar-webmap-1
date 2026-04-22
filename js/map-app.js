@@ -4,7 +4,7 @@ import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initPrintComposer } from "./print-composer.js";
-import { initSentinelAnalytics } from "./sentinel-analytics.js";
+import { initSentinelAnalytics, buildSentinelTimeline, getSentinelWmsAuxParams } from "./sentinel-analytics.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -43,6 +43,8 @@ let activeSnapInteractions = [];
 let surveyPreviewSnapSources = null;
 let baseGroupRef;
 let sentinelHubLayer;
+/** Set by initSentinelAnalytics so openSearchPanel can close the Sentinel dock. */
+let vslCloseSentinelPanel = () => {};
 
 const MAP_DRAW_PROJ = "EPSG:3857";
 
@@ -530,10 +532,9 @@ function buildLayerTree() {
   // Sentinel Hub WMS (single active product via LAYERS; TIME from UI) — not a basemap
   const wmsBase =
     cfg.SENTINEL_HUB_WMS_BASE || "https://services.sentinel-hub.com/ogc/wms/03c5e367-bc3d-46bc-8deb-fa7e280926b6";
-  const tl = Array.isArray(cfg.SENTINEL_TIMELINE) && cfg.SENTINEL_TIMELINE.length
-    ? cfg.SENTINEL_TIMELINE
-    : ["2024-10-15", "2024-08-20", "2024-06-01", "2024-04-10", "2023-12-01"];
-  const t0 = String(tl[0] || "2024-06-15").slice(0, 10);
+  const tl = buildSentinelTimeline(cfg);
+  const t0 = String(tl[0] || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const aux0 = getSentinelWmsAuxParams(cfg, {});
   const sentinelWmsSource = new ol.source.TileWMS({
     url: wmsBase,
     params: {
@@ -542,7 +543,9 @@ function buildLayerTree() {
       FORMAT: "image/png",
       TRANSPARENT: true,
       TILED: true,
-      TIME: t0
+      TIME: t0,
+      MAXCC: aux0.MAXCC,
+      PRIORITY: aux0.PRIORITY
     },
     crossOrigin: "anonymous"
   });
@@ -637,6 +640,7 @@ function setActivePanel(panelId) {
   closeParcelStatusPanel();
   closeInfoHelpPopover();
   closePlaceSearchCard();
+  vslCloseSentinelPanel();
   closeSearchPanel({ clearHighlight: true });
 
   window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
@@ -1410,6 +1414,7 @@ function openSearchPanel(tab = "coords") {
   const panel = document.getElementById("searchPanel");
   const btn = document.getElementById("searchPanelBtn");
   if (!panel || !btn) return;
+  vslCloseSentinelPanel();
   closeInfoHelpPopover();
   closePlaceSearchCard();
   panel.hidden = false;
@@ -2053,7 +2058,7 @@ async function initMap() {
   surveyPreviewSnapSources = surveyImportHandles?.getPreviewSnapSources?.() ?? null;
 
   if (sentinelHubLayer) {
-    initSentinelAnalytics({
+    const sentinelCtl = initSentinelAnalytics({
       map,
       cfg,
       setBasemapByTitle,
@@ -2061,8 +2066,14 @@ async function initMap() {
       sentinelLayer: sentinelHubLayer,
       blocksLayer,
       parcelsLayer,
-      getSurveyPreviewLayers: () => surveyImportHandles?.getPreviewLayers?.() ?? null
+      getSurveyPreviewLayers: () => surveyImportHandles?.getPreviewLayers?.() ?? null,
+      closeOtherPanels: () => {
+        closeSearchPanel({ clearHighlight: false });
+      }
     });
+    if (sentinelCtl?.close) {
+      vslCloseSentinelPanel = sentinelCtl.close;
+    }
   }
 
   initCoordSearchDrawer({

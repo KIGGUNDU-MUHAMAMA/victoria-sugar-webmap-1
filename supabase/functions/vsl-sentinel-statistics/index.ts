@@ -225,12 +225,8 @@ async function postStatistics(
       height: 512,
       evalscript: evalscript,
     },
-    calculations: {
-      default: {
-        statistics: { default: {} },
-      },
-    },
   };
+  // No "calculations" key: default statistics only (see CDSE Statistical API examples without calculations).
   const res = await fetch(getStatisticsUrl(), {
     method: "POST",
     headers: {

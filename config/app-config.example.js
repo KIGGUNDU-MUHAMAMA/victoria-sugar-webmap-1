@@ -27,6 +27,8 @@ window.VSL_CONFIG = {
   // DEBUG_MAP_RPC: false
   // Copernicus Data Space WMS (public; no auth in the browser). Use the exact instance URL for your project.
   // SENTINEL_HUB_WMS_BASE: "https://sh.dataspace.copernicus.eu/ogc/wms/<configuration-instance-uuid>"
+  // The app sends SHOWLOGO=false on WMS; you can also turn off the per-tile logo in the CDSE
+  // Sentinel Hub Configuration (dashboard) for the instance. Watermarks in tiles are a CDSE product rule.
   // Block report: URL is …/functions/v1/<name>. Default is vsl-sentinel-statistics (not quick-responder).
   // Deploy: supabase functions deploy vsl-sentinel-statistics
   // Or, if the stats code is deployed under another name, set e.g. SENTINEL_STATS_FUNCTION: "my-stats-fn"

@@ -162,12 +162,17 @@ export function initFarmReports(opts) {
     return session?.access_token || null;
   }
 
-  function invokeStatsErrorHelp(msg, httpStatus) {
+  function invokeStatsErrorHelp(msg, httpStatus, bodyDetail) {
     const m = (msg || "").toLowerCase();
+    const d = (bodyDetail || "").toLowerCase();
     const isFetch = m.includes("failed to send") || m.includes("failed to fetch") || m.includes("networkerror");
     let s = functionsUrl
       ? ` Request URL: ${functionsUrl}.`
       : " ";
+    if (d.includes("datamask") || m.includes("datamask")) {
+      s +=
+        " The Copernicus Statistical API is rejecting the current Edge Function build. Redeploy the function from the latest project code: in the folder with supabase/, run: supabase functions deploy vsl-sentinel-statistics (or deploy via the Supabase dashboard from the bundle in the repo).";
+    }
     if (typeof httpStatus === "number" && !Number.isNaN(httpStatus)) {
       if (httpStatus === 401) {
         s +=
@@ -441,7 +446,7 @@ export function initFarmReports(opts) {
         if (setStatus) {
           setStatus(
             statusEl,
-            `Satellite stats: ${display}${invokeStatsErrorHelp(errMsg, httpStatus)}`,
+            `Satellite stats: ${display}${invokeStatsErrorHelp(errMsg, httpStatus, serverText)}`,
             true
           );
         }

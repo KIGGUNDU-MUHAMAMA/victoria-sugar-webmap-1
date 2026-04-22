@@ -1,6 +1,6 @@
 /**
  * Copernicus Data Space WMS (OpenLayers TileWMS) — single instance, one LAYERS at a time.
- * Controls live in the right-docked Satellite panel (WMS, basemap, cloud, overlays, reports).
+ * Controls live in the Satellite panel (WMS, cloud, overlays, reports).
  */
 
 /** WMS LAYERS ids from the configured CDSE instance (exact names). */
@@ -221,6 +221,28 @@ export function initSentinelAnalytics(opts) {
     return `${String(a).slice(0, 10)}/${String(b).slice(0, 10)}`;
   }
 
+  /** Static DEM: short TIME ranges often return empty/white tiles. */
+  const WMS_WIDE_TIME = "1980-01-01/2030-12-31";
+
+  /** S2 mosaics for some indices are sparse: if the UI range is very short, use ~12 months ending on "To". */
+  function timeParamForWmsLayer(layerId) {
+    if (layerId === "DEM") return WMS_WIDE_TIME;
+    const expandIfNarrow = new Set(["NDRE", "NDVI_ADVANCED", "MOISTURE_STRESS"]);
+    if (!expandIfNarrow.has(layerId)) return currentTimeParam();
+    const a = (wmsTimeFrom && wmsTimeFrom.value) || timeFrom;
+    const b = (wmsTimeTo && wmsTimeTo.value) || timeTo;
+    if (!a || !b) return currentTimeParam();
+    const t0 = new Date(`${String(a).slice(0, 10)}T12:00:00Z`).getTime();
+    const t1 = new Date(`${String(b).slice(0, 10)}T12:00:00Z`).getTime();
+    const days = (t1 - t0) / 864e5;
+    if (days > 50) return currentTimeParam();
+    const end = String(b).slice(0, 10);
+    const endMs = new Date(`${end}T12:00:00Z`).getTime();
+    const fromMs = endMs - 365 * 864e5;
+    const from = new Date(fromMs).toISOString().slice(0, 10);
+    return `${from}/${end}`;
+  }
+
   function setFloatSpinner(show) {
     if (wmsLoadSpinner) wmsLoadSpinner.hidden = !show;
   }
@@ -271,7 +293,7 @@ export function initSentinelAnalytics(opts) {
 
     const layersParam = String(activeLayerId);
     const aux = getSentinelWmsAuxParams(cfg, readAuxOverrides());
-    const tParam = currentTimeParam();
+    const tParam = timeParamForWmsLayer(activeLayerId);
 
     const targetOp = wmsOpacityRange
       ? parseInt(wmsOpacityRange.value, 10) / 100
@@ -285,9 +307,12 @@ export function initSentinelAnalytics(opts) {
 
     source.updateParams({
       LAYERS: layersParam,
+      STYLES: "default",
       TIME: tParam,
       MAXCC: aux.MAXCC,
-      PRIORITY: aux.PRIORITY
+      PRIORITY: aux.PRIORITY,
+      SHOWLOGO: "false",
+      WARNINGS: "NO"
     });
     if (typeof source.refresh === "function") source.refresh();
     sentinelLayer.setVisible(true);

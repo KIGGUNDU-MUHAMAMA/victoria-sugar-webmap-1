@@ -540,13 +540,17 @@ function buildLayerTree() {
     url: wmsBase,
     params: {
       LAYERS: "TRUE_COLOR",
+      STYLES: "default",
       VERSION: "1.1.1",
       FORMAT: "image/png",
       TRANSPARENT: true,
       TILED: true,
       TIME: tr0.timeParam,
       MAXCC: aux0.MAXCC,
-      PRIORITY: aux0.PRIORITY
+      PRIORITY: aux0.PRIORITY,
+      // Sentinel Hub custom params (see CDSE "Additional request parameters")
+      SHOWLOGO: "false",
+      WARNINGS: "NO"
     },
     crossOrigin: "anonymous"
   });

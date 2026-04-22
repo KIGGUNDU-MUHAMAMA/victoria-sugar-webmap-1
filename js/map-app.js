@@ -4,6 +4,7 @@ import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initPrintComposer } from "./print-composer.js";
+import { initSentinelAnalytics } from "./sentinel-analytics.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -41,6 +42,7 @@ let activeSnapInteractions = [];
 /** Survey CSV preview vector sources (for snap); set after initSurveyImport */
 let surveyPreviewSnapSources = null;
 let baseGroupRef;
+let sentinelHubLayer;
 
 const MAP_DRAW_PROJ = "EPSG:3857";
 
@@ -509,6 +511,10 @@ function createBasemapLayer(title, source, visible = false) {
 }
 
 function buildLayerTree() {
+  const osmBasemap = createBasemapLayer(
+    "OpenStreetMap",
+    new ol.source.OSM()
+  );
   const googleHybrid = createBasemapLayer("Google Satellite Hybrid", new ol.source.XYZ({
     url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     crossOrigin: "anonymous"
@@ -521,16 +527,47 @@ function buildLayerTree() {
     url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
   }));
 
+  // Sentinel Hub WMS (single active product via LAYERS; TIME from UI) — not a basemap
+  const wmsBase =
+    cfg.SENTINEL_HUB_WMS_BASE || "https://services.sentinel-hub.com/ogc/wms/03c5e367-bc3d-46bc-8deb-fa7e280926b6";
+  const tl = Array.isArray(cfg.SENTINEL_TIMELINE) && cfg.SENTINEL_TIMELINE.length
+    ? cfg.SENTINEL_TIMELINE
+    : ["2024-10-15", "2024-08-20", "2024-06-01", "2024-04-10", "2023-12-01"];
+  const t0 = String(tl[0] || "2024-06-15").slice(0, 10);
+  const sentinelWmsSource = new ol.source.TileWMS({
+    url: wmsBase,
+    params: {
+      LAYERS: "1_TRUE_COLOR",
+      VERSION: "1.1.1",
+      FORMAT: "image/png",
+      TRANSPARENT: true,
+      TILED: true,
+      TIME: t0
+    },
+    crossOrigin: "anonymous"
+  });
+  sentinelHubLayer = new ol.layer.Tile({
+    title: "Sentinel-2 (Sentinel Hub)",
+    visible: false,
+    opacity: 0.88,
+    source: sentinelWmsSource,
+    transition: 200
+  });
+  sentinelHubLayer.setZIndex(4);
+  sentinelHubLayer.set("displayInLayerSwitcher", false);
+  sentinelHubLayer.set("type", "sentinel");
+
   const overlaysGroup = new ol.layer.Group({
     title: "SURVEY LAYERS",
     fold: "open",
     layers: [blocksLayer, parcelsLayer]
   });
+  overlaysGroup.setZIndex(20);
 
   const baseGroup = new ol.layer.Group({
     title: "Base Maps",
     fold: "open",
-    layers: [googleHybrid, esriImagery, noBasemap]
+    layers: [osmBasemap, googleHybrid, esriImagery, noBasemap]
   });
 
   let graticuleLayer = null;
@@ -566,8 +603,9 @@ function buildLayerTree() {
 
   sketchLayer.set("displayInLayerSwitcher", false);
   baseGroupRef = baseGroup;
-  // Order = bottom → top. Tile basemaps must be below vector layers or opaque maps hide polygons.
-  const stack = [baseGroup];
+  if (graticuleLayer) graticuleLayer.setZIndex(8);
+  // Order: basemap → Sentinel-2 (optional) → graticule → vectors / measure
+  const stack = [baseGroup, sentinelHubLayer];
   if (graticuleLayer) stack.push(graticuleLayer);
   stack.push(overlaysGroup, sketchLayer, measureLayer);
   return stack;
@@ -2013,6 +2051,20 @@ async function initMap() {
     parcelsSource
   });
   surveyPreviewSnapSources = surveyImportHandles?.getPreviewSnapSources?.() ?? null;
+
+  if (sentinelHubLayer) {
+    initSentinelAnalytics({
+      map,
+      cfg,
+      setBasemapByTitle,
+      getBaseGroup: () => baseGroupRef,
+      sentinelLayer: sentinelHubLayer,
+      blocksLayer,
+      parcelsLayer,
+      getSurveyPreviewLayers: () => surveyImportHandles?.getPreviewLayers?.() ?? null
+    });
+  }
+
   initCoordSearchDrawer({
     map,
     setStatus,

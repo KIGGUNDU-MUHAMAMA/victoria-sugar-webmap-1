@@ -413,6 +413,9 @@ export function initSurveyImport({
   return {
     getPreviewSnapSources() {
       return { polySource, pointSource };
+    },
+    getPreviewLayers() {
+      return { polyLayer: previewPolyLayer, pointLayer: previewPointLayer };
     }
   };
 }

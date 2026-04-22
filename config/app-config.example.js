@@ -25,4 +25,8 @@ window.VSL_CONFIG = {
   // ALLOW_GUEST_PREVIEW: false
   // Verbose console logging for vsl_get_features_bbox (default off).
   // DEBUG_MAP_RPC: false
+  // Sentinel Hub WMS base (OGC WMS from your SH dashboard).
+  // SENTINEL_HUB_WMS_BASE: "https://services.sentinel-hub.com/ogc/wms/<your-instance-uuid>"
+  // YYYY-MM-DD list for the time slider (extend or replace with catalog API).
+  // SENTINEL_TIMELINE: ["2024-10-15", "2024-06-01", "2023-12-01"]
 };

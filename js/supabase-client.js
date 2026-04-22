@@ -9,7 +9,20 @@ const fallbackCfg = {
   // Override with ALLOW_GUEST_PREVIEW: true in config/app-config.js for public demo only.
   ALLOW_GUEST_PREVIEW: false,
   // When true, logs bbox RPC details to the browser console (verbose).
-  DEBUG_MAP_RPC: false
+  DEBUG_MAP_RPC: false,
+  /** Sentinel Hub OGC WMS (instance in dashboard). Override in app-config.js if needed. */
+  SENTINEL_HUB_WMS_BASE: "https://services.sentinel-hub.com/ogc/wms/03c5e367-bc3d-46bc-8deb-fa7e280926b6",
+  /**
+   * Manual YYYY-MM-DD list (newest first recommended). Replace later with catalog API results.
+   * Dates must have Sentinel-2 coverage for your area of interest.
+   */
+  SENTINEL_TIMELINE: [
+    "2024-10-15",
+    "2024-08-20",
+    "2024-06-01",
+    "2024-04-10",
+    "2023-12-01"
+  ]
 };
 
 const cfg = {

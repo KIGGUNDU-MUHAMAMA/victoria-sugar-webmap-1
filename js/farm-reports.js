@@ -167,7 +167,7 @@ export function initFarmReports(opts) {
         s += " 404: function name or project URL may be wrong (see SENTINEL_STATS_FUNCTION / SUPABASE_URL).";
       } else if (httpStatus === 502) {
         s +=
-          " 502: upstream failed (often Sentinel Hub OAuth or Statistics API). Check SENTINEL_HUB_* secrets and function logs in Supabase.";
+          " 502: upstream failed (Copernicus CDSE / Statistics API or OAuth). Check SENTINEL_HUB_CLIENT_* secrets and function logs in Supabase.";
       } else if (httpStatus === 500) {
         s += " 500: function threw or missing env/DB. Read the error text above and check Edge Function logs.";
       } else if (httpStatus >= 400) {
@@ -364,7 +364,7 @@ export function initFarmReports(opts) {
     }
     const interval = (intervalSel && intervalSel.value) || "P16D";
     lastStats = null;
-    if (setStatus) setStatus(statusEl, "Requesting satellite statistics (Sentinel Hub)…");
+    if (setStatus) setStatus(statusEl, "Requesting satellite statistics (Copernicus)…");
     if (btnStats) btnStats.disabled = true;
     try {
       const { data, error } = await supabase.functions.invoke(fnName, {

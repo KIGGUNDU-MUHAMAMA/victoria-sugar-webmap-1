@@ -1,7 +1,11 @@
 /**
- * Sentinel Hub Statistics (NDVI + NDMI) for one vsl_blocks polygon (EPSG:4326).
- * Secrets: SENTINEL_HUB_CLIENT_ID, SENTINEL_HUB_CLIENT_SECRET
- * Optional: SENTINEL_HUB_TOKEN_URL (default: Keycloak on services.sentinel-hub.com)
+ * NDVI + NDMI statistics (Sentinel-2) for one vsl_blocks polygon (EPSG:4326).
+ * OAuth client credentials (Copernicus Data Space default):
+ *   SENTINEL_HUB_CLIENT_ID, SENTINEL_HUB_CLIENT_SECRET
+ * Optional:
+ *   SENTINEL_HUB_TOKEN_URL — token endpoint (default: CDSE Keycloak)
+ *   SENTINEL_HUB_STATISTICS_URL — POST target (default: CDSE Statistics API)
+ * Legacy Planet/Sentinel Hub: set both URLs to services.sentinel-hub.com values.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
@@ -11,9 +15,18 @@ const cors: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SH_STATS_URL = "https://services.sentinel-hub.com/api/v1/statistics";
-const SH_TOKEN_DEFAULT =
-  "https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token";
+/** Copernicus Data Space Ecosystem — Statistics API (same request shape as legacy SH). */
+const DEFAULT_SH_STATISTICS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics";
+const DEFAULT_SH_TOKEN_URL =
+  "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token";
+
+function getStatisticsUrl(): string {
+  return (
+    Deno.env.get("SENTINEL_HUB_STATISTICS_URL") ||
+    Deno.env.get("SENTINEL_STATISTICS_URL") ||
+    DEFAULT_SH_STATISTICS_URL
+  );
+}
 
 /** SCL-based cloud/shadow/mask. Do not gate on dataMask: some scenes omit it and every pixel was masked. */
 const EVAL_NDVI = `//VERSION=3
@@ -187,7 +200,7 @@ async function postStatistics(
       },
     },
   };
-  const res = await fetch(SH_STATS_URL, {
+  const res = await fetch(getStatisticsUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -322,7 +335,7 @@ Deno.serve(async (req) => {
   if (!clientId || !clientSecret) {
     return fail(500, "SENTINEL_HUB_CLIENT_ID / SENTINEL_HUB_CLIENT_SECRET are not set on the function");
   }
-  const tokenUrl = Deno.env.get("SENTINEL_HUB_TOKEN_URL") || SH_TOKEN_DEFAULT;
+  const tokenUrl = Deno.env.get("SENTINEL_HUB_TOKEN_URL") || DEFAULT_SH_TOKEN_URL;
 
   let accessToken: string;
   try {

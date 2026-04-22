@@ -151,7 +151,7 @@
             <i class="fas fa-satellite search-panel__head-icon" style="color:#1565c0" aria-hidden="true"></i>
             <div>
               <h2 id="sentinelAnalyticsTitle" class="search-panel__title">Satellite</h2>
-              <p class="sentinel-analytics__subtitle">Sentinel-2 · Sentinel Hub</p>
+              <p class="sentinel-analytics__subtitle">Sentinel-2 · Copernicus Data Space</p>
             </div>
           </div>
           <button type="button" class="search-panel__close" id="sentinelPanelCloseBtn" aria-label="Close satellite panel">&times;</button>
@@ -192,11 +192,18 @@
                 <i class="fas fa-fire-flame-simple" aria-hidden="true"></i> Stress
               </button>
             </div>
+            <p id="sentinelDemHelp" class="sentinel-analytics__hint" hidden>
+              To show <strong>terrain (DEM)</strong> under Sentinel-2 (below true / false colour and NDVI), set
+              <code>SENTINEL_DEM_WMS_LAYER</code> in <code>config/app-config.js</code> to the WMS <code>LAYERS</code> id from your CDSE configuration (see OGC GetCapabilities for your instance).
+            </p>
+            <div id="sentinelDemControls" class="sentinel-analytics__row" hidden>
+              <label class="sentinel-check"><input type="checkbox" id="sentinelShowDemCb" disabled> Shaded relief (DEM) under S2</label>
+            </div>
           </section>
 
           <section class="sentinel-analytics__section" aria-labelledby="sentinelCloudLegend">
             <h3 id="sentinelCloudLegend" class="sentinel-analytics__section-title">Image quality (cloud)</h3>
-            <p class="sentinel-analytics__hint">Sentinel Hub <strong>MAXCC</strong> limits mean cloud %; <strong>mosaic priority</strong> controls how tiles stack. Values are per-request (not stored in the layer file).</p>
+            <p class="sentinel-analytics__hint">CDSE / Sentinel Hub <strong>MAXCC</strong> limits mean cloud %; <strong>mosaic priority</strong> controls how tiles stack. Values are per-request (not stored in the layer file).</p>
             <div class="sentinel-analytics__row-between">
               <span>Max mean cloud <span class="sentinel-analytics__muted">(%)</span></span>
               <span id="sentinelMaxCcValue" class="sentinel-analytics__pct">25</span>
@@ -262,7 +269,7 @@
           </div>
           <section class="sentinel-analytics__section sentinel-analytics__section--report" aria-labelledby="sentinelBlockReportTitle">
             <h3 id="sentinelBlockReportTitle" class="visually-hidden">Block report</h3>
-            <p class="sentinel-analytics__hint">One block, then dates and time step. Use <strong>Load satellite stats</strong> for a preview, then <strong>Download PDF</strong>. This is <em>not</em> the same as the sample <code>quick-responder</code> function — see endpoint below. Needs Sentinel Hub OAuth secrets on the stats function, and a <strong>signed-in</strong> user.</p>
+            <p class="sentinel-analytics__hint">One block, then dates and time step. Use <strong>Load satellite stats</strong> for a preview, then <strong>Download PDF</strong>. This is <em>not</em> the same as the sample <code>quick-responder</code> function — see endpoint below. The Edge Function needs <strong>Copernicus Data Space</strong> OAuth client ID/secret (see Supabase secrets), and a <strong>signed-in</strong> user.</p>
             <p id="sentinelReportEndpointHint" class="sentinel-analytics__hint sentinel-analytics__endpoint-hint" aria-live="polite">Loading endpoint…</p>
             <label class="search-panel__label" for="sentinelReportBlockFilter">Filter / block</label>
             <div class="sentinel-report__row2">

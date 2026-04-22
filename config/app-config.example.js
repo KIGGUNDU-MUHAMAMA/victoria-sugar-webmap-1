@@ -25,8 +25,11 @@ window.VSL_CONFIG = {
   // ALLOW_GUEST_PREVIEW: false
   // Verbose console logging for vsl_get_features_bbox (default off).
   // DEBUG_MAP_RPC: false
-  // Sentinel Hub WMS base (OGC WMS from your SH dashboard).
-  // SENTINEL_HUB_WMS_BASE: "https://services.sentinel-hub.com/ogc/wms/<your-instance-uuid>"
+  // Copernicus Data Space — OGC WMS base (…/ogc/wms/<configuration-instance-id>).
+  // SENTINEL_HUB_WMS_BASE: "https://sh.dataspace.copernicus.eu/ogc/wms/<instance-id>"
+  // Optional: DEM / hillshade under S2 (same WMS service). Layer id from your CDSE config or GetCapabilities.
+  // SENTINEL_DEM_WMS_LAYER: "YOUR_DEM_LAYER_ID"
+  // SENTINEL_DEM_OPACITY: 0.55
   // Block report: URL is …/functions/v1/<name>. Default is vsl-sentinel-statistics (not quick-responder).
   // Deploy: supabase functions deploy vsl-sentinel-statistics
   // Or, if the stats code is deployed under another name, set e.g. SENTINEL_STATS_FUNCTION: "my-stats-fn"

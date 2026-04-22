@@ -1,7 +1,7 @@
 /**
- * Sentinel Hub WMS — Victoria Sugar Ltd
+ * Copernicus Data Space (Sentinel Hub) WMS — Victoria Sugar Ltd
  * Single TileWMS layer; one SH product (LAYERS) at a time; TIME from UI.
- * Basemap radios, overlay toggles, opacity, legend, time animation.
+ * Optional DEM layer (lower z-index) under S2. Basemap radios, overlays, legend, time.
  */
 
 const SENTINEL_PRODUCT_TO_SH = {
@@ -101,6 +101,7 @@ function renderLegend(legendEl, productKey) {
  * @param {function(string): void} opts.setBasemapByTitle
  * @param {() => import("ol/layer/Group").default | null} [opts.getBaseGroup]
  * @param {import("ol/layer/Tile").default} opts.sentinelLayer
+ * @param {import("ol/layer/Tile").default | null} [opts.demLayer] — DEM / hillshade under S2 (same WMS base)
  * @param {import("ol/layer/Vector").default} opts.blocksLayer
  * @param {import("ol/layer/Vector").default} opts.parcelsLayer
  * @param {() => { polyLayer?: import("ol/layer/Vector").default; pointLayer?: import("ol/layer/Vector").default } | null} [opts.getSurveyPreviewLayers]
@@ -112,6 +113,7 @@ export function initSentinelAnalytics(opts) {
     setBasemapByTitle,
     getBaseGroup,
     sentinelLayer,
+    demLayer,
     blocksLayer,
     parcelsLayer,
     getSurveyPreviewLayers,
@@ -122,6 +124,11 @@ export function initSentinelAnalytics(opts) {
 
   const source = sentinelLayer.getSource();
   if (!source || typeof source.updateParams !== "function") return null;
+
+  const demSource = demLayer && typeof demLayer.getSource === "function" ? demLayer.getSource() : null;
+  const hasDem = !!(demSource && typeof demSource.updateParams === "function");
+  const demLayersName =
+    (cfg.SENTINEL_DEM_WMS_LAYER && String(cfg.SENTINEL_DEM_WMS_LAYER).trim()) || "";
 
   const timeline = buildSentinelTimeline(cfg);
 
@@ -151,6 +158,9 @@ export function initSentinelAnalytics(opts) {
   const maxCcRange = el("sentinelMaxCcRange");
   const maxCcValue = el("sentinelMaxCcValue");
   const prioritySelect = el("sentinelPrioritySelect");
+  const demControls = el("sentinelDemControls");
+  const demHelp = el("sentinelDemHelp");
+  const showDemCb = el("sentinelShowDemCb");
 
   function readAuxOverrides() {
     return {
@@ -205,7 +215,31 @@ export function initSentinelAnalytics(opts) {
           : productMode === "trueColor"
             ? "True colour"
             : "Off";
-    infoLine.textContent = `${basemap} · ${padDateLabel(date)} · ${modeLabel}`;
+    const demBit =
+      hasDem && showDemCb?.checked && productMode !== "off" ? " · DEM underlay" : "";
+    infoLine.textContent = `${basemap} · ${padDateLabel(date)} · ${modeLabel}${demBit}`;
+  }
+
+  function syncDemLayer() {
+    if (!hasDem || !demLayer || !demSource || !demLayersName) return;
+    const show = !!(showDemCb && showDemCb.checked && productMode !== "off");
+    demLayer.setVisible(show);
+    if (!show) {
+      updateInfoLine();
+      return;
+    }
+    const idx = dateRange ? parseInt(dateRange.value, 10) : 0;
+    const safeIdx = Math.min(Math.max(Number.isFinite(idx) ? idx : 0, 0), timeline.length - 1);
+    const timeStr = timeline[safeIdx];
+    const aux = getSentinelWmsAuxParams(cfg, readAuxOverrides());
+    demSource.updateParams({
+      LAYERS: demLayersName,
+      TIME: timeStr,
+      MAXCC: aux.MAXCC,
+      PRIORITY: aux.PRIORITY
+    });
+    if (typeof demSource.refresh === "function") demSource.refresh();
+    updateInfoLine();
   }
 
   function highlightModeButtons(mode) {
@@ -232,6 +266,7 @@ export function initSentinelAnalytics(opts) {
     if (mode === "off") {
       stopPlay();
       sentinelLayer.setVisible(false);
+      if (demLayer) demLayer.setVisible(false);
       renderLegend(legendBody, "off");
       updateInfoLine();
       return;
@@ -426,6 +461,10 @@ export function initSentinelAnalytics(opts) {
   maxCcRange?.addEventListener("input", onCloudOrPriority);
   prioritySelect?.addEventListener("change", onCloudOrPriority);
 
+  showDemCb?.addEventListener("change", () => {
+    syncDemLayer();
+  });
+
   // ——— Overlays (vectors)
   if (ovBlocks) {
     ovBlocks.checked = blocksLayer.getVisible();
@@ -530,6 +569,14 @@ export function initSentinelAnalytics(opts) {
     dateRange.min = "0";
     dateRange.max = String(Math.max(0, timeline.length - 1));
     dateRange.value = "0";
+  }
+  if (hasDem) {
+    if (demControls) demControls.hidden = false;
+    if (demHelp) demHelp.hidden = true;
+    if (showDemCb) showDemCb.disabled = false;
+  } else {
+    if (demControls) demControls.hidden = true;
+    if (demHelp) demHelp.hidden = false;
   }
   syncDateIndex(0);
 

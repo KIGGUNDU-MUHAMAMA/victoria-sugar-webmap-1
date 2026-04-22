@@ -11,18 +11,10 @@ const fallbackCfg = {
   // When true, logs bbox RPC details to the browser console (verbose).
   DEBUG_MAP_RPC: false,
   /**
-   * Copernicus Data Space (Sentinel Hub) OGC WMS base — your configuration instance id
-   * (Dashboard → OGC: …/ogc/wms/&lt;instance&gt;). Override in app-config.js if you recreate the config.
+   * Copernicus Data Space OGC WMS (configured instance; public tiles — no client auth in browser).
+   * Do not change the path without updating the CDSE configuration.
    */
-  SENTINEL_HUB_WMS_BASE:
-    "https://sh.dataspace.copernicus.eu/ogc/wms/sh-1c02b67a-3595-44af-8410-c10cbab816fc",
-  /**
-   * WMS LAYERS name for Copernicus DEM / hillshade in the same instance (from configuration or
-   * GetCapabilities). If empty, the DEM underlay control is hidden.
-   */
-  SENTINEL_DEM_WMS_LAYER: "",
-  /** Opacity for DEM when enabled (0–1). S2 false colour / NDVI / true colour draw above DEM. */
-  SENTINEL_DEM_OPACITY: 0.55,
+  SENTINEL_HUB_WMS_BASE: "https://sh.dataspace.copernicus.eu/ogc/wms/ab8b1162-e45e-4405-9db6-aa882b920217",
   /**
    * Optional manual YYYY-MM-DD list, newest first. If empty or omitted, dates are auto-generated
    * (every SENTINEL_TIMELINE_STEP_DAYS) from today back SENTINEL_TIMELINE_MONTHS_BACK.

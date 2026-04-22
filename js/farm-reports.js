@@ -1,6 +1,6 @@
 /**
- * Block report (one block) — database agronomics + Sentinel-2 (NDVI, NDMI) from Edge Function.
- * UI lives inside #sentinelAnalyticsPanel. PDF: jspdf + autotable, html2canvas, Chart.js.
+ * Block report — database agronomics + Sentinel-2 (NDVI, NDRE, NDMI) from Edge Function.
+ * UI: #sentinelAnalyticsPanel. PDF: jspdf, autotable, html2canvas, Chart.js.
  */
 
 /* global ol, Chart, window — globals from webmap */
@@ -109,7 +109,7 @@ async function readFunctionInvokeErrorDetail(error) {
 
 let statsChart = null;
 let lastStats = null;
-let lastKpis = { ndvi: null, ndmi: null };
+let lastKpis = { ndvi: null, ndre: null, ndmi: null };
 
 /**
  * @param {object} opts
@@ -260,39 +260,49 @@ export function initFarmReports(opts) {
   btnPreset6m?.addEventListener("click", () => setDatesMonthsBack(6));
   btnPreset12m?.addEventListener("click", () => setDatesMonthsBack(12));
 
-  function kpiText(ndvi, ndmi) {
-    if (!ndvi && !ndmi) return "Load satellite stats to see NDVI and NDMI.";
+  function kpiText(ndvi, ndre, ndmi) {
+    const empty = (a) => !a || !a.length;
+    if (empty(ndvi) && empty(ndre) && empty(ndmi)) {
+      return "Load satellite stats to see NDVI, NDRE, and NDMI.";
+    }
     const n = (arr) => (arr && arr.length ? arr[arr.length - 1] : null);
     const nv = n(ndvi);
+    const nr = n(ndre);
     const nm = n(ndmi);
-    lastKpis = { ndvi: nv?.mean ?? null, ndmi: nm?.mean ?? null };
-    return `Latest period (chronological order): NDVI mean ${nv?.mean != null ? fmtNum(nv.mean, 3) : "—"} — canopy vigour. NDMI mean ${nm?.mean != null ? fmtNum(nm.mean, 3) : "—"} — relative moisture (NIR–SWIR; interpret with field checks). Cloud–masked S2 L2A, ${fnName}.`;
+    lastKpis = { ndvi: nv?.mean ?? null, ndre: nr?.mean ?? null, ndmi: nm?.mean ?? null };
+    return `Latest period: NDVI ${nv?.mean != null ? fmtNum(nv.mean, 3) : "—"} (vigour) · NDRE ${
+      nr?.mean != null ? fmtNum(nr.mean, 3) : "—"
+    } (red-edge) · NDMI ${nm?.mean != null ? fmtNum(nm.mean, 3) : "—"} (moisture / NIR–SWIR). S2 L2A SCL-masked, ${fnName}.`;
   }
 
-  function alignSeries(a, b) {
+  function alignThreeSeries(ndvi, ndre, ndmi) {
     const toKey = (r) => String((r && (r.to || r.from)) || "");
-    const bmap = new Map((b || []).map((r) => [toKey(r), r]));
+    const rmap = new Map((ndre || []).map((r) => [toKey(r), r]));
+    const mmap = new Map((ndmi || []).map((r) => [toKey(r), r]));
     const labels = [];
     const yN = [];
+    const yR = [];
     const yM = [];
-    for (const r of a || []) {
+    for (const r of ndvi || []) {
       const k = toKey(r);
       labels.push(k ? k.slice(0, 10) : "—");
       yN.push(r && r.mean != null && Number.isFinite(r.mean) ? r.mean : null);
-      const o = bmap.get(k);
-      yM.push(o && o.mean != null && Number.isFinite(o.mean) ? o.mean : null);
+      const rr = rmap.get(k);
+      yR.push(rr && rr.mean != null && Number.isFinite(rr.mean) ? rr.mean : null);
+      const mo = mmap.get(k);
+      yM.push(mo && mo.mean != null && Number.isFinite(mo.mean) ? mo.mean : null);
     }
-    return { labels, yN, yM };
+    return { labels, yN, yR, yM };
   }
 
-  function drawChart(ndvi, ndmi) {
+  function drawChart(ndvi, ndre, ndmi) {
     if (!chartCanvas) return;
     const Chart = window.Chart;
     if (!Chart) {
       if (previewText) previewText.textContent = "Chart.js not loaded; stats table still available in PDF.";
       return;
     }
-    const { labels, yN, yM } = alignSeries(ndvi, ndmi);
+    const { labels, yN, yR, yM } = alignThreeSeries(ndvi, ndre, ndmi);
     if (statsChart) {
       statsChart.destroy();
       statsChart = null;
@@ -310,16 +320,26 @@ export function initFarmReports(opts) {
         labels,
         datasets: [
           {
-            label: "NDVI (vigour)",
+            label: "NDVI",
             data: yN,
             borderColor: "rgb(34, 100, 34)",
-            backgroundColor: "rgba(34, 100, 34, 0.12)",
+            backgroundColor: "rgba(34, 100, 34, 0.1)",
             spanGaps: true,
             tension: 0.15,
             yAxisID: "y"
           },
           {
-            label: "NDMI (moisture index)",
+            label: "NDRE",
+            data: yR,
+            borderColor: "rgb(13, 115, 51)",
+            backgroundColor: "rgba(13, 115, 51, 0.08)",
+            borderDash: [4, 2],
+            spanGaps: true,
+            tension: 0.15,
+            yAxisID: "y"
+          },
+          {
+            label: "NDMI (moisture)",
             data: yM,
             borderColor: "rgb(21, 101, 192)",
             backgroundColor: "rgba(21, 101, 192, 0.08)",
@@ -334,8 +354,21 @@ export function initFarmReports(opts) {
         maintainAspectRatio: false,
         plugins: { legend: { position: "bottom" } },
         scales: {
-          y: { type: "linear", position: "left", title: { display: true, text: "NDVI" }, min: -0.2, max: 1 },
-          y1: { type: "linear", position: "right", title: { display: true, text: "NDMI" }, min: -1, max: 1, grid: { drawOnChartArea: false } }
+          y: {
+            type: "linear",
+            position: "left",
+            title: { display: true, text: "NDVI / NDRE" },
+            min: -0.2,
+            max: 1
+          },
+          y1: {
+            type: "linear",
+            position: "right",
+            title: { display: true, text: "NDMI" },
+            min: -1,
+            max: 1,
+            grid: { drawOnChartArea: false }
+          }
         }
       }
     });
@@ -417,12 +450,13 @@ export function initFarmReports(opts) {
       }
       lastStats = data;
       const ndvi = data.ndvi_intervals || [];
+      const ndre = data.ndre_intervals || [];
       const ndmi = data.ndmi_intervals || [];
-      if (previewKpi) previewKpi.textContent = kpiText(ndvi, ndmi);
+      if (previewKpi) previewKpi.textContent = kpiText(ndvi, ndre, ndmi);
       if (previewText) {
-        previewText.textContent = `Block ${data.block?.block_code || "—"} · ${ndvi.length} time step(s) · Interval ${data.interval || interval} · S2 L2A (cloud-filtered, SCL).`;
+        previewText.textContent = `Block ${data.block?.block_code || "—"} · ${ndvi.length} time step(s) · NDVI + NDRE + NDMI · Interval ${data.interval || interval} · S2 L2A (SCL).`;
       }
-      drawChart(ndvi, ndmi);
+      drawChart(ndvi, ndre, ndmi);
       if (setStatus) setStatus(statusEl, "Satellite statistics loaded.");
     } catch (e) {
       if (setStatus) setStatus(statusEl, (e && e.message) || "Stats request failed", true);
@@ -614,31 +648,36 @@ export function initFarmReports(opts) {
       doc.text(
         `Sentinel-2 L2A · ${String(statPayload.time_range?.from || "").slice(0, 10)} → ${String(
           statPayload.time_range?.to || ""
-        ).slice(0, 10)} · Step ${String(statPayload.interval || "P16D")} · SCL cloud/veg mask; NDMI = (B8A−B11)/(B8A+B11).`,
+        ).slice(0, 10)} · Step ${String(statPayload.interval || "P16D")} · SCL mask · NDRE = (B8−B5)/(B8+B5); NDMI = (B8A−B11)/(B8A+B11).`,
         margin,
         y0,
         { maxWidth: contentW }
       );
       y0 += 10;
 
+      const ndreByTo = new Map(
+        (statPayload.ndre_intervals || []).map((r) => [String((r && r.to) || r.from || ""), r])
+      );
       const ndmiByTo = new Map(
         (statPayload.ndmi_intervals || []).map((r) => [String((r && r.to) || r.from || ""), r])
       );
       const rows = (statPayload.ndvi_intervals || []).map((r) => {
         const k = String((r && r.to) || r.from || "");
+        const re = ndreByTo.get(k) || {};
         const o = ndmiByTo.get(k) || {};
         return [
           k ? k.slice(0, 10) : "—",
           r.mean != null ? fmtNum(r.mean, 3) : "—",
+          re.mean != null ? fmtNum(re.mean, 3) : "—",
           o.mean != null ? fmtNum(o.mean, 3) : "—"
         ];
       });
       doc.autoTable({
         startY: y0,
-        head: [["Period end (UTC)", "NDVI mean", "NDMI mean"]],
+        head: [["Period end (UTC)", "NDVI", "NDRE", "NDMI"]],
         body: rows.length
           ? rows
-          : [["—", "—", "—"]],
+          : [["—", "—", "—", "—"]],
         margin: { left: margin, right: margin },
         styles: { fontSize: 7.5, cellPadding: 1.5 },
         headStyles: { fillColor: [22, 70, 22] }
@@ -655,7 +694,7 @@ export function initFarmReports(opts) {
       doc.setFontSize(7.5);
       doc.setTextColor(60, 60, 60);
       doc.text(
-        "NDVI indicates green biomass; NDMI is sensitive to moisture—compare with weather, irrigation, and field scouting.",
+        "NDVI: green biomass / vigour. NDRE: red-edge chlorophyll sensitivity (canopy N). NDMI: moisture (NIR–SWIR). Compare with weather, irrigation, and field scouting.",
         margin,
         y0,
         { maxWidth: contentW }

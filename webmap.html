@@ -135,6 +135,56 @@
   <div class="map-main" id="mapMain">
     <div class="map-viewport-wrap">
       <div id="map"></div>
+      <!-- Copernicus CDSE WMS: public instance URL; no auth headers in the browser. -->
+      <div id="vslWmsControlCard" class="vsl-satellite-float" hidden>
+        <div class="vsl-satellite-float__head">
+          <h3 class="vsl-satellite-float__title">Imagery &amp; analysis</h3>
+          <span id="vslWmsFloatSpinner" class="vsl-satellite-float__spinner" hidden aria-hidden="true" title="Loading tiles"></span>
+        </div>
+        <p class="vsl-satellite-float__hint vsl-satellite-float__hint--subtle">WMS <code>TIME</code> = start/end (UTC). One layer at a time.</p>
+        <div class="vsl-satellite-float__date-row">
+          <label class="vsl-satellite-float__lbl" for="vslWmsTimeFrom">From</label>
+          <input type="date" id="vslWmsTimeFrom" class="vsl-satellite-float__input" autocomplete="off">
+        </div>
+        <div class="vsl-satellite-float__date-row">
+          <label class="vsl-satellite-float__lbl" for="vslWmsTimeTo">To</label>
+          <input type="date" id="vslWmsTimeTo" class="vsl-satellite-float__input" autocomplete="off">
+        </div>
+        <div class="vsl-satellite-float__opacity">
+          <div class="vsl-satellite-float__row-between">
+            <span>Layer opacity <span class="vsl-satellite-float__muted">(0–100%)</span></span>
+            <span id="vslWmsOpacityValue" class="vsl-satellite-float__pct">88</span>
+          </div>
+          <label class="visually-hidden" for="vslWmsOpacityRange">WMS layer opacity</label>
+          <input type="range" id="vslWmsOpacityRange" class="vsl-satellite-float__range" min="0" max="100" value="88" step="1">
+        </div>
+        <div class="vsl-satellite-float__groups" role="group" aria-label="Active WMS layer">
+          <p class="vsl-satellite-float__group-title">Satellite</p>
+          <div class="vsl-satellite-float__picks">
+            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="TRUE_COLOR" aria-pressed="false">True color</button>
+            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="FALSE_COLOR" aria-pressed="false">False color</button>
+          </div>
+          <p class="vsl-satellite-float__group-title">Vegetation</p>
+          <div class="vsl-satellite-float__picks">
+            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI" aria-pressed="false">NDVI</button>
+            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI_ADVANCED" aria-pressed="false">NDVI adv.</button>
+            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDRE" aria-pressed="false">NDRE</button>
+          </div>
+          <p class="vsl-satellite-float__group-title">Farm decision</p>
+          <div class="vsl-satellite-float__picks">
+            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="MOISTURE_STRESS" aria-pressed="false">Moisture stress</button>
+          </div>
+          <p class="vsl-satellite-float__group-title">Terrain</p>
+          <div class="vsl-satellite-float__picks">
+            <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="DEM" aria-pressed="false">DEM</button>
+            <label class="vsl-satellite-float__chk"><input type="checkbox" id="vslWmsContoursHook" disabled> Contours (soon)</label>
+          </div>
+        </div>
+        <div class="vsl-satellite-float__row-actions">
+          <button type="button" class="vsl-wms-pick vsl-wms-pick--off" id="vslWmsOffBtn" title="Turn off WMS" aria-pressed="false">Off</button>
+          <button type="button" class="vsl-satellite-float__btn-ghost" id="vslWmsResetViewBtn">Reset view</button>
+        </div>
+      </div>
       <div class="map-frame" aria-hidden="true"></div>
       <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
         <i class="fas fa-location-crosshairs"></i>
@@ -173,32 +223,8 @@
           </section>
 
           <section class="sentinel-analytics__section" aria-labelledby="sentinelProductLegend">
-            <h3 id="sentinelProductLegend" class="sentinel-analytics__section-title">Sentinel-2 product</h3>
-            <p class="sentinel-analytics__hint">One layer at a time. First date in the list is the <strong>most recent</strong> (auto-generated to today if not configured). Blend with the basemap using opacity.</p>
-            <div class="sentinel-analytics__radio-grid sentinel-analytics__radio-grid--compact" role="radiogroup" aria-label="Sentinel-2 product">
-              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="off" checked> Off</label>
-              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="trueColor"> True colour</label>
-              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="ndvi"> NDVI</label>
-              <label class="sentinel-radio"><input type="radio" name="sentinelProduct" value="falseColor"> False colour</label>
-            </div>
-            <div class="sentinel-mode-btns" role="group" aria-label="Quick analysis mode">
-              <button type="button" class="sentinel-mode-btn" id="sentinelModeNatural" title="Natural colour">
-                <i class="fas fa-earth-americas" aria-hidden="true"></i> Natural
-              </button>
-              <button type="button" class="sentinel-mode-btn" id="sentinelModeNdvi" title="Vegetation index">
-                <i class="fas fa-leaf" aria-hidden="true"></i> NDVI
-              </button>
-              <button type="button" class="sentinel-mode-btn" id="sentinelModeStress" title="False colour (stress)">
-                <i class="fas fa-fire-flame-simple" aria-hidden="true"></i> Stress
-              </button>
-            </div>
-            <p id="sentinelDemHelp" class="sentinel-analytics__hint" hidden>
-              To show <strong>terrain (DEM)</strong> under Sentinel-2 (below true / false colour and NDVI), set
-              <code>SENTINEL_DEM_WMS_LAYER</code> in <code>config/app-config.js</code> to the WMS <code>LAYERS</code> id from your CDSE configuration (see OGC GetCapabilities for your instance).
-            </p>
-            <div id="sentinelDemControls" class="sentinel-analytics__row" hidden>
-              <label class="sentinel-check"><input type="checkbox" id="sentinelShowDemCb" disabled> Shaded relief (DEM) under S2</label>
-            </div>
+            <h3 id="sentinelProductLegend" class="sentinel-analytics__section-title">Imagery (WMS)</h3>
+            <p class="sentinel-analytics__hint">Use the <strong>Imagery &amp; analysis</strong> card (top right on the map) to choose the active WMS layer: true/false colour, NDVI, NDRE, moisture, or DEM. One layer at a time; blend with the basemap using the opacity control there. Default <code>TIME</code> is the last 30 days.</p>
           </section>
 
           <section class="sentinel-analytics__section" aria-labelledby="sentinelCloudLegend">
@@ -218,28 +244,9 @@
             </select>
           </section>
 
-          <section class="sentinel-analytics__section" aria-labelledby="sentinelOpacityLegend">
-            <div class="sentinel-analytics__row-between">
-              <h3 id="sentinelOpacityLegend" class="sentinel-analytics__section-title sentinel-analytics__section-title--inline">Opacity</h3>
-              <span id="sentinelOpacityValue" class="sentinel-analytics__pct">88</span>
-            </div>
-            <label class="visually-hidden" for="sentinelOpacityRange">Sentinel-2 layer opacity percent</label>
-            <input type="range" id="sentinelOpacityRange" class="sentinel-analytics__range" min="0" max="100" value="88">
-          </section>
-
-          <section class="sentinel-analytics__section" aria-labelledby="sentinelTimeLegend">
-            <h3 id="sentinelTimeLegend" class="sentinel-analytics__section-title">Time</h3>
-            <p class="sentinel-analytics__hint">Dates are <strong>newest first</strong>. <strong>Play back in time</strong> steps to older images.</p>
-            <p class="sentinel-analytics__date-readout">Selected: <strong id="sentinelDateLabel">—</strong></p>
-            <label class="visually-hidden" for="sentinelDateRange">Time position</label>
-            <input type="range" id="sentinelDateRange" class="sentinel-analytics__range" min="0" max="30" value="0" step="1">
-            <label class="sentinel-analytics__select-label" for="sentinelDateSelect">Jump to date</label>
-            <select id="sentinelDateSelect" class="sentinel-analytics__select"></select>
-            <div class="sentinel-analytics__play-row">
-              <button type="button" class="sentinel-analytics__play" id="sentinelPlayBtn" aria-pressed="false" title="Animate backward through dates (older scenes)">
-                <i class="fas fa-backward" aria-hidden="true"></i> Play back in time
-              </button>
-            </div>
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelOpacityLegend" hidden>
+            <p id="sentinelOpacityValue" class="visually-hidden">88</p>
+            <input type="range" id="sentinelOpacityRange" class="visually-hidden" min="0" max="100" value="88" aria-hidden="true" tabindex="-1">
           </section>
 
           <section class="sentinel-analytics__section" aria-labelledby="sentinelOverlayLegend">
@@ -264,7 +271,7 @@
             <i class="fas fa-file-pdf sentinel-analytics__report-ribbon-ico" aria-hidden="true"></i>
             <div class="sentinel-analytics__report-ribbon-text">
               <span class="sentinel-analytics__report-ribbon-kicker">Reports</span>
-              <span class="sentinel-analytics__report-ribbon-title">Block PDF + NDVI/NDMI</span>
+              <span class="sentinel-analytics__report-ribbon-title">Block PDF + NDVI / NDRE / NDMI</span>
             </div>
           </div>
           <section class="sentinel-analytics__section sentinel-analytics__section--report" aria-labelledby="sentinelBlockReportTitle">
@@ -303,7 +310,7 @@
               <button type="button" class="search-panel__btn-secondary" id="sentinelReportLoadStatsBtn">Load satellite stats (preview)</button>
               <button type="button" class="search-panel__btn-primary" id="sentinelReportPdfBtn">Download PDF report</button>
             </div>
-            <p id="sentinelReportKpi" class="farm-report__summary" role="status" style="margin-top:0.5rem">Choose a block and load stats for NDVI/NDMI preview.</p>
+            <p id="sentinelReportKpi" class="farm-report__summary" role="status" style="margin-top:0.5rem">Choose a block and load stats for NDVI, NDRE, and NDMI preview.</p>
             <p id="sentinelReportPreviewText" class="sentinel-analytics__hint" style="margin-top:0.25rem"></p>
             <div id="sentinelReportChartWrap" class="sentinel-report__chart-wrap" style="display:none; margin-top:0.4rem; height:200px; position:relative">
               <canvas id="sentinelReportChart" width="400" height="200" aria-label="NDVI and NDMI chart"></canvas>

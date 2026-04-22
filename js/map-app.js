@@ -4,7 +4,7 @@ import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initPrintComposer } from "./print-composer.js";
-import { initSentinelAnalytics, buildSentinelTimeline, getSentinelWmsAuxParams } from "./sentinel-analytics.js";
+import { initSentinelAnalytics, getDefaultWmsTimeRange, getSentinelWmsAuxParams } from "./sentinel-analytics.js";
 import { initFarmReports } from "./farm-reports.js";
 
 const supabase = createSupabaseClient();
@@ -44,7 +44,6 @@ let activeSnapInteractions = [];
 let surveyPreviewSnapSources = null;
 let baseGroupRef;
 let sentinelHubLayer;
-let sentinelDemLayer;
 /** Set by initSentinelAnalytics so openSearchPanel can close the Sentinel dock. */
 let vslCloseSentinelPanel = () => {};
 
@@ -531,55 +530,21 @@ function buildLayerTree() {
     url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
   }));
 
-  // Copernicus Data Space (Sentinel Hub) WMS — instance id in path; LAYERS from configuration
+  // Copernicus Data Space WMS (single TileWMS; LAYERS + TIME range from UI)
   const wmsBase =
     cfg.SENTINEL_HUB_WMS_BASE ||
-    "https://sh.dataspace.copernicus.eu/ogc/wms/sh-1c02b67a-3595-44af-8410-c10cbab816fc";
-  const tl = buildSentinelTimeline(cfg);
-  const t0 = String(tl[0] || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    "https://sh.dataspace.copernicus.eu/ogc/wms/ab8b1162-e45e-4405-9db6-aa882b920217";
+  const tr0 = getDefaultWmsTimeRange();
   const aux0 = getSentinelWmsAuxParams(cfg, {});
-  const demLayerName = (cfg.SENTINEL_DEM_WMS_LAYER && String(cfg.SENTINEL_DEM_WMS_LAYER).trim()) || "";
-  if (demLayerName) {
-    const dOp =
-      Number(cfg.SENTINEL_DEM_OPACITY) >= 0 && Number(cfg.SENTINEL_DEM_OPACITY) <= 1
-        ? Number(cfg.SENTINEL_DEM_OPACITY)
-        : 0.55;
-    const demWms = new ol.source.TileWMS({
-      url: wmsBase,
-      params: {
-        LAYERS: demLayerName,
-        VERSION: "1.1.1",
-        FORMAT: "image/png",
-        TRANSPARENT: true,
-        TILED: true,
-        TIME: t0,
-        MAXCC: aux0.MAXCC,
-        PRIORITY: aux0.PRIORITY
-      },
-      crossOrigin: "anonymous"
-    });
-    sentinelDemLayer = new ol.layer.Tile({
-      title: "Copernicus DEM (under S2)",
-      visible: false,
-      opacity: dOp,
-      source: demWms,
-      transition: 200
-    });
-    sentinelDemLayer.setZIndex(3);
-    sentinelDemLayer.set("displayInLayerSwitcher", false);
-    sentinelDemLayer.set("type", "sentinel-dem");
-  } else {
-    sentinelDemLayer = null;
-  }
   const sentinelWmsSource = new ol.source.TileWMS({
     url: wmsBase,
     params: {
-      LAYERS: "1_TRUE_COLOR",
+      LAYERS: "TRUE_COLOR",
       VERSION: "1.1.1",
       FORMAT: "image/png",
       TRANSPARENT: true,
       TILED: true,
-      TIME: t0,
+      TIME: tr0.timeParam,
       MAXCC: aux0.MAXCC,
       PRIORITY: aux0.PRIORITY
     },
@@ -643,10 +608,8 @@ function buildLayerTree() {
   sketchLayer.set("displayInLayerSwitcher", false);
   baseGroupRef = baseGroup;
   if (graticuleLayer) graticuleLayer.setZIndex(8);
-  // Order: basemap → DEM (optional, below S2) → Sentinel-2 → graticule → vectors / measure
-  const stack = [baseGroup];
-  if (sentinelDemLayer) stack.push(sentinelDemLayer);
-  stack.push(sentinelHubLayer);
+  // Order: basemap → WMS (Sentinel/terrain) → graticule → vectors / measure
+  const stack = [baseGroup, sentinelHubLayer];
   if (graticuleLayer) stack.push(graticuleLayer);
   stack.push(overlaysGroup, sketchLayer, measureLayer);
   return stack;
@@ -2102,7 +2065,6 @@ async function initMap() {
       setBasemapByTitle,
       getBaseGroup: () => baseGroupRef,
       sentinelLayer: sentinelHubLayer,
-      demLayer: sentinelDemLayer,
       blocksLayer,
       parcelsLayer,
       getSurveyPreviewLayers: () => surveyImportHandles?.getPreviewLayers?.() ?? null,

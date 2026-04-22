@@ -1,19 +1,23 @@
 /**
- * Copernicus Data Space (Sentinel Hub) WMS — Victoria Sugar Ltd
- * Single TileWMS layer; one SH product (LAYERS) at a time; TIME from UI.
- * Optional DEM layer (lower z-index) under S2. Basemap radios, overlays, legend, time.
+ * Copernicus Data Space WMS (OpenLayers TileWMS) — single instance, one LAYERS at a time.
+ * Floating top-right controls + left panel (basemap, cloud, overlays, reports).
  */
 
-const SENTINEL_PRODUCT_TO_SH = {
-  trueColor: "1_TRUE_COLOR",
-  ndvi: "3_NDVI",
-  falseColor: "2_FALSE_COLOR"
-};
+/** WMS LAYERS ids from the configured CDSE instance (exact names). */
+export const VSL_WMS_LAYER_IDS = [
+  "TRUE_COLOR",
+  "FALSE_COLOR",
+  "NDVI",
+  "NDVI_ADVANCED",
+  "NDRE",
+  "MOISTURE_STRESS",
+  "DEM"
+];
 
 /**
- * WMS “aux” params (Sentinel Hub). MAXCC = max mean cloud %; PRIORITY mosaics overlapping tiles.
+ * WMS “aux” params (CDSE / Sentinel Hub). MAXCC = max mean cloud %; PRIORITY mosaics overlapping tiles.
  * @param {object} cfg
- * @param {{ maxcc?: number, priority?: string }} [overrides] UI sliders / selects
+ * @param {{ maxcc?: number, priority?: string }} [overrides]
  */
 export function getSentinelWmsAuxParams(cfg, overrides = {}) {
   const m =
@@ -30,7 +34,19 @@ export function getSentinelWmsAuxParams(cfg, overrides = {}) {
 }
 
 /**
- * Newest first (index 0 ≈ most recent). Manual override via cfg.SENTINEL_TIMELINE.
+ * Default WMS TIME range: last 30 days (YYYY-MM-DD/YYYY-MM-DD).
+ * @returns {{ from: string, to: string, timeParam: string }}
+ */
+export function getDefaultWmsTimeRange() {
+  const end = new Date();
+  const start = new Date(end.getTime() - 30 * 864e5);
+  const from = start.toISOString().slice(0, 10);
+  const to = end.toISOString().slice(0, 10);
+  return { from, to, timeParam: `${from}/${to}` };
+}
+
+/**
+ * Newest first (optional manual list). Used for block report sync hints only.
  */
 export function buildSentinelTimeline(cfg) {
   if (Array.isArray(cfg.SENTINEL_TIMELINE) && cfg.SENTINEL_TIMELINE.length > 0) {
@@ -65,33 +81,62 @@ function padDateLabel(iso) {
   return String(iso).slice(0, 10);
 }
 
-function renderLegend(legendEl, productKey) {
+function formatTimeRange(from, to) {
+  if (!from || !to) return "—";
+  return `${padDateLabel(from)} / ${padDateLabel(to)}`;
+}
+
+/**
+ * @param {HTMLElement | null} legendEl
+ * @param {string} layerId - WMS LAYERS id or "off"
+ */
+function renderWmsLegend(legendEl, layerId) {
   if (!legendEl) return;
-  if (productKey === "off" || !productKey) {
+  if (!layerId || layerId === "off") {
     legendEl.innerHTML =
-      "<p class=\"sentinel-legend__placeholder\">Enable Sentinel-2 to show a legend.</p>";
+      "<p class=\"sentinel-legend__placeholder\">Choose a layer in the top-right card.</p>";
     return;
   }
-  if (productKey === "ndvi") {
+  if (layerId === "NDVI" || layerId === "NDVI_ADVANCED") {
     legendEl.innerHTML = `
-      <div class="sentinel-legend__row sentinel-legend__row--gradient" role="img" aria-label="NDVI from low to high">
-        <span class="sentinel-legend__scale sentinel-legend__scale--ndvi"></span>
+      <div class="sentinel-legend__row sentinel-legend__row--ndvi-interpret" role="img" aria-label="NDVI scale">
+        <span class="sentinel-legend__swatch" style="background:linear-gradient(90deg,#c62828 0%,#fbc02d 50%,#1b5e20 100%)"></span>
       </div>
       <div class="sentinel-legend__ticks">
-        <span>Low vigour</span><span>High vigour</span>
+        <span>Red — poor / stressed</span><span>Yellow — moderate</span><span>Green — healthy</span>
       </div>
-      <p class="sentinel-legend__note">NDVI emphasises green biomass — useful for cane vigour.</p>`;
+      <p class="sentinel-legend__note">${
+        layerId === "NDVI_ADVANCED"
+          ? "NDVI (advanced) — use for refined crop health within the block."
+          : "NDVI — general vegetation vigour (sugarcane canopy health)."
+      } Interpret with field knowledge.</p>`;
     return;
   }
-  if (productKey === "trueColor") {
+  if (layerId === "DEM") {
     legendEl.innerHTML =
-      "<p class=\"sentinel-legend__note\"><strong>True colour</strong> — RGB (natural view).</p>";
+      "<p class=\"sentinel-legend__note\"><strong>Copernicus DEM</strong> — relief / elevation. <em>Contours and terrain tools:</em> planned. Adjust opacity in the same card.</p>";
     return;
   }
-  if (productKey === "falseColor") {
-    legendEl.innerHTML =
-      "<p class=\"sentinel-legend__note\"><strong>False colour</strong> — NIR/Red/Green style composite: healthy vegetation is bright; pale/dark can indicate stress, senescence, or bare soil (interpret with field knowledge).</p>";
+  if (layerId === "MOISTURE_STRESS" || layerId === "NDRE") {
+    legendEl.innerHTML = `<p class="sentinel-legend__note"><strong>${
+      layerId === "NDRE" ? "NDRE" : "Moisture stress"
+    }</strong> — ${
+      layerId === "NDRE"
+        ? "red-edge chlorophyll / nitrogen sensitivity."
+        : "farm water-stress / moisture product from your layer configuration."
+    } Compare with true colour in the field.</p>`;
+    return;
   }
+  if (layerId === "TRUE_COLOR" || layerId === "FALSE_COLOR") {
+    legendEl.innerHTML = `<p class="sentinel-legend__note"><strong>${
+      layerId === "TRUE_COLOR" ? "True colour" : "False colour"
+    }</strong> — Sentinel-2 composite; blend with basemap using opacity.</p>`;
+    return;
+  }
+  legendEl.innerHTML = `<p class="sentinel-legend__note">Active layer: <code>${String(layerId).replace(
+    /[<>]/g,
+    ""
+  )}</code></p>`;
 }
 
 /**
@@ -101,7 +146,6 @@ function renderLegend(legendEl, productKey) {
  * @param {function(string): void} opts.setBasemapByTitle
  * @param {() => import("ol/layer/Group").default | null} [opts.getBaseGroup]
  * @param {import("ol/layer/Tile").default} opts.sentinelLayer
- * @param {import("ol/layer/Tile").default | null} [opts.demLayer] — DEM / hillshade under S2 (same WMS base)
  * @param {import("ol/layer/Vector").default} opts.blocksLayer
  * @param {import("ol/layer/Vector").default} opts.parcelsLayer
  * @param {() => { polyLayer?: import("ol/layer/Vector").default; pointLayer?: import("ol/layer/Vector").default } | null} [opts.getSurveyPreviewLayers]
@@ -113,7 +157,6 @@ export function initSentinelAnalytics(opts) {
     setBasemapByTitle,
     getBaseGroup,
     sentinelLayer,
-    demLayer,
     blocksLayer,
     parcelsLayer,
     getSurveyPreviewLayers,
@@ -125,27 +168,20 @@ export function initSentinelAnalytics(opts) {
   const source = sentinelLayer.getSource();
   if (!source || typeof source.updateParams !== "function") return null;
 
-  const demSource = demLayer && typeof demLayer.getSource === "function" ? demLayer.getSource() : null;
-  const hasDem = !!(demSource && typeof demSource.updateParams === "function");
-  const demLayersName =
-    (cfg.SENTINEL_DEM_WMS_LAYER && String(cfg.SENTINEL_DEM_WMS_LAYER).trim()) || "";
-
-  const timeline = buildSentinelTimeline(cfg);
+  const wmsFloat = document.getElementById("vslWmsControlCard");
+  const wmsOffBtn = document.getElementById("vslWmsOffBtn");
+  const wmsLoadSpinner = document.getElementById("vslWmsFloatSpinner");
+  const wmsTimeFrom = document.getElementById("vslWmsTimeFrom");
+  const wmsTimeTo = document.getElementById("vslWmsTimeTo");
+  const wmsOpacityRange = document.getElementById("vslWmsOpacityRange");
+  const wmsOpacityValue = document.getElementById("vslWmsOpacityValue");
+  const wmsResetViewBtn = document.getElementById("vslWmsResetViewBtn");
+  const wmsContoursHook = document.getElementById("vslWmsContoursHook");
 
   const el = (id) => document.getElementById(id);
   const basemapRadios = document.querySelectorAll("input[name='basemapChoice']");
-  const sentinelRadios = document.querySelectorAll("input[name='sentinelProduct']");
-  const modeBtns = {
-    natural: el("sentinelModeNatural"),
-    ndvi: el("sentinelModeNdvi"),
-    stress: el("sentinelModeStress")
-  };
-  const opacityRange = el("sentinelOpacityRange");
-  const opacityValue = el("sentinelOpacityValue");
-  const dateRange = el("sentinelDateRange");
-  const dateSelect = el("sentinelDateSelect");
-  const dateLabel = el("sentinelDateLabel");
-  const playBtn = el("sentinelPlayBtn");
+  const opacityRangeLeft = el("sentinelOpacityRange");
+  const opacityValueLeft = el("sentinelOpacityValue");
   const legendBody = el("sentinelLegendBody");
   const infoLine = el("sentinelInfoLine");
   const tileSpinner = el("sentinelTileSpinner");
@@ -158,9 +194,18 @@ export function initSentinelAnalytics(opts) {
   const maxCcRange = el("sentinelMaxCcRange");
   const maxCcValue = el("sentinelMaxCcValue");
   const prioritySelect = el("sentinelPrioritySelect");
-  const demControls = el("sentinelDemControls");
-  const demHelp = el("sentinelDemHelp");
-  const showDemCb = el("sentinelShowDemCb");
+
+  let activeLayerId = "off";
+  let timeFrom = "";
+  let timeTo = "";
+  let panelOpen = false;
+  let panelOutsideHandler = null;
+  let panelEscapeHandler = null;
+  let pendingTiles = 0;
+
+  const layerPickButtons = wmsFloat
+    ? wmsFloat.querySelectorAll("[data-vsl-wms-layer]")
+    : [];
 
   function readAuxOverrides() {
     return {
@@ -169,12 +214,19 @@ export function initSentinelAnalytics(opts) {
     };
   }
 
-  let productMode = "off";
-  let playTimer = null;
-  let pendingTiles = 0;
-  let panelOpen = false;
-  let panelOutsideHandler = null;
-  let panelEscapeHandler = null;
+  function currentTimeParam() {
+    const a = (wmsTimeFrom && wmsTimeFrom.value) || timeFrom;
+    const b = (wmsTimeTo && wmsTimeTo.value) || timeTo;
+    if (!a || !b) {
+      const d = getDefaultWmsTimeRange();
+      return d.timeParam;
+    }
+    return `${String(a).slice(0, 10)}/${String(b).slice(0, 10)}`;
+  }
+
+  function setFloatSpinner(show) {
+    if (wmsLoadSpinner) wmsLoadSpinner.hidden = !show;
+  }
 
   function updateTileSpinner() {
     if (!tileSpinner) return;
@@ -184,127 +236,65 @@ export function initSentinelAnalytics(opts) {
 
   source.on("tileloadstart", () => {
     pendingTiles += 1;
+    setFloatSpinner(true);
     updateTileSpinner();
   });
   source.on("tileloadend", () => {
     pendingTiles = Math.max(0, pendingTiles - 1);
+    if (pendingTiles <= 0) setFloatSpinner(false);
     updateTileSpinner();
   });
   source.on("tileloaderror", () => {
     pendingTiles = Math.max(0, pendingTiles - 1);
+    if (pendingTiles <= 0) setFloatSpinner(false);
     updateTileSpinner();
   });
 
-  function currentBasemapTitle() {
-    for (const r of basemapRadios) {
-      if (r.checked) return r.value;
-    }
-    return "Esri World Imagery";
-  }
-
-  function updateInfoLine() {
-    if (!infoLine) return;
-    const basemap = currentBasemapTitle();
-    const idx = dateRange ? parseInt(dateRange.value, 10) : 0;
-    const date = timeline[Number.isFinite(idx) ? Math.min(Math.max(idx, 0), timeline.length - 1) : 0] || "—";
-    const modeLabel =
-      productMode === "ndvi"
-        ? "NDVI"
-        : productMode === "falseColor"
-          ? "False colour"
-          : productMode === "trueColor"
-            ? "True colour"
-            : "Off";
-    const demBit =
-      hasDem && showDemCb?.checked && productMode !== "off" ? " · DEM underlay" : "";
-    infoLine.textContent = `${basemap} · ${padDateLabel(date)} · ${modeLabel}${demBit}`;
-  }
-
-  function syncDemLayer() {
-    if (!hasDem || !demLayer || !demSource || !demLayersName) return;
-    const show = !!(showDemCb && showDemCb.checked && productMode !== "off");
-    demLayer.setVisible(show);
-    if (!show) {
-      updateInfoLine();
-      return;
-    }
-    const idx = dateRange ? parseInt(dateRange.value, 10) : 0;
-    const safeIdx = Math.min(Math.max(Number.isFinite(idx) ? idx : 0, 0), timeline.length - 1);
-    const timeStr = timeline[safeIdx];
-    const aux = getSentinelWmsAuxParams(cfg, readAuxOverrides());
-    demSource.updateParams({
-      LAYERS: demLayersName,
-      TIME: timeStr,
-      MAXCC: aux.MAXCC,
-      PRIORITY: aux.PRIORITY
-    });
-    if (typeof demSource.refresh === "function") demSource.refresh();
-    updateInfoLine();
-  }
-
-  function highlightModeButtons(mode) {
-    const mapAct = { off: null, trueColor: "natural", ndvi: "ndvi", falseColor: "stress" };
-    const activeKey = mapAct[mode];
-    for (const k of Object.keys(modeBtns)) {
-      const b = modeBtns[k];
-      if (!b) continue;
-      b.classList.toggle("sentinel-mode-btn--active", activeKey === k);
-      b.setAttribute("aria-pressed", activeKey === k ? "true" : "false");
-    }
-  }
-
-  function setSentinelProduct(mode, { skipRadios = false, skipDateFlash = false } = {}) {
-    productMode = mode;
-    highlightModeButtons(mode);
-
-    if (!skipRadios) {
-      for (const r of sentinelRadios) {
-        r.checked = r.value === mode;
+  function highlightPickedLayer() {
+    for (const b of layerPickButtons) {
+      const id = b.getAttribute("data-vsl-wms-layer");
+      b.classList.toggle("vsl-wms-pick--active", id === activeLayerId);
+      if (b instanceof HTMLElement) {
+        b.setAttribute("aria-pressed", id === activeLayerId ? "true" : "false");
       }
     }
+    if (wmsOffBtn) {
+      wmsOffBtn.classList.toggle("vsl-wms-pick--active", activeLayerId === "off");
+      wmsOffBtn.setAttribute("aria-pressed", activeLayerId === "off" ? "true" : "false");
+    }
+  }
 
-    if (mode === "off") {
-      stopPlay();
+  function applyWmsParams({ skipOpacityFlash = false } = {}) {
+    if (activeLayerId === "off") {
       sentinelLayer.setVisible(false);
-      if (demLayer) demLayer.setVisible(false);
-      renderLegend(legendBody, "off");
+      renderWmsLegend(legendBody, "off");
       updateInfoLine();
       return;
     }
 
-    const layersParam = SENTINEL_PRODUCT_TO_SH[mode];
-    if (!layersParam) {
-      sentinelLayer.setVisible(false);
-      updateInfoLine();
-      return;
-    }
+    const layersParam = String(activeLayerId);
+    const aux = getSentinelWmsAuxParams(cfg, readAuxOverrides());
+    const tParam = currentTimeParam();
 
-    const idx = dateRange ? parseInt(dateRange.value, 10) : 0;
-    const safeIdx = Math.min(Math.max(Number.isFinite(idx) ? idx : 0, 0), timeline.length - 1);
-    const timeStr = timeline[safeIdx];
+    const targetOp = wmsOpacityRange
+      ? parseInt(wmsOpacityRange.value, 10) / 100
+      : opacityRangeLeft
+        ? parseInt(opacityRangeLeft.value, 10) / 100
+        : 0.88;
 
-    const targetOp =
-      opacityRange && opacityValue
-        ? parseInt(opacityRange.value, 10) / 100
-        : typeof sentinelLayer.getOpacity === "function"
-          ? sentinelLayer.getOpacity()
-          : 0.88;
-
-    if (!skipDateFlash) {
+    if (!skipOpacityFlash) {
       sentinelLayer.setOpacity(targetOp * 0.4);
     }
 
-    const aux = getSentinelWmsAuxParams(cfg, readAuxOverrides());
     source.updateParams({
       LAYERS: layersParam,
-      TIME: timeStr,
+      TIME: tParam,
       MAXCC: aux.MAXCC,
       PRIORITY: aux.PRIORITY
     });
     if (typeof source.refresh === "function") source.refresh();
     sentinelLayer.setVisible(true);
-
-    if (!skipDateFlash) {
+    if (!skipOpacityFlash) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           sentinelLayer.setOpacity(targetOp);
@@ -314,72 +304,85 @@ export function initSentinelAnalytics(opts) {
       sentinelLayer.setOpacity(targetOp);
     }
 
-    renderLegend(legendBody, mode);
+    renderWmsLegend(legendBody, activeLayerId);
     updateInfoLine();
   }
 
-  function syncDateIndex(index) {
-    const safeIdx = Math.min(Math.max(index, 0), timeline.length - 1);
-    if (dateRange) {
-      dateRange.min = "0";
-      dateRange.max = String(timeline.length - 1);
-      dateRange.value = String(safeIdx);
-    }
-    if (dateLabel) {
-      dateLabel.textContent = padDateLabel(timeline[safeIdx]);
-    }
-    if (dateSelect) {
-      dateSelect.innerHTML = "";
-      for (let i = 0; i < timeline.length; i += 1) {
-        const opt = document.createElement("option");
-        opt.value = String(i);
-        opt.textContent = padDateLabel(timeline[i]);
-        if (i === safeIdx) opt.selected = true;
-        dateSelect.appendChild(opt);
+  function setActiveLayer(id) {
+    const next = id === "off" || !id ? "off" : String(id);
+    activeLayerId = VSL_WMS_LAYER_IDS.includes(next) || next === "off" ? next : "TRUE_COLOR";
+    highlightPickedLayer();
+    applyWmsParams({});
+  }
+
+  function updateInfoLine() {
+    if (!infoLine) return;
+    const basemap = (() => {
+      for (const r of basemapRadios) {
+        if (r.checked) return r.value;
       }
-    }
+      return "Esri World Imagery";
+    })();
+    const tr = formatTimeRange(
+      wmsTimeFrom && wmsTimeFrom.value,
+      wmsTimeTo && wmsTimeTo.value
+    );
+    const mode = activeLayerId === "off" ? "WMS off" : activeLayerId;
+    infoLine.textContent = `${basemap} · TIME ${tr} · ${mode}`;
   }
 
-  function stopPlay() {
-    if (playTimer) {
-      clearInterval(playTimer);
-      playTimer = null;
-    }
-    if (playBtn) {
-      playBtn.setAttribute("aria-pressed", "false");
-      playBtn.innerHTML =
-        "<i class=\"fas fa-backward\" aria-hidden=\"true\"></i> Play back in time";
-    }
+  for (const b of layerPickButtons) {
+    b.addEventListener("click", (e) => {
+      e.preventDefault();
+      const id = b.getAttribute("data-vsl-wms-layer");
+      if (id) setActiveLayer(id);
+    });
   }
+  wmsOffBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    setActiveLayer("off");
+  });
 
-  /**
-   * Timeline is newest first: index+1 = older. Animation steps toward older images (seasonal / historical view).
-   */
-  function startPlay() {
-    if (playTimer) {
-      stopPlay();
-      return;
-    }
-    if (productMode === "off") {
-      setSentinelProduct("trueColor");
-    }
-    if (playBtn) {
-      playBtn.setAttribute("aria-pressed", "true");
-      playBtn.innerHTML = "<i class=\"fas fa-pause\" aria-hidden=\"true\"></i> Pause";
-    }
-    playTimer = setInterval(() => {
-      if (!dateRange) return;
-      const max = timeline.length - 1;
-      let v = parseInt(dateRange.value, 10) || 0;
-      v = v >= max ? 0 : v + 1;
-      syncDateIndex(v);
-      if (productMode !== "off") {
-        setSentinelProduct(productMode, { skipRadios: true, skipDateFlash: true });
-      }
-    }, 2400);
-  }
+  const defaultRange = getDefaultWmsTimeRange();
+  timeFrom = defaultRange.from;
+  timeTo = defaultRange.to;
+  if (wmsTimeFrom) wmsTimeFrom.value = timeFrom;
+  if (wmsTimeTo) wmsTimeTo.value = timeTo;
 
-  // ——— Basemap
+  const onTimeChange = debounce(() => {
+    timeFrom = wmsTimeFrom ? wmsTimeFrom.value : timeFrom;
+    timeTo = wmsTimeTo ? wmsTimeTo.value : timeTo;
+    if (activeLayerId !== "off") applyWmsParams({ skipOpacityFlash: true });
+    else updateInfoLine();
+  }, 120);
+  wmsTimeFrom?.addEventListener("change", onTimeChange);
+  wmsTimeTo?.addEventListener("change", onTimeChange);
+
+  const onWmsOpacity = debounce(() => {
+    if (wmsOpacityRange && wmsOpacityValue) {
+      const pct = parseInt(wmsOpacityRange.value, 10);
+      wmsOpacityValue.textContent = String(pct);
+    }
+    if (activeLayerId !== "off") {
+      const op = wmsOpacityRange
+        ? parseInt(wmsOpacityRange.value, 10) / 100
+        : 0.88;
+      sentinelLayer.setOpacity(op);
+    }
+  }, 50);
+  wmsOpacityRange?.addEventListener("input", onWmsOpacity);
+
+  wmsResetViewBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!map || !window.ol || !window.ol.proj) return;
+    const v = map.getView();
+    const center = cfg.DEFAULT_CENTER;
+    if (Array.isArray(center) && center.length >= 2) {
+      v.setCenter(window.ol.proj.fromLonLat([Number(center[0]), Number(center[1])]));
+    }
+    v.setZoom(Number(cfg.DEFAULT_ZOOM) > 0 ? Number(cfg.DEFAULT_ZOOM) : 11);
+  });
+
   for (const r of basemapRadios) {
     r.addEventListener("change", () => {
       if (r.checked) {
@@ -390,82 +393,26 @@ export function initSentinelAnalytics(opts) {
     });
   }
 
-  for (const r of sentinelRadios) {
-    r.addEventListener("change", () => {
-      if (r.checked) setSentinelProduct(r.value);
-    });
+  if (opacityRangeLeft) {
+    opacityRangeLeft.addEventListener(
+      "input",
+      debounce(() => {
+        if (wmsOpacityRange) {
+          wmsOpacityRange.value = opacityRangeLeft.value;
+          if (wmsOpacityValue) wmsOpacityValue.textContent = opacityRangeLeft.value;
+        }
+        if (activeLayerId !== "off") onWmsOpacity();
+      }, 50)
+    );
   }
-
-  if (modeBtns.natural) {
-    modeBtns.natural.addEventListener("click", (e) => {
-      e.preventDefault();
-      setSentinelProduct("trueColor");
-    });
-  }
-  if (modeBtns.ndvi) {
-    modeBtns.ndvi.addEventListener("click", (e) => {
-      e.preventDefault();
-      setSentinelProduct("ndvi");
-    });
-  }
-  if (modeBtns.stress) {
-    modeBtns.stress.addEventListener("click", (e) => {
-      e.preventDefault();
-      setSentinelProduct("falseColor");
-    });
-  }
-
-  const onOpacity = debounce(() => {
-    if (!opacityRange) return;
-    const pct = parseInt(opacityRange.value, 10);
-    if (opacityValue) opacityValue.textContent = `${pct}`;
-    if (productMode !== "off") {
-      sentinelLayer.setOpacity(pct / 100);
-    }
-  }, 60);
-
-  opacityRange?.addEventListener("input", onOpacity);
-
-  function onDateChange() {
-    if (!dateRange) return;
-    const idx = parseInt(dateRange.value, 10);
-    syncDateIndex(Number.isFinite(idx) ? idx : 0);
-    if (productMode !== "off") {
-      setSentinelProduct(productMode, { skipRadios: true, skipDateFlash: true });
-    } else {
-      updateInfoLine();
-    }
-  }
-
-  const onDateDebounce = debounce(onDateChange, 90);
-  dateRange?.addEventListener("input", onDateDebounce);
-  dateRange?.addEventListener("change", onDateChange);
-
-  dateSelect?.addEventListener("change", () => {
-    const idx = parseInt(dateSelect.value, 10);
-    syncDateIndex(Number.isFinite(idx) ? idx : 0);
-    onDateChange();
-  });
-
-  playBtn?.addEventListener("click", () => {
-    if (playTimer) stopPlay();
-    else startPlay();
-  });
 
   const onCloudOrPriority = debounce(() => {
     if (maxCcValue && maxCcRange) maxCcValue.textContent = maxCcRange.value;
-    if (productMode !== "off") {
-      setSentinelProduct(productMode, { skipRadios: true, skipDateFlash: true });
-    }
+    if (activeLayerId !== "off") applyWmsParams({ skipOpacityFlash: true });
   }, 100);
   maxCcRange?.addEventListener("input", onCloudOrPriority);
   prioritySelect?.addEventListener("change", onCloudOrPriority);
 
-  showDemCb?.addEventListener("change", () => {
-    syncDemLayer();
-  });
-
-  // ——— Overlays (vectors)
   if (ovBlocks) {
     ovBlocks.checked = blocksLayer.getVisible();
     ovBlocks.addEventListener("change", () => {
@@ -500,10 +447,9 @@ export function initSentinelAnalytics(opts) {
     }
   }
 
-  // ——— Toolbar: docked left panel (layer switcher stays on the right)
   function closeSentinelPanel() {
     if (!panelRoot) return;
-    stopPlay();
+    if (wmsFloat) wmsFloat.hidden = true;
     if (panelEscapeHandler) {
       document.removeEventListener("keydown", panelEscapeHandler, true);
       panelEscapeHandler = null;
@@ -522,7 +468,7 @@ export function initSentinelAnalytics(opts) {
   function openSentinelPanel() {
     if (!panelRoot) return;
     closeOtherPanels?.();
-    stopPlay();
+    if (wmsFloat) wmsFloat.hidden = false;
     panelRoot.hidden = false;
     panelOpen = true;
     panelBtn?.classList.add("active");
@@ -536,7 +482,8 @@ export function initSentinelAnalytics(opts) {
     document.addEventListener("keydown", panelEscapeHandler, true);
     panelOutsideHandler = (ev) => {
       if (!panelOpen) return;
-      if (panelRoot.contains(ev.target) || panelBtn?.contains(ev.target)) return;
+      if (panelRoot.contains(ev.target) || panelBtn?.contains(ev.target) || wmsFloat?.contains(ev.target))
+        return;
       closeSentinelPanel();
     };
     document.addEventListener("pointerdown", panelOutsideHandler, true);
@@ -559,62 +506,42 @@ export function initSentinelAnalytics(opts) {
     closeSentinelPanel();
   });
 
-  if (panelRoot) {
-    panelRoot.hidden = true;
-  }
+  if (panelRoot) panelRoot.hidden = true;
+  if (wmsFloat) wmsFloat.hidden = true;
   panelBtn?.setAttribute("aria-expanded", "false");
 
-  // ——— Init UI from layer / map state
-  if (dateRange) {
-    dateRange.min = "0";
-    dateRange.max = String(Math.max(0, timeline.length - 1));
-    dateRange.value = "0";
-  }
-  if (hasDem) {
-    if (demControls) demControls.hidden = false;
-    if (demHelp) demHelp.hidden = true;
-    if (showDemCb) showDemCb.disabled = false;
-  } else {
-    if (demControls) demControls.hidden = true;
-    if (demHelp) demHelp.hidden = false;
-  }
-  syncDateIndex(0);
-
-  const paramGetter = source.getParams && source.getParams.bind(source);
-  const params = (paramGetter && paramGetter()) || source.params_ || {};
-  const startLayer = params.LAYERS || "1_TRUE_COLOR";
-  const startMode =
-    startLayer === "3_NDVI" ? "ndvi" : startLayer === "2_FALSE_COLOR" ? "falseColor" : "trueColor";
-
-  for (const r of sentinelRadios) {
-    r.checked = false;
-  }
-  if (sentinelLayer.getVisible()) {
-    const onRadio = [...sentinelRadios].find((r) => r.value === startMode);
-    if (onRadio) onRadio.checked = true;
-    productMode = startMode;
-  } else {
-    const offRadio = [...sentinelRadios].find((r) => r.value === "off");
-    if (offRadio) offRadio.checked = true;
-    productMode = "off";
+  if (wmsContoursHook) {
+    wmsContoursHook.disabled = true;
+    wmsContoursHook.title = "Terrain contours — planned (hook for future release)";
   }
 
-  highlightModeButtons(productMode);
-  if (productMode === "off") {
-    renderLegend(legendBody, "off");
-  } else {
-    setSentinelProduct(productMode, { skipRadios: true, skipDateFlash: true });
-  }
-
-  if (opacityRange) {
+  if (wmsOpacityRange) {
     const o = Math.round(
       (typeof sentinelLayer.getOpacity === "function" ? sentinelLayer.getOpacity() : 0.88) * 100
     );
-    opacityRange.value = String(o);
-    if (opacityValue) opacityValue.textContent = String(o);
+    wmsOpacityRange.value = String(o);
+    if (wmsOpacityValue) wmsOpacityValue.textContent = String(o);
   }
 
-  // Sync basemap radio with the visible basemap in the group
+  const paramGetter = source.getParams && source.getParams.bind(source);
+  const p0 = (paramGetter && paramGetter()) || source.params_ || {};
+  const startLayer = String(p0.LAYERS || "TRUE_COLOR");
+  if (VSL_WMS_LAYER_IDS.includes(startLayer)) {
+    activeLayerId = startLayer;
+  } else {
+    activeLayerId = "TRUE_COLOR";
+  }
+  if (!sentinelLayer.getVisible()) {
+    activeLayerId = "off";
+  }
+  highlightPickedLayer();
+  if (activeLayerId === "off") {
+    renderWmsLegend(legendBody, "off");
+    updateInfoLine();
+  } else {
+    applyWmsParams({ skipOpacityFlash: true });
+  }
+
   const bg = getBaseGroup?.();
   if (bg) {
     let activeTitle = "Esri World Imagery";

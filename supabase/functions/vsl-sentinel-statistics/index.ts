@@ -59,6 +59,22 @@ function evaluatePixel(s) {
   return { default: [(s.B8A - s.B11) / d] };
 }`;
 
+/** Red-edge NDRE — (B8 − B5) / (B8 + B5), SCL mask. */
+const EVAL_NDRE = `//VERSION=3
+function setup() {
+  return {
+    input: [{ bands: ["B05", "B08", "SCL"] }],
+    output: [{ id: "default", sampleType: "FLOAT32", bands: 1 }],
+  };
+}
+function evaluatePixel(s) {
+  var c = s.SCL;
+  if (c == 0 || c == 1 || c == 3 || c == 8 || c == 9 || c == 10 || c == 11) return { default: [NaN] };
+  var d = s.B08 + s.B05;
+  if (d == 0) return { default: [NaN] };
+  return { default: [(s.B08 - s.B05) / d] };
+}`;
+
 type IntervalRow = { from: string; to: string; mean: number | null; stDev?: number | null };
 
 function fail(status: number, message: string, extra: Record<string, unknown> = {}) {
@@ -346,10 +362,12 @@ Deno.serve(async (req) => {
 
   let ndviJson: unknown;
   let ndmiJson: unknown;
+  let ndreJson: unknown;
   try {
-    [ndviJson, ndmiJson] = await Promise.all([
+    [ndviJson, ndmiJson, ndreJson] = await Promise.all([
       postStatistics(accessToken, geometry, tFrom, tTo, EVAL_NDVI, interval),
       postStatistics(accessToken, geometry, tFrom, tTo, EVAL_NDMI, interval),
+      postStatistics(accessToken, geometry, tFrom, tTo, EVAL_NDRE, interval),
     ]);
   } catch (e) {
     return fail(502, (e as Error).message);
@@ -357,6 +375,7 @@ Deno.serve(async (req) => {
 
   const ndvi = parseStatisticsIntervals(ndviJson);
   const ndmi = parseStatisticsIntervals(ndmiJson);
+  const ndre = parseStatisticsIntervals(ndreJson);
 
   return ok({
     block: {
@@ -367,6 +386,7 @@ Deno.serve(async (req) => {
     interval: interval,
     time_range: { from: tFrom, to: tTo },
     ndvi_intervals: ndvi,
+    ndre_intervals: ndre,
     ndmi_intervals: ndmi,
   });
 });

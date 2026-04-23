@@ -309,17 +309,17 @@ export function initSentinelAnalytics(opts) {
       sentinelLayer.setOpacity(targetOp * 0.4);
     }
 
-    // DEM (Copernicus GLO) is not an S2 time mosaic: do not send S2 mosaicking params, and do not
-    // send TIME (static terrain often returns white/empty tiles with S2 date ranges; CDSE WMS
-    // resolves layer name from SENTINEL_DEM_WMS_LAYER or "DEM" to match your configuration).
+    // DEM: still needs a TIME in the WMS request for many CDSE configurations (use wide static range).
+    // Never send S2 mosaicking params (MAXCC / PRIORITY) with DEM.
+    // Layer id may be SENTINEL_DEM_WMS_LAYER or "DEM".
     const wmsP = {
       LAYERS: layersParam,
       STYLES: "default",
+      TIME: tParam,
       SHOWLOGO: "false",
       WARNINGS: "NO"
     };
     if (activeLayerId !== "DEM") {
-      wmsP.TIME = tParam;
       wmsP.MAXCC = String(aux.MAXCC);
       wmsP.PRIORITY = aux.PRIORITY;
       wmsP.FORMAT = "image/png";
@@ -328,7 +328,6 @@ export function initSentinelAnalytics(opts) {
     source.updateParams(wmsP);
     if (activeLayerId === "DEM" && source.params_) {
       try {
-        delete source.params_.TIME;
         delete source.params_.MAXCC;
         delete source.params_.PRIORITY;
       } catch { /* */ }

@@ -145,6 +145,14 @@ async function loadVslLogoDataUrl() {
   return buildVslLogoPlaceholderPng();
 }
 
+/** jspdf@2 UMD: constructor is `window.jspdf.jsPDF` (see webmap.html script order). */
+function getJsPDFConstructor() {
+  if (typeof window === "undefined" || !window.jspdf || typeof window.jspdf.jsPDF !== "function") {
+    return null;
+  }
+  return window.jspdf.jsPDF;
+}
+
 /**
  * @param {unknown} error - e.g. FunctionsHttpError: `context` is the fetch Response, not `{ body: string }`.
  * @returns {Promise<{ httpStatus: number | null, detail: string }>}
@@ -592,21 +600,34 @@ export function initFarmReports(opts) {
         resolve(null);
         return;
       }
+      try {
+        map.updateSize();
+      } catch { /* */ }
       let done = false;
       const cap = () => {
         if (done) return;
         done = true;
         const w0 = el.offsetWidth;
-        const scale = Math.min(1.45, 1680 / Math.max(w0, 1));
+        const scale = Math.min(1.5, 1800 / Math.max(w0, 1));
         window.setTimeout(() => {
-          html2canvas(el, { useCORS: true, allowTaint: true, scale, logging: false })
+          try {
+            map.updateSize();
+          } catch { /* */ }
+          html2canvas(el, {
+            useCORS: true,
+            allowTaint: true,
+            scale,
+            logging: false,
+            foreignObjectRendering: false,
+            backgroundColor: null
+          })
             .then((c) => resolve(c.toDataURL("image/jpeg", 0.92)))
             .catch(() => resolve(null));
-        }, 280);
+        }, 400);
       };
       map.once("rendercomplete", cap);
       map.renderSync();
-      window.setTimeout(cap, 2000);
+      window.setTimeout(cap, 2400);
     });
   }
 
@@ -649,6 +670,7 @@ export function initFarmReports(opts) {
    * @param {string} [subtitle]
    */
   function addHeaderFooter(doc, title, logoDataUrl, subtitle) {
+    doc.setFont("helvetica", "normal");
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
     const margin = 14;
@@ -668,18 +690,18 @@ export function initFarmReports(opts) {
     const textX = margin + (logoDataUrl ? 25 : 0);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10.5);
-    doc.setFont(undefined, "bold");
+    doc.setFont("helvetica", "bold");
     doc.text("VICTORIA SUGAR LTD", textX, 9);
     doc.setFontSize(7.2);
-    doc.setFont(undefined, "normal");
+    doc.setFont("helvetica", "normal");
     doc.setTextColor(235, 245, 232);
     doc.text("Land intelligence — sugarcane blocks & parcels", textX, 15);
     doc.setTextColor(40, 40, 40);
     doc.setFontSize(9.2);
-    doc.setFont(undefined, "bold");
+    doc.setFont("helvetica", "bold");
     doc.text(String(title), margin, 30);
     if (subtitle) {
-      doc.setFont(undefined, "normal");
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(8.2);
       doc.setTextColor(70, 80, 70);
       doc.text(String(subtitle), margin, 36);
@@ -739,9 +761,15 @@ export function initFarmReports(opts) {
   }
 
   async function generateReportPdf() {
-    const { jsPDF } = window.jspdf || {};
+    const jsPDF = getJsPDFConstructor();
     if (!jsPDF) {
-      if (setStatus) setStatus(statusEl, "PDF engine not loaded.", true);
+      if (setStatus) {
+        setStatus(
+          statusEl,
+          "PDF engine not loaded (check jspdf + jspdf-autotable scripts before map-app on the page).",
+          true
+        );
+      }
       return;
     }
     const bid = currentBlockId();
@@ -794,7 +822,18 @@ export function initFarmReports(opts) {
       if (chartWrap) chartWrap.style.height = chOldH || "200px";
       if (statsChart) statsChart.resize();
 
-      const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
+      const doc = new jsPDF({ unit: "mm", format: "a4", compress: false });
+      doc.setFont("helvetica", "normal");
+      if (typeof doc.autoTable !== "function") {
+        if (setStatus) {
+          setStatus(
+            statusEl,
+            "jspdf-autotable not loaded. Load jspdf, then jspdf.plugin.autotable, before map-app (see webmap.html).",
+            true
+          );
+        }
+        return;
+      }
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
       const margin = 14;
@@ -829,9 +868,9 @@ export function initFarmReports(opts) {
       let y0 = 40;
       doc.setFontSize(9.2);
       doc.setTextColor(28, 40, 28);
-      doc.setFont(undefined, "bold");
+      doc.setFont("helvetica", "bold");
       doc.text(`Block ${bl.block_code} — ${String(bl.block_name || "—")}`, margin, y0);
-      doc.setFont(undefined, "normal");
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(55, 60, 55);
       y0 += 4;
@@ -887,7 +926,7 @@ export function initFarmReports(opts) {
       y0 = 40;
       doc.setFontSize(7.2);
       doc.setTextColor(45, 55, 45);
-      doc.setFont(undefined, "normal");
+      doc.setFont("helvetica", "normal");
       doc.text(
         "NDVI: canopy greenness. NDRE: red-edge (N / chlorophyll in dense cane). NDMI: moisture stress signal. " +
           "Zonal maps, DEM slope, and pixel analytics require a raster service — here we use robust block means.",
@@ -928,9 +967,9 @@ export function initFarmReports(opts) {
         .map((k) => [CULTIVATION_LABELS[k] || k, String(pCounts[k])]);
       doc.setFontSize(8.3);
       doc.setTextColor(30, 30, 30);
-      doc.setFont(undefined, "bold");
+      doc.setFont("helvetica", "bold");
       doc.text("Cultivation (plot count by status)", margin, y0);
-      doc.setFont(undefined, "normal");
+      doc.setFont("helvetica", "normal");
       y0 += 4;
       doc.autoTable({
         startY: y0,

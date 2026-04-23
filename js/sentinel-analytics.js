@@ -291,7 +291,11 @@ export function initSentinelAnalytics(opts) {
       return;
     }
 
-    const layersParam = String(activeLayerId);
+    const demWmsName =
+      cfg && cfg.SENTINEL_DEM_WMS_LAYER
+        ? String(cfg.SENTINEL_DEM_WMS_LAYER).trim()
+        : "DEM";
+    const layersParam = activeLayerId === "DEM" ? demWmsName : String(activeLayerId);
     const aux = getSentinelWmsAuxParams(cfg, readAuxOverrides());
     const tParam = timeParamForWmsLayer(activeLayerId);
 
@@ -305,15 +309,30 @@ export function initSentinelAnalytics(opts) {
       sentinelLayer.setOpacity(targetOp * 0.4);
     }
 
-    source.updateParams({
+    // DEM (Copernicus GLO) is not an S2 time mosaic: do not send S2 mosaicking params, and do not
+    // send TIME (static terrain often returns white/empty tiles with S2 date ranges; CDSE WMS
+    // resolves layer name from SENTINEL_DEM_WMS_LAYER or "DEM" to match your configuration).
+    const wmsP = {
       LAYERS: layersParam,
       STYLES: "default",
-      TIME: tParam,
-      MAXCC: aux.MAXCC,
-      PRIORITY: aux.PRIORITY,
       SHOWLOGO: "false",
       WARNINGS: "NO"
-    });
+    };
+    if (activeLayerId !== "DEM") {
+      wmsP.TIME = tParam;
+      wmsP.MAXCC = String(aux.MAXCC);
+      wmsP.PRIORITY = aux.PRIORITY;
+      wmsP.FORMAT = "image/png";
+      wmsP.TRANSPARENT = "true";
+    }
+    source.updateParams(wmsP);
+    if (activeLayerId === "DEM" && source.params_) {
+      try {
+        delete source.params_.TIME;
+        delete source.params_.MAXCC;
+        delete source.params_.PRIORITY;
+      } catch { /* */ }
+    }
     if (typeof source.refresh === "function") source.refresh();
     sentinelLayer.setVisible(true);
     if (!skipOpacityFlash) {

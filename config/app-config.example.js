@@ -27,6 +27,8 @@ window.VSL_CONFIG = {
   // DEBUG_MAP_RPC: false
   // Copernicus Data Space WMS (public; no auth in the browser). Use the exact instance URL for your project.
   // SENTINEL_HUB_WMS_BASE: "https://sh.dataspace.copernicus.eu/ogc/wms/<configuration-instance-uuid>"
+  // If the DEM WMS LAYERS name in your CDSE configuration is not "DEM", set it here (see GetCapabilities).
+  // SENTINEL_DEM_WMS_LAYER: "COPERNICUS_DEM",
   // The app sends SHOWLOGO=false on WMS; you can also turn off the per-tile logo in the CDSE
   // Sentinel Hub Configuration (dashboard) for the instance. Watermarks in tiles are a CDSE product rule.
   // Block report: URL is …/functions/v1/<name>. Default is vsl-sentinel-statistics (not quick-responder).

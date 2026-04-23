@@ -16,6 +16,11 @@ const fallbackCfg = {
    */
   SENTINEL_HUB_WMS_BASE: "https://sh.dataspace.copernicus.eu/ogc/wms/ab8b1162-e45e-4405-9db6-aa882b920217",
   /**
+   * CDSE WMS LAYERS name for Copernicus DEM in your instance (GetCapabilities or dashboard).
+   * If blank, the app uses "DEM". Set this if your configuration uses e.g. COPERNICUS_DEM.
+   */
+  SENTINEL_DEM_WMS_LAYER: "",
+  /**
    * Optional manual YYYY-MM-DD list, newest first. If empty or omitted, dates are auto-generated
    * (every SENTINEL_TIMELINE_STEP_DAYS) from today back SENTINEL_TIMELINE_MONTHS_BACK.
    */

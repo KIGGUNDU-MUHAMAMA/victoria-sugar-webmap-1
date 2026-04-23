@@ -49,6 +49,102 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function seriesNumericMeans(arr) {
+  return (arr || [])
+    .map((r) => (r && r.mean != null && Number.isFinite(r.mean) ? r.mean : null))
+    .filter((x) => x != null);
+}
+
+function minMaxOf(nums) {
+  if (!nums || !nums.length) return { min: null, max: null };
+  return { min: Math.min(...nums), max: Math.max(...nums) };
+}
+
+function meanOf(nums) {
+  if (!nums || !nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function stdevOf(nums) {
+  if (!nums || nums.length < 2) return null;
+  const m = meanOf(nums);
+  return Math.sqrt(nums.reduce((s, x) => s + (x - m) ** 2, 0) / (nums.length - 1));
+}
+
+/** 0.15–0.85 → 0–100 heuristic for “field health” from mean NDVI. */
+function fieldHealthScoreFromNdvi(ndvi) {
+  if (ndvi == null || !Number.isFinite(ndvi)) return null;
+  const t = (ndvi - 0.15) / 0.7;
+  return Math.round(100 * Math.max(0, Math.min(1, t)));
+}
+
+function zoneFromNdvi(n) {
+  if (n == null || !Number.isFinite(n)) return { label: "—", note: "No data" };
+  if (n < 0.3) return { label: "Poor", note: "Low vigor / stress" };
+  if (n < 0.5) return { label: "Moderate", note: "Below target canopy" };
+  if (n < 0.7) return { label: "Good", note: "Healthy canopy" };
+  return { label: "Excellent", note: "Strong growth" };
+}
+
+/** Field-mean NDRE (B8/B5) — relative commentary only; calibrate to your site. */
+function ndreNarrative(n) {
+  if (n == null || !Number.isFinite(n)) return "—";
+  if (n < 0.1) return "Red-edge response is low (review canopy / density / N strategy).";
+  if (n < 0.2) return "Moderate red-edge (typical for dense ratoon; compare with same period last year).";
+  return "Strong red-edge response (favourable chlorophyll signal in dense crop).";
+}
+
+/** Field-mean NDMI — relative moisture / stress hint (compare with weather and irrigation). */
+function ndmiNarrative(n) {
+  if (n == null || !Number.isFinite(n)) return "—";
+  if (n < -0.05) return "Drier index for this pass — check irrigation and soil moisture in weak plots.";
+  if (n < 0.1) return "Transitional / mixed moisture signal (good for follow-up with field walks).";
+  return "Wetter / lower stress signal in this pass — still validate low spots in the field.";
+}
+
+function buildVslLogoPlaceholderPng() {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 220;
+    c.height = 40;
+    const g = c.getContext("2d");
+    if (!g) return null;
+    g.fillStyle = "#1a4d1f";
+    g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = "#e8f5e9";
+    g.font = "600 16px system-ui, Segoe UI, sans-serif";
+    g.textBaseline = "middle";
+    g.fillText("VICTORIA SUGAR", 12, c.height / 2);
+    return c.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
+async function loadVslLogoDataUrl() {
+  const toDataUrl = (blob) =>
+    new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(/** @type {string} */ (r.result));
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+
+  for (const name of ["victoria-sugar-logo.png", "victoria-sugar-logo.jpg"]) {
+    try {
+      const u = new URL(`./assets/${name}`, window.location.href).href;
+      const res = await fetch(u);
+      if (!res.ok) continue;
+      const b = await res.blob();
+      const dataUrl = await toDataUrl(b);
+      if (dataUrl) return dataUrl;
+    } catch {
+      /* try next */
+    }
+  }
+  return buildVslLogoPlaceholderPng();
+}
+
 /**
  * @param {unknown} error - e.g. FunctionsHttpError: `context` is the fetch Response, not `{ body: string }`.
  * @returns {Promise<{ httpStatus: number | null, detail: string }>}
@@ -491,65 +587,155 @@ export function initFarmReports(opts) {
     const html2canvas = window.html2canvas;
     if (!map || !html2canvas) return null;
     return new Promise((resolve) => {
-      map.once("rendercomplete", () => {
+      const el = map.getTargetElement();
+      if (!el) {
+        resolve(null);
+        return;
+      }
+      let done = false;
+      const cap = () => {
+        if (done) return;
+        done = true;
+        const w0 = el.offsetWidth;
+        const scale = Math.min(1.45, 1680 / Math.max(w0, 1));
         window.setTimeout(() => {
-          const el = map.getTargetElement();
-          if (!el) {
-            resolve(null);
-            return;
-          }
-          html2canvas(el, {
-            useCORS: true,
-            allowTaint: true,
-            scale: Math.min(1, 1200 / Math.max(el.offsetWidth, 1)),
-            logging: false
-          })
-            .then((canvas) => resolve(canvas.toDataURL("image/jpeg", 0.82)))
+          html2canvas(el, { useCORS: true, allowTaint: true, scale, logging: false })
+            .then((c) => resolve(c.toDataURL("image/jpeg", 0.92)))
             .catch(() => resolve(null));
-        }, 400);
-      });
+        }, 280);
+      };
+      map.once("rendercomplete", cap);
       map.renderSync();
+      window.setTimeout(cap, 2000);
     });
   }
 
   function fitToBlockId(id) {
-    if (!map || !blocksSource) return;
-    const f = blocksSource.getFeatures().find((x) => String(x.getId()) === String(id));
-    if (!f) return;
-    const g = f.getGeometry();
-    if (!g) return;
-    const ext = ol.extent.createEmpty();
-    ol.extent.extend(ext, g.getExtent());
-    if (ol.extent.isEmpty(ext)) return;
-    map.getView().fit(ext, { padding: [36, 36, 36, 36], maxZoom: 17, duration: 500 });
+    return new Promise((resolve) => {
+      if (!map || !blocksSource) {
+        resolve();
+        return;
+      }
+      const f = blocksSource.getFeatures().find((x) => String(x.getId()) === String(id));
+      if (!f) {
+        resolve();
+        return;
+      }
+      const g = f.getGeometry();
+      if (!g) {
+        resolve();
+        return;
+      }
+      const ext = ol.extent.createEmpty();
+      ol.extent.extend(ext, g.getExtent());
+      if (ol.extent.isEmpty(ext)) {
+        resolve();
+        return;
+      }
+      map.getView().fit(ext, { padding: [64, 64, 64, 64], maxZoom: 16, duration: 650 });
+      map.once("moveend", () => {
+        try {
+          map.updateSize();
+        } catch { /* */ }
+        window.setTimeout(resolve, 820);
+      });
+    });
   }
 
-  function addHeaderFooter(doc, title) {
+  /**
+   * @param {import("jspdf").default} doc
+   * @param {string} title
+   * @param {string | null} [logoDataUrl]
+   * @param {string} [subtitle]
+   */
+  function addHeaderFooter(doc, title, logoDataUrl, subtitle) {
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
     const margin = 14;
     doc.setFillColor(22, 56, 22);
-    doc.rect(0, 0, pageW, 18, "F");
+    doc.rect(0, 0, pageW, 20, "F");
+    if (logoDataUrl) {
+      const tryAdd = (fmt) => {
+        try {
+          doc.addImage(logoDataUrl, fmt, margin, 3, 20, 14);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      if (!tryAdd("PNG") && !tryAdd("JPEG")) { /* */ }
+    }
+    const textX = margin + (logoDataUrl ? 25 : 0);
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
     doc.setFont(undefined, "bold");
-    doc.text("Victoria Sugar Ltd — land intelligence", margin, 12);
-    doc.setTextColor(40, 40, 40);
-    doc.setFontSize(9);
+    doc.text("VICTORIA SUGAR LTD", textX, 9);
+    doc.setFontSize(7.2);
     doc.setFont(undefined, "normal");
-    doc.text(String(title), margin, 28);
-
-    const footY = pageH - 10;
+    doc.setTextColor(235, 245, 232);
+    doc.text("Land intelligence — sugarcane blocks & parcels", textX, 15);
+    doc.setTextColor(40, 40, 40);
+    doc.setFontSize(9.2);
+    doc.setFont(undefined, "bold");
+    doc.text(String(title), margin, 30);
+    if (subtitle) {
+      doc.setFont(undefined, "normal");
+      doc.setFontSize(8.2);
+      doc.setTextColor(70, 80, 70);
+      doc.text(String(subtitle), margin, 36);
+    }
+    const footY = pageH - 8.5;
     doc.setDrawColor(200, 210, 200);
     doc.setLineWidth(0.2);
     doc.line(margin, footY - 2, pageW - margin, footY - 2);
-    doc.setFontSize(7.5);
+    doc.setFontSize(7.2);
     doc.setTextColor(100, 100, 100);
     const genAt = new Date().toLocaleString();
     const user = getCurrentUser?.();
     const who = user?.email || user?.role || "Map user";
-    doc.text(`Generated ${genAt} · ${who} · For internal management use.`, margin, footY);
-    doc.text("Page " + String(doc.getNumberOfPages()), pageW - margin - 8, footY, { align: "right" });
+    doc.text(`Generated ${genAt} · ${who} · Internal use only.`, margin, footY);
+    doc.text("Page " + String(doc.getNumberOfPages()), pageW - margin, footY, { align: "right" });
+  }
+
+  /** @returns {number} y position just below the image (mm) */
+  function addRasterFit(doc, dataUrl, fmt, x, y, maxW, maxH) {
+    try {
+      const p = doc.getImageProperties(dataUrl);
+      if (!p || !p.width) {
+        doc.setFillColor(250, 252, 250);
+        doc.roundedRect(x - 0.5, y - 0.5, maxW + 1, maxH + 1, 1.2, 1.2, "F");
+        doc.setDrawColor(200, 210, 200);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(x - 0.5, y - 0.5, maxW + 1, maxH + 1, 1.2, 1.2, "S");
+        doc.addImage(dataUrl, fmt, x, y, maxW, maxH);
+        return y + maxH + 2;
+      }
+      const ar = p.height / p.width;
+      let w = maxW;
+      let h = w * ar;
+      if (h > maxH) {
+        h = maxH;
+        w = h / ar;
+      }
+      const x0 = x + (maxW - w) / 2;
+      doc.setFillColor(250, 252, 250);
+      doc.roundedRect(x - 0.5, y - 0.5, maxW + 1, maxH + 1, 1.2, 1.2, "F");
+      doc.setDrawColor(200, 210, 200);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(x - 0.5, y - 0.5, maxW + 1, maxH + 1, 1.2, 1.2, "S");
+      doc.addImage(dataUrl, fmt, x0, y, w, h);
+      return y + h + 3;
+    } catch {
+      try {
+        doc.setFillColor(250, 252, 250);
+        doc.roundedRect(x - 0.5, y - 0.5, maxW + 1, maxH + 1, 1.2, 1.2, "F");
+        doc.setDrawColor(200, 210, 200);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(x - 0.5, y - 0.5, maxW + 1, maxH + 1, 1.2, 1.2, "S");
+        doc.addImage(dataUrl, fmt, x, y, maxW, maxH);
+      } catch { /* */ }
+      return y + maxH + 2;
+    }
   }
 
   async function generateReportPdf() {
@@ -598,84 +784,218 @@ export function initFarmReports(opts) {
         return;
       }
 
-      fitToBlockId(bid);
+      const logo = await loadVslLogoDataUrl();
+      await fitToBlockId(bid);
       const mapImg = await captureMapDataUrl();
+      const chOldH = chartWrap ? chartWrap.style.height : "";
+      if (chartWrap) chartWrap.style.height = "360px";
+      if (statsChart) statsChart.resize();
       const chartPng = chartToPng();
+      if (chartWrap) chartWrap.style.height = chOldH || "200px";
+      if (statsChart) statsChart.resize();
 
       const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
       const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
       const margin = 14;
       const contentW = pageW - margin * 2;
+      const ndviS = seriesNumericMeans(statPayload.ndvi_intervals);
+      const ndreS = seriesNumericMeans(statPayload.ndre_intervals);
+      const ndmiS = seriesNumericMeans(statPayload.ndmi_intervals);
+      const lastNd = ndviS.length ? ndviS[ndviS.length - 1] : null;
+      const lastRe = ndreS.length ? ndreS[ndreS.length - 1] : null;
+      const lastMi = ndmiS.length ? ndmiS[ndmiS.length - 1] : null;
+      const mmN = minMaxOf(ndviS);
+      const mmRe = minMaxOf(ndreS);
+      const mmMi = minMaxOf(ndmiS);
+      const zone = zoneFromNdvi(lastNd);
+      const hScore = fieldHealthScoreFromNdvi(lastNd);
+      const cvN =
+        meanOf(ndviS) && stdevOf(ndviS) && Math.abs(meanOf(ndviS)) > 1e-6
+          ? stdevOf(ndviS) / meanOf(ndviS)
+          : null;
+      const nSteps = (statPayload.ndvi_intervals || []).length;
+      const trendN =
+        nSteps >= 2 && lastNd != null
+          ? lastNd - (statPayload.ndvi_intervals[0].mean != null ? statPayload.ndvi_intervals[0].mean : lastNd)
+          : null;
 
-      addHeaderFooter(doc, `Block ${bl.block_code} — summary`);
-      let y0 = 36;
-      doc.setFontSize(8.5);
-      doc.setTextColor(50, 50, 50);
-      doc.text(
-        `Block ${bl.block_code} — ${String(bl.block_name || "—")} · Estate: ${String(bl.estate_name || "—")}`,
-        margin,
-        y0
+      addHeaderFooter(
+        doc,
+        `Block ${bl.block_code} — overview & map`,
+        logo,
+        "Sugarcane intelligence · block extent below is fitted to the polygon (proportional capture)"
       );
-      y0 += 5;
+      let y0 = 40;
+      doc.setFontSize(9.2);
+      doc.setTextColor(28, 40, 28);
+      doc.setFont(undefined, "bold");
+      doc.text(`Block ${bl.block_code} — ${String(bl.block_name || "—")}`, margin, y0);
+      doc.setFont(undefined, "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(55, 60, 55);
+      y0 += 4;
       {
         const h = sumHarvestTonnes(parcels);
-        doc.text(
-          `Expected area (block): ${fmtNum(bl.expected_area_acres, 1)} ac · Plots: ${
-            parcels.length
-          } · Harvest (plots, where entered): ${h.n > 0 ? fmtNum(h.sum, 2) + " t" : "—"}`,
-          margin,
-          y0
-        );
+        const sub = `Estate: ${String(
+          bl.estate_name || "—"
+        )} · ${String(statPayload.time_range?.from || "").slice(0, 10)} → ${String(
+          statPayload.time_range?.to || ""
+        ).slice(0, 10)} · ${String(statPayload.interval || "P16D")} · SCL mask · ${
+          fmtNum(bl.expected_area_acres, 1)
+        } ac · ${parcels.length} plots${
+          h.n > 0 ? ` · ${fmtNum(h.sum, 2)} t (plots)` : ""
+        } · Health ${hScore != null ? String(hScore) + "/100" : "—"} · ${zone.label}`;
+        doc.text(sub, margin, y0, { maxWidth: contentW });
+        y0 += 7;
       }
-      y0 += 8;
+
+      y0 += 1;
       if (mapImg) {
+        const capMaxH = Math.min((pageH - 22) * 0.75, pageH - y0 - 18);
         try {
-          doc.addImage(mapImg, "JPEG", margin, y0, contentW, 88);
+          y0 = addRasterFit(doc, mapImg, "JPEG", margin, y0, contentW, capMaxH);
         } catch {
           doc.text("Map image could not be embedded.", margin, y0);
+          y0 += 8;
         }
-        y0 += 94;
       } else {
         doc.setFontSize(8);
-        doc.text("Map capture unavailable.", margin, y0);
+        doc.setTextColor(120, 0, 0);
+        doc.text("Map capture unavailable. Fit the block on screen, then try again.", margin, y0);
         y0 += 8;
       }
-      doc.setFontSize(7.5);
-      doc.setTextColor(90, 90, 90);
-      doc.text("Map extent: selected block. Sentinel statistics use the block polygon (EPSG:4326).", margin, y0);
-      y0 += 8;
+      doc.setFontSize(6.9);
+      doc.setTextColor(88, 90, 88);
+      doc.text(
+        "Map — fitted to the block geometry (WGS 84), screenshot keeps aspect (no stretch). " +
+          "DEM/relief: use the WMS DEM layer in the app (set SENTINEL_DEM_WMS_LAYER if your layer name is not “DEM”). " +
+          "Table statistics are field-mean time series, not a pixel zonation map.",
+        margin,
+        y0,
+        { maxWidth: contentW }
+      );
+      y0 += 9;
 
       doc.addPage();
-      addHeaderFooter(doc, "Cultivation & Sentinel-2 indices");
-      y0 = 36;
+      addHeaderFooter(
+        doc,
+        "Vegetation indices, cultivation & time series",
+        logo,
+        "Field-mean NDVI / NDRE / NDMI — compare with last season, rain, and fertiliser / irrigation"
+      );
+      y0 = 40;
+      doc.setFontSize(7.2);
+      doc.setTextColor(45, 55, 45);
+      doc.setFont(undefined, "normal");
+      doc.text(
+        "NDVI: canopy greenness. NDRE: red-edge (N / chlorophyll in dense cane). NDMI: moisture stress signal. " +
+          "Zonal maps, DEM slope, and pixel analytics require a raster service — here we use robust block means.",
+        margin,
+        y0,
+        { maxWidth: contentW }
+      );
+      y0 += 8;
+
+      if (nSteps > 0) {
+        doc.setFillColor(240, 248, 240);
+        doc.roundedRect(margin, y0, contentW, 32, 1, 1, "F");
+        doc.setFontSize(7.2);
+        doc.setTextColor(32, 70, 35);
+        doc.text(
+          `Uniformity (temporal CV of mean NDVI): ${
+            cvN != null ? fmtNum(cvN, 2) : "—"
+          }  ·  Trend (latest − first NDVI): ${
+            trendN != null ? (trendN >= 0 ? "+" : "") + fmtNum(trendN, 3) : "—"
+          }`,
+          margin + 2,
+          y0 + 5.5,
+          { maxWidth: contentW - 4 }
+        );
+        doc.setFontSize(6.8);
+        doc.setTextColor(40, 75, 44);
+        doc.text(
+          `NDRE: ${ndreNarrative(lastRe)}  NDMI: ${ndmiNarrative(lastMi)}`,
+          margin + 2,
+          y0 + 13.5,
+          { maxWidth: contentW - 4 }
+        );
+        y0 += 36;
+      }
       const pCounts = countByKey(parcels, "cultivation_status");
       const pBody = Object.keys(pCounts)
         .sort()
         .map((k) => [CULTIVATION_LABELS[k] || k, String(pCounts[k])]);
-      doc.setFontSize(9);
+      doc.setFontSize(8.3);
       doc.setTextColor(30, 30, 30);
-      doc.text("Parcels — cultivation status (count)", margin, y0);
+      doc.setFont(undefined, "bold");
+      doc.text("Cultivation (plot count by status)", margin, y0);
+      doc.setFont(undefined, "normal");
       y0 += 4;
       doc.autoTable({
         startY: y0,
         head: [["Status", "Plot count"]],
         body: pBody.length ? pBody : [["—", "0"]],
         margin: { left: margin, right: margin },
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 8, cellPadding: 1.6 },
         headStyles: { fillColor: [34, 78, 34] }
       });
-      y0 = doc.lastAutoTable.finalY + 8;
+      y0 = doc.lastAutoTable.finalY + 7;
 
-      doc.setFontSize(8);
+      doc.setFontSize(7.2);
+      doc.setTextColor(55, 60, 55);
       doc.text(
-        `Sentinel-2 L2A · ${String(statPayload.time_range?.from || "").slice(0, 10)} → ${String(
-          statPayload.time_range?.to || ""
-        ).slice(0, 10)} · Step ${String(statPayload.interval || "P16D")} · SCL mask · NDRE = (B8−B5)/(B8+B5); NDMI = (B8A−B11)/(B8A+B11).`,
+        "Field-mean health bands (illustrative, from last NDVI in series):  <0.3 Poor  ·  0.3–0.5 Moderate  ·  0.5–0.7 Good  ·  >0.7 Excellent",
         margin,
         y0,
         { maxWidth: contentW }
       );
-      y0 += 10;
+      y0 += 5;
+      doc.text(
+        `Latest period: NDVI ${lastNd != null ? fmtNum(lastNd, 3) : "—"} · NDRE ${
+          lastRe != null ? fmtNum(lastRe, 3) : "—"
+        } (nutrient / chlorophyll) · NDMI ${lastMi != null ? fmtNum(lastMi, 3) : "—"} (moisture stress).`,
+        margin,
+        y0,
+        { maxWidth: contentW }
+      );
+      y0 += 8;
+
+      doc.autoTable({
+        startY: y0,
+        head: [
+          [
+            "Metric (series)",
+            "Min",
+            "Max",
+            "Latest"
+          ]
+        ],
+        body: [
+          [
+            "NDVI (vigour)",
+            mmN.min != null ? fmtNum(mmN.min, 3) : "—",
+            mmN.max != null ? fmtNum(mmN.max, 3) : "—",
+            lastNd != null ? fmtNum(lastNd, 3) : "—"
+          ],
+          [
+            "NDRE (N / red-edge)",
+            mmRe.min != null ? fmtNum(mmRe.min, 3) : "—",
+            mmRe.max != null ? fmtNum(mmRe.max, 3) : "—",
+            lastRe != null ? fmtNum(lastRe, 3) : "—"
+          ],
+          [
+            "NDMI (moisture)",
+            mmMi.min != null ? fmtNum(mmMi.min, 3) : "—",
+            mmMi.max != null ? fmtNum(mmMi.max, 3) : "—",
+            lastMi != null ? fmtNum(lastMi, 3) : "—"
+          ]
+        ],
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 7.5, cellPadding: 1.3 },
+        headStyles: { fillColor: [26, 72, 28] }
+      });
+      y0 = doc.lastAutoTable.finalY + 5;
 
       const ndreByTo = new Map(
         (statPayload.ndre_intervals || []).map((r) => [String((r && r.to) || r.from || ""), r])
@@ -701,31 +1021,40 @@ export function initFarmReports(opts) {
           ? rows
           : [["—", "—", "—", "—"]],
         margin: { left: margin, right: margin },
-        styles: { fontSize: 7.5, cellPadding: 1.5 },
+        styles: { fontSize: 7.2, cellPadding: 1.2 },
         headStyles: { fillColor: [22, 70, 22] }
       });
-      y0 = doc.lastAutoTable.finalY + 6;
+      y0 = doc.lastAutoTable.finalY + 4;
+
+      doc.setFontSize(6.8);
+      doc.setTextColor(80, 80, 80);
+      doc.text("NDRE = (B8−B5)/(B8+B5);  NDMI = (B8A−B11)/(B8A+B11).  Spatial zonation and DEM slope require a raster service (not included here).", margin, y0, { maxWidth: contentW });
+      y0 += 7;
+
+      doc.addPage();
+      addHeaderFooter(doc, "Sentinel-2 time series (chart)", logo, null);
+      y0 = 40;
       if (chartPng) {
-        try {
-          doc.addImage(chartPng, "PNG", margin, y0, contentW, 70);
-        } catch {
-          /* */
-        }
-        y0 += 75;
+        const chartMaxH = Math.min((pageH - 20) * 0.8, pageH - y0 - 20);
+        y0 = addRasterFit(doc, chartPng, "PNG", margin, y0, contentW, chartMaxH);
+      } else {
+        doc.setFontSize(8);
+        doc.text("No chart in session — use Load stats before PDF.", margin, y0);
+        y0 += 8;
       }
-      doc.setFontSize(7.5);
+      doc.setFontSize(6.8);
       doc.setTextColor(60, 60, 60);
       doc.text(
-        "NDVI: green biomass / vigour. NDRE: red-edge chlorophyll sensitivity (canopy N). NDMI: moisture (NIR–SWIR). Compare with weather, irrigation, and field scouting.",
+        "Use this chart for growth stage, fertiliser / irrigation response, and seasonal comparison with the same block in prior seasons.",
         margin,
         y0,
         { maxWidth: contentW }
       );
-      y0 += 10;
+      y0 += 8;
 
       doc.addPage();
-      addHeaderFooter(doc, `Block ${bl.block_code} — plots`);
-      y0 = 36;
+      addHeaderFooter(doc, `Block ${bl.block_code} — plot register`, logo, null);
+      y0 = 40;
       doc.setFontSize(7.5);
       doc.setTextColor(60, 60, 60);
       doc.text(
@@ -752,7 +1081,7 @@ export function initFarmReports(opts) {
             ])
           : [["—", "—", "—", "—", "—"]],
         margin: { left: margin, right: margin },
-        styles: { fontSize: 7.5, cellPadding: 1.5 },
+        styles: { fontSize: 7.2, cellPadding: 1.2 },
         headStyles: { fillColor: [46, 90, 46] }
       });
 

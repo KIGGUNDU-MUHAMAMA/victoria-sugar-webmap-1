@@ -154,6 +154,41 @@ function getJsPDFConstructor() {
 }
 
 /**
+ * Text for jsPDF built-in Helvetica (WinAnsi / PDF 1.3). Em/en dashes, typographic quotes, Unicode
+ * minus, and code points above U+00FF are not written safely and often render as a blank in Adobe
+ * Acrobat even when Chrome/Edge’s PDF view shows them.
+ * @param {unknown} s
+ * @returns {string}
+ */
+function pdfText(s) {
+  if (s == null) return "";
+  let t = String(s);
+  t = t
+    .replace(/\r\n/g, "\n")
+    .replace(/[\u2010-\u2015\uFE58\uFE63\uFF0D\u2212\u2043\u2E3A\u2E3B]/g, "-")
+    .replace(/[\u2018\u2019\u00B4\u201A\u2032\u0060\uFF07]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u2033\uFF02\u201A]/g, '"')
+    .replace(/\u2026/g, "...")
+    .replace(/[\u00A0\u2000-\u200B\u2007\u202F\uFEFF\u2060]/g, " ")
+    .replace(/[\u00B7\u22C5\u2219\u2022\u25CF\u00B7\u0387]/g, " | ");
+  const a = Array.from(t);
+  let out = "";
+  for (const ch of a) {
+    const c = ch.codePointAt(0);
+    if (c === 0x0a) {
+      out += "\n";
+    } else if (c < 0x20) {
+      out += " ";
+    } else if (c <= 0xff) {
+      out += ch;
+    } else {
+      out += "?";
+    }
+  }
+  return out;
+}
+
+/**
  * @param {unknown} error - e.g. FunctionsHttpError: `context` is the fetch Response, not `{ body: string }`.
  * @returns {Promise<{ httpStatus: number | null, detail: string }>}
  */
@@ -691,20 +726,20 @@ export function initFarmReports(opts) {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10.5);
     doc.setFont("helvetica", "bold");
-    doc.text("VICTORIA SUGAR LTD", textX, 9);
+    doc.text(pdfText("VICTORIA SUGAR LTD"), textX, 9);
     doc.setFontSize(7.2);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(235, 245, 232);
-    doc.text("Land intelligence — sugarcane blocks & parcels", textX, 15);
+    doc.text(pdfText("Land intelligence | sugarcane blocks & parcels"), textX, 15);
     doc.setTextColor(40, 40, 40);
     doc.setFontSize(9.2);
     doc.setFont("helvetica", "bold");
-    doc.text(String(title), margin, 30);
+    doc.text(pdfText(String(title)), margin, 30);
     if (subtitle) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.2);
       doc.setTextColor(70, 80, 70);
-      doc.text(String(subtitle), margin, 36);
+      doc.text(pdfText(String(subtitle)), margin, 36);
     }
     const footY = pageH - 8.5;
     doc.setDrawColor(200, 210, 200);
@@ -712,11 +747,21 @@ export function initFarmReports(opts) {
     doc.line(margin, footY - 2, pageW - margin, footY - 2);
     doc.setFontSize(7.2);
     doc.setTextColor(100, 100, 100);
-    const genAt = new Date().toLocaleString();
+    const genAt = new Date().toLocaleString("en-GB", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
     const user = getCurrentUser?.();
     const who = user?.email || user?.role || "Map user";
-    doc.text(`Generated ${genAt} · ${who} · Internal use only.`, margin, footY);
-    doc.text("Page " + String(doc.getNumberOfPages()), pageW - margin, footY, { align: "right" });
+    doc.text(
+      pdfText(`Generated ${genAt} | ${String(who)} | Internal use only.`),
+      margin,
+      footY
+    );
+    doc.text(pdfText("Page " + String(doc.getNumberOfPages())), pageW - margin, footY, { align: "right" });
   }
 
   /** @returns {number} y position just below the image (mm) */
@@ -822,7 +867,7 @@ export function initFarmReports(opts) {
       if (chartWrap) chartWrap.style.height = chOldH || "200px";
       if (statsChart) statsChart.resize();
 
-      const doc = new jsPDF({ unit: "mm", format: "a4", compress: false });
+      const doc = new jsPDF({ unit: "mm", format: "a4", compress: false, precision: 2, putOnlyUsedFonts: true });
       doc.setFont("helvetica", "normal");
       if (typeof doc.autoTable !== "function") {
         if (setStatus) {
@@ -861,15 +906,19 @@ export function initFarmReports(opts) {
 
       addHeaderFooter(
         doc,
-        `Block ${bl.block_code} — overview & map`,
+        `Block ${bl.block_code} - overview & map`,
         logo,
-        "Sugarcane intelligence · block extent below is fitted to the polygon (proportional capture)"
+        "Sugarcane intelligence | block extent below is fitted to the polygon (proportional capture)"
       );
       let y0 = 40;
       doc.setFontSize(9.2);
       doc.setTextColor(28, 40, 28);
       doc.setFont("helvetica", "bold");
-      doc.text(`Block ${bl.block_code} — ${String(bl.block_name || "—")}`, margin, y0);
+      doc.text(
+        pdfText(`Block ${bl.block_code} - ${String(bl.block_name || "-")}`),
+        margin,
+        y0
+      );
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(55, 60, 55);
@@ -877,15 +926,15 @@ export function initFarmReports(opts) {
       {
         const h = sumHarvestTonnes(parcels);
         const sub = `Estate: ${String(
-          bl.estate_name || "—"
-        )} · ${String(statPayload.time_range?.from || "").slice(0, 10)} → ${String(
+          bl.estate_name || "-"
+        )} | ${String(statPayload.time_range?.from || "").slice(0, 10)} to ${String(
           statPayload.time_range?.to || ""
-        ).slice(0, 10)} · ${String(statPayload.interval || "P16D")} · SCL mask · ${
+        ).slice(0, 10)} | ${String(statPayload.interval || "P16D")} | SCL mask | ${
           fmtNum(bl.expected_area_acres, 1)
-        } ac · ${parcels.length} plots${
-          h.n > 0 ? ` · ${fmtNum(h.sum, 2)} t (plots)` : ""
-        } · Health ${hScore != null ? String(hScore) + "/100" : "—"} · ${zone.label}`;
-        doc.text(sub, margin, y0, { maxWidth: contentW });
+        } ac | ${parcels.length} plots${
+          h.n > 0 ? ` | ${fmtNum(h.sum, 2)} t (plots)` : ""
+        } | Health ${hScore != null ? String(hScore) + "/100" : "-"} | ${zone.label}`;
+        doc.text(pdfText(sub), margin, y0, { maxWidth: contentW });
         y0 += 7;
       }
 
@@ -895,21 +944,23 @@ export function initFarmReports(opts) {
         try {
           y0 = addRasterFit(doc, mapImg, "JPEG", margin, y0, contentW, capMaxH);
         } catch {
-          doc.text("Map image could not be embedded.", margin, y0);
+          doc.text(pdfText("Map image could not be embedded."), margin, y0);
           y0 += 8;
         }
       } else {
         doc.setFontSize(8);
         doc.setTextColor(120, 0, 0);
-        doc.text("Map capture unavailable. Fit the block on screen, then try again.", margin, y0);
+        doc.text(pdfText("Map capture unavailable. Fit the block on screen, then try again."), margin, y0);
         y0 += 8;
       }
       doc.setFontSize(6.9);
       doc.setTextColor(88, 90, 88);
       doc.text(
-        "Map — fitted to the block geometry (WGS 84), screenshot keeps aspect (no stretch). " +
-          "DEM/relief: use the WMS DEM layer in the app (set SENTINEL_DEM_WMS_LAYER if your layer name is not “DEM”). " +
-          "Table statistics are field-mean time series, not a pixel zonation map.",
+        pdfText(
+          "Map - fitted to the block geometry (WGS 84), screenshot keeps aspect (no stretch). " +
+            "DEM/relief: use the WMS DEM layer in the app (set SENTINEL_DEM_WMS_LAYER if your layer name is not \"DEM\"). " +
+            "Table statistics are field-mean time series, not a pixel zonation map."
+        ),
         margin,
         y0,
         { maxWidth: contentW }
@@ -921,15 +972,17 @@ export function initFarmReports(opts) {
         doc,
         "Vegetation indices, cultivation & time series",
         logo,
-        "Field-mean NDVI / NDRE / NDMI — compare with last season, rain, and fertiliser / irrigation"
+        "Field-mean NDVI / NDRE / NDMI - compare with last season, rain, and fertiliser / irrigation"
       );
       y0 = 40;
       doc.setFontSize(7.2);
       doc.setTextColor(45, 55, 45);
       doc.setFont("helvetica", "normal");
       doc.text(
-        "NDVI: canopy greenness. NDRE: red-edge (N / chlorophyll in dense cane). NDMI: moisture stress signal. " +
-          "Zonal maps, DEM slope, and pixel analytics require a raster service — here we use robust block means.",
+        pdfText(
+          "NDVI: canopy greenness. NDRE: red-edge (N / chlorophyll in dense cane). NDMI: moisture stress signal. " +
+            "Zonal maps, DEM slope, and pixel analytics require a raster service - here we use robust block means."
+        ),
         margin,
         y0,
         { maxWidth: contentW }
@@ -942,11 +995,13 @@ export function initFarmReports(opts) {
         doc.setFontSize(7.2);
         doc.setTextColor(32, 70, 35);
         doc.text(
-          `Uniformity (temporal CV of mean NDVI): ${
-            cvN != null ? fmtNum(cvN, 2) : "—"
-          }  ·  Trend (latest − first NDVI): ${
-            trendN != null ? (trendN >= 0 ? "+" : "") + fmtNum(trendN, 3) : "—"
-          }`,
+          pdfText(
+            `Uniformity (temporal CV of mean NDVI): ${
+              cvN != null ? fmtNum(cvN, 2) : "-"
+            }  |  Trend (latest - first NDVI): ${
+              trendN != null ? (trendN >= 0 ? "+" : "") + fmtNum(trendN, 3) : "-"
+            }`
+          ),
           margin + 2,
           y0 + 5.5,
           { maxWidth: contentW - 4 }
@@ -954,7 +1009,7 @@ export function initFarmReports(opts) {
         doc.setFontSize(6.8);
         doc.setTextColor(40, 75, 44);
         doc.text(
-          `NDRE: ${ndreNarrative(lastRe)}  NDMI: ${ndmiNarrative(lastMi)}`,
+          pdfText(`NDRE: ${ndreNarrative(lastRe)}  NDMI: ${ndmiNarrative(lastMi)}`),
           margin + 2,
           y0 + 13.5,
           { maxWidth: contentW - 4 }
@@ -965,16 +1020,17 @@ export function initFarmReports(opts) {
       const pBody = Object.keys(pCounts)
         .sort()
         .map((k) => [CULTIVATION_LABELS[k] || k, String(pCounts[k])]);
+      const pBodySafe = pBody.length ? pBody.map((row) => row.map((c) => pdfText(c))) : [["-", "0"]];
       doc.setFontSize(8.3);
       doc.setTextColor(30, 30, 30);
       doc.setFont("helvetica", "bold");
-      doc.text("Cultivation (plot count by status)", margin, y0);
+      doc.text(pdfText("Cultivation (plot count by status)"), margin, y0);
       doc.setFont("helvetica", "normal");
       y0 += 4;
       doc.autoTable({
         startY: y0,
-        head: [["Status", "Plot count"]],
-        body: pBody.length ? pBody : [["—", "0"]],
+        head: [["Status", "Plot count"]].map((row) => row.map((c) => pdfText(c))),
+        body: pBodySafe,
         margin: { left: margin, right: margin },
         styles: { fontSize: 8, cellPadding: 1.6 },
         headStyles: { fillColor: [34, 78, 34] }
@@ -984,16 +1040,20 @@ export function initFarmReports(opts) {
       doc.setFontSize(7.2);
       doc.setTextColor(55, 60, 55);
       doc.text(
-        "Field-mean health bands (illustrative, from last NDVI in series):  <0.3 Poor  ·  0.3–0.5 Moderate  ·  0.5–0.7 Good  ·  >0.7 Excellent",
+        pdfText(
+          "Field-mean health bands (illustrative, from last NDVI in series):  <0.3 Poor  |  0.3-0.5 Moderate  |  0.5-0.7 Good  |  >0.7 Excellent"
+        ),
         margin,
         y0,
         { maxWidth: contentW }
       );
       y0 += 5;
       doc.text(
-        `Latest period: NDVI ${lastNd != null ? fmtNum(lastNd, 3) : "—"} · NDRE ${
-          lastRe != null ? fmtNum(lastRe, 3) : "—"
-        } (nutrient / chlorophyll) · NDMI ${lastMi != null ? fmtNum(lastMi, 3) : "—"} (moisture stress).`,
+        pdfText(
+          `Latest period: NDVI ${lastNd != null ? fmtNum(lastNd, 3) : "-"} | NDRE ${
+            lastRe != null ? fmtNum(lastRe, 3) : "-"
+          } (nutrient / chlorophyll) | NDMI ${lastMi != null ? fmtNum(lastMi, 3) : "-"} (moisture stress).`
+        ),
         margin,
         y0,
         { maxWidth: contentW }
@@ -1008,28 +1068,28 @@ export function initFarmReports(opts) {
             "Min",
             "Max",
             "Latest"
-          ]
+          ].map((c) => pdfText(c))
         ],
         body: [
           [
             "NDVI (vigour)",
-            mmN.min != null ? fmtNum(mmN.min, 3) : "—",
-            mmN.max != null ? fmtNum(mmN.max, 3) : "—",
-            lastNd != null ? fmtNum(lastNd, 3) : "—"
+            mmN.min != null ? fmtNum(mmN.min, 3) : "-",
+            mmN.max != null ? fmtNum(mmN.max, 3) : "-",
+            lastNd != null ? fmtNum(lastNd, 3) : "-"
           ],
           [
             "NDRE (N / red-edge)",
-            mmRe.min != null ? fmtNum(mmRe.min, 3) : "—",
-            mmRe.max != null ? fmtNum(mmRe.max, 3) : "—",
-            lastRe != null ? fmtNum(lastRe, 3) : "—"
+            mmRe.min != null ? fmtNum(mmRe.min, 3) : "-",
+            mmRe.max != null ? fmtNum(mmRe.max, 3) : "-",
+            lastRe != null ? fmtNum(lastRe, 3) : "-"
           ],
           [
             "NDMI (moisture)",
-            mmMi.min != null ? fmtNum(mmMi.min, 3) : "—",
-            mmMi.max != null ? fmtNum(mmMi.max, 3) : "—",
-            lastMi != null ? fmtNum(lastMi, 3) : "—"
+            mmMi.min != null ? fmtNum(mmMi.min, 3) : "-",
+            mmMi.max != null ? fmtNum(mmMi.max, 3) : "-",
+            lastMi != null ? fmtNum(lastMi, 3) : "-"
           ]
-        ],
+        ].map((row) => row.map((c) => pdfText(String(c)))),
         margin: { left: margin, right: margin },
         styles: { fontSize: 7.5, cellPadding: 1.3 },
         headStyles: { fillColor: [26, 72, 28] }
@@ -1047,18 +1107,17 @@ export function initFarmReports(opts) {
         const re = ndreByTo.get(k) || {};
         const o = ndmiByTo.get(k) || {};
         return [
-          k ? k.slice(0, 10) : "—",
-          r.mean != null ? fmtNum(r.mean, 3) : "—",
-          re.mean != null ? fmtNum(re.mean, 3) : "—",
-          o.mean != null ? fmtNum(o.mean, 3) : "—"
+          k ? k.slice(0, 10) : "-",
+          r.mean != null ? fmtNum(r.mean, 3) : "-",
+          re.mean != null ? fmtNum(re.mean, 3) : "-",
+          o.mean != null ? fmtNum(o.mean, 3) : "-"
         ];
       });
+      const periodRows = rows.length ? rows : [["-", "-", "-", "-"]];
       doc.autoTable({
         startY: y0,
-        head: [["Period end (UTC)", "NDVI", "NDRE", "NDMI"]],
-        body: rows.length
-          ? rows
-          : [["—", "—", "—", "—"]],
+        head: [["Period end (UTC)", "NDVI", "NDRE", "NDMI"]].map((row) => row.map((c) => pdfText(c))),
+        body: periodRows.map((row) => row.map((c) => pdfText(String(c)))),
         margin: { left: margin, right: margin },
         styles: { fontSize: 7.2, cellPadding: 1.2 },
         headStyles: { fillColor: [22, 70, 22] }
@@ -1067,7 +1126,14 @@ export function initFarmReports(opts) {
 
       doc.setFontSize(6.8);
       doc.setTextColor(80, 80, 80);
-      doc.text("NDRE = (B8−B5)/(B8+B5);  NDMI = (B8A−B11)/(B8A+B11).  Spatial zonation and DEM slope require a raster service (not included here).", margin, y0, { maxWidth: contentW });
+      doc.text(
+        pdfText(
+          "NDRE = (B8-B5)/(B8+B5);  NDMI = (B8A-B11)/(B8A+B11).  Spatial zonation and DEM slope require a raster service (not included here)."
+        ),
+        margin,
+        y0,
+        { maxWidth: contentW }
+      );
       y0 += 7;
 
       doc.addPage();
@@ -1078,13 +1144,15 @@ export function initFarmReports(opts) {
         y0 = addRasterFit(doc, chartPng, "PNG", margin, y0, contentW, chartMaxH);
       } else {
         doc.setFontSize(8);
-        doc.text("No chart in session — use Load stats before PDF.", margin, y0);
+        doc.text(pdfText("No chart in session - use Load stats before PDF."), margin, y0);
         y0 += 8;
       }
       doc.setFontSize(6.8);
       doc.setTextColor(60, 60, 60);
       doc.text(
-        "Use this chart for growth stage, fertiliser / irrigation response, and seasonal comparison with the same block in prior seasons.",
+        pdfText(
+          "Use this chart for growth stage, fertiliser / irrigation response, and seasonal comparison with the same block in prior seasons."
+        ),
         margin,
         y0,
         { maxWidth: contentW }
@@ -1092,14 +1160,16 @@ export function initFarmReports(opts) {
       y0 += 8;
 
       doc.addPage();
-      addHeaderFooter(doc, `Block ${bl.block_code} — plot register`, logo, null);
+      addHeaderFooter(doc, `Block ${bl.block_code} - plot register`, logo, null);
       y0 = 40;
       doc.setFontSize(7.5);
       doc.setTextColor(60, 60, 60);
       doc.text(
-        `Block cultiv.: ${CULTIVATION_LABELS[bl.cultivation_status] || bl.cultivation_status} · Block harvest: ${
-          bl.harvest_tonnes != null ? fmtNum(bl.harvest_tonnes, 2) + " t" : "—"
-        }`,
+        pdfText(
+          `Block cultiv.: ${CULTIVATION_LABELS[bl.cultivation_status] || bl.cultivation_status} | Block harvest: ${
+            bl.harvest_tonnes != null ? fmtNum(bl.harvest_tonnes, 2) + " t" : "-"
+          }`
+        ),
         margin,
         y0
       );
@@ -1109,16 +1179,20 @@ export function initFarmReports(opts) {
         .sort((a, b) => (Number(a.parcel_no) || 0) - (Number(b.parcel_no) || 0));
       doc.autoTable({
         startY: y0,
-        head: [["Plot", "Area (ac)", "Cultivation", "Harvest (t)", "Last harvest"]],
+        head: [["Plot", "Area (ac)", "Cultivation", "Harvest (t)", "Last harvest"]].map((row) =>
+          row.map((c) => pdfText(c))
+        ),
         body: bParcels.length
-          ? bParcels.map((p) => [
-              String(p.parcel_no),
-              fmtNum(p.expected_area_acres, 2),
-              CULTIVATION_LABELS[p.cultivation_status] || p.cultivation_status,
-              p.harvest_tonnes != null ? fmtNum(p.harvest_tonnes, 2) : "—",
-              p.last_harvest_date != null ? String(p.last_harvest_date).slice(0, 10) : "—"
-            ])
-          : [["—", "—", "—", "—", "—"]],
+          ? bParcels.map((p) =>
+              [
+                String(p.parcel_no),
+                fmtNum(p.expected_area_acres, 2),
+                CULTIVATION_LABELS[p.cultivation_status] || p.cultivation_status,
+                p.harvest_tonnes != null ? fmtNum(p.harvest_tonnes, 2) : "-",
+                p.last_harvest_date != null ? String(p.last_harvest_date).slice(0, 10) : "-"
+              ].map((c) => pdfText(String(c)))
+            )
+          : [["-", "-", "-", "-", "-"]],
         margin: { left: margin, right: margin },
         styles: { fontSize: 7.2, cellPadding: 1.2 },
         headStyles: { fillColor: [46, 90, 46] }

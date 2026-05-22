@@ -198,6 +198,9 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
         <button type="button" class="map-popup__close" aria-label="Close details">&times;</button>
       </header>
       <div class="map-popup__grid">${body}</div>
+      <div class="map-popup__actions" style="margin-top:10px;text-align:right;">
+        <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;"><i class="fas fa-trash-alt" style="margin-right:5px;"></i>Delete</button>
+      </div>
     </div>`;
 }
 
@@ -1025,11 +1028,29 @@ function setupInfoPopup() {
   const panel = document.getElementById("featureInfoPanel");
   if (!inner || !panel) return;
 
-  inner.addEventListener("click", (ev) => {
+  inner.addEventListener("click", async (ev) => {
     if (ev.target.closest(".map-popup__close")) {
       closeInfoPopup();
       selectedFeature = null;
       selectedLayerType = null;
+    } else if (ev.target.closest(".btn-delete-feature")) {
+      const btn = ev.target.closest(".btn-delete-feature");
+      const layerType = btn.dataset.layer;
+      const featureId = btn.dataset.id;
+      const isParcel = layerType === "PARCELS";
+      if (!confirm(`Are you sure you want to delete this ${isParcel ? "parcel" : "block"}? This action cannot be undone.`)) return;
+
+      const tableName = isParcel ? "vsl_parcels" : "vsl_blocks";
+      const { error } = await supabase.from(tableName).delete().eq("id", featureId);
+
+      if (error) {
+        alert("Failed to delete feature: " + error.message);
+      } else {
+        closeInfoPopup();
+        selectedFeature = null;
+        selectedLayerType = null;
+        loadLayersFromDb();
+      }
     }
   });
 

@@ -3522,3 +3522,59 @@ select.search-panel__input {
     width: min(19rem, 94vw);
   }
 }
+
+/* Mobile Toolbar Adjustments */
+@media (max-width: 900px) {
+  .project-toolbar {
+    flex-direction: column;
+    padding: 8px 6px;
+    gap: 8px;
+  }
+  .project-brand {
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .project-title-row {
+    margin: 0;
+  }
+  .project-brand p {
+    display: none; /* Hide subtitle to save vertical space on mobile */
+  }
+  .map-top-controls {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+    gap: 4px;
+    overflow-x: visible;
+  }
+  .control-btn {
+    min-width: 0;
+    flex: 1;
+    padding: 6px 2px 4px;
+    border-radius: 6px;
+  }
+  .control-btn .btn-label {
+    font-size: 0.5rem;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .control-btn i {
+    font-size: 14px;
+  }
+  /* Push map content down slightly since toolbar is now taller */
+  .webmap-app.webmap-app--sidebar .map-main {
+    top: 125px;
+  }
+  .webmap-app .map-left-stack {
+    top: 135px;
+  }
+  .parcel-status-panel {
+    top: 135px;
+  }
+}

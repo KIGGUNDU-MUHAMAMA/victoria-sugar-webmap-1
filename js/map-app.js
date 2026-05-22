@@ -2144,4 +2144,11 @@ async function start() {
   }
 }
 
+// Expose key references globally for the Rover inline script (non-module context)
+window._vslMap        = () => map;
+window._vslBlocksSrc  = blocksSource;
+window._vslParcelsSrc = parcelsSource;
+window._vslBlocksLyr  = blocksLayer;
+window._vslParcelsLyr = parcelsLayer;
+
 start().catch((err) => setStatus(statusEl, err.message, true));

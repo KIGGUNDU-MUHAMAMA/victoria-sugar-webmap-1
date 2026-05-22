@@ -751,12 +751,12 @@
 .rv-corner-go { font-size: 11px; background: var(--rv-amber-dk); color: var(--rv-txt); border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
 
 /* ---- Bottom-left collapsible action bar ---- */
-#rvActionBar { position: absolute; left: 8px; bottom: 10px; z-index: 20; display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; }
+#rvActionBar { position: absolute; left: 8px; top: 0px; z-index: 20; display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; }
 #rvActionBar * { pointer-events: auto; }
 #rvActionBtns {
   display: flex; flex-direction: column; gap: 4px; padding: 6px 5px;
-  background: var(--rv-panel); border: 1px solid var(--rv-border); border-bottom: none;
-  border-radius: 10px 10px 0 0; max-height: 65vh; overflow-y: auto; overflow-x: hidden;
+  background: var(--rv-panel); border: 1px solid var(--rv-border); border-top: none;
+  border-radius: 0 0 10px 10px; max-height: 65vh; overflow-y: auto; overflow-x: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease, opacity 0.2s ease;
 }
 #rvActionBtns.rv-collapsed { max-height: 0; padding: 0 5px; opacity: 0; overflow: hidden; pointer-events: none; }
@@ -765,6 +765,7 @@
   border-radius: 0 0 8px 8px; color: var(--rv-amber); font-size: 11px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 4px;
   flex-shrink: 0; transition: background 0.15s;
+  border-top: none;
 }
 #rvActionToggle:hover { background: var(--rv-amber-dk); }
 .rv-action-btn {
@@ -892,6 +893,36 @@
   <!-- Map -->
   <div id="rvMapContainer">
     <div id="rvMap"></div>
+    <!-- Top-left collapsible action bar -->
+    <div id="rvActionBar">
+      <button id="rvActionToggle" title="Toggle tools">▼ Tools</button>
+      <div id="rvActionBtns" class="rv-collapsed">
+        <button class="rv-action-btn" id="rvMarkBtn" title="Mark Point">
+          <i class="fas fa-map-pin"></i><span>MARK</span>
+        </button>
+        <button class="rv-action-btn" id="rvSelectBtn" title="Select Block/Parcel">
+          <i class="fas fa-vector-square"></i><span>SELECT</span>
+        </button>
+        <button class="rv-action-btn" id="rvRecordBtn" title="Record Boundary Walk">
+          <i class="fas fa-route"></i><span>WALK</span>
+        </button>
+        <button class="rv-action-btn" id="rvAreaBtn" title="Area from Points">
+          <i class="fas fa-draw-polygon"></i><span>AREA</span>
+        </button>
+        <button class="rv-action-btn" id="rvExportBtn" title="Export Data">
+          <i class="fas fa-file-export"></i><span>EXPORT</span>
+        </button>
+        <button class="rv-action-btn" id="rvBasemapBtn" title="Basemap">
+          <i class="fas fa-layer-group"></i><span>MAP</span>
+        </button>
+        <button class="rv-action-btn" id="rvPhotoBtn" title="Capture Geotagged Photo">
+          <i class="fas fa-camera"></i><span>PHOTO</span>
+        </button>
+        <button class="rv-action-btn" id="rvSettingsBtn" title="Settings">
+          <i class="fas fa-cog"></i><span>OPTS</span>
+        </button>
+      </div>
+    </div>
     <!-- Basemap switcher overlay -->
     <div id="rvBasemapBar">
       <div class="rv-bm-thumb active" data-bm="hybrid">
@@ -945,36 +976,7 @@
     <div id="rvCornerList"></div>
   </div>
 
-  <!-- Bottom-left collapsible action bar -->
-  <div id="rvActionBar">
-    <div id="rvActionBtns">
-      <button class="rv-action-btn" id="rvMarkBtn" title="Mark Point">
-        <i class="fas fa-map-pin"></i><span>MARK</span>
-      </button>
-      <button class="rv-action-btn" id="rvSelectBtn" title="Select Block/Parcel">
-        <i class="fas fa-vector-square"></i><span>SELECT</span>
-      </button>
-      <button class="rv-action-btn" id="rvRecordBtn" title="Record Boundary Walk">
-        <i class="fas fa-route"></i><span>WALK</span>
-      </button>
-      <button class="rv-action-btn" id="rvAreaBtn" title="Area from Points">
-        <i class="fas fa-draw-polygon"></i><span>AREA</span>
-      </button>
-      <button class="rv-action-btn" id="rvExportBtn" title="Export Data">
-        <i class="fas fa-file-export"></i><span>EXPORT</span>
-      </button>
-      <button class="rv-action-btn" id="rvBasemapBtn" title="Basemap">
-        <i class="fas fa-layer-group"></i><span>MAP</span>
-      </button>
-      <button class="rv-action-btn" id="rvPhotoBtn" title="Capture Geotagged Photo">
-        <i class="fas fa-camera"></i><span>PHOTO</span>
-      </button>
-      <button class="rv-action-btn" id="rvSettingsBtn" title="Settings">
-        <i class="fas fa-cog"></i><span>OPTS</span>
-      </button>
-    </div>
-    <button id="rvActionToggle" title="Toggle tools">▲ Tools</button>
-  </div>
+
 
   <!-- Hidden camera input -->
   <input type="file" id="rvCameraInput" accept="image/*" capture="environment" style="display:none;">
@@ -1371,7 +1373,7 @@ function rvInitMap() {
     target: 'rvMap',
     layers: [ satLayer, osmLayer2, topoLayer, darkLayer, noneLayer, ...mainMapLayers, RV.walkLayer, RV.stakeLayer, RV.cornerLayer, RV.ptLayer, RV.gpsLayer ],
     view: new ol.View({ center: ol.proj.fromLonLat(initCenter), zoom: initZoom, maxZoom: 22 }),
-    controls: ol.control.defaults.defaults({ attribution: false, rotate: false, zoom: true })
+    controls: ol.control.defaults.defaults({ attribution: false, rotate: false, zoom: false })
   });
 
   RV.map.on('click', function(evt) { if (RV.selectMode) rvHandleMapClick(evt.coordinate); });

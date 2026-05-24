@@ -31,7 +31,7 @@ function parseDxfFile(file) {
   });
 }
 function surveyFunctionUrl(cfg) {
-  const base = (cfg.SUPABASE_URL || "").replace(/\/$/, "");
+  const base = (cfg.SUPABASE_URL || "").replace(/\/\$/, "");
   const name = cfg.SURVEY_FUNCTION_NAME || "quick-api";
   return `${base}/functions/v1/${name}`;
 }
@@ -223,31 +223,51 @@ export function initSurveyImport({
     drawer.setAttribute("aria-hidden", "true");
   }
 
-  function refreshParentBlockOptions() {
+  async function refreshParentBlockOptions() {
     if (!parentBlockSelect) return;
     const keep = parentBlockSelect.value;
-    parentBlockSelect.innerHTML =
-      '<option value="">Select a block (codes 1, 2, 3…)</option>';
-    const feats = blocksSource.getFeatures().slice().sort((a, b) => {
-      const ca = String(a.get("block_code") ?? "");
-      const cb = String(b.get("block_code") ?? "");
-      const na = Number(ca);
-      const nb = Number(cb);
-      if (Number.isFinite(na) && Number.isFinite(nb) && String(na) === ca && String(nb) === cb) {
-        return na - nb;
+    parentBlockSelect.innerHTML = '<option value="">Loading blocks…</option>';
+    
+    try {
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/blocks?select=block_code`;
+      const res = await fetch(url, {
+        headers: {
+          "apikey": cfg.SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`,
+          "Accept": "application/json"
+        }
+      });
+      if (!res.ok) throw new Error("Failed to fetch blocks");
+      
+      const data = await res.json();
+      
+      const codes = [...new Set(data.map(d => d.block_code).filter(c => c != null && String(c).trim() !== ""))];
+      
+      codes.sort((a, b) => {
+        const ca = String(a);
+        const cb = String(b);
+        const na = Number(ca);
+        const nb = Number(cb);
+        if (Number.isFinite(na) && Number.isFinite(nb) && String(na) === ca && String(nb) === cb) {
+          return na - nb;
+        }
+        return ca.localeCompare(cb, undefined, { numeric: true });
+      });
+      
+      parentBlockSelect.innerHTML = '<option value="">Select a block (codes 1, 2, 3…)</option>';
+      for (const code of codes) {
+        const opt = document.createElement("option");
+        opt.value = String(code).trim();
+        opt.textContent = `Block ${String(code).trim()}`;
+        parentBlockSelect.appendChild(opt);
       }
-      return ca.localeCompare(cb, undefined, { numeric: true });
-    });
-    for (const f of feats) {
-      const code = f.get("block_code");
-      if (code == null || String(code).trim() === "") continue;
-      const opt = document.createElement("option");
-      opt.value = String(code).trim();
-      opt.textContent = `Block ${String(code).trim()}`;
-      parentBlockSelect.appendChild(opt);
-    }
-    if (keep && [...parentBlockSelect.options].some((o) => o.value === keep)) {
-      parentBlockSelect.value = keep;
+      
+      if (keep && [...parentBlockSelect.options].some((o) => o.value === keep)) {
+        parentBlockSelect.value = keep;
+      }
+    } catch (e) {
+      console.error("[Victoria Survey] Error fetching parent blocks:", e);
+      parentBlockSelect.innerHTML = '<option value="">Error loading blocks</option>';
     }
   }
 

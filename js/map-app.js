@@ -74,7 +74,7 @@ function cultivationKeyFromFeature(feature) {
 const parcelStatusState = {
   panelOpen: false,
   pickArmed: false,
-  selectedFeature: null,
+  selectedFeatures: [],
   selectedLayerType: null
 };
 
@@ -241,10 +241,9 @@ const blocksLayer = new ol.layer.Vector({
   source: blocksSource,
   style: (feature, resolution) => {
     const bid = feature.getId();
-    const hi =
-      searchHighlight.blockId != null &&
-      bid != null &&
-      String(bid) === String(searchHighlight.blockId);
+    const isSearchHi = searchHighlight.blockId != null && bid != null && String(bid) === String(searchHighlight.blockId);
+    const isStatusHi = parcelStatusState.selectedLayerType === "BLOCKS" && parcelStatusState.selectedFeatures.some(f => String(f.getId()) === String(bid));
+    const hi = isSearchHi || isStatusHi;
       
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
@@ -283,10 +282,9 @@ const parcelsLayer = new ol.layer.Vector({
   source: parcelsSource,
   style: (feature, resolution) => {
     const pid = feature.getId();
-    const hi =
-      searchHighlight.parcelId != null &&
-      pid != null &&
-      String(pid) === String(searchHighlight.parcelId);
+    const isSearchHi = searchHighlight.parcelId != null && pid != null && String(pid) === String(searchHighlight.parcelId);
+    const isStatusHi = parcelStatusState.selectedLayerType === "PARCELS" && parcelStatusState.selectedFeatures.some(f => String(f.getId()) === String(pid));
+    const hi = isSearchHi || isStatusHi;
       
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
@@ -772,43 +770,53 @@ function disarmParcelStatusPick() {
   const hint = document.getElementById("parcelStatusPickHint");
   pickBtn?.classList.remove("picking-active");
   if (cancelBtn) cancelBtn.hidden = true;
-  if (hint) {
-    hint.innerHTML =
-      "Choose <strong>Parcels</strong> or <strong>Blocks</strong>, then press <strong>Select on map</strong> and click a polygon.";
-  }
+  if (hint) hint.innerHTML = "";
 }
 
 function renderParcelStatusPreview() {
   const box = document.getElementById("parcelStatusPreview");
   const sec = document.getElementById("parcelStatusSelectionSection");
-  const f = parcelStatusState.selectedFeature;
+  const countBadge = document.getElementById("parcelStatusSelectionCount");
+  const features = parcelStatusState.selectedFeatures;
   const lt = parcelStatusState.selectedLayerType;
   if (!box || !sec) return;
-  if (!f || !lt) {
+  
+  if (countBadge) {
+    countBadge.textContent = `${features.length} selected`;
+  }
+  
+  if (!features || features.length === 0 || !lt) {
     sec.hidden = true;
     box.innerHTML = "";
     return;
   }
   sec.hidden = false;
+  
+  const f = features[0];
   const p = f.getProperties();
   if (lt === "PARCELS") {
     const bc = p.block_code ?? "—";
     const pn = p.parcel_no ?? p.parcel_code ?? "—";
-    box.innerHTML = `<strong>Parcel</strong> in block <strong>${bc}</strong>, plot <strong>${pn}</strong><br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
+    let text = `<strong>Parcel</strong> in block <strong>${bc}</strong>, plot <strong>${pn}</strong><br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
+    if (features.length > 1) text += `<br><em>...and ${features.length - 1} more selected.</em>`;
+    box.innerHTML = text;
   } else {
     const code = p.block_code ?? "—";
     const name = p.block_name ?? "";
-    box.innerHTML = `<strong>Block</strong> <strong>${code}</strong>${name ? ` — ${name}` : ""}<br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
+    let text = `<strong>Block</strong> <strong>${code}</strong>${name ? ` — ${name}` : ""}<br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
+    if (features.length > 1) text += `<br><em>...and ${features.length - 1} more selected.</em>`;
+    box.innerHTML = text;
   }
 }
 
 function syncParcelStatusFormFromSelection() {
-  const f = parcelStatusState.selectedFeature;
+  const features = parcelStatusState.selectedFeatures;
   const sel = document.getElementById("parcelStatusSelect");
   const ht = document.getElementById("parcelStatusHarvestTonnes");
   const dt = document.getElementById("parcelStatusLastHarvest");
   const notes = document.getElementById("parcelStatusNotes");
-  if (!f || !sel) return;
+  if (!features.length || !sel) return;
+  const f = features[0];
   const st = cultivationKeyFromFeature(f);
   sel.value = st;
   const tonnes = f.get("harvest_tonnes");
@@ -821,8 +829,10 @@ function syncParcelStatusFormFromSelection() {
 }
 
 function clearParcelStatusSelection() {
-  parcelStatusState.selectedFeature = null;
+  parcelStatusState.selectedFeatures = [];
   parcelStatusState.selectedLayerType = null;
+  blocksLayer.changed();
+  parcelsLayer.changed();
   renderParcelStatusPreview();
 }
 
@@ -889,21 +899,33 @@ function tryParcelStatusMapClick(evt) {
     setStatus(statusEl, `Click a ${mode === "PARCELS" ? "parcel" : "block"} polygon.`, true);
     return true;
   }
-  parcelStatusState.selectedFeature = hit;
-  parcelStatusState.selectedLayerType = layerHit;
-  disarmParcelStatusPick();
+  
+  if (parcelStatusState.selectedLayerType !== layerHit) {
+    parcelStatusState.selectedFeatures = [];
+    parcelStatusState.selectedLayerType = layerHit;
+  }
+  
+  const existingIdx = parcelStatusState.selectedFeatures.findIndex(f => f.getId() === hit.getId());
+  if (existingIdx > -1) {
+    parcelStatusState.selectedFeatures.splice(existingIdx, 1);
+  } else {
+    parcelStatusState.selectedFeatures.push(hit);
+  }
+  
   syncParcelStatusFormFromSelection();
   clearStatus(statusEl);
+  blocksLayer.changed();
+  parcelsLayer.changed();
   return true;
 }
 
 async function applyParcelStatusFromPanel() {
-  const f = parcelStatusState.selectedFeature;
+  const features = parcelStatusState.selectedFeatures;
   const lt = parcelStatusState.selectedLayerType;
   const applyBtn = document.getElementById("parcelStatusApplyBtn");
   const sel = document.getElementById("parcelStatusSelect");
-  if (!f || !lt || !sel) {
-    setParcelStatusFormError("Select a feature on the map first.");
+  if (!features || !features.length || !lt || !sel) {
+    setParcelStatusFormError("Select at least one feature on the map first.");
     return;
   }
   if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
@@ -930,42 +952,47 @@ async function applyParcelStatusFromPanel() {
 
   if (applyBtn) applyBtn.disabled = true;
   setParcelStatusFormError("");
+  setStatus(statusEl, `Saving status for ${features.length} item(s)...`);
 
-  const { data, error } = await supabase.rpc("vsl_set_cultivation_status", {
-    p_layer_type: lt,
-    p_feature_id: f.getId(),
-    p_status: status,
-    p_harvest_tonnes: tonnes,
-    p_last_harvest_date: lastHarvest,
-    p_notes: notes || null
-  });
+  let errorCount = 0;
+  for (const f of features) {
+    const { data, error } = await supabase.rpc("vsl_set_cultivation_status", {
+      p_layer_type: lt,
+      p_feature_id: f.getId(),
+      p_status: status,
+      p_harvest_tonnes: tonnes,
+      p_last_harvest_date: lastHarvest,
+      p_notes: notes || null
+    });
+    if (error || !data || data.success !== true) {
+      errorCount++;
+    }
+  }
 
   if (applyBtn) applyBtn.disabled = false;
 
-  if (error) {
-    setParcelStatusFormError(error.message || "Save failed.");
-    return;
-  }
-  if (!data || data.success !== true) {
-    setParcelStatusFormError(String((data && data.error) || "Save failed."));
-    return;
+  if (errorCount > 0) {
+    setParcelStatusFormError(`Failed to save ${errorCount} of ${features.length} item(s).`);
+  } else {
+    setStatus(statusEl, `Cultivation status saved for ${features.length} item(s).`);
   }
 
-  const savedId = f.getId();
+  const savedIds = features.map(f => String(f.getId()));
   const savedLt = lt;
   await loadLayersFromDb();
   blocksLayer.changed();
   parcelsLayer.changed();
+  
+  // Restore selection objects from new source
   const src = savedLt === "PARCELS" ? parcelsSource : blocksSource;
-  const nf = src.getFeatures().find((x) => String(x.getId()) === String(savedId));
-  if (nf) {
-    parcelStatusState.selectedFeature = nf;
+  const newFeatures = src.getFeatures().filter(x => savedIds.includes(String(x.getId())));
+  if (newFeatures.length > 0) {
+    parcelStatusState.selectedFeatures = newFeatures;
     parcelStatusState.selectedLayerType = savedLt;
     syncParcelStatusFormFromSelection();
   } else {
     clearParcelStatusSelection();
   }
-  setStatus(statusEl, "Cultivation status saved.");
 }
 
 function setupParcelStatusPanel() {
@@ -974,7 +1001,51 @@ function setupParcelStatusPanel() {
   const pickBtn = document.getElementById("parcelStatusPickBtn");
   const cancelPickBtn = document.getElementById("parcelStatusCancelPickBtn");
   const applyBtn = document.getElementById("parcelStatusApplyBtn");
+  const deleteBtn = document.getElementById("parcelStatusDeleteBtn");
   const layerRadios = document.querySelectorAll("input[name='parcelStatusLayer']");
+
+  deleteBtn?.addEventListener("click", async () => {
+    const features = parcelStatusState.selectedFeatures;
+    const lt = parcelStatusState.selectedLayerType;
+    if (!features || features.length === 0 || !lt) return;
+    
+    if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+      setParcelStatusFormError("Sign in to delete features.");
+      return;
+    }
+    if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
+      setParcelStatusFormError("Only Admin or Surveyor can delete features.");
+      return;
+    }
+
+    const modeName = lt === "BLOCKS" ? "block" : "parcel";
+    const msg = `CRITICAL WARNING: You are about to permanently delete ${features.length} ${modeName}(s).\n\nThis action cannot be undone. Are you absolutely sure?`;
+    if (!confirm(msg)) return;
+
+    deleteBtn.disabled = true;
+    setParcelStatusFormError("");
+    setStatus(statusEl, `Deleting ${features.length} ${modeName}(s)...`);
+
+    const tableName = lt === "BLOCKS" ? "blocks" : "parcels";
+    const ids = features.map(f => f.getId());
+    
+    // Fallback if IN is not properly supported, we just loop
+    let errorCount = 0;
+    for (const id of ids) {
+      const { error } = await supabase.from(tableName).delete().eq("id", id);
+      if (error) errorCount++;
+    }
+
+    deleteBtn.disabled = false;
+
+    if (errorCount > 0) {
+      setParcelStatusFormError(`Failed to delete ${errorCount} of ${features.length} item(s).`);
+    } else {
+      setStatus(statusEl, `Successfully deleted ${features.length} ${modeName}(s).`);
+      clearParcelStatusSelection();
+      await loadLayersFromDb();
+    }
+  });
 
   toolbarBtn?.addEventListener("click", (e) => {
     e.stopPropagation();

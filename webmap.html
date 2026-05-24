@@ -27,7 +27,6 @@
       <header class="parcel-status-panel__head">
         <div class="parcel-status-panel__head-text">
           <h2 class="parcel-status-panel__title">Parcel status</h2>
-          <p class="parcel-status-panel__subtitle">Crop cycle for blocks and plots. Choose layer, select on map, then update.</p>
         </div>
         <button type="button" class="parcel-status-panel__close" id="parcelStatusCloseBtn" aria-label="Close panel">&times;</button>
       </header>
@@ -49,11 +48,13 @@
           <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on map
         </button>
         <button type="button" class="btn-secondary parcel-status-cancel-pick" id="parcelStatusCancelPickBtn" hidden>Cancel picking</button>
-        <p id="parcelStatusPickHint" class="parcel-status-panel__hint" role="status">Choose Parcels or Blocks, then press <strong>Select on map</strong> and click a polygon.</p>
       </section>
 
       <section id="parcelStatusSelectionSection" class="parcel-status-panel__section" hidden>
-        <span class="parcel-status-panel__section-label">Selection</span>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="parcel-status-panel__section-label">Selection</span>
+          <span id="parcelStatusSelectionCount" class="parcel-status-count-badge">0 selected</span>
+        </div>
         <div id="parcelStatusPreview" class="parcel-status-preview" role="region" aria-live="polite"></div>
 
         <label class="parcel-status-field-label" for="parcelStatusSelect">Cultivation status</label>
@@ -79,7 +80,10 @@
         </details>
 
         <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
-        <button type="button" id="parcelStatusApplyBtn">Apply to selection</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+          <button type="button" id="parcelStatusApplyBtn" style="flex:1;">Apply to selection</button>
+          <button type="button" id="parcelStatusDeleteBtn" style="flex:1; background:#dc3545; color:#fff; border:none; border-radius:4px; font-weight:600;"><i class="fas fa-trash-alt"></i> Delete Selected</button>
+        </div>
       </section>
 
       <section class="parcel-status-panel__legend" aria-label="Map colour legend">

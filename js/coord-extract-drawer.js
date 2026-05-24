@@ -199,6 +199,7 @@ export function initCoordExtractDrawer({
     return proj4lib;
   }
 
+  function setPickingUi(armed) {
     pickingArmed = armed;
     
     // Toggle UI visibility for "Give Way"
@@ -208,7 +209,6 @@ export function initCoordExtractDrawer({
     const extTitle = document.querySelector("#drawingPanel h4");
     const extCrs = document.getElementById("coordExtractCrsSelect");
     const extFormats = document.querySelector("#drawingPanel .coord-export-formats");
-    const pickBtn = document.getElementById("coordExtractPickBtn");
     const actionRow = document.getElementById("coordExtractActionRow");
     
     if (armed) {
@@ -230,9 +230,8 @@ export function initCoordExtractDrawer({
       if (pickBtn) pickBtn.style.display = '';
       if (actionRow) actionRow.hidden = true;
     }
-
-
-
+  }
+  
   let extractSelectedFeatures = [];
   const extractHighlightLayer = new ol.layer.Vector({
     source: new ol.source.Vector(),

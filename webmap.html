@@ -147,8 +147,11 @@
 
     <!-- NEW MINIMALIST SENTINEL CONTROL -->
     <div id="sentinelMinimalControl" class="sentinel-minimal-control" hidden>
-      <div class="smc-header">
-        <i class="fas fa-satellite"></i> <span>Sentinel Imagery</span>
+      <div class="smc-header" style="justify-content: space-between;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-satellite"></i> <span>Sentinel Settings</span>
+        </div>
+        <button type="button" id="smcBackBtn" class="smc-back-btn"><i class="fas fa-arrow-left"></i> Back</button>
       </div>
       <div class="smc-row">
         <label for="smcYear">Year</label>

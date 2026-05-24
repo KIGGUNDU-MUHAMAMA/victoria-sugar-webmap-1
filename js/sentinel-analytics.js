@@ -128,6 +128,13 @@ export function initSentinelAnalytics(opts) {
   }
 
   // Bind UI Events
+  const backBtn = document.getElementById("smcBackBtn");
+  if (backBtn) {
+    backBtn.addEventListener("click", () => {
+      sentinelLayer.setVisible(false);
+    });
+  }
+
   if (yearSel) yearSel.addEventListener("change", applyWmsParams);
   if (monthSlider) {
     monthSlider.addEventListener("input", () => {
@@ -141,6 +148,11 @@ export function initSentinelAnalytics(opts) {
   sentinelLayer.on("change:visible", () => {
     const isVis = sentinelLayer.getVisible();
     if (container) container.hidden = !isVis;
+    
+    // Hide layer switcher when sentinel is active
+    const ls = document.querySelector(".layer-switcher");
+    if (ls) ls.style.display = isVis ? "none" : "";
+    
     if (isVis) {
       applyWmsParams();
     }
@@ -149,6 +161,8 @@ export function initSentinelAnalytics(opts) {
   // Apply initial state if already visible
   if (sentinelLayer.getVisible() && container) {
     container.hidden = false;
+    const ls = document.querySelector(".layer-switcher");
+    if (ls) ls.style.display = "none";
     applyWmsParams();
   }
 

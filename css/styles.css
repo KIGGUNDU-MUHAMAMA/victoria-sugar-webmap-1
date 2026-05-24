@@ -3666,3 +3666,24 @@ select.search-panel__input {
   margin-top: 8px;
 }
 
+
+.smc-back-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+
+.smc-back-btn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+

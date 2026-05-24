@@ -537,8 +537,6 @@ function buildLayerTree() {
   const wmsBase =
     cfg.SENTINEL_HUB_WMS_BASE ||
     "https://sh.dataspace.copernicus.eu/ogc/wms/ab8b1162-e45e-4405-9db6-aa882b920217";
-  const tr0 = getDefaultWmsTimeRange();
-  const aux0 = getSentinelWmsAuxParams(cfg, {});
   const sentinelWmsSource = new ol.source.TileWMS({
     url: wmsBase,
     params: {
@@ -548,9 +546,9 @@ function buildLayerTree() {
       FORMAT: "image/png",
       TRANSPARENT: true,
       TILED: true,
-      TIME: tr0.timeParam,
-      MAXCC: aux0.MAXCC,
-      PRIORITY: aux0.PRIORITY,
+      TIME: "2024-01-01/2024-01-31", // Initial dummy, updated on load
+      MAXCC: "40",
+      PRIORITY: "leastCC",
       // Sentinel Hub custom params (see CDSE "Additional request parameters")
       SHOWLOGO: "false",
       WARNINGS: "NO"

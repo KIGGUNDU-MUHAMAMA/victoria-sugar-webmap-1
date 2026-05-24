@@ -4,7 +4,7 @@ import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initPrintComposer } from "./print-composer.js";
-import { initSentinelAnalytics, getDefaultWmsTimeRange, getSentinelWmsAuxParams } from "./sentinel-analytics.js";
+import { initSentinelAnalytics } from "./sentinel-analytics.js";
 import { initFarmReports } from "./farm-reports.js";
 
 const supabase = createSupabaseClient();

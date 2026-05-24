@@ -354,60 +354,22 @@
 
         <!-- Tab pills -->
         <div class="search-panel__tabs" role="tablist" aria-label="Search method">
-          <button type="button" class="search-tab" id="tabCoords" role="tab" aria-selected="true" aria-controls="searchTabCoords" data-tab="coords">
-            <i class="fas fa-crosshairs" aria-hidden="true"></i> Coordinates
-          </button>
-          <button type="button" class="search-tab" id="tabParcel" role="tab" aria-selected="false" aria-controls="searchTabParcel" data-tab="parcel">
+          <button type="button" class="search-tab" id="tabParcel" role="tab" aria-selected="true" aria-controls="searchTabParcel" data-tab="parcel">
             <i class="fas fa-map-location-dot" aria-hidden="true"></i> Block / Parcel
           </button>
           <button type="button" class="search-tab" id="tabPlace" role="tab" aria-selected="false" aria-controls="searchTabPlace" data-tab="place">
             <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i> Place
+          </button>
+          <button type="button" class="search-tab" id="tabCoords" role="tab" aria-selected="false" aria-controls="searchTabCoords" data-tab="coords">
+            <i class="fas fa-crosshairs" aria-hidden="true"></i> Coordinates
           </button>
           <button type="button" class="search-tab" id="tabExtract" role="tab" aria-selected="false" aria-controls="searchTabExtract" data-tab="extract">
             <i class="fas fa-draw-polygon" aria-hidden="true"></i> Extract
           </button>
         </div>
 
-        <!-- ── TAB 1: Coordinate Search ── -->
-        <div id="searchTabCoords" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabCoords">
-          <p class="search-panel__hint">Select a coordinate system, enter Easting &amp; Northing and plot on the map.</p>
-
-          <label class="search-panel__label" for="coordDrawerCrsSelect">Coordinate system</label>
-          <select id="coordDrawerCrsSelect" class="search-panel__input"></select>
-
-          <div class="coord-mode-row" role="radiogroup" aria-label="Input mode">
-            <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeSingle" value="single" checked> Single point</label>
-            <label class="coord-mode-label"><input type="radio" name="coordInputMode" id="coordModeCsv" value="csv"> CSV points</label>
-          </div>
-
-          <div id="coordSingleBlock">
-            <label class="search-panel__label" for="coordDrawerEasting">Easting <span class="search-panel__muted">(or longitude for WGS84)</span></label>
-            <input id="coordDrawerEasting" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 500000" autocomplete="off">
-            <label class="search-panel__label" for="coordDrawerNorthing">Northing <span class="search-panel__muted">(or latitude for WGS84)</span></label>
-            <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 200000" autocomplete="off">
-            <button type="button" id="coordPlotSingleBtn" class="search-panel__btn-primary" style="margin-top:0.7rem">
-              <i class="fas fa-map-marker-alt" aria-hidden="true"></i> Plot on Map
-            </button>
-          </div>
-
-          <div id="coordCsvBlock" hidden>
-            <p class="search-panel__hint">Columns: <code>eastings</code>, <code>northings</code>. Optional: <code>point_id</code>, <code>label</code>.</p>
-            <label class="search-panel__label" for="coordDrawerCsvInput">CSV file</label>
-            <input id="coordDrawerCsvInput" type="file" accept=".csv,text/csv" class="search-panel__input">
-            <div id="coordCsvDropzone" class="survey-dropzone">Drop CSV here</div>
-            <button type="button" id="coordPlotCsvBtn" class="search-panel__btn-primary" style="margin-top:0.6rem">
-              <i class="fas fa-upload" aria-hidden="true"></i> Plot CSV Points
-            </button>
-          </div>
-
-          <button type="button" id="coordClearMarkersBtn" class="search-panel__btn-secondary" style="margin-top:0.6rem">
-            <i class="fas fa-eraser" aria-hidden="true"></i> Clear Markers
-          </button>
-        </div>
-
-        <!-- ── TAB 2: Block / Parcel Search ── -->
-        <div id="searchTabParcel" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabParcel" hidden>
-          <p class="search-panel__hint">Enter a block code and an optional plot number. The map zooms and highlights the result.</p>
+        <!-- ── TAB 1: Block / Parcel Search ── -->
+        <div id="searchTabParcel" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabParcel">
           <form id="parcelSearchForm" novalidate>
             <label class="search-panel__label" for="parcelSearchBlockInput">Block code or name</label>
             <input id="parcelSearchBlockInput" name="block" type="text" class="search-panel__input" placeholder="e.g. 14 or North Block" autocomplete="off" required>
@@ -425,9 +387,8 @@
           </form>
         </div>
 
-        <!-- ── TAB 3: Place Search ── -->
+        <!-- ── TAB 2: Place Search ── -->
         <div id="searchTabPlace" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabPlace" hidden>
-          <p class="search-panel__hint">Search worldwide place names via OpenStreetMap. The map flies to the location.</p>
           <label class="visually-hidden" for="placeSearchInput">Place or address</label>
           <div class="search-panel__place-row">
             <input id="placeSearchInput" type="search" class="search-panel__input search-panel__place-input" placeholder="Town, road, landmark…" autocomplete="off" enterkeyhint="search">
@@ -438,6 +399,26 @@
           <p id="placeSearchError" class="search-panel__error" role="alert" hidden></p>
           <ul id="placeSearchResults" class="place-search-results" hidden></ul>
           <p class="search-panel__attrib">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors · Nominatim</p>
+        </div>
+
+        <!-- ── TAB 3: Coordinate Search ── -->
+        <div id="searchTabCoords" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabCoords" hidden>
+          <label class="search-panel__label" for="coordDrawerCrsSelect">Coordinate system</label>
+          <select id="coordDrawerCrsSelect" class="search-panel__input"></select>
+
+          <div id="coordSingleBlock">
+            <label class="search-panel__label" for="coordDrawerEasting">Easting <span class="search-panel__muted">(or longitude for WGS84)</span></label>
+            <input id="coordDrawerEasting" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 500000" autocomplete="off">
+            <label class="search-panel__label" for="coordDrawerNorthing">Northing <span class="search-panel__muted">(or latitude for WGS84)</span></label>
+            <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 200000" autocomplete="off">
+            <button type="button" id="coordPlotSingleBtn" class="search-panel__btn-primary" style="margin-top:0.7rem">
+              <i class="fas fa-map-marker-alt" aria-hidden="true"></i> Plot on Map
+            </button>
+          </div>
+
+          <button type="button" id="coordClearMarkersBtn" class="search-panel__btn-secondary" style="margin-top:0.6rem">
+            <i class="fas fa-eraser" aria-hidden="true"></i> Clear Markers
+          </button>
         </div>
         <!-- ── TAB 4: Extract ── -->
         <div id="searchTabExtract" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabExtract" hidden>

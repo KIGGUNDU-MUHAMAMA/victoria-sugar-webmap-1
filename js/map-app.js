@@ -1434,7 +1434,7 @@ function setParcelSearchPopoverError(msg) {
 }
 
 
-function openSearchPanel(tab = "coords") {
+function openSearchPanel(tab = "parcel") {
   const panel = document.getElementById("searchPanel");
   const btn = document.getElementById("searchPanelBtn");
   if (!panel || !btn) return;
@@ -1499,7 +1499,7 @@ function closeSearchPanel(options = {}) {
 }
 
 function activateSearchTab(tab) {
-  const tabs = ["coords", "parcel", "place", "extract"];
+  const tabs = ["parcel", "place", "coords", "extract"];
   const tabElMap = { coords: "tabCoords", parcel: "tabParcel", place: "tabPlace", extract: "tabExtract" };
   const bodyElMap = { coords: "searchTabCoords", parcel: "searchTabParcel", place: "searchTabPlace", extract: "searchTabExtract" };
   tabs.forEach((t) => {
@@ -1672,7 +1672,7 @@ function setupParcelSearchPopover() {
     if (searchPanelOpen) {
       closeSearchPanel({ clearHighlight: false });
     } else {
-      openSearchPanel("coords");
+      openSearchPanel("parcel");
     }
   });
 

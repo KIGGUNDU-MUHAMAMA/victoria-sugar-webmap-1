@@ -28,16 +28,10 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
   const toggleBtn = panelMode ? null : document.getElementById("coordSearchBtn");
   const closeBtn = panelMode ? null : document.getElementById("coordSearchCloseBtn");
   const crsSelect = document.getElementById("coordDrawerCrsSelect");
-  const modeSingle = document.getElementById("coordModeSingle");
-  const modeCsv = document.getElementById("coordModeCsv");
   const singleBlock = document.getElementById("coordSingleBlock");
-  const csvBlock = document.getElementById("coordCsvBlock");
   const eastInput = document.getElementById("coordDrawerEasting");
   const northInput = document.getElementById("coordDrawerNorthing");
   const plotSingleBtn = document.getElementById("coordPlotSingleBtn");
-  const csvInput = document.getElementById("coordDrawerCsvInput");
-  const csvDropzone = document.getElementById("coordCsvDropzone");
-  const plotCsvBtn = document.getElementById("coordPlotCsvBtn");
   const clearBtn = document.getElementById("coordClearMarkersBtn");
 
   // In panel mode we just need the form elements — no drawer to open/close.
@@ -105,15 +99,6 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
     onDrawerOpen?.();
   }
 
-  function updateModeUi() {
-    const csv = modeCsv?.checked;
-    if (singleBlock) singleBlock.hidden = csv;
-    if (csvBlock) csvBlock.hidden = !csv;
-  }
-
-  modeSingle?.addEventListener("change", updateModeUi);
-  modeCsv?.addEventListener("change", updateModeUi);
-  updateModeUi();
 
   if (!panelMode) {
     toggleBtn.addEventListener("click", () => {
@@ -184,87 +169,6 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
     }
   });
 
-  async function parseCsvFile(file) {
-    return new Promise((resolve, reject) => {
-      if (!window.Papa?.parse) {
-        reject(new Error("PapaParse is not loaded."));
-        return;
-      }
-      window.Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (r) => resolve(r.data || []),
-        error: reject
-      });
-    });
-  }
-
-  plotCsvBtn?.addEventListener("click", async () => {
-    const crs = crsSelect?.value;
-    const file = csvInput?.files?.[0];
-    if (!crs || !file) {
-      setStatus(statusEl, "Choose CRS and a CSV file.", true);
-      return;
-    }
-    try {
-      const p4 = await ensureProj4();
-      const rows = await parseCsvFile(file);
-      let ok = 0;
-      let skipped = 0;
-      for (const row of rows) {
-        const n = normalizeCoordRow(row);
-        if (!n) {
-          skipped++;
-          continue;
-        }
-        try {
-          const coord3857 = toMap3857FromCrs(p4, crs, n.east, n.north);
-          const [lon, lat] = ol.proj.transform(coord3857, "EPSG:3857", "EPSG:4326");
-          if (!isValidLonLat(lon, lat)) {
-            skipped++;
-            continue;
-          }
-          const pt = new ol.Feature({
-            geometry: new ol.geom.Point(coord3857)
-          });
-          pt.set("label", n.label || String(ok + 1));
-          markersSource.addFeature(pt);
-          ok++;
-        } catch {
-          skipped++;
-        }
-      }
-      if (!ok) {
-        setStatus(
-          statusEl,
-          "No valid points. CSV needs columns eastings & northings (or easting/northing).",
-          true
-        );
-        return;
-      }
-      fitToMarkers();
-      setStatus(statusEl, `Plotted ${ok} point(s).${skipped ? ` Skipped ${skipped} row(s).` : ""}`);
-    } catch (e) {
-      setStatus(statusEl, e.message || "CSV failed", true);
-    }
-  });
-
-  csvDropzone?.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    csvDropzone.classList.add("dragover");
-  });
-  csvDropzone?.addEventListener("dragleave", () => csvDropzone.classList.remove("dragover"));
-  csvDropzone?.addEventListener("drop", (e) => {
-    e.preventDefault();
-    csvDropzone.classList.remove("dragover");
-    const f = e.dataTransfer?.files?.[0];
-    if (f && (f.name.endsWith(".csv") || f.type === "text/csv")) {
-      const dt = new DataTransfer();
-      dt.items.add(f);
-      if (csvInput) csvInput.files = dt.files;
-      setStatus(statusEl, `Loaded file: ${f.name}. Click “Plot CSV points”.`);
-    }
-  });
 
   clearBtn?.addEventListener("click", () => {
     markersSource.clear(true);

@@ -212,7 +212,8 @@ export function initSurveyImport({
   map.addLayer(drawLayer);
 
   let drawInteraction = null;
-  let snapInteraction = null;
+  let snapInteraction1 = null;
+  let snapInteraction2 = null;
 
   let parsedRows = [];
   let lastPreviewPayload = null;
@@ -264,9 +265,11 @@ export function initSurveyImport({
     drawSource.clear(true);
     if (drawInteraction) {
       map.removeInteraction(drawInteraction);
-      map.removeInteraction(snapInteraction);
+      if (snapInteraction1) map.removeInteraction(snapInteraction1);
+      if (snapInteraction2) map.removeInteraction(snapInteraction2);
       drawInteraction = null;
-      snapInteraction = null;
+      snapInteraction1 = null;
+      snapInteraction2 = null;
     }
     const stBtn = document.getElementById("surveyStartTracingBtn");
     if(stBtn) {
@@ -309,9 +312,11 @@ export function initSurveyImport({
       toggleBtn.classList.remove("active");
       if (drawInteraction) {
         map.removeInteraction(drawInteraction);
-        map.removeInteraction(snapInteraction);
+        if (snapInteraction1) map.removeInteraction(snapInteraction1);
+        if (snapInteraction2) map.removeInteraction(snapInteraction2);
         drawInteraction = null;
-        snapInteraction = null;
+        snapInteraction1 = null;
+        snapInteraction2 = null;
         document.getElementById("surveyStartTracingBtn")?.classList.replace("btn-danger", "btn-primary");
         document.getElementById("surveyStartTracingBtn").textContent = "Start Tracing";
       }
@@ -365,11 +370,54 @@ export function initSurveyImport({
     }
   });
 
+  function promptForCrs(filename) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center;";
+      
+      const modal = document.createElement("div");
+      modal.style.cssText = "background:#fff; padding:20px; border-radius:12px; width:300px; max-width:90%; box-shadow:0 4px 12px rgba(0,0,0,0.2);";
+      
+      modal.innerHTML = `
+        <h3 style="margin-top:0;">DXF Coordinate System</h3>
+        <p style="font-size:0.85rem; color:#666;">Select the coordinate system for <strong>${filename}</strong>:</p>
+        <select id="dxfCrsPromptSelect" style="width:100%; padding:8px; margin-bottom:16px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem;">
+          ${CRS_OPTIONS.map(o => `<option value="${o.value}" ${o.value === (crsSelect?.value || "EPSG:32636") ? "selected" : ""}>${o.label}</option>`).join('')}
+        </select>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button id="dxfCrsPromptCancel" style="padding:8px 16px; border-radius:6px; background:#f0f0f0; border:none; cursor:pointer;">Cancel</button>
+          <button id="dxfCrsPromptOk" style="padding:8px 16px; border-radius:6px; background:#28a745; color:#fff; border:none; cursor:pointer;">Plot DXF</button>
+        </div>
+      `;
+      
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      
+      document.getElementById("dxfCrsPromptCancel").onclick = () => {
+        document.body.removeChild(overlay);
+        resolve(null);
+      };
+      
+      document.getElementById("dxfCrsPromptOk").onclick = () => {
+        const val = document.getElementById("dxfCrsPromptSelect").value;
+        document.body.removeChild(overlay);
+        resolve(val);
+      };
+    });
+  }
+
   async function handleFile(file) {
     if (!file) return;
     const name = file.name.toLowerCase();
     
     if (name.endsWith(".dxf")) {
+      const chosenCrs = await promptForCrs(file.name);
+      if (!chosenCrs) {
+        setStatus(statusEl, "DXF import cancelled.");
+        return;
+      }
+      if (crsSelect) crsSelect.value = chosenCrs;
+      
       try {
         setStatus(statusEl, "Parsing DXF...");
         parsedDxf = await parseDxfFile(file);
@@ -475,12 +523,12 @@ export function initSurveyImport({
       type: "Polygon"
     });
     
-    snapInteraction = new ol.interaction.Snap({
-      sources: [dxfSource, drawSource]
-    });
+    snapInteraction1 = new ol.interaction.Snap({ source: dxfSource });
+    snapInteraction2 = new ol.interaction.Snap({ source: drawSource });
     
     map.addInteraction(drawInteraction);
-    map.addInteraction(snapInteraction);
+    map.addInteraction(snapInteraction1);
+    map.addInteraction(snapInteraction2);
     
     drawInteraction.on('drawend', (e) => {
       digitizeCount++;

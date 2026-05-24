@@ -453,8 +453,6 @@
         <h2>Survey import</h2>
         <button type="button" class="survey-close" id="surveyCloseBtn" aria-label="Close">&times;</button>
       </div>
-      <p class="small">CSV: <code>parcel_id</code> (groups corners only), <code>point_number</code>, <code>eastings</code>, <code>northings</code>, <code>description</code>. Saved <strong>blocks</strong> get codes <strong>1, 2, 3…</strong>; <strong>parcels</strong> are <strong>1, 2, 3…</strong> inside the block you pick.</p>
-
       <label for="surveyLayerSelect">Layer to update</label>
       <select id="surveyLayerSelect">
         <option value="">Select layer…</option>
@@ -480,10 +478,19 @@
       <label for="surveyAdditionalInfo">Additional information (optional)</label>
       <textarea id="surveyAdditionalInfo" rows="3" placeholder="Notes, surveyor, job reference, datum notes…"></textarea>
 
-      <label for="surveyFileInput">CSV file</label>
-      <input id="surveyFileInput" type="file" accept=".csv,text/csv">
+      <label for="surveyFileInput">File (CSV or DXF)</label>
+      <input id="surveyFileInput" type="file" accept=".csv,text/csv,.dxf">
 
-      <div id="surveyDropzone" class="survey-dropzone">Drag and drop CSV here</div>
+      <div id="surveyDropzone" class="survey-dropzone">Drag and drop CSV or DXF here</div>
+
+      <div id="surveyDigitizeTools" class="survey-digitize" hidden>
+        <p class="small" style="margin-bottom: 0.4rem;"><strong>DXF loaded.</strong> Draw over the lines to digitize polygons.</p>
+        <div style="display:flex; gap: 8px; margin-bottom: 0.8rem; align-items:center;">
+          <button type="button" id="surveyStartTracingBtn" class="btn-primary" style="flex:1;">Start Tracing</button>
+          <button type="button" id="surveyClearTracingBtn" class="btn-secondary" style="flex:1;">Clear</button>
+        </div>
+        <div id="surveyDigitizeCount" class="small" style="color:var(--primary-2); font-weight:600;">0 polygons digitized</div>
+      </div>
 
       <div id="surveySummary" class="survey-summary" hidden></div>
 

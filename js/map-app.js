@@ -2211,6 +2211,22 @@ async function initMap() {
     setTimeout(() => loader.remove(), 500);
   }
 
+  // Global drag and drop for DXF/CSV on map
+  const mapEl = document.getElementById("map");
+  if (mapEl) {
+    mapEl.addEventListener("dragover", (e) => e.preventDefault());
+    mapEl.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const f = e.dataTransfer?.files?.[0];
+      if (f && window.handleGlobalSurveyDrop) {
+        const name = f.name.toLowerCase();
+        if (name.endsWith(".dxf") || name.endsWith(".csv")) {
+          window.handleGlobalSurveyDrop(f);
+        }
+      }
+    });
+  }
+
   // First paint often reports 0×0 map size; reload layers once layout is stable.
   requestAnimationFrame(() => {
     map.updateSize();

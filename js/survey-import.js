@@ -2,8 +2,34 @@
  * Survey CSV import: left drawer UI + Edge Function preview/commit.
  */
 
-import { CRS_OPTIONS } from "./crs-definitions.js";
+import { CRS_OPTIONS, registerProj4Defs, toMap3857FromCrs } from "./crs-definitions.js";
+import DxfParser from "https://esm.sh/dxf-parser@1.1.2";
 
+let proj4lib = null;
+async function getProj4() {
+  if (proj4lib) return proj4lib;
+  const mod = await import("https://esm.sh/proj4@2.11.0");
+  proj4lib = mod.default;
+  registerProj4Defs(proj4lib);
+  return proj4lib;
+}
+
+function parseDxfFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parser = new DxfParser();
+        const dxf = parser.parseSync(e.target.result);
+        resolve(dxf);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
 function surveyFunctionUrl(cfg) {
   const base = (cfg.SUPABASE_URL || "").replace(/\/$/, "");
   const name = cfg.SURVEY_FUNCTION_NAME || "quick-api";
@@ -160,6 +186,34 @@ export function initSurveyImport({
   map.addLayer(previewPolyLayer);
   map.addLayer(previewPointLayer);
 
+  let parsedDxf = null;
+  const dxfSource = new ol.source.Vector();
+  const dxfLayer = new ol.layer.Vector({
+    source: dxfSource,
+    style: new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: "#00f", width: 1.5, lineDash: [4, 4] })
+    }),
+    zIndex: 899
+  });
+  dxfLayer.set("displayInLayerSwitcher", false);
+  map.addLayer(dxfLayer);
+
+  let digitizeCount = 0;
+  const drawSource = new ol.source.Vector();
+  const drawLayer = new ol.layer.Vector({
+    source: drawSource,
+    style: new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: "#28a745", width: 2 }),
+      fill: new ol.style.Fill({ color: "rgba(40, 167, 69, 0.2)" })
+    }),
+    zIndex: 902
+  });
+  drawLayer.set("displayInLayerSwitcher", false);
+  map.addLayer(drawLayer);
+
+  let drawInteraction = null;
+  let snapInteraction = null;
+
   let parsedRows = [];
   let lastPreviewPayload = null;
 
@@ -206,6 +260,27 @@ export function initSurveyImport({
   function clearPreview() {
     polySource.clear(true);
     pointSource.clear(true);
+    dxfSource.clear(true);
+    drawSource.clear(true);
+    if (drawInteraction) {
+      map.removeInteraction(drawInteraction);
+      map.removeInteraction(snapInteraction);
+      drawInteraction = null;
+      snapInteraction = null;
+    }
+    const stBtn = document.getElementById("surveyStartTracingBtn");
+    if(stBtn) {
+       stBtn.textContent = "Start Tracing";
+       stBtn.classList.replace("btn-danger", "btn-primary");
+    }
+    digitizeCount = 0;
+    const dc = document.getElementById("surveyDigitizeCount");
+    if(dc) dc.textContent = `0 polygons digitized`;
+    
+    parsedDxf = null;
+    const dTools = document.getElementById("surveyDigitizeTools");
+    if(dTools) dTools.hidden = true;
+    
     lastPreviewPayload = null;
     saveBtn.disabled = true;
   }
@@ -232,6 +307,14 @@ export function initSurveyImport({
       refreshParentBlockOptions();
     } else {
       toggleBtn.classList.remove("active");
+      if (drawInteraction) {
+        map.removeInteraction(drawInteraction);
+        map.removeInteraction(snapInteraction);
+        drawInteraction = null;
+        snapInteraction = null;
+        document.getElementById("surveyStartTracingBtn")?.classList.replace("btn-danger", "btn-primary");
+        document.getElementById("surveyStartTracingBtn").textContent = "Start Tracing";
+      }
     }
   });
 
@@ -246,21 +329,79 @@ export function initSurveyImport({
     renderSummary("");
   });
 
-  async function handleFile(file) {
-    if (!file) return;
+  async function renderDxf() {
+    dxfSource.clear(true);
+    if (!parsedDxf) return;
     try {
-      parsedRows = await parseCsvFile(file);
-      const n = parsedRows.length;
-      renderSummary(
-        `<p><strong>${n}</strong> data row(s) read. Choose CRS and click <strong>Preview on map</strong>.</p>`
-      );
-      clearPreview();
-    } catch (e) {
-      parsedRows = [];
-      setStatus(statusEl, e.message, true);
-      renderSummary("");
+      const crs = crsSelect.value;
+      const p4 = await getProj4();
+      
+      parsedDxf.entities.forEach(ent => {
+        if ((ent.type === 'LINE' || ent.type === 'POLYLINE' || ent.type === 'LWPOLYLINE') && ent.vertices) {
+          const coords = ent.vertices.map(v => {
+            return toMap3857FromCrs(p4, crs, v.x, v.y);
+          });
+          const line = new ol.geom.LineString(coords);
+          dxfSource.addFeature(new ol.Feature({ geometry: line }));
+        }
+      });
+      if (dxfSource.getFeatures().length > 0) {
+        const ext = dxfSource.getExtent();
+        if (ext && ext.every(Number.isFinite)) {
+          map.getView().fit(ext, { padding: [100, 100, 100, 220], maxZoom: 18, duration: 400 });
+        }
+        document.getElementById("surveyDigitizeTools").hidden = false;
+        setStatus(statusEl, "DXF loaded. Choose target layer, click Start Tracing, and trace over lines.");
+      }
+    } catch(e) {
+      console.error(e);
+      setStatus(statusEl, "Failed to project DXF: " + e.message, true);
     }
   }
+
+  crsSelect?.addEventListener("change", () => {
+    if (parsedDxf) {
+      renderDxf();
+    }
+  });
+
+  async function handleFile(file) {
+    if (!file) return;
+    const name = file.name.toLowerCase();
+    
+    if (name.endsWith(".dxf")) {
+      try {
+        setStatus(statusEl, "Parsing DXF...");
+        parsedDxf = await parseDxfFile(file);
+        parsedRows = [];
+        renderSummary("");
+        await renderDxf();
+      } catch(e) {
+        setStatus(statusEl, "DXF parsing failed: " + e.message, true);
+      }
+    } else {
+      try {
+        clearPreview();
+        parsedRows = await parseCsvFile(file);
+        const n = parsedRows.length;
+        renderSummary(
+          `<p><strong>${n}</strong> data row(s) read. Choose CRS and click <strong>Preview on map</strong>.</p>`
+        );
+      } catch (e) {
+        parsedRows = [];
+        setStatus(statusEl, e.message, true);
+        renderSummary("");
+      }
+    }
+  }
+
+  // Export so global drag and drop can use it
+  window.handleGlobalSurveyDrop = async function(file) {
+    if (!drawer.classList.contains("open")) {
+       toggleBtn.click();
+    }
+    await handleFile(file);
+  };
 
   fileInput?.addEventListener("change", () => handleFile(fileInput.files?.[0]));
 
@@ -273,11 +414,93 @@ export function initSurveyImport({
     e.preventDefault();
     dropzone.classList.remove("dragover");
     const f = e.dataTransfer?.files?.[0];
-    if (f && (f.name.endsWith(".csv") || f.type === "text/csv")) {
+    if (f) {
       handleFile(f);
-    } else {
-      setStatus(statusEl, "Please drop a .csv file.", true);
     }
+  });
+
+  function updateDigitizePayload() {
+    const features = drawSource.getFeatures();
+    if (features.length === 0) {
+      lastPreviewPayload = null;
+      saveBtn.disabled = true;
+      return;
+    }
+    
+    const gj = new ol.format.GeoJSON();
+    const results = features.map((f, i) => {
+      const geom = f.getGeometry().clone().transform('EPSG:3857', 'EPSG:4326');
+      return {
+        parcelId: `Traced ${i + 1}`,
+        success: true,
+        geometry: gj.writeGeometryObject(geom)
+      };
+    });
+    
+    lastPreviewPayload = {
+        layerType: layerSelect.value,
+        projectName: projectName?.value?.trim() || "",
+        parentBlockCode: parentBlockSelect?.value?.trim() || "",
+        coordinateSystem: "EPSG:4326", 
+        additionalInfo: additionalInfo?.value?.trim() || "",
+        results
+    };
+    saveBtn.disabled = false;
+  }
+
+  document.getElementById("surveyStartTracingBtn")?.addEventListener("click", () => {
+    const stBtn = document.getElementById("surveyStartTracingBtn");
+    if (drawInteraction) {
+      map.removeInteraction(drawInteraction);
+      map.removeInteraction(snapInteraction);
+      drawInteraction = null;
+      snapInteraction = null;
+      stBtn.textContent = "Start Tracing";
+      stBtn.classList.replace("btn-danger", "btn-primary");
+      return;
+    }
+    
+    const layerType = layerSelect.value;
+    if (!layerType) {
+      setStatus(statusEl, "Select target layer (BLOCKS or PARCELS) before tracing.", true);
+      return;
+    }
+    if (layerType === "PARCELS" && !parentBlockSelect?.value?.trim()) {
+      setStatus(statusEl, "Choose the parent block before tracing parcels.", true);
+      return;
+    }
+
+    drawInteraction = new ol.interaction.Draw({
+      source: drawSource,
+      type: "Polygon"
+    });
+    
+    snapInteraction = new ol.interaction.Snap({
+      sources: [dxfSource, drawSource]
+    });
+    
+    map.addInteraction(drawInteraction);
+    map.addInteraction(snapInteraction);
+    
+    drawInteraction.on('drawend', (e) => {
+      digitizeCount++;
+      const dc = document.getElementById("surveyDigitizeCount");
+      if(dc) dc.textContent = `${digitizeCount} polygons digitized`;
+      // Update the payload next tick so the feature is actually in the source
+      setTimeout(() => updateDigitizePayload(), 10);
+    });
+    
+    stBtn.textContent = "Stop Tracing";
+    stBtn.classList.replace("btn-primary", "btn-danger");
+    setStatus(statusEl, "Tracing active. Click map to draw polygon corners. Double-click to finish.");
+  });
+
+  document.getElementById("surveyClearTracingBtn")?.addEventListener("click", () => {
+    drawSource.clear(true);
+    digitizeCount = 0;
+    const dc = document.getElementById("surveyDigitizeCount");
+    if(dc) dc.textContent = `0 polygons digitized`;
+    updateDigitizePayload();
   });
 
   previewBtn?.addEventListener("click", async () => {

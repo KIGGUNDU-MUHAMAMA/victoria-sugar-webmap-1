@@ -2284,8 +2284,22 @@ body.print-composer-open {
   }
 
   .survey-drawer {
-    width: min(100vw - 16px, 420px);
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
     min-width: unset;
+    height: 50vh;
+    height: 50dvh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    transform: translateY(102%);
+  }
+
+  .survey-drawer.open {
+    transform: translateY(0);
   }
 }
 

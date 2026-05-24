@@ -199,120 +199,127 @@ export function initCoordExtractDrawer({
     return proj4lib;
   }
 
-  function setPickingUi(armed) {
     pickingArmed = armed;
-    drawer.dataset.picking = armed ? "1" : "";
-    if (panelMode) {
-      // Visual feedback on the inline button
-      if (pickBtn) {
-        pickBtn.classList.toggle("search-panel__btn-primary--armed", armed);
-        pickBtn.innerHTML = armed
-          ? '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Picking…'
-          : '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on Map';
-      }
+    
+    // Toggle UI visibility for "Give Way"
+    const measureHead = document.querySelector("#drawingPanel .draw-tools__head");
+    const measureSection1 = document.querySelector("#drawingPanel .draw-tools__section:nth-of-type(1)");
+    const measureFooter = document.querySelector("#drawingPanel .draw-tools__footer");
+    const extTitle = document.querySelector("#drawingPanel h4");
+    const extCrs = document.getElementById("coordExtractCrsSelect");
+    const extFormats = document.querySelector("#drawingPanel .coord-export-formats");
+    const pickBtn = document.getElementById("coordExtractPickBtn");
+    const actionRow = document.getElementById("coordExtractActionRow");
+    
+    if (armed) {
+      if (measureHead) measureHead.style.display = 'none';
+      if (measureSection1) measureSection1.style.display = 'none';
+      if (measureFooter) measureFooter.style.display = 'none';
+      if (extTitle) extTitle.style.display = 'none';
+      if (extCrs) extCrs.style.display = 'none';
+      if (extFormats) extFormats.style.display = 'none';
+      if (pickBtn) pickBtn.style.display = 'none';
+      if (actionRow) actionRow.hidden = false;
     } else {
-      pickBtn?.classList.toggle("btn-pick-parcel--armed", armed);
+      if (measureHead) measureHead.style.display = '';
+      if (measureSection1) measureSection1.style.display = '';
+      if (measureFooter) measureFooter.style.display = '';
+      if (extTitle) extTitle.style.display = '';
+      if (extCrs) extCrs.style.display = '';
+      if (extFormats) extFormats.style.display = 'flex';
+      if (pickBtn) pickBtn.style.display = '';
+      if (actionRow) actionRow.hidden = true;
     }
-    if (cancelPickBtn) cancelPickBtn.hidden = !armed;
-  }
 
-  function setHint(html) {
-    if (hintEl) hintEl.innerHTML = html;
-  }
 
-  function resetIdleHint() {
-    setHint(
-      "Choose CRS and formats, then press <strong>Select on map</strong> and click a <strong>block</strong> (red outline) or <strong>parcel</strong> (blue fill)."
-    );
-  }
 
-  async function runExportForFeature(picked, layerType) {
+  let extractSelectedFeatures = [];
+  const extractHighlightLayer = new ol.layer.Vector({
+    source: new ol.source.Vector(),
+    style: new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: "#00e5ff", width: 4 }),
+      fill: new ol.style.Fill({ color: "rgba(0, 229, 255, 0.2)" })
+    }),
+    zIndex: 999
+  });
+  map.addLayer(extractHighlightLayer);
+
+  async function finishBatchExport() {
+    if (!extractSelectedFeatures.length) {
+      setStatus(statusEl, "No features selected to export.", true);
+      disarmPicking();
+      return;
+    }
+
     const wantCsv = exportCsv?.checked;
     const wantDxf = exportDxf?.checked;
-    if (!wantCsv && !wantDxf) {
-      setStatus(statusEl, "Enable CSV and/or DXF export.", true);
-      disarmPicking();
-      return;
-    }
-
     const crs = crsSelect?.value;
-    if (!crs) {
-      setStatus(statusEl, "Choose an export coordinate system.", true);
-      disarmPicking();
-      return;
-    }
-
-    const geom = picked.getGeometry();
-    if (!geom) {
-      disarmPicking();
-      return;
-    }
-
-    const rings3857 = getExteriorRings3857(geom);
-    if (!rings3857.length) {
-      setStatus(statusEl, "Selected feature has no polygon geometry.", true);
-      disarmPicking();
-      return;
-    }
 
     try {
       const p4 = await ensureProj4();
-      const props = picked.getProperties();
-      const blockCode = props.block_code ?? "";
-      const parcelCode = layerType === "PARCELS" ? (props.parcel_code ?? props.parcel_no ?? "") : "";
+      const allRows = [];
+      const allProjectedRings = [];
 
-      const rows = buildCsvRows(rings3857, p4, crs, blockCode, parcelCode, layerType);
-      const projectedRings = [];
-      for (const ring of rings3857) {
-        const pts = ring.map((xy) => {
-          const [lon, lat] = ol.proj.transform(xy, "EPSG:3857", "EPSG:4326");
-          return toProjectedFromWgs84(p4, crs, lon, lat);
-        });
-        projectedRings.push(pts);
+      for (const item of extractSelectedFeatures) {
+        const geom = item.feature.getGeometry();
+        if (!geom) continue;
+        const rings3857 = getExteriorRings3857(geom);
+        if (!rings3857.length) continue;
+
+        const props = item.feature.getProperties();
+        const blockCode = props.block_code ?? "";
+        const parcelCode = item.layerType === "PARCELS" ? (props.parcel_code ?? props.parcel_no ?? "") : "";
+
+        const rows = buildCsvRows(rings3857, p4, crs, blockCode, parcelCode, item.layerType);
+        allRows.push(...rows);
+
+        for (const ring of rings3857) {
+          const pts = ring.map((xy) => {
+            const [lon, lat] = ol.proj.transform(xy, "EPSG:3857", "EPSG:4326");
+            return toProjectedFromWgs84(p4, crs, lon, lat);
+          });
+          allProjectedRings.push(pts);
+        }
       }
 
-      const base = sanitizeFilenamePart(parcelCode || blockCode || picked.getId() || "export");
-      const crsTag = crs.replace(":", "_");
-      const kindTag = layerType === "BLOCKS" ? "block" : "parcel";
-      const dxfLayer = layerType === "BLOCKS" ? "BLOCK" : "PARCEL";
+      if (!allRows.length && !allProjectedRings.length) {
+        setStatus(statusEl, "No valid geometry found in selection.", true);
+        disarmPicking();
+        return;
+      }
 
+      const crsTag = crs.replace(":", "_");
+      
       if (wantCsv) {
-        const csv = buildCsvContent(rows, crs);
-        downloadText(`${base}_${crsTag}_${kindTag}_corners.csv`, csv, "text/csv;charset=utf-8");
+        const csv = buildCsvContent(allRows, crs);
+        downloadText(`batch_export_${crsTag}_corners.csv`, csv, "text/csv;charset=utf-8");
       }
       if (wantDxf) {
-        const dxf = buildDxfFromRings(projectedRings, dxfLayer);
-        downloadText(`${base}_${crsTag}_${kindTag}.dxf`, dxf, "image/vnd.dxf");
+        const dxf = buildDxfFromRings(allProjectedRings, "BATCH_EXPORT");
+        downloadText(`batch_export_${crsTag}.dxf`, dxf, "image/vnd.dxf");
       }
 
-      const parts = [];
-      if (wantCsv) parts.push("CSV");
-      if (wantDxf) parts.push("DXF");
-      const summary = `${layerType} · ${parts.join(" + ")} · ${rows.length} corner(s) · ${crs}`;
-      setStatus(statusEl, `Exported: ${summary}.`);
-
-      if (lastExportEl) {
-        lastExportEl.hidden = false;
-        const label =
-          layerType === "BLOCKS"
-            ? `BLOCK ${blockCode || base}`
-            : `PARCEL ${parcelCode || base}`;
-        lastExportEl.innerHTML = `<strong>Last export</strong><br>${escapeHtml(label)} · ${escapeHtml(crs)} · ${escapeHtml(summary)}`;
-      }
-
-      disarmPicking({ preserveHint: true });
-      setHint(
-        "<strong>Export complete.</strong> Adjust CRS or formats if needed, then press <strong>Select on map</strong> for another feature."
-      );
+      setStatus(statusEl, `Exported ${extractSelectedFeatures.length} feature(s).`);
+      disarmPicking();
     } catch (err) {
       setStatus(statusEl, err.message || "Export failed", true);
-      setHint(`<span class="extract-hint--warn">${escapeHtml(err.message || "Export failed")}</span>`);
       disarmPicking();
     }
   }
 
+  const finishBtn = document.getElementById("coordExtractFinishBtn");
+  finishBtn?.addEventListener("click", finishBatchExport);
+
+  function updateExtractUI() {
+    if (finishBtn) {
+      finishBtn.textContent = `Export (${extractSelectedFeatures.length})`;
+    }
+    extractHighlightLayer.getSource().clear();
+    extractHighlightLayer.getSource().addFeatures(extractSelectedFeatures.map(item => item.feature));
+  }
+
   function onExtractSingleClick(evt) {
-    if (!pickingArmed || drawer.dataset.picking !== "1") return;
+    if (!pickingArmed) return;
 
     let picked = null;
     let layerType = null;
@@ -339,41 +346,42 @@ export function initCoordExtractDrawer({
     }
 
     if (!picked) {
-      setStatus(
-        statusEl,
-        "No block or parcel here. Zoom in, confirm BLOCKS/PARCELS are visible in the layer list, then click the polygon.",
-        true
-      );
+      setStatus(statusEl, "No block or parcel here.", true);
       return;
     }
 
-    void runExportForFeature(picked, layerType);
+    const existingIdx = extractSelectedFeatures.findIndex(item => item.feature.getId() === picked.getId());
+    if (existingIdx > -1) {
+      extractSelectedFeatures.splice(existingIdx, 1);
+    } else {
+      extractSelectedFeatures.push({ feature: picked, layerType });
+    }
+    updateExtractUI();
   }
 
-  function disarmPicking(opts = {}) {
+  function disarmPicking() {
     setPickingUi(false);
-    if (!opts.preserveHint) resetIdleHint();
+    extractSelectedFeatures = [];
+    updateExtractUI();
   }
 
   function armPicking() {
     const wantCsv = exportCsv?.checked;
     const wantDxf = exportDxf?.checked;
     if (!wantCsv && !wantDxf) {
-      setStatus(statusEl, "Choose at least one export format (CSV or DXF).", true);
+      setStatus(statusEl, "Choose at least one export format.", true);
       return;
     }
     if (!crsSelect?.value) {
-      setStatus(statusEl, "Choose an export coordinate system.", true);
+      setStatus(statusEl, "Choose an export CRS.", true);
       return;
     }
 
     stopActiveTool?.();
-
+    extractSelectedFeatures = [];
+    updateExtractUI();
     setPickingUi(true);
-    setHint(
-      "<strong>Picking active.</strong> Click a <strong>block</strong> (red) or <strong>parcel</strong> (blue) polygon. Downloads start immediately. Press <strong>Cancel picking</strong> to stop."
-    );
-    setStatus(statusEl, "Click a block or parcel on the map to export.");
+    setStatus(statusEl, "Click blocks or parcels to toggle selection.");
   }
 
   map.on("singleclick", onExtractSingleClick);
@@ -393,18 +401,7 @@ export function initCoordExtractDrawer({
   }
 
   function openDrawer() {
-    if (panelMode) return; // panel open handled by map-app.js
-    drawer.classList.add("open");
-    drawer.setAttribute("aria-hidden", "false");
-    toggleBtn.classList.add("active");
-
-    document.getElementById("surveyDrawer")?.classList.remove("open");
-    document.getElementById("surveyPanelBtn")?.classList.remove("active");
-    document.getElementById("coordSearchDrawer")?.classList.remove("open");
-    document.getElementById("coordSearchBtn")?.classList.remove("active");
-
-    resetIdleHint();
-    disarmPicking();
+    if (panelMode) return;
   }
 
   pickBtn?.addEventListener("click", () => {
@@ -442,23 +439,7 @@ export function initCoordExtractDrawer({
   window.addEventListener("vsl-force-close-extract-drawer", onForceClose);
 
   window.addEventListener("vsl-open-extract-drawer", () => {
-    if (panelMode) {
-      // When Extract is triggered by event in panelMode, just reset hint and disarm
-      disarmPicking();
-      resetIdleHint();
-      return;
-    }
-    document.getElementById("surveyDrawer")?.classList.remove("open");
-    document.getElementById("surveyPanelBtn")?.classList.remove("active");
-    document.getElementById("coordSearchDrawer")?.classList.remove("open");
-    document.getElementById("coordSearchBtn")?.classList.remove("active");
-    if (drawer.classList.contains("open")) {
-      resetIdleHint();
-      disarmPicking();
-      return;
-    }
-    openDrawer();
+    disarmPicking();
   });
-
   return { closeDrawer };
 }

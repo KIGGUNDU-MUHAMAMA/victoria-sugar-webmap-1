@@ -1570,7 +1570,7 @@ function closeSearchPanel(options = {}) {
 }
 
 function activateSearchTab(tab) {
-  const tabs = ["parcel", "place", "coords", "extract"];
+  const tabs = ["parcel", "place", "coords"];
   const tabElMap = { coords: "tabCoords", parcel: "tabParcel", place: "tabPlace", extract: "tabExtract" };
   const bodyElMap = { coords: "searchTabCoords", parcel: "searchTabParcel", place: "searchTabPlace", extract: "searchTabExtract" };
   tabs.forEach((t) => {

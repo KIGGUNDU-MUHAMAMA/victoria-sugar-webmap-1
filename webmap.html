@@ -367,9 +367,6 @@
           <button type="button" class="search-tab" id="tabCoords" role="tab" aria-selected="false" aria-controls="searchTabCoords" data-tab="coords">
             <i class="fas fa-crosshairs" aria-hidden="true"></i> Coordinates
           </button>
-          <button type="button" class="search-tab" id="tabExtract" role="tab" aria-selected="false" aria-controls="searchTabExtract" data-tab="extract">
-            <i class="fas fa-draw-polygon" aria-hidden="true"></i> Extract
-          </button>
         </div>
 
         <!-- ── TAB 1: Block / Parcel Search ── -->
@@ -423,36 +420,6 @@
           <button type="button" id="coordClearMarkersBtn" class="search-panel__btn-secondary" style="margin-top:0.6rem">
             <i class="fas fa-eraser" aria-hidden="true"></i> Clear Markers
           </button>
-        </div>
-        <!-- ── TAB 4: Extract ── -->
-        <div id="searchTabExtract" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabExtract" hidden>
-
-          <ol class="extract-step-list" aria-label="Steps">
-            <li><span class="extract-step-num">1</span> CRS &amp; file types</li>
-            <li><span class="extract-step-num">2</span> Arm picker</li>
-            <li><span class="extract-step-num">3</span> Click block or parcel → download</li>
-          </ol>
-
-          <label class="search-panel__label" for="coordExtractCrsSelect">Export coordinate system</label>
-          <select id="coordExtractCrsSelect" class="search-panel__input"></select>
-
-          <div class="coord-mode-row coord-export-formats" style="margin-top:0.55rem">
-            <label class="coord-mode-label"><input type="checkbox" id="coordExtractCsv" checked> CSV corners</label>
-            <label class="coord-mode-label"><input type="checkbox" id="coordExtractDxf" checked> DXF polyline</label>
-          </div>
-
-          <button type="button" id="coordExtractPickBtn" class="search-panel__btn-primary" style="margin-top:0.75rem">
-            <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on Map
-          </button>
-          <button type="button" id="coordExtractCancelPickBtn" class="search-panel__btn-secondary" style="margin-top:0.4rem" hidden>
-            <i class="fas fa-times" aria-hidden="true"></i> Cancel picking
-          </button>
-
-          <div id="coordExtractHint" class="extract-hint" role="status" aria-live="polite" style="margin-top:0.6rem">
-            Choose CRS and formats, then press <strong>Select on Map</strong> and click a <strong>block</strong> (red outline) or <strong>parcel</strong> (blue fill).
-          </div>
-
-          <div id="coordExtractLastExport" class="extract-last-export" hidden style="margin-top:0.5rem"></div>
         </div>
       </div>
     </section>
@@ -544,17 +511,36 @@
       </header>
 
       <section class="draw-tools__section" aria-labelledby="drawMeasureTitle">
-        <div class="draw-tools__snap" style="margin-bottom: 12px;" role="group" aria-label="Snapping while drawing">
-          <span class="draw-tools__snap-legend">Snap to</span>
-          <label class="draw-tools__check"><input type="checkbox" id="snapBlocksCb" checked> Blocks</label>
-          <label class="draw-tools__check"><input type="checkbox" id="snapParcelsCb" checked> Parcels</label>
-          <label class="draw-tools__check"><input type="checkbox" id="snapSurveyCb" checked> Survey preview</label>
+        <!-- Hidden snap toggles kept for logic -->
+        <div style="display:none;">
+          <input type="checkbox" id="snapBlocksCb" checked>
+          <input type="checkbox" id="snapParcelsCb" checked>
+          <input type="checkbox" id="snapSurveyCb" checked>
         </div>
-        <div class="draw-tools__btn-row">
+        <div class="draw-tools__btn-row" style="margin-bottom: 12px;">
           <button id="measureLineBtn" class="btn-secondary" type="button">Distance</button>
           <button id="measureAreaBtn" class="btn-secondary" type="button">Area</button>
         </div>
         <button id="clearMeasuresBtn" class="btn-secondary draw-tools__full-btn" type="button">Clear measurements</button>
+      </section>
+
+      <section class="draw-tools__section" style="border-top: 1px solid #e2e8f0; padding-top: 15px;">
+        <h4 style="font-size:0.85rem; color:#475569; margin:0 0 10px 0;">Extract Boundaries</h4>
+        <select id="coordExtractCrsSelect" class="search-panel__input" style="margin-bottom: 10px;"></select>
+        
+        <div class="coord-mode-row coord-export-formats" style="margin-bottom: 12px; gap: 10px; display: flex;">
+          <label class="coord-mode-label" style="margin:0;"><input type="checkbox" id="coordExtractCsv" checked> CSV</label>
+          <label class="coord-mode-label" style="margin:0;"><input type="checkbox" id="coordExtractDxf" checked> DXF</label>
+        </div>
+
+        <button type="button" id="coordExtractPickBtn" class="search-panel__btn-primary">
+          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on Map
+        </button>
+        
+        <div id="coordExtractActionRow" style="display:flex; gap:8px; margin-top:10px;" hidden>
+          <button type="button" id="coordExtractFinishBtn" class="search-panel__btn-primary" style="flex:2;">Export (0)</button>
+          <button type="button" id="coordExtractCancelPickBtn" class="search-panel__btn-secondary" style="flex:1;">Cancel</button>
+        </div>
       </section>
 
       <div class="draw-tools__footer">

@@ -108,9 +108,7 @@
       <button type="button" class="control-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
         <i class="fas fa-magnifying-glass"></i><span class="btn-label">Search</span>
       </button>
-      <button type="button" class="control-btn" id="sentinelPanelBtn" title="Satellite analysis (Sentinel-2) and block report" aria-expanded="false" aria-controls="sentinelAnalyticsPanel">
-        <i class="fas fa-satellite" aria-hidden="true"></i><span class="btn-label">Satellite</span>
-      </button>
+      <!-- Old sentinel button removed -->
       <button type="button" class="control-btn" id="printBtn" title="Export map to PDF" hidden style="display: none !important;">
         <i class="fas fa-print"></i><span class="btn-label">Print</span>
       </button>
@@ -147,7 +145,39 @@
 
   <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
 
-    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
+    <!-- NEW MINIMALIST SENTINEL CONTROL -->
+    <div id="sentinelMinimalControl" class="sentinel-minimal-control" hidden>
+      <div class="smc-header">
+        <i class="fas fa-satellite"></i> <span>Sentinel Imagery</span>
+      </div>
+      <div class="smc-row">
+        <label for="smcYear">Year</label>
+        <select id="smcYear" class="smc-select">
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+          <option value="2022">2022</option>
+          <option value="2021">2021</option>
+        </select>
+      </div>
+      <div class="smc-row smc-month-row">
+        <label for="smcMonth">Month: <span id="smcMonthLabel">Jan</span></label>
+        <input type="range" id="smcMonth" min="1" max="12" value="1" class="smc-slider">
+      </div>
+      <div class="smc-row">
+        <label for="smcLayer">Crop Health</label>
+        <select id="smcLayer" class="smc-select">
+          <option value="TRUE_COLOR">True Color (Default)</option>
+          <option value="NDVI">NDVI</option>
+          <option value="NDVI_ADVANCED">NDVI adv.</option>
+          <option value="NDRE">NDRE</option>
+          <option value="MOISTURE_STRESS">Moisture stress</option>
+        </select>
+      </div>
+      <div id="smcLegend" class="smc-legend"></div>
+      <div id="smcSpinner" class="smc-spinner" hidden>Loading...</div>
+    </div>
+    
+    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel" style="display:none !important;" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
       <div class="sentinel-analytics__card">
         <header class="search-panel__head">
           <div class="search-panel__head-inner">

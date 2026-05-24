@@ -565,7 +565,7 @@ function buildLayerTree() {
     transition: 200
   });
   sentinelHubLayer.setZIndex(4);
-  sentinelHubLayer.set("displayInLayerSwitcher", false);
+  sentinelHubLayer.set("displayInLayerSwitcher", true);
   sentinelHubLayer.set("type", "sentinel");
 
   const overlaysGroup = new ol.layer.Group({

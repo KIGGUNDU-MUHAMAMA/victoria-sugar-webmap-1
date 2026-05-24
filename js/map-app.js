@@ -1764,6 +1764,8 @@ function stopActiveTool() {
     map.removeInteraction(activeInteraction);
     activeInteraction = null;
   }
+  const ph = document.getElementById("panelHost");
+  if (ph) ph.classList.remove("side-panel--minimized");
 }
 
 function drawGeometry(layerType) {
@@ -1886,11 +1888,15 @@ async function saveGeometry(feature, layerType, opts = {}) {
 function startMeasure(type) {
   stopActiveTool();
   editSource.clear(true);
+  const ph = document.getElementById("panelHost");
+  if (ph) ph.classList.add("side-panel--minimized");
   const draw = new ol.interaction.Draw({ source: editSource, type });
   draw.on("drawend", (evt) => {
     map.removeInteraction(draw);
     activeInteraction = null;
     detachSnapInteractions();
+    const ph = document.getElementById("panelHost");
+    if (ph) ph.classList.remove("side-panel--minimized");
     const geom = evt.feature.getGeometry();
     editSource.removeFeature(evt.feature);
     if (type === "LineString") {

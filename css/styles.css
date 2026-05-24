@@ -2268,14 +2268,53 @@ body.print-composer-open {
   }
 
   .side-panel {
-    width: min(100%, 360px);
-    min-width: unset;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
     max-width: 100%;
-    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.12);
+    min-width: unset;
+    height: auto;
+    max-height: 50vh;
+    max-height: 50dvh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+  }
+
+  /* Minimized state when actively measuring on map */
+  .side-panel.side-panel--minimized .draw-tools__section {
+    display: none !important;
+  }
+  .side-panel.side-panel--minimized .draw-tools__head-text {
+    display: none !important;
+  }
+  .side-panel.side-panel--minimized {
+    border-radius: 20px;
+    margin: 10px;
+    width: calc(100% - 20px);
+    bottom: 20px;
   }
 
   .layer-switcher {
-    top: 140px;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: 55vh;
+    max-height: 55dvh;
+    border-radius: 16px 16px 0 0;
+    border: none;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+  }
+
+  .layer-switcher .layer-tree {
+    max-height: calc(55vh - 60px);
+    overflow-y: auto;
   }
 
   .fallback-switcher {
@@ -2684,8 +2723,8 @@ select.search-panel__input {
     right: 0;
     top: auto;
     width: 100%;
-    max-height: 72vh;
-    max-height: 72dvh;
+    max-height: 55vh;
+    max-height: 55dvh;
     padding: 0;
     gap: 0;
     border-radius: 16px 16px 0 0;
@@ -2694,8 +2733,8 @@ select.search-panel__input {
 
   .search-panel {
     width: 100%;
-    max-height: 72vh;
-    max-height: 72dvh;
+    max-height: 55vh;
+    max-height: 55dvh;
     overflow-y: auto;
     border-radius: 16px 16px 0 0;
   }

@@ -127,11 +127,12 @@ export function initSentinelAnalytics(opts) {
     renderWmsLegend(legendBody, layerId);
   }
 
-  // Bind UI Events
   const backBtn = document.getElementById("smcBackBtn");
   if (backBtn) {
     backBtn.addEventListener("click", () => {
-      sentinelLayer.setVisible(false);
+      if (container) container.hidden = true;
+      const ls = document.querySelector(".layer-switcher");
+      if (ls) ls.style.display = "";
     });
   }
 
@@ -147,14 +148,15 @@ export function initSentinelAnalytics(opts) {
   // Toggle Panel visibility based on Layer Switcher
   sentinelLayer.on("change:visible", () => {
     const isVis = sentinelLayer.getVisible();
-    if (container) container.hidden = !isVis;
-    
-    // Hide layer switcher when sentinel is active
-    const ls = document.querySelector(".layer-switcher");
-    if (ls) ls.style.display = isVis ? "none" : "";
-    
     if (isVis) {
+      if (container) container.hidden = false;
+      const ls = document.querySelector(".layer-switcher");
+      if (ls) ls.style.display = "none";
       applyWmsParams();
+    } else {
+      if (container) container.hidden = true;
+      const ls = document.querySelector(".layer-switcher");
+      if (ls) ls.style.display = "";
     }
   });
   

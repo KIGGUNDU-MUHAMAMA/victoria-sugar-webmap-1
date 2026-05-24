@@ -94,44 +94,26 @@ function buildDxfFromRings(projectedRings, dxfLayerName = "PARCEL") {
     lines.push(String(b));
   };
   push(0, "SECTION");
-  push(2, "HEADER");
-  push(9, "$ACADVER");
-  push(1, "AC1018");
-  push(0, "ENDSEC");
-  push(0, "SECTION");
-  push(2, "TABLES");
-  push(0, "TABLE");
-  push(2, "LAYER");
-  push(5, "2");
-  push(100, "AcDbSymbolTable");
-  push(70, "1");
-  push(0, "LAYER");
-  push(5, "10");
-  push(100, "AcDbSymbolTableRecord");
-  push(100, "AcDbLayerTableRecord");
-  push(2, layer);
-  push(70, "0");
-  push(62, "5");
-  push(6, "CONTINUOUS");
-  push(0, "ENDTAB");
-  push(0, "ENDSEC");
-  push(0, "SECTION");
   push(2, "ENTITIES");
 
-  let handle = 0x50;
   projectedRings.forEach((pts) => {
-    const h = (handle++).toString(16).toUpperCase();
-    push(0, "LWPOLYLINE");
-    push(5, h);
-    push(100, "AcDbEntity");
+    push(0, "POLYLINE");
     push(8, layer);
-    push(100, "AcDbPolyline");
-    push(90, String(pts.length));
+    push(66, "1");
     push(70, "1");
+    push(10, "0");
+    push(20, "0");
+    push(30, "0");
+    
     pts.forEach(([x, y]) => {
+      push(0, "VERTEX");
+      push(8, layer);
       push(10, x);
       push(20, y);
+      push(30, "0");
     });
+    push(0, "SEQEND");
+    push(8, layer);
   });
 
   push(0, "ENDSEC");
@@ -210,6 +192,7 @@ export function initCoordExtractDrawer({
     const extCrs = document.getElementById("coordExtractCrsSelect");
     const extFormats = document.querySelector("#drawingPanel .coord-export-formats");
     const actionRow = document.getElementById("coordExtractActionRow");
+    const panelHost = document.getElementById("panelHost");
     
     if (armed) {
       if (measureHead) measureHead.style.display = 'none';
@@ -220,6 +203,11 @@ export function initCoordExtractDrawer({
       if (extFormats) extFormats.style.display = 'none';
       if (pickBtn) pickBtn.style.display = 'none';
       if (actionRow) actionRow.hidden = false;
+      if (panelHost) {
+        panelHost.style.height = "auto";
+        panelHost.style.top = "auto";
+        panelHost.style.bottom = "10px";
+      }
     } else {
       if (measureHead) measureHead.style.display = '';
       if (measureSection1) measureSection1.style.display = '';
@@ -229,6 +217,11 @@ export function initCoordExtractDrawer({
       if (extFormats) extFormats.style.display = 'flex';
       if (pickBtn) pickBtn.style.display = '';
       if (actionRow) actionRow.hidden = true;
+      if (panelHost) {
+        panelHost.style.height = "";
+        panelHost.style.top = "";
+        panelHost.style.bottom = "";
+      }
     }
   }
   

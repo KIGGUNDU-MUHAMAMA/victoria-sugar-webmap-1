@@ -152,34 +152,7 @@ export function initSentinelAnalytics(opts) {
     applyWmsParams();
   }
 
-  // Boundary Clipping based on blocksLayer
-  if (blocksLayer && window.ol) {
-    sentinelLayer.on('prerender', function(event) {
-      const ctx = event.context;
-      if (!ctx || typeof ctx.clip !== 'function') return;
-      const features = blocksLayer.getSource().getFeatures();
-      if (!features.length) return;
-      
-      const vecCtx = window.ol.render.getVectorContext(event);
-      ctx.save();
-      ctx.beginPath();
-      
-      features.forEach(f => {
-        const geom = f.getGeometry();
-        if (geom) {
-          vecCtx.drawGeometry(geom);
-        }
-      });
-      ctx.clip();
-    });
-    
-    sentinelLayer.on('postrender', function(event) {
-      const ctx = event.context;
-      if (ctx && typeof ctx.restore === 'function') {
-        ctx.restore();
-      }
-    });
-  }
+  // Removed buggy clipping logic to restore layer rendering
 
   return { close: () => {} };
 }

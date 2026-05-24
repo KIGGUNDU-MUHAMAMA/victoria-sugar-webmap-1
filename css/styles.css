@@ -3581,9 +3581,9 @@ select.search-panel__input {
 
 /* Minimalist Sentinel Control Panel */
 .sentinel-minimal-control {
-  position: absolute;
-  top: 60px;
-  right: 60px;
+  position: fixed;
+  top: 70px;
+  right: 15px;
   background: var(--vsl-surface, #ffffff);
   border: 1px solid var(--vsl-border, #e2e8f0);
   border-radius: 8px;

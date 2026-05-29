@@ -294,6 +294,23 @@ button:hover {
   z-index: 0;
 }
 
+#map.map-drop-active::after {
+  content: "Drop to import file";
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(47, 107, 47, 0.25);
+  border: 3px dashed #2f6b2f;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1d4a1d;
+  pointer-events: none;
+}
+
 .map-frame {
   position: absolute;
   inset: 0;

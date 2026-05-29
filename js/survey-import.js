@@ -151,9 +151,10 @@ export function initSurveyImport({
   const saveBtn = document.getElementById("surveySaveBtn");
 
   if (!drawer) return null;
-  // toggleBtn may be a hidden no-op stub; guard all calls on it
+  // toggleBtn and surveyCloseBtn may be absent (stubs); guard all calls
   const hasToggle = toggleBtn && !toggleBtn.hidden;
 
+  // Populate CRS dropdown from CRS_OPTIONS
   CRS_OPTIONS.forEach((o) => {
     const opt = document.createElement("option");
     opt.value = o.value;
@@ -541,15 +542,27 @@ export function initSurveyImport({
 
   dropzone?.addEventListener("dragover", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropzone.classList.add("dragover");
   });
   dropzone?.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
-  dropzone?.addEventListener("drop", (e) => {
+  dropzone?.addEventListener("drop", async (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropzone.classList.remove("dragover");
     const f = e.dataTransfer?.files?.[0];
     if (f) {
-      handleFile(f);
+      // Set the format dropdown to match the file type
+      const sel = document.getElementById("importFormatSelect");
+      if (sel) {
+        const nm = f.name.toLowerCase();
+        if (nm.endsWith(".dxf")) sel.value = "dxf";
+        else if (nm.endsWith(".kml")) sel.value = "kml";
+        else if (nm.endsWith(".geojson") || nm.endsWith(".json")) sel.value = "geojson";
+        else if (nm.endsWith(".csv")) sel.value = "csv";
+        sel.dispatchEvent(new Event("change"));
+      }
+      await handleFile(f);
     }
   });
 

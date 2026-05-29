@@ -2257,18 +2257,27 @@ async function initMap() {
     setTimeout(() => loader.remove(), 500);
   }
 
-  // Global drag and drop for DXF/CSV on map
+  // Global drag and drop for survey files on map canvas
   const mapEl = document.getElementById("map");
   if (mapEl) {
-    mapEl.addEventListener("dragover", (e) => e.preventDefault());
-    mapEl.addEventListener("drop", (e) => {
+    mapEl.addEventListener("dragover", (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      mapEl.classList.add("map-drop-active");
+    });
+    mapEl.addEventListener("dragleave", () => mapEl.classList.remove("map-drop-active"));
+    mapEl.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      mapEl.classList.remove("map-drop-active");
       const f = e.dataTransfer?.files?.[0];
-      if (f && window.handleGlobalSurveyDrop) {
-        const name = f.name.toLowerCase();
-        if (name.endsWith(".dxf") || name.endsWith(".csv") || name.endsWith(".kml") || name.endsWith(".geojson") || name.endsWith(".json")) {
-          window.handleGlobalSurveyDrop(f);
-        }
+      if (!f) return;
+      const name = f.name.toLowerCase();
+      const isSurvey = name.endsWith(".dxf") || name.endsWith(".csv") ||
+                       name.endsWith(".kml") || name.endsWith(".geojson") ||
+                       name.endsWith(".json");
+      if (isSurvey && window.handleGlobalSurveyDrop) {
+        await window.handleGlobalSurveyDrop(f);
       }
     });
   }

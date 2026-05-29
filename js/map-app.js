@@ -6,6 +6,9 @@ import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initPrintComposer } from "./print-composer.js";
 import { initSentinelAnalytics } from "./sentinel-analytics.js";
 import { initFarmReports } from "./farm-reports.js";
+import { initUnifiedMenu } from "./unified-menu.js";
+import { initDroneImageModule } from "./drone-image.js";
+import { initExportTools } from "./export-tools.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -21,9 +24,7 @@ const snapParcelsCb = document.getElementById("snapParcelsCb");
 const snapSurveyCb = document.getElementById("snapSurveyCb");
 const clearMeasuresBtn = document.getElementById("clearMeasuresBtn");
 const drawToolsFeedback = document.getElementById("drawToolsFeedback");
-const panelButtons = {
-  drawingPanelBtn: "drawingPanel"
-};
+const panelButtons = {}; // draw tools now live in UAM; no legacy panel button needed
 
 const locateBtn = document.getElementById("locateBtn");
 const printBtn = document.getElementById("printBtn");
@@ -2206,6 +2207,37 @@ async function initMap() {
     stopActiveTool,
     panelMode: true
   });
+
+  initExportTools({
+    map,
+    parcelsLayer,
+    blocksLayer,
+    setStatus,
+    statusEl
+  });
+
+  initDroneImageModule({
+    map,
+    supabase,
+    setStatus,
+    statusEl,
+    getBaseGroup: () => baseGroupRef
+  });
+
+  initUnifiedMenu({
+    map,
+    supabase,
+    cfg,
+    setStatus,
+    statusEl,
+    blocksSource,
+    parcelsSource,
+    blocksLayer,
+    parcelsLayer,
+    surveyPreviewSnapSources,
+    stopActiveTool
+  });
+
   await loadLayersFromDb();
   map.on("moveend", async () => {
     await loadLayersFromDb();

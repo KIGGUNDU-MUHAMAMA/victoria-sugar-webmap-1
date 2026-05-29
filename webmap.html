@@ -122,15 +122,6 @@
       <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
         <i class="fas fa-chart-simple"></i><span class="btn-label">Status</span>
       </button>
-      <button type="button" class="control-btn" id="drawingPanelBtn" title="Measure Distances and Area">
-        <i class="fas fa-ruler-combined"></i><span class="btn-label">Measure</span>
-      </button>
-      <button type="button" class="control-btn" id="vslRoverBtn" title="Rover — Field Survey Mode">
-        <i class="fas fa-satellite-dish"></i><span class="btn-label">Rover</span>
-      </button>
-      <button type="button" class="control-btn" id="surveyPanelBtn" title="Survey CSV import">
-        <i class="fas fa-drafting-compass"></i><span class="btn-label">Survey</span>
-      </button>
       <button type="button" class="control-btn" id="logoutBtn" title="Sign Out">
         <i class="fas fa-right-from-bracket"></i><span class="btn-label">Sign Out</span>
       </button>
@@ -141,9 +132,14 @@
     <div class="map-viewport-wrap">
       <div id="map"></div>
       <div class="map-frame" aria-hidden="true"></div>
-      <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
-        <i class="fas fa-location-crosshairs"></i>
-      </button>
+      <div class="map-fab-cluster">
+        <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
+          <i class="fas fa-location-crosshairs"></i>
+        </button>
+        <button type="button" class="floating-btn map-floating-tools" id="toolsFabBtn" title="Tools" aria-label="Tools" aria-expanded="false">
+          <i class="fas fa-layer-group" id="toolsFabIcon"></i>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -447,7 +443,8 @@
 
   <!-- place search popover removed — now lives inside #searchPanel tab 3 -->
 
-  <aside id="surveyDrawer" class="survey-drawer" aria-hidden="true">
+  <!-- surveyDrawer: kept for survey-import.js DOM references; rendered inside UAM -->
+  <aside id="surveyDrawer" class="survey-drawer" aria-hidden="true" hidden style="display:none!important">
     <div class="survey-drawer-inner">
       <div class="survey-drawer-head">
         <h2>Survey import</h2>
@@ -508,7 +505,8 @@
   <!-- coordExtractDrawer: state-only anchor for data-picking; no visible UI (Extract tab is now in #searchPanel) -->
   <aside id="coordExtractDrawer" class="coord-extract-drawer" aria-hidden="true" data-picking="" style="display:none"></aside>
 
-  <aside class="side-panel" id="panelHost" aria-label="Draw and measure tools">
+  <!-- panelHost: kept for backward compat; draw tools now live in UAM -->
+  <aside class="side-panel" id="panelHost" aria-label="Draw and measure tools" hidden style="display:none!important">
     <div class="panel active" id="drawingPanel">
       <header class="draw-tools__head">
         <div class="draw-tools__head-text">
@@ -638,7 +636,223 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
+  <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
   <script type="module" src="./js/map-app.js"></script>
+
+  <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
+  <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->
+  <button id="surveyPanelBtn" hidden style="display:none!important" aria-hidden="true"></button>
+  <button id="drawingPanelBtn" hidden style="display:none!important" aria-hidden="true"></button>
+  <button id="vslRoverBtn" hidden style="display:none!important" aria-hidden="true"></button>
+
+  <div id="unifiedActionMenu" class="uam-overlay" aria-hidden="true" hidden>
+    <div class="uam-shell" role="dialog" aria-modal="true" aria-label="Field tools">
+
+      <!-- LEFT NAV -->
+      <nav class="uam-nav" aria-label="Tool sections">
+        <button type="button" class="uam-nav-btn" data-uam-tab="import" aria-selected="true">
+          <i class="fas fa-file-import"></i><span>Import</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="drone" aria-selected="false">
+          <i class="fas fa-drone-alt"></i><span>Drone</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="draw" aria-selected="false">
+          <i class="fas fa-pencil-ruler"></i><span>Draw</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="rover" aria-selected="false">
+          <i class="fas fa-satellite-dish"></i><span>Rover</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="export" aria-selected="false">
+          <i class="fas fa-file-export"></i><span>Export</span>
+        </button>
+      </nav>
+
+      <!-- RIGHT CONTENT -->
+      <div class="uam-content">
+
+        <button type="button" class="uam-close-btn" id="uamCloseBtn" aria-label="Close tools panel">
+          <i class="fas fa-times"></i>
+        </button>
+
+        <!-- ── IMPORT TAB ── -->
+        <div class="uam-tab" id="uamTabImport" data-uam-panel="import">
+          <div class="uam-field-row">
+            <select id="surveyLayerSelect" class="uam-select">
+              <option value="">Layer…</option>
+              <option value="BLOCKS">BLOCKS</option>
+              <option value="PARCELS">PARCELS</option>
+            </select>
+          </div>
+
+          <div id="surveyBlockFields" class="survey-conditional" hidden>
+            <input id="surveyProjectName" type="text" class="uam-input" placeholder="Estate / project name (optional)" autocomplete="off">
+          </div>
+          <div id="surveyParcelFields" class="survey-conditional" hidden>
+            <select id="surveyParentBlockSelect" class="uam-select">
+              <option value="">Parent block…</option>
+            </select>
+          </div>
+
+          <div class="uam-field-row">
+            <select id="importFormatSelect" class="uam-select">
+              <option value="">Format…</option>
+              <option value="csv">CSV</option>
+              <option value="dxf">DXF</option>
+              <option value="kml">KML</option>
+              <option value="geojson">GeoJSON</option>
+            </select>
+          </div>
+
+          <div class="uam-field-row">
+            <select id="surveyCrsSelect" class="uam-select"></select>
+          </div>
+
+          <div class="uam-field-row">
+            <label class="uam-file-label">
+              <i class="fas fa-folder-open"></i>
+              <input id="surveyFileInput" type="file" accept=".csv,.dxf,.kml,.geojson,text/csv" class="uam-file-input">
+              <span id="surveyFileName">Choose file…</span>
+            </label>
+          </div>
+
+          <div id="surveyDropzone" class="uam-dropzone">
+            <i class="fas fa-cloud-upload-alt"></i>
+          </div>
+
+          <div id="surveyDigitizeTools" class="survey-digitize" hidden>
+            <div class="uam-field-row" style="gap:8px;">
+              <button type="button" id="surveyStartTracingBtn" class="uam-btn uam-btn--primary" style="flex:1">
+                <i class="fas fa-pen-nib"></i> Trace
+              </button>
+              <button type="button" id="surveyClearTracingBtn" class="uam-btn uam-btn--ghost" style="flex:1">
+                <i class="fas fa-eraser"></i> Clear
+              </button>
+            </div>
+            <div id="surveyDigitizeCount" style="font-size:0.78rem;color:var(--primary-2);font-weight:600;">0 polygons</div>
+          </div>
+
+          <div id="surveySummary" class="survey-summary" hidden></div>
+
+          <div class="uam-field-row" style="align-items:center;gap:6px;">
+            <input type="checkbox" id="surveySkipSelfIntersect" style="width:auto;margin:0">
+            <label for="surveySkipSelfIntersect" style="font-size:0.8rem;color:var(--muted);margin:0">Allow self-intersect</label>
+          </div>
+
+          <textarea id="surveyAdditionalInfo" class="uam-textarea" rows="2" placeholder="Notes (optional)"></textarea>
+
+          <div class="uam-actions">
+            <button type="button" id="surveyPreviewBtn" class="uam-btn uam-btn--ghost">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button type="button" id="surveySaveBtn" class="uam-btn uam-btn--primary" disabled>
+              <i class="fas fa-database"></i> Save
+            </button>
+          </div>
+        </div>
+
+        <!-- ── DRONE TAB ── -->
+        <div class="uam-tab" id="uamTabDrone" data-uam-panel="drone" hidden>
+          <div class="uam-field-row">
+            <select id="droneCrsSelect" class="uam-select"></select>
+          </div>
+          <div class="uam-field-row">
+            <label class="uam-file-label">
+              <i class="fas fa-satellite"></i>
+              <input id="droneFileInput" type="file" accept=".tif,.tiff" class="uam-file-input">
+              <span id="droneFileName">Choose COG (.tif)…</span>
+            </label>
+          </div>
+          <canvas id="dronePreviewCanvas" class="uam-drone-preview" width="240" height="160" hidden></canvas>
+          <span id="droneUploadStatus" class="uam-status-text"></span>
+          <div class="uam-actions">
+            <button type="button" id="dronePreviewBtn" class="uam-btn uam-btn--ghost">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button type="button" id="droneUploadBtn" class="uam-btn uam-btn--primary" disabled>
+              <i class="fas fa-cloud-upload-alt"></i> Upload
+            </button>
+          </div>
+        </div>
+
+        <!-- ── DRAW TAB ── -->
+        <div class="uam-tab" id="uamTabDraw" data-uam-panel="draw" hidden>
+          <!-- Hidden snap checkboxes (kept for map-app.js snap logic) -->
+          <div style="display:none">
+            <input type="checkbox" id="snapBlocksCb" checked>
+            <input type="checkbox" id="snapParcelsCb" checked>
+            <input type="checkbox" id="snapSurveyCb" checked>
+          </div>
+          <div class="uam-draw-grid">
+            <button id="measureLineBtn" class="uam-draw-btn" type="button">
+              <i class="fas fa-ruler-horizontal"></i><span>Distance</span>
+            </button>
+            <button id="measureAreaBtn" class="uam-draw-btn" type="button">
+              <i class="fas fa-draw-polygon"></i><span>Area</span>
+            </button>
+            <button id="clearMeasuresBtn" class="uam-draw-btn uam-draw-btn--danger" type="button">
+              <i class="fas fa-eraser"></i><span>Clear</span>
+            </button>
+            <button id="stopDrawBtn" class="uam-draw-btn uam-draw-btn--warn" type="button">
+              <i class="fas fa-stop-circle"></i><span>Stop</span>
+            </button>
+          </div>
+          <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+
+          <!-- Extract Boundaries section -->
+          <div class="uam-divider"></div>
+          <select id="coordExtractCrsSelect" class="uam-select"></select>
+          <div style="display:flex;gap:6px;margin-top:6px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;"><input type="checkbox" id="coordExtractCsv" checked style="width:auto;margin:0"> CSV</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;"><input type="checkbox" id="coordExtractDxf" checked style="width:auto;margin:0"> DXF</label>
+          </div>
+          <button type="button" id="coordExtractPickBtn" class="uam-btn uam-btn--ghost" style="margin-top:8px;width:100%">
+            <i class="fas fa-hand-pointer"></i> Select on Map
+          </button>
+          <div id="coordExtractActionRow" style="display:flex;gap:8px;margin-top:8px;" hidden>
+            <button type="button" id="coordExtractFinishBtn" class="uam-btn uam-btn--primary" style="flex:2">Export (0)</button>
+            <button type="button" id="coordExtractCancelPickBtn" class="uam-btn uam-btn--ghost" style="flex:1">Cancel</button>
+          </div>
+        </div>
+
+        <!-- ── ROVER TAB ── -->
+        <div class="uam-tab" id="uamTabRover" data-uam-panel="rover" hidden>
+          <div class="uam-rover-launch">
+            <i class="fas fa-satellite-dish uam-rover-icon"></i>
+            <button type="button" id="uamLaunchRoverBtn" class="uam-btn uam-btn--primary uam-btn--large">
+              <i class="fas fa-play-circle"></i> Launch Rover
+            </button>
+          </div>
+        </div>
+
+        <!-- ── EXPORT TAB ── -->
+        <div class="uam-tab" id="uamTabExport" data-uam-panel="export" hidden>
+          <div class="uam-field-row">
+            <select id="exportCrsSelect" class="uam-select"></select>
+          </div>
+          <div class="uam-field-row">
+            <select id="exportFormatSelect" class="uam-select">
+              <option value="geojson">GeoJSON</option>
+              <option value="kml">KML</option>
+              <option value="csv">CSV</option>
+              <option value="dxf">DXF</option>
+            </select>
+          </div>
+          <button type="button" id="exportSelectBtn" class="uam-btn uam-btn--ghost" style="width:100%;margin-top:6px">
+            <i class="fas fa-hand-pointer"></i> Select parcels
+          </button>
+          <div id="exportSelCount" class="uam-sel-count" hidden>0 selected</div>
+          <div class="uam-actions" style="margin-top:8px">
+            <button type="button" id="exportCancelBtn" class="uam-btn uam-btn--ghost">Cancel</button>
+            <button type="button" id="exportDoBtn" class="uam-btn uam-btn--primary" disabled>
+              <i class="fas fa-download"></i> Export
+            </button>
+          </div>
+        </div>
+
+      </div><!-- .uam-content -->
+    </div><!-- .uam-shell -->
+  </div><!-- #unifiedActionMenu -->
 
 <!-- ============================================================ -->
 <!-- VSL ROVER — Field Survey Mode (Victoria Sugar)              -->

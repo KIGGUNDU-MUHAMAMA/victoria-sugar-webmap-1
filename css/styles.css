@@ -2885,34 +2885,489 @@ select.search-panel__input {
   }
 }
 
-/* Floating Locate Me Button */
-.map-floating-locate {
+/* ── FAB Cluster ── */
+.map-fab-cluster {
   position: absolute;
   bottom: 20px;
-  right: 20px;
-  width: 44px;
-  height: 44px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 1100;
+}
+
+.floating-btn {
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: white;
+  background: #fff;
   color: var(--primary);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  border: 1.5px solid rgba(63,143,63,0.25);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
-  z-index: 1000;
+  font-size: 1.15rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  padding: 0;
+  margin: 0;
 }
 
-.map-floating-locate:hover {
-  background: var(--surface);
-  transform: scale(1.05);
+.floating-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(63,143,63,0.28);
+  background: #f4fff4;
 }
 
-.map-floating-locate:active {
-  transform: scale(0.95);
+.floating-btn:active {
+  transform: scale(0.94);
+}
+
+.map-floating-locate {
+  /* inherits .floating-btn */
+}
+
+.map-floating-tools {
+  background: linear-gradient(145deg, #2f6b2f, #4a9a4a);
+  color: #fff;
+  border-color: transparent;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 16px rgba(47,107,47,0.45), 0 1px 4px rgba(0,0,0,0.18);
+}
+
+.map-floating-tools:hover {
+  background: linear-gradient(145deg, #265526, #3d8a3d);
+  box-shadow: 0 6px 24px rgba(47,107,47,0.55);
+}
+
+.map-floating-tools.uam-open {
+  background: linear-gradient(145deg, #1e4d1e, #2f6b2f);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* ── Unified Action Menu (UAM) ── */
+.uam-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 0 0 80px 12px;
+  pointer-events: none;
+}
+
+.uam-overlay:not([hidden]) {
+  pointer-events: auto;
+}
+
+.uam-shell {
+  display: flex;
+  width: min(740px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 110px));
+  background: #fff;
+  border-radius: 18px;
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.22),
+    0 4px 12px rgba(0,0,0,0.12),
+    0 0 0 1px rgba(63,143,63,0.15);
+  overflow: hidden;
+  transform: translateY(24px) scale(0.96);
+  opacity: 0;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
+}
+
+.uam-overlay:not([hidden]) .uam-shell {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* Left navigation */
+.uam-nav {
+  width: 80px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #2a5d2a 0%, #1d4a1d 100%);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.uam-nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 4px;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.65);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: 0;
+  width: 100%;
+  margin: 0;
+  transition: background 0.15s, color 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.uam-nav-btn i {
+  font-size: 1.1rem;
+  margin-bottom: 2px;
+}
+
+.uam-nav-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.uam-nav-btn[aria-selected="true"] {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border-left-color: #8bc34a;
+}
+
+/* Right content area */
+.uam-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  background: #fafcf9;
+}
+
+.uam-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.07);
+  border: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  padding: 0;
+  margin: 0;
+  transition: background 0.15s;
+}
+
+.uam-close-btn:hover {
+  background: rgba(0,0,0,0.14);
+  color: var(--text);
+}
+
+/* Tabs (right panels) */
+.uam-tab {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 14px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.uam-tab[hidden] {
+  display: none !important;
+}
+
+/* Form controls inside UAM */
+.uam-select,
+.uam-input,
+.uam-textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.875rem;
+  background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s;
+  margin: 0;
+}
+
+.uam-select:focus,
+.uam-input:focus,
+.uam-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.uam-textarea {
+  resize: none;
+  min-height: 52px;
+}
+
+.uam-field-row {
+  display: flex;
+  gap: 6px;
+}
+
+/* File input */
+.uam-file-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.5rem 0.65rem;
+  border: 1.5px dashed var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--muted);
+  width: 100%;
+  background: #fff;
+  transition: border-color 0.15s, color 0.15s;
+  margin: 0;
+}
+
+.uam-file-label:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.uam-file-input {
+  display: none;
+}
+
+/* Dropzone */
+.uam-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--border);
+  font-size: 1.6rem;
+  transition: border-color 0.15s, color 0.15s;
+  cursor: pointer;
+  min-height: 52px;
+  background: #fff;
+}
+
+.uam-dropzone.dragover,
+.uam-dropzone:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #f4fff4;
+}
+
+/* Action buttons */
+.uam-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0.5rem 1rem;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  margin: 0;
+  width: auto;
+}
+
+.uam-btn--primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.uam-btn--primary:hover {
+  background: var(--primary-2);
+}
+
+.uam-btn--primary:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.uam-btn--ghost {
+  background: #f0f4ee;
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+.uam-btn--ghost:hover {
+  background: #e4ede0;
+  border-color: var(--primary);
+}
+
+.uam-btn--large {
+  padding: 0.75rem 1.75rem;
+  font-size: 1rem;
+}
+
+.uam-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.uam-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Draw grid */
+.uam-draw-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.uam-draw-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 14px 8px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin: 0;
+  width: auto;
+}
+
+.uam-draw-btn i {
+  font-size: 1.3rem;
+  color: var(--primary);
+}
+
+.uam-draw-btn:hover {
+  border-color: var(--primary);
+  background: #f4fff4;
+  box-shadow: 0 2px 8px rgba(63,143,63,0.15);
+}
+
+.uam-draw-btn--danger i { color: var(--danger); }
+.uam-draw-btn--danger:hover { border-color: var(--danger); background: #fff5f5; }
+.uam-draw-btn--warn i { color: var(--accent); }
+.uam-draw-btn--warn:hover { border-color: var(--accent); background: #fffaf4; }
+
+/* Rover launch */
+.uam-rover-launch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 18px;
+  padding: 20px;
+}
+
+.uam-rover-icon {
+  font-size: 3.5rem;
+  color: var(--primary);
+  opacity: 0.85;
+}
+
+/* Drone preview canvas */
+.uam-drone-preview {
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.uam-status-text {
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-height: 1.2rem;
+}
+
+/* Selection count badge */
+.uam-sel-count {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary-2);
+  padding: 4px 8px;
+  background: #eef5ec;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+/* ── Mobile UAM: full-screen drill-down ── */
+@media (max-width: 640px) {
+  .uam-overlay {
+    padding: 0;
+    align-items: flex-end;
+    justify-content: stretch;
+  }
+
+  .uam-shell {
+    width: 100%;
+    max-height: 80vh;
+    border-radius: 20px 20px 0 0;
+    flex-direction: column;
+  }
+
+  .uam-nav {
+    flex-direction: row;
+    width: 100%;
+    height: 64px;
+    padding: 0 4px;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+  }
+
+  .uam-nav-btn {
+    flex: 1;
+    min-width: 56px;
+    padding: 8px 2px;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    font-size: 0.58rem;
+  }
+
+  .uam-nav-btn i {
+    font-size: 0.95rem;
+  }
+
+  .uam-nav-btn[aria-selected="true"] {
+    border-left-color: transparent;
+    border-bottom-color: #8bc34a;
+  }
+
+  .uam-content {
+    max-height: calc(80vh - 64px);
+  }
+
+  .map-fab-cluster {
+    bottom: 16px;
+    right: 12px;
+  }
 }
 
 /* ═══ Sentinel-2 — in .map-left-stack (WMS + reports; basemap via layer switcher) ═══ */

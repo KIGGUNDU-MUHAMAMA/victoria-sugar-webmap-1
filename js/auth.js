@@ -13,30 +13,43 @@ const newPassword = document.getElementById("newPassword");
 const role = document.getElementById("role");
 const signUpBtn = document.getElementById("signUpBtn");
 const forgotBtn = document.getElementById("forgotBtn");
+
+// Removed tab DOM elements as they are now handled inline in login.html
 async function handleSignIn() {
   clearStatus(statusEl);
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.value.trim(),
-    password: password.value
-  });
-  if (error) {
-    setStatus(statusEl, error.message, true);
-    return;
-  }
+  signInBtn.textContent = "Signing In...";
+  signInBtn.disabled = true;
+  
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.value.trim(),
+      password: password.value
+    });
+    if (error) {
+      setStatus(statusEl, error.message, true);
+      return;
+    }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("vsl_profiles")
-    .select("role")
-    .eq("id", data.user.id)
-    .single();
+    const { data: profile, error: profileError } = await supabase
+      .from("vsl_profiles")
+      .select("role")
+      .eq("id", data.user.id)
+      .single();
 
-  if (profileError || !profile?.role) {
-    setStatus(statusEl, "No role profile found. Contact admin.", true);
-    await supabase.auth.signOut();
-    return;
+    if (profileError || !profile?.role) {
+      setStatus(statusEl, "No role profile found. Contact admin.", true);
+      await supabase.auth.signOut();
+      return;
+    }
+    sessionStorage.setItem("vsl_role", profile.role);
+    window.location.href = "./webmap.html";
+  } catch (err) {
+    setStatus(statusEl, "An unexpected error occurred.", true);
+    console.error("Sign In Error:", err);
+  } finally {
+    signInBtn.textContent = "Sign In";
+    signInBtn.disabled = false;
   }
-  sessionStorage.setItem("vsl_role", profile.role);
-  window.location.href = "./webmap.html";
 }
 
 async function handleSignUp() {
@@ -46,23 +59,35 @@ async function handleSignUp() {
     setStatus(statusEl, "Pick a valid role.", true);
     return;
   }
-  const { data, error } = await supabase.auth.signUp({
-    email: newEmail.value.trim(),
-    password: newPassword.value,
-    options: {
-      data: { role: selectedRole },
-      emailRedirectTo: `${window.location.origin}/login.html`
+  
+  signUpBtn.textContent = "Creating...";
+  signUpBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email: newEmail.value.trim(),
+      password: newPassword.value,
+      options: {
+        data: { role: selectedRole },
+        emailRedirectTo: `${window.location.origin}/login.html`
+      }
+    });
+    if (error) {
+      setStatus(statusEl, error.message, true);
+      return;
     }
-  });
-  if (error) {
-    setStatus(statusEl, error.message, true);
-    return;
+    if (data.user) {
+      const payload = { id: data.user.id, email: data.user.email, role: selectedRole };
+      await supabase.from("vsl_profiles").upsert(payload);
+    }
+    setStatus(statusEl, "User created. If email confirmation is enabled, verify inbox.");
+  } catch (err) {
+    setStatus(statusEl, "An unexpected error occurred.", true);
+    console.error("Sign Up Error:", err);
+  } finally {
+    signUpBtn.textContent = "Create User";
+    signUpBtn.disabled = false;
   }
-  if (data.user) {
-    const payload = { id: data.user.id, email: data.user.email, role: selectedRole };
-    await supabase.from("vsl_profiles").upsert(payload);
-  }
-  setStatus(statusEl, "User created. If email confirmation is enabled, verify inbox.");
 }
 
 async function handleForgotPassword() {
@@ -82,16 +107,18 @@ async function handleForgotPassword() {
   setStatus(statusEl, "Reset link sent. Check your email.");
 }
 
+// Removed inline UI event listeners for tabs as they are handled in login.html
+
+signInBtn.addEventListener("click", handleSignIn);
+signUpBtn.addEventListener("click", handleSignUp);
+forgotBtn.addEventListener("click", handleForgotPassword);
+
 async function init() {
   const { data } = await supabase.auth.getSession();
   if (data.session) {
     window.location.href = "./webmap.html";
     return;
   }
-
-  signInBtn.addEventListener("click", handleSignIn);
-  signUpBtn.addEventListener("click", handleSignUp);
-  forgotBtn.addEventListener("click", handleForgotPassword);
 }
 
 init().catch((err) => setStatus(statusEl, err.message, true));

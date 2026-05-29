@@ -23,22 +23,37 @@
 
     <section class="login-panel">
       <div class="card">
-        <h2>Sign In</h2>
-        <label for="email">Email</label>
-        <input id="email" type="email" autocomplete="username">
+        <div class="auth-tabs">
+          <button id="tabSignIn" class="auth-tab active" type="button">Sign In</button>
+          <button id="tabSignUp" class="auth-tab" type="button">Create Account</button>
+        </div>
 
-        <label for="password">Password</label>
-        <input id="password" type="password" autocomplete="current-password">
+        <div id="panelSignIn" class="auth-panel">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="username">
 
-        <button id="signInBtn" type="button">Sign In</button>
+          <label for="password">Password</label>
+          <div class="password-wrapper">
+            <input id="password" type="password" autocomplete="current-password">
+            <button type="button" class="toggle-password" onclick="togglePwd('password', this)">Show</button>
+          </div>
 
-        <div class="group">
-          <h3>Create Account</h3>
+          <button id="signInBtn" type="button">Sign In</button>
+
+          <div class="group">
+            <button id="forgotBtn" class="btn-secondary" type="button">Forgot Password</button>
+          </div>
+        </div>
+
+        <div id="panelSignUp" class="auth-panel" hidden>
           <label for="newEmail">Email</label>
           <input id="newEmail" type="email">
 
           <label for="newPassword">Password</label>
-          <input id="newPassword" type="password">
+          <div class="password-wrapper">
+            <input id="newPassword" type="password">
+            <button type="button" class="toggle-password" onclick="togglePwd('newPassword', this)">Show</button>
+          </div>
 
           <label for="role">Role</label>
           <select id="role">
@@ -47,19 +62,59 @@
             <option value="MANAGMENT">MANAGMENT</option>
           </select>
 
-          <button id="signUpBtn" class="btn-secondary" type="button">Create User</button>
+          <button id="signUpBtn" type="button">Create User</button>
         </div>
 
-        <div class="group">
-          <button id="forgotBtn" class="btn-secondary" type="button">Forgot Password</button>
-        </div>
-        <p class="small">After you sign in, you will be taken to the map. Create an account above if you do not have one yet.</p>
+        <p class="small auth-help">After you sign in, you will be taken to the map. Create an account above if you do not have one yet.</p>
 
         <div id="status" class="status" hidden></div>
       </div>
     </section>
   </main>
 
-  <script type="module" src="./js/auth.js"></script>
+  <script>
+    const tabSignIn = document.getElementById("tabSignIn");
+    const tabSignUp = document.getElementById("tabSignUp");
+    const panelSignIn = document.getElementById("panelSignIn");
+    const panelSignUp = document.getElementById("panelSignUp");
+    const statusElInline = document.getElementById("status");
+
+    function clearStatusInline() {
+      if (statusElInline) {
+        statusElInline.hidden = true;
+        statusElInline.textContent = "";
+        statusElInline.classList.remove("error");
+      }
+    }
+
+    if (tabSignIn && tabSignUp) {
+      tabSignIn.addEventListener("click", () => {
+        tabSignIn.classList.add("active");
+        tabSignUp.classList.remove("active");
+        panelSignIn.hidden = false;
+        panelSignUp.hidden = true;
+        clearStatusInline();
+      });
+      tabSignUp.addEventListener("click", () => {
+        tabSignUp.classList.add("active");
+        tabSignIn.classList.remove("active");
+        panelSignUp.hidden = false;
+        panelSignIn.hidden = true;
+        clearStatusInline();
+      });
+    }
+
+    function togglePwd(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (input.type === "password") {
+        input.type = "text";
+        btn.textContent = "Hide";
+      } else {
+        input.type = "password";
+        btn.textContent = "Show";
+      }
+    }
+  </script>
+  <script type="module" src="./js/auth.js?v=5"></script>
 </body>
 </html>

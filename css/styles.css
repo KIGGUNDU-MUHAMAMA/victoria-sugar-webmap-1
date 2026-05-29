@@ -33,6 +33,25 @@ body {
   grid-template-columns: 1.2fr 1fr;
 }
 
+@media (max-width: 900px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .login-brand {
+    padding: 2rem 1.5rem;
+    align-items: center;
+    text-align: center;
+  }
+  .login-brand h1 {
+    font-size: 1.8rem;
+  }
+  .login-panel {
+    align-items: flex-start;
+    padding: 1.5rem 1rem;
+  }
+}
+
 .login-brand {
   background: linear-gradient(155deg, #2f6b2f, #5e8b2d);
   color: #fff;
@@ -119,6 +138,38 @@ textarea {
   font: inherit;
 }
 
+.password-wrapper {
+  position: relative;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.password-wrapper input {
+  margin-top: 0;
+  padding-right: 60px;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 0.85rem;
+  padding: 0.4rem;
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.toggle-password:hover {
+  background: transparent;
+  text-decoration: underline;
+  color: var(--primary-2);
+}
+
 button {
   cursor: pointer;
   background: var(--primary);
@@ -152,6 +203,61 @@ button:hover {
   border-top: 1px solid var(--border);
   padding-top: 0.55rem;
   margin-top: 0.55rem;
+}
+
+/* Auth Tabs */
+.auth-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+
+.auth-tab {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 4px 4px 0 0;
+  padding: 0.6rem 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  transition: all 0.2s;
+}
+
+.auth-tab:hover {
+  background: #f8faf6;
+  color: var(--text);
+}
+
+.auth-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: transparent;
+}
+
+.auth-tab.active:hover {
+  background: transparent;
+}
+
+.auth-panel {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.auth-panel[hidden] {
+  display: none !important;
+}
+
+.auth-help {
+  margin-top: 1.5rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .status {

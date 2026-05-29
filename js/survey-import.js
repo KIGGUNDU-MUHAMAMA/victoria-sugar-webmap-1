@@ -504,7 +504,6 @@ export function initSurveyImport({
           setStatus(statusEl, "GeoJSON parsing failed: " + e.message, true);
         }
       }
-      }
     } else {
       try {
         clearPreview();

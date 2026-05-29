@@ -434,71 +434,76 @@ export function initSurveyImport({
     if (!file) return;
     const name = file.name.toLowerCase();
     
-    if (name.endsWith(".dxf")) {
+    if (name.endsWith(".dxf") || name.endsWith(".kml") || name.endsWith(".geojson") || name.endsWith(".json")) {
       const chosenCrs = await promptForCrs(file.name);
       if (!chosenCrs) {
-        setStatus(statusEl, "DXF import cancelled.");
+        setStatus(statusEl, "Import cancelled (no CRS selected).");
         return;
       }
       if (crsSelect) crsSelect.value = chosenCrs;
-      try {
-        setStatus(statusEl, "Parsing DXF...");
-        parsedDxf = await parseDxfFile(file);
-        parsedRows = [];
-        renderSummary("");
-        await renderDxf();
-      } catch(e) {
-        setStatus(statusEl, "DXF parsing failed: " + e.message, true);
+      
+      if (name.endsWith(".dxf")) {
+        try {
+          setStatus(statusEl, "Parsing DXF...");
+          parsedDxf = await parseDxfFile(file);
+          parsedRows = [];
+          renderSummary("");
+          await renderDxf();
+        } catch(e) {
+          setStatus(statusEl, "DXF parsing failed: " + e.message, true);
+        }
+      } else if (name.endsWith(".kml")) {
+        try {
+          clearPreview();
+          setStatus(statusEl, "Parsing KML…");
+          const text = await file.text();
+          const kmlFormat = new ol.format.KML({ extractStyles: false });
+          const features = kmlFormat.readFeatures(text, { dataProjection: chosenCrs, featureProjection: "EPSG:3857" });
+          polySource.clear(true);
+          for (const f of features) {
+            if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
+          }
+          parsedDxf = { entities: [], _kmlFeatures: features }; // flag for digitizer
+          if (polySource.getFeatures().length > 0) {
+            const ext = polySource.getExtent();
+            if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
+            const dTools = document.getElementById("surveyDigitizeTools");
+            if (dTools) dTools.hidden = false;
+            setStatus(statusEl, `KML loaded — ${polySource.getFeatures().length} polygon(s). Use Trace to create parcels.`);
+          } else {
+            setStatus(statusEl, "No polygon features found in KML.", true);
+          }
+          renderSummary(`<p>${features.length} KML feature(s) loaded.</p>`);
+        } catch(e) {
+          setStatus(statusEl, "KML parsing failed: " + e.message, true);
+        }
+      } else {
+        // geojson
+        try {
+          clearPreview();
+          setStatus(statusEl, "Parsing GeoJSON…");
+          const text = await file.text();
+          const gjFormat = new ol.format.GeoJSON();
+          const features = gjFormat.readFeatures(text, { dataProjection: chosenCrs, featureProjection: "EPSG:3857" });
+          polySource.clear(true);
+          for (const f of features) {
+            if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
+          }
+          parsedDxf = { entities: [], _gjFeatures: features }; // flag for digitizer
+          if (polySource.getFeatures().length > 0) {
+            const ext = polySource.getExtent();
+            if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
+            const dTools = document.getElementById("surveyDigitizeTools");
+            if (dTools) dTools.hidden = false;
+            setStatus(statusEl, `GeoJSON loaded — ${polySource.getFeatures().length} polygon(s). Use Trace or save directly.`);
+          } else {
+            setStatus(statusEl, "No polygon features found in GeoJSON.", true);
+          }
+          renderSummary(`<p>${features.length} GeoJSON feature(s) loaded.</p>`);
+        } catch(e) {
+          setStatus(statusEl, "GeoJSON parsing failed: " + e.message, true);
+        }
       }
-    } else if (name.endsWith(".kml")) {
-      try {
-        clearPreview();
-        setStatus(statusEl, "Parsing KML…");
-        const text = await file.text();
-        const kmlFormat = new ol.format.KML({ extractStyles: false });
-        const features = kmlFormat.readFeatures(text, { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" });
-        polySource.clear(true);
-        for (const f of features) {
-          if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
-        }
-        parsedDxf = { entities: [], _kmlFeatures: features }; // flag for digitizer
-        if (polySource.getFeatures().length > 0) {
-          const ext = polySource.getExtent();
-          if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
-          const dTools = document.getElementById("surveyDigitizeTools");
-          if (dTools) dTools.hidden = false;
-          setStatus(statusEl, `KML loaded — ${polySource.getFeatures().length} polygon(s). Use Trace to create parcels.`);
-        } else {
-          setStatus(statusEl, "No polygon features found in KML.", true);
-        }
-        renderSummary(`<p>${features.length} KML feature(s) loaded.</p>`);
-      } catch(e) {
-        setStatus(statusEl, "KML parsing failed: " + e.message, true);
-      }
-    } else if (name.endsWith(".geojson") || name.endsWith(".json")) {
-      try {
-        clearPreview();
-        setStatus(statusEl, "Parsing GeoJSON…");
-        const text = await file.text();
-        const gjFormat = new ol.format.GeoJSON();
-        const features = gjFormat.readFeatures(text, { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" });
-        polySource.clear(true);
-        for (const f of features) {
-          if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
-        }
-        parsedDxf = { entities: [], _gjFeatures: features }; // flag for digitizer
-        if (polySource.getFeatures().length > 0) {
-          const ext = polySource.getExtent();
-          if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
-          const dTools = document.getElementById("surveyDigitizeTools");
-          if (dTools) dTools.hidden = false;
-          setStatus(statusEl, `GeoJSON loaded — ${polySource.getFeatures().length} polygon(s). Use Trace or save directly.`);
-        } else {
-          setStatus(statusEl, "No polygon features found in GeoJSON.", true);
-        }
-        renderSummary(`<p>${features.length} GeoJSON feature(s) loaded.</p>`);
-      } catch(e) {
-        setStatus(statusEl, "GeoJSON parsing failed: " + e.message, true);
       }
     } else {
       try {
@@ -518,8 +523,17 @@ export function initSurveyImport({
 
   // Export so global drag and drop can use it
   window.handleGlobalSurveyDrop = async function(file) {
-    if (!drawer.classList.contains("open")) {
-       toggleBtn.click();
+    if (window.openUamTab) {
+      window.openUamTab("import");
+    }
+    const sel = document.getElementById("importFormatSelect");
+    if (sel) {
+      const name = file.name.toLowerCase();
+      if (name.endsWith(".dxf")) sel.value = "dxf";
+      else if (name.endsWith(".kml")) sel.value = "kml";
+      else if (name.endsWith(".geojson") || name.endsWith(".json")) sel.value = "geojson";
+      else if (name.endsWith(".csv")) sel.value = "csv";
+      sel.dispatchEvent(new Event("change"));
     }
     await handleFile(file);
   };

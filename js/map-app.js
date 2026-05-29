@@ -2266,7 +2266,7 @@ async function initMap() {
       const f = e.dataTransfer?.files?.[0];
       if (f && window.handleGlobalSurveyDrop) {
         const name = f.name.toLowerCase();
-        if (name.endsWith(".dxf") || name.endsWith(".csv")) {
+        if (name.endsWith(".dxf") || name.endsWith(".csv") || name.endsWith(".kml") || name.endsWith(".geojson") || name.endsWith(".json")) {
           window.handleGlobalSurveyDrop(f);
         }
       }

@@ -62,6 +62,11 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     btn.addEventListener("click", () => switchTab(btn.dataset.uamTab));
   });
 
+  window.openUamTab = function(tabId) {
+    openMenu();
+    switchTab(tabId);
+  };
+
   // Default to Import on load
   switchTab("import");
 

@@ -9,7 +9,7 @@
 
 import { PROJ4_DEFS, registerProj4Defs } from "./crs-definitions.js";
 
-const UPLOAD_ENDPOINT = "https://nlis-image-upload.kiggundumuhamad.workers.dev/";
+const SUPABASE_BUCKET = "drones";
 const SUPABASE_TABLE  = "vsl_drone_images";
 const LAYER_GROUP_TITLE = "VIC-GEOTIFF";
 
@@ -155,7 +155,6 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
   let previewBbox3857 = null;  // [minX, minY, maxX, maxY] in EPSG:3857
   let previewLayer   = null;   // ol.layer.Image placed on the map during preview
 
-  // ── OL layer group for saved drone images ─────────────────────────────────
   const droneGroup = new ol.layer.Group({
     title: LAYER_GROUP_TITLE,
     fold: "open",
@@ -165,6 +164,9 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
   });
   droneGroup.set("displayInLayerSwitcher", true);
   map?.addLayer(droneGroup);
+  
+  // Explicitly ensure visibility is off to force LayerSwitcher to uncheck it
+  droneGroup.setVisible(false);
 
   // Show/hide group layers when group visibility toggles.
   droneGroup.on("change:visible", () => {
@@ -243,7 +245,7 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     uploadBtn.disabled = true;
     showStatus("Uploading…");
     try {
-      const url = await uploadToCloudflare(currentFile);
+      const url = await uploadToSupabase(currentFile);
       showStatus("Upload complete. Saving metadata…");
       await saveMetadataToSupabase(url, currentFile.name);
       showStatus(`Saved: ${currentFile.name}`);
@@ -348,29 +350,36 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     }
   }
 
-  // ── Upload to Cloudflare ──────────────────────────────────────────────────
-  async function uploadToCloudflare(file) {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch(UPLOAD_ENDPOINT, {
-      method: "POST",
-      body: formData
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Worker responded ${res.status}: ${text.slice(0, 200)}`);
+  // ── Upload to Supabase Storage ────────────────────────────────────────────
+  async function uploadToSupabase(file) {
+    if (!supabase) throw new Error("Supabase client not available.");
+    
+    // Generate a unique filename to prevent collisions
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { data, error } = await supabase.storage
+      .from(SUPABASE_BUCKET)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      throw new Error(`Storage upload failed: ${error.message}`);
     }
-    const json = await res.json();
-    // Accept { url } or { publicUrl } or { result: { variants: [...] } } (Cloudflare Images)
-    const url =
-      json?.url ||
-      json?.publicUrl ||
-      json?.result?.variants?.[0] ||
-      null;
-    if (!url) {
-      throw new Error("Upload succeeded but no URL returned: " + JSON.stringify(json).slice(0, 300));
+
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(filePath);
+
+    if (!publicUrlData || !publicUrlData.publicUrl) {
+      throw new Error("Could not retrieve public URL for uploaded file.");
     }
-    return url;
+
+    return publicUrlData.publicUrl;
   }
 
   // ── Save metadata to Supabase ─────────────────────────────────────────────

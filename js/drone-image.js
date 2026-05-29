@@ -159,7 +159,9 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
   const droneGroup = new ol.layer.Group({
     title: LAYER_GROUP_TITLE,
     fold: "open",
-    layers: []
+    layers: [],
+    visible: false,
+    zIndex: 5
   });
   droneGroup.set("displayInLayerSwitcher", true);
   map?.addLayer(droneGroup);

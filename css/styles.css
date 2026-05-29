@@ -2889,12 +2889,19 @@ select.search-panel__input {
 .map-fab-cluster {
   position: absolute;
   bottom: 20px;
-  left: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
   z-index: 1100;
+}
+
+.map-fab-cluster--left {
+  left: 20px;
+}
+
+.map-fab-cluster--right {
+  right: 20px;
 }
 
 .floating-btn {
@@ -3340,9 +3347,11 @@ select.search-panel__input {
     max-height: calc(80vh - 64px);
   }
 
-  .map-fab-cluster {
-    bottom: 16px;
+  .map-fab-cluster--left {
     left: 12px;
+  }
+  .map-fab-cluster--right {
+    right: 12px;
   }
 }
 

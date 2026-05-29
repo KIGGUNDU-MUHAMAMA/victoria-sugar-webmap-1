@@ -232,7 +232,7 @@ export function initSurveyImport({
     parentBlockSelect.innerHTML = '<option value="">Loading blocks…</option>';
     
     try {
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/blocks?select=block_code`;
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=block_code`;
       const res = await fetch(url, {
         headers: {
           "apikey": cfg.SUPABASE_ANON_KEY,

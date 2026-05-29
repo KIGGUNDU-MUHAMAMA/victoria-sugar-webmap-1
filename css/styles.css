@@ -2983,16 +2983,13 @@ select.search-panel__input {
   pointer-events: none;
 }
 
-.uam-overlay:not([hidden]) {
-  pointer-events: auto;
-}
-
 .uam-shell {
   display: flex;
   width: min(350px, calc(100vw - 24px));
   max-height: min(520px, calc(100vh - 110px));
   background: #fff;
   border-radius: 18px;
+  pointer-events: auto;
   box-shadow:
     0 20px 60px rgba(0,0,0,0.22),
     0 4px 12px rgba(0,0,0,0.12),

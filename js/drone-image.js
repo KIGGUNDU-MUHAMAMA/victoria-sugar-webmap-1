@@ -9,7 +9,6 @@
 
 import { PROJ4_DEFS, registerProj4Defs } from "./crs-definitions.js";
 
-const SUPABASE_BUCKET = "drones";
 const SUPABASE_TABLE  = "vsl_drone_images";
 const LAYER_GROUP_TITLE = "VIC-GEOTIFF";
 
@@ -245,7 +244,7 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     uploadBtn.disabled = true;
     showStatus("Uploading…");
     try {
-      const url = await uploadToSupabase(currentFile);
+      const url = await uploadToCloudflare(currentFile);
       showStatus("Upload complete. Saving metadata…");
       await saveMetadataToSupabase(url, currentFile.name);
       showStatus(`Saved: ${currentFile.name}`);
@@ -350,36 +349,42 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     }
   }
 
-  // ── Upload to Supabase Storage ────────────────────────────────────────────
-  async function uploadToSupabase(file) {
-    if (!supabase) throw new Error("Supabase client not available.");
-    
+  // ── Upload to Cloudflare Storage (R2) ───────────────────────────────────
+  async function uploadToCloudflare(file) {
+    const workerUrl = window.VSL_CONFIG?.DRONE_UPLOAD_WORKER_URL;
+    if (!workerUrl) throw new Error("DRONE_UPLOAD_WORKER_URL is missing from config.");
+
     // Generate a unique filename to prevent collisions
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-    const filePath = `${fileName}`;
 
-    const { data, error } = await supabase.storage
-      .from(SUPABASE_BUCKET)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
+    // Clean up worker URL to ensure no double slashes before adding filename
+    const baseUrl = workerUrl.replace(/\/$/, "");
+    const uploadUrl = `${baseUrl}/${fileName}`;
 
-    if (error) {
-      throw new Error(`Storage upload failed: ${error.message}`);
+    // Upload using PUT directly with the file body stream
+    const res = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        // Pass the content type so the worker sets it in R2 correctly
+        "Content-Type": file.type || "image/tiff"
+      },
+      body: file
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Cloudflare worker failed (${res.status}): ${text.slice(0, 200)}`);
     }
 
-    // Get public URL
-    const { data: publicUrlData } = supabase.storage
-      .from(SUPABASE_BUCKET)
-      .getPublicUrl(filePath);
-
-    if (!publicUrlData || !publicUrlData.publicUrl) {
-      throw new Error("Could not retrieve public URL for uploaded file.");
+    const json = await res.json().catch(() => ({}));
+    const url = json?.url || json?.publicUrl;
+    
+    if (!url) {
+      throw new Error("Worker succeeded but returned no public URL.");
     }
-
-    return publicUrlData.publicUrl;
+    
+    return url;
   }
 
   // ── Save metadata to Supabase ─────────────────────────────────────────────

@@ -18,6 +18,8 @@ const panelHost = document.getElementById("panelHost");
 
 const measureLineBtn = document.getElementById("measureLineBtn");
 const measureAreaBtn = document.getElementById("measureAreaBtn");
+const drawLineBtn = document.getElementById("drawLineBtn");
+const drawPolygonBtn = document.getElementById("drawPolygonBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
 const snapBlocksCb = document.getElementById("snapBlocksCb");
 const snapParcelsCb = document.getElementById("snapParcelsCb");
@@ -1886,21 +1888,25 @@ async function saveGeometry(feature, layerType, opts = {}) {
   }
 }
 
-function startMeasure(type) {
+function startMeasure(type, isDrawOnly = false) {
   stopActiveTool();
   editSource.clear(true);
-  const ph = document.getElementById("panelHost");
-  if (ph) ph.classList.add("side-panel--minimized");
   const draw = new ol.interaction.Draw({ source: editSource, type });
   draw.on("drawend", (evt) => {
     map.removeInteraction(draw);
     activeInteraction = null;
     detachSnapInteractions();
-    const ph = document.getElementById("panelHost");
-    if (ph) ph.classList.remove("side-panel--minimized");
     const geom = evt.feature.getGeometry();
     editSource.removeFeature(evt.feature);
-    if (type === "LineString") {
+    
+    if (isDrawOnly) {
+      const feat = new ol.Feature({ geometry: geom.clone() });
+      feat.set("_measureKind", "draw");
+      measureSource.addFeature(feat);
+      const msg = `Drawing complete.`;
+      setDrawToolsFeedback(msg, false);
+      setStatus(statusEl, msg);
+    } else if (type === "LineString") {
       const feat = new ol.Feature({ geometry: geom.clone() });
       feat.set("_measureKind", "distance");
       const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
@@ -1999,6 +2005,8 @@ function bindEvents() {
 
   measureLineBtn.addEventListener("click", () => startMeasure("LineString"));
   measureAreaBtn.addEventListener("click", () => startMeasure("Polygon"));
+  drawLineBtn?.addEventListener("click", () => startMeasure("LineString", true));
+  drawPolygonBtn?.addEventListener("click", () => startMeasure("Polygon", true));
   stopDrawBtn.addEventListener("click", stopActiveTool);
   clearMeasuresBtn?.addEventListener("click", () => {
     measureSource.clear(true);

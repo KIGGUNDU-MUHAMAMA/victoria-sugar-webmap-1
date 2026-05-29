@@ -132,12 +132,12 @@
     <div class="map-viewport-wrap">
       <div id="map"></div>
       <div class="map-frame" aria-hidden="true"></div>
-      <div class="map-fab-cluster">
+      <div class="map-fab-cluster map-fab-cluster--left">
         <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
           <i class="fas fa-location-crosshairs"></i>
         </button>
         <button type="button" class="floating-btn map-floating-tools" id="toolsFabBtn" title="Tools" aria-label="Tools" aria-expanded="false">
-          <i class="fas fa-layer-group" id="toolsFabIcon"></i>
+          <i class="fas fa-drafting-compass" id="toolsFabIcon"></i>
         </button>
       </div>
     </div>
@@ -651,6 +651,9 @@
 
       <!-- LEFT NAV -->
       <nav class="uam-nav" aria-label="Tool sections">
+        <button type="button" class="uam-nav-btn" data-uam-tab="rover" aria-selected="false">
+          <i class="fas fa-satellite-dish"></i><span>Rover</span>
+        </button>
         <button type="button" class="uam-nav-btn" data-uam-tab="import" aria-selected="true">
           <i class="fas fa-file-import"></i><span>Import</span>
         </button>
@@ -660,20 +663,17 @@
         <button type="button" class="uam-nav-btn" data-uam-tab="draw" aria-selected="false">
           <i class="fas fa-pencil-ruler"></i><span>Draw</span>
         </button>
-        <button type="button" class="uam-nav-btn" data-uam-tab="rover" aria-selected="false">
-          <i class="fas fa-satellite-dish"></i><span>Rover</span>
-        </button>
         <button type="button" class="uam-nav-btn" data-uam-tab="export" aria-selected="false">
           <i class="fas fa-file-export"></i><span>Export</span>
+        </button>
+
+        <button type="button" class="uam-nav-btn uam-nav-close" id="uamCloseBtn" aria-label="Close tools panel" style="margin-top:auto">
+          <i class="fas fa-times-circle" style="font-size:1.8rem; color:#f8d7da;"></i><span style="color:#f8d7da;">Close</span>
         </button>
       </nav>
 
       <!-- RIGHT CONTENT -->
       <div class="uam-content">
-
-        <button type="button" class="uam-close-btn" id="uamCloseBtn" aria-label="Close tools panel">
-          <i class="fas fa-times"></i>
-        </button>
 
         <!-- ── IMPORT TAB ── -->
         <div class="uam-tab" id="uamTabImport" data-uam-panel="import">
@@ -705,7 +705,17 @@
           </div>
 
           <div class="uam-field-row">
-            <select id="surveyCrsSelect" class="uam-select"></select>
+            <select id="surveyCrsSelect" class="uam-select">
+              <option value="EPSG:32636" selected>WGS 84 / UTM zone 36N</option>
+              <option value="EPSG:4326">WGS 84 — geographic (lon/lat)</option>
+              <option value="EPSG:21095">Arc 1960 / UTM zone 35N</option>
+              <option value="EPSG:21035">Arc 1960 / UTM zone 35S</option>
+              <option value="EPSG:21096">Arc 1960 / UTM zone 36N</option>
+              <option value="EPSG:21036">Arc 1960 / UTM zone 36S</option>
+              <option value="EPSG:32635">WGS 84 / UTM zone 35N</option>
+              <option value="EPSG:32735">WGS 84 / UTM zone 35S</option>
+              <option value="EPSG:32736">WGS 84 / UTM zone 36S</option>
+            </select>
           </div>
 
           <div class="uam-field-row">
@@ -754,7 +764,17 @@
         <!-- ── DRONE TAB ── -->
         <div class="uam-tab" id="uamTabDrone" data-uam-panel="drone" hidden>
           <div class="uam-field-row">
-            <select id="droneCrsSelect" class="uam-select"></select>
+            <select id="droneCrsSelect" class="uam-select">
+              <option value="EPSG:32636" selected>WGS 84 / UTM zone 36N</option>
+              <option value="EPSG:4326">WGS 84 — geographic (lon/lat)</option>
+              <option value="EPSG:21095">Arc 1960 / UTM zone 35N</option>
+              <option value="EPSG:21035">Arc 1960 / UTM zone 35S</option>
+              <option value="EPSG:21096">Arc 1960 / UTM zone 36N</option>
+              <option value="EPSG:21036">Arc 1960 / UTM zone 36S</option>
+              <option value="EPSG:32635">WGS 84 / UTM zone 35N</option>
+              <option value="EPSG:32735">WGS 84 / UTM zone 35S</option>
+              <option value="EPSG:32736">WGS 84 / UTM zone 36S</option>
+            </select>
           </div>
           <div class="uam-field-row">
             <label class="uam-file-label">
@@ -777,42 +797,46 @@
 
         <!-- ── DRAW TAB ── -->
         <div class="uam-tab" id="uamTabDraw" data-uam-panel="draw" hidden>
-          <!-- Hidden snap checkboxes (kept for map-app.js snap logic) -->
           <div style="display:none">
             <input type="checkbox" id="snapBlocksCb" checked>
             <input type="checkbox" id="snapParcelsCb" checked>
             <input type="checkbox" id="snapSurveyCb" checked>
           </div>
+
+          <h4 style="margin:0 0 4px 0; font-size:0.85rem; color:var(--muted); text-transform:uppercase;">Drawing Tools</h4>
+          <div class="uam-draw-grid">
+            <button id="drawPolygonBtn" class="uam-draw-btn" type="button">
+              <i class="fas fa-draw-polygon"></i><span>Draw Polygon</span>
+            </button>
+            <button id="drawLineBtn" class="uam-draw-btn" type="button">
+              <i class="fas fa-pen"></i><span>Draw Line</span>
+            </button>
+          </div>
+
+          <div class="uam-divider"></div>
+          
+          <h4 style="margin:4px 0; font-size:0.85rem; color:var(--muted); text-transform:uppercase;">Measuring Tools</h4>
           <div class="uam-draw-grid">
             <button id="measureLineBtn" class="uam-draw-btn" type="button">
-              <i class="fas fa-ruler-horizontal"></i><span>Distance</span>
+              <i class="fas fa-ruler-horizontal"></i><span>Measure Distance</span>
             </button>
             <button id="measureAreaBtn" class="uam-draw-btn" type="button">
-              <i class="fas fa-draw-polygon"></i><span>Area</span>
-            </button>
-            <button id="clearMeasuresBtn" class="uam-draw-btn uam-draw-btn--danger" type="button">
-              <i class="fas fa-eraser"></i><span>Clear</span>
-            </button>
-            <button id="stopDrawBtn" class="uam-draw-btn uam-draw-btn--warn" type="button">
-              <i class="fas fa-stop-circle"></i><span>Stop</span>
+              <i class="fas fa-vector-square"></i><span>Measure Area</span>
             </button>
           </div>
-          <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
 
-          <!-- Extract Boundaries section -->
           <div class="uam-divider"></div>
-          <select id="coordExtractCrsSelect" class="uam-select"></select>
-          <div style="display:flex;gap:6px;margin-top:6px;">
-            <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;"><input type="checkbox" id="coordExtractCsv" checked style="width:auto;margin:0"> CSV</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;"><input type="checkbox" id="coordExtractDxf" checked style="width:auto;margin:0"> DXF</label>
+
+          <div class="uam-draw-grid" style="grid-template-columns: 1fr 1fr; gap:8px;">
+            <button id="clearMeasuresBtn" class="uam-btn uam-btn--ghost" type="button" style="color:var(--danger)">
+              <i class="fas fa-eraser"></i> Clear All
+            </button>
+            <button id="stopDrawBtn" class="uam-btn uam-btn--ghost" type="button" style="color:var(--accent)">
+              <i class="fas fa-stop-circle"></i> Stop Action
+            </button>
           </div>
-          <button type="button" id="coordExtractPickBtn" class="uam-btn uam-btn--ghost" style="margin-top:8px;width:100%">
-            <i class="fas fa-hand-pointer"></i> Select on Map
-          </button>
-          <div id="coordExtractActionRow" style="display:flex;gap:8px;margin-top:8px;" hidden>
-            <button type="button" id="coordExtractFinishBtn" class="uam-btn uam-btn--primary" style="flex:2">Export (0)</button>
-            <button type="button" id="coordExtractCancelPickBtn" class="uam-btn uam-btn--ghost" style="flex:1">Cancel</button>
-          </div>
+
+          <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
         </div>
 
         <!-- ── ROVER TAB ── -->
@@ -828,7 +852,17 @@
         <!-- ── EXPORT TAB ── -->
         <div class="uam-tab" id="uamTabExport" data-uam-panel="export" hidden>
           <div class="uam-field-row">
-            <select id="exportCrsSelect" class="uam-select"></select>
+            <select id="exportCrsSelect" class="uam-select">
+              <option value="EPSG:32636" selected>WGS 84 / UTM zone 36N</option>
+              <option value="EPSG:4326">WGS 84 — geographic (lon/lat)</option>
+              <option value="EPSG:21095">Arc 1960 / UTM zone 35N</option>
+              <option value="EPSG:21035">Arc 1960 / UTM zone 35S</option>
+              <option value="EPSG:21096">Arc 1960 / UTM zone 36N</option>
+              <option value="EPSG:21036">Arc 1960 / UTM zone 36S</option>
+              <option value="EPSG:32635">WGS 84 / UTM zone 35N</option>
+              <option value="EPSG:32735">WGS 84 / UTM zone 35S</option>
+              <option value="EPSG:32736">WGS 84 / UTM zone 36S</option>
+            </select>
           </div>
           <div class="uam-field-row">
             <select id="exportFormatSelect" class="uam-select">

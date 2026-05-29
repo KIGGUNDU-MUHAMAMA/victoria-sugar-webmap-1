@@ -2889,7 +2889,7 @@ select.search-panel__input {
 .map-fab-cluster {
   position: absolute;
   bottom: 20px;
-  right: 16px;
+  left: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2965,7 +2965,7 @@ select.search-panel__input {
 
 .uam-shell {
   display: flex;
-  width: min(740px, calc(100vw - 24px));
+  width: min(350px, calc(100vw - 24px));
   max-height: min(520px, calc(100vh - 110px));
   background: #fff;
   border-radius: 18px;
@@ -3045,31 +3045,7 @@ select.search-panel__input {
   background: #fafcf9;
 }
 
-.uam-close-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.07);
-  border: none;
-  color: var(--muted);
-  font-size: 0.9rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  padding: 0;
-  margin: 0;
-  transition: background 0.15s;
-}
-
-.uam-close-btn:hover {
-  background: rgba(0,0,0,0.14);
-  color: var(--text);
-}
+/* uam-close-btn removed from here, now using .uam-nav-close in the nav column */
 
 /* Tabs (right panels) */
 .uam-tab {
@@ -3366,7 +3342,7 @@ select.search-panel__input {
 
   .map-fab-cluster {
     bottom: 16px;
-    right: 12px;
+    left: 12px;
   }
 }
 

@@ -342,8 +342,7 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
 
   // ── Upload to Cloudflare Storage (R2) ───────────────────────────────────
   async function uploadToCloudflare(file) {
-    const workerUrl = window.VSL_CONFIG?.DRONE_UPLOAD_WORKER_URL;
-    if (!workerUrl) throw new Error("DRONE_UPLOAD_WORKER_URL is missing from config.");
+    const workerUrl = "https://victoria-sugar-images.kiggundumuhamad.workers.dev";
 
     // Generate a unique filename to prevent collisions
     const fileExt = file.name.split('.').pop();

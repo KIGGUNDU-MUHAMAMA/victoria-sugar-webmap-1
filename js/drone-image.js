@@ -348,9 +348,10 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     // Generate a unique filename to prevent collisions
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+    const contentType = file.type || "image/tiff";
     
     // 1. Get an S3 Presigned URL from the Cloudflare Worker
-    const presignRes = await fetch(`${workerUrl}/presign?filename=${fileName}`);
+    const presignRes = await fetch(`${workerUrl}/presign?filename=${fileName}&contentType=${encodeURIComponent(contentType)}`);
     if (!presignRes.ok) {
       const text = await presignRes.text().catch(() => "");
       throw new Error(`Worker failed to generate upload ticket (${presignRes.status}): ${text}`);
@@ -366,7 +367,7 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     const uploadRes = await fetch(presignedUrl, {
       method: "PUT",
       headers: { 
-        "Content-Type": file.type || "image/tiff" 
+        "Content-Type": contentType 
       },
       body: file
     });

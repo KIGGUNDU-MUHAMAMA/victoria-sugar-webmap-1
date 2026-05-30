@@ -75,9 +75,6 @@ stable
 security definer
 set search_path = public
 as $$
-  with bbox as (
-    select st_makeenvelope(p_min_lon, p_min_lat, p_max_lon, p_max_lat, 4326) as g
-  )
   select
     'BLOCKS'::text as layer_type,
     b.id as feature_id,
@@ -94,8 +91,9 @@ as $$
       'cultivation_updated_at', b.cultivation_updated_at
     ) as properties,
     st_asgeojson(b.geom)::jsonb as geojson
-  from public.vsl_blocks b, bbox
-  where b.geom is not null and st_intersects(b.geom, bbox.g)
+  from public.vsl_blocks b
+  where b.geom is not null 
+    and st_intersects(b.geom, st_makeenvelope(p_min_lon, p_min_lat, p_max_lon, p_max_lat, 4326))
   union all
   select
     'PARCELS'::text as layer_type,
@@ -115,8 +113,9 @@ as $$
     ) as properties,
     st_asgeojson(p.geom)::jsonb as geojson
   from public.vsl_parcels p
-  join public.vsl_blocks bk on bk.id = p.block_id, bbox
-  where p.geom is not null and st_intersects(p.geom, bbox.g);
+  join public.vsl_blocks bk on bk.id = p.block_id
+  where p.geom is not null 
+    and st_intersects(p.geom, st_makeenvelope(p_min_lon, p_min_lat, p_max_lon, p_max_lat, 4326));
 $$;
 
 grant execute on function public.vsl_get_features_bbox(

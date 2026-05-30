@@ -82,53 +82,7 @@ function guessCrsFromImage(image, fallbackCrs) {
   return fallbackCrs || "EPSG:4326";
 }
 
-/**
- * Draw interleaved RGB raster data onto a canvas.
- * @param {HTMLCanvasElement} canvas
- * @param {TypedArray} rgb  - Interleaved R,G,B values (length = w*h*3)
- * @param {number} width
- * @param {number} height
- * @param {number} noDataValue - Optional no-data value (treated as transparent)
- */
-function renderRgbToCanvas(canvas, rgb, width, height, noDataValue) {
-  canvas.width  = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  const img = ctx.createImageData(width, height);
-  const data = img.data;
-
-  // Determine per-band stretch (2 %–98 % percentile) for display quality.
-  // Simple min/max is good enough for a thumbnail.
-  let rMin = Infinity, rMax = -Infinity;
-  let gMin = Infinity, gMax = -Infinity;
-  let bMin = Infinity, bMax = -Infinity;
-  const len = width * height;
-  for (let i = 0; i < len; i++) {
-    const r = rgb[i * 3];
-    const g = rgb[i * 3 + 1];
-    const b = rgb[i * 3 + 2];
-    if (noDataValue !== undefined && r === noDataValue) continue;
-    if (r < rMin) rMin = r; if (r > rMax) rMax = r;
-    if (g < gMin) gMin = g; if (g > gMax) gMax = g;
-    if (b < bMin) bMin = b; if (b > bMax) bMax = b;
-  }
-  // Avoid division by zero on uniform images.
-  const rRange = rMax - rMin || 1;
-  const gRange = gMax - gMin || 1;
-  const bRange = bMax - bMin || 1;
-
-  for (let i = 0; i < len; i++) {
-    const r = rgb[i * 3];
-    const g = rgb[i * 3 + 1];
-    const b = rgb[i * 3 + 2];
-    const isNoData = noDataValue !== undefined && r === noDataValue;
-    data[i * 4]     = isNoData ? 0 : Math.round(((r - rMin) / rRange) * 255);
-    data[i * 4 + 1] = isNoData ? 0 : Math.round(((g - gMin) / gRange) * 255);
-    data[i * 4 + 2] = isNoData ? 0 : Math.round(((b - bMin) / bRange) * 255);
-    data[i * 4 + 3] = isNoData ? 0 : 255;
-  }
-  ctx.putImageData(img, 0, 0);
-}
+// (Canvas rendering removed in favor of lightning-fast vector bounding box preview)
 
 // ── Module entry point ────────────────────────────────────────────────────────
 
@@ -194,6 +148,55 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     }
   }
 
+  // ── Toast Notification Helper ───────────────────────────────────────────────
+  function showToast(msg, type = "info") {
+    let container = document.getElementById("vsl-toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "vsl-toast-container";
+      Object.assign(container.style, {
+        position: "fixed",
+        bottom: "20px",
+        right: "20px",
+        zIndex: 9999,
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        pointerEvents: "none"
+      });
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement("div");
+    toast.textContent = msg;
+    const bg = type === "error" ? "#c62828" : type === "success" ? "#2e7d32" : "#1565c0";
+    Object.assign(toast.style, {
+      background: bg,
+      color: "white",
+      padding: "12px 20px",
+      borderRadius: "8px",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+      fontFamily: "system-ui, sans-serif",
+      fontSize: "14px",
+      opacity: "0",
+      transform: "translateY(20px)",
+      transition: "all 0.3s ease"
+    });
+    container.appendChild(toast);
+    
+    // animate in
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translateY(0)";
+    });
+
+    // auto remove after 5s
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(20px)";
+      setTimeout(() => toast.remove(), 300);
+    }, 5000);
+  }
+
   // ── Disable upload button until a successful preview ──────────────────────
   if (uploadBtn) uploadBtn.disabled = true;
 
@@ -236,68 +239,47 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
   });
 
   // ── Upload button ─────────────────────────────────────────────────────────
-  uploadBtn?.addEventListener("click", async () => {
+  uploadBtn?.addEventListener("click", () => {
     if (!currentFile) {
       showStatus("No file selected.", true);
       return;
     }
+    const file = currentFile;
+    
+    // Instantly reset the UI to free up the map and panel
+    currentFile = null;
     uploadBtn.disabled = true;
-    showStatus("Uploading…");
-    try {
-      const url = await uploadToCloudflare(currentFile);
-      showStatus("Upload complete. Saving metadata…");
-      await saveMetadataToSupabase(url, currentFile.name);
-      showStatus(`Saved: ${currentFile.name}`);
-      // Reload saved images into the layer group if it is visible
-      if (droneGroup.getVisible()) {
-        await loadSavedDroneImages();
-      }
-    } catch (err) {
-      showStatus(`Upload failed: ${err.message}`, true);
-      uploadBtn.disabled = false;
-    }
+    removePreviiewLayer();
+    if (fileInput) fileInput.value = "";
+    clearLocalStatus();
+    
+    // Fire-and-forget background upload
+    showToast(`Uploading ${file.name} to Cloudflare R2...`, "info");
+    
+    uploadToCloudflare(file)
+      .then(url => {
+        showToast(`Upload complete! Saving metadata for ${file.name}...`, "info");
+        return saveMetadataToSupabase(url, file.name);
+      })
+      .then(() => {
+        showToast(`Successfully saved ${file.name}!`, "success");
+        if (droneGroup.getVisible()) {
+          loadSavedDroneImages();
+        }
+      })
+      .catch(err => {
+        showToast(`Failed to upload ${file.name}: ${err.message}`, "error");
+        console.error(err);
+      });
   });
 
-  // ── COG preview ───────────────────────────────────────────────────────────
+  // ── COG preview (Instant Bounding Box) ────────────────────────────────────
   async function previewCOG(file) {
     const GeoTIFF = window.GeoTIFF;
     const tiff    = await GeoTIFF.fromBlob(file);
 
-    // Use lowest resolution overview for a fast thumbnail.
-    const imageCount = await tiff.getImageCount();
-    const overviewIdx = Math.max(0, imageCount - 1); // last = smallest overview
-    const image = await tiff.getImage(overviewIdx);
-
-    const width  = image.getWidth();
-    const height = image.getHeight();
-    const samplesPerPixel = image.getSamplesPerPixel();
-
-    // Read raster: we need at least 3 bands for RGB.
-    let rgb;
-    const noDataValue = image.fileDirectory?.GDAL_NODATA
-      ? Number(image.fileDirectory.GDAL_NODATA)
-      : undefined;
-
-    if (samplesPerPixel >= 3) {
-      // Request bands 0, 1, 2 (R, G, B)
-      rgb = await image.readRasters({ samples: [0, 1, 2], interleave: true });
-    } else if (samplesPerPixel === 1) {
-      // Grayscale — duplicate the band to all three channels.
-      const gray = await image.readRasters({ samples: [0], interleave: true });
-      rgb = new Uint8Array(width * height * 3);
-      for (let i = 0; i < width * height; i++) {
-        rgb[i * 3]     = gray[i];
-        rgb[i * 3 + 1] = gray[i];
-        rgb[i * 3 + 2] = gray[i];
-      }
-    } else {
-      throw new Error(`Unsupported band count: ${samplesPerPixel}`);
-    }
-
-    // Render thumbnail to the canvas element.
-    if (previewCanvas) {
-      renderRgbToCanvas(previewCanvas, rgb, width, height, noDataValue);
-    }
+    // Read only the first image metadata (no raster pixels read!)
+    const image = await tiff.getImage(0);
 
     // ── Compute bounding box ──────────────────────────────────────────────
     // getBoundingBox() uses ModelTiepointTag + ModelPixelScaleTag internally.
@@ -315,28 +297,36 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
       throw new Error("Could not reproject bounding box to EPSG:3857. Check the CRS selection.");
     }
 
-    // ── Place an ImageStatic layer on the map ─────────────────────────────
+    // ── Place a Vector polygon layer on the map ───────────────────────────
     removePreviiewLayer();
 
-    // Export the canvas as a data URL for ol.source.ImageStatic.
-    const dataUrl = previewCanvas
-      ? previewCanvas.toDataURL("image/png")
-      : null;
+    if (map) {
+      const polygon = ol.geom.Polygon.fromExtent(previewBbox3857);
+      const feature = new ol.Feature(polygon);
+      
+      const vectorSource = new ol.source.Vector({
+        features: [feature]
+      });
 
-    if (dataUrl && map) {
-      const imageSource = new ol.source.ImageStatic({
-        url: dataUrl,
-        imageExtent: previewBbox3857,
-        projection: "EPSG:3857"
-      });
-      previewLayer = new ol.layer.Image({
+      previewLayer = new ol.layer.Vector({
         title: `Preview: ${file.name}`,
-        source: imageSource,
-        opacity: 0.85
+        source: vectorSource,
+        style: new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: '#1565c0', // Bright blue border
+            width: 3,
+            lineDash: [10, 10]
+          }),
+          fill: new ol.style.Fill({
+            color: 'rgba(21, 101, 192, 0.15)' // Light blue transparent fill
+          })
+        }),
+        zIndex: 500
       });
+      
       previewLayer.set("displayInLayerSwitcher", false);
-      previewLayer.setZIndex(500);
       map.addLayer(previewLayer);
+      
       // Fit the view to the image extent.
       map.getView().fit(previewBbox3857, { padding: [60, 60, 60, 60], maxZoom: 18, duration: 400 });
     }

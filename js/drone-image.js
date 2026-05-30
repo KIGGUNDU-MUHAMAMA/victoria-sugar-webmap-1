@@ -110,6 +110,7 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
 
   const droneGroup = new ol.layer.Group({
     title: LAYER_GROUP_TITLE,
+    type: 'overlay',
     fold: "open",
     layers: [],
     visible: false,

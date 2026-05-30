@@ -344,38 +344,40 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
   // ── Upload to Cloudflare Storage (R2) ───────────────────────────────────
   async function uploadToCloudflare(file) {
     const workerUrl = "https://victoria-sugar-images.kiggundumuhamad.workers.dev";
-
+    
     // Generate a unique filename to prevent collisions
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-
-    // Clean up worker URL to ensure no double slashes before adding filename
-    const baseUrl = workerUrl.replace(/\/$/, "");
-    const uploadUrl = `${baseUrl}/${fileName}`;
-
-    // Upload using PUT directly with the file body stream
-    const res = await fetch(uploadUrl, {
+    
+    // 1. Get an S3 Presigned URL from the Cloudflare Worker
+    const presignRes = await fetch(`${workerUrl}/presign?filename=${fileName}`);
+    if (!presignRes.ok) {
+      const text = await presignRes.text().catch(() => "");
+      throw new Error(`Worker failed to generate upload ticket (${presignRes.status}): ${text}`);
+    }
+    
+    const presignData = await presignRes.json();
+    if (presignData.error) {
+      throw new Error(`Worker error: ${presignData.error}`);
+    }
+    const presignedUrl = presignData.presignedUrl;
+    
+    // 2. Upload file directly to R2 Bucket using the Presigned URL (no timeout limit!)
+    const uploadRes = await fetch(presignedUrl, {
       method: "PUT",
-      headers: {
-        // Pass the content type so the worker sets it in R2 correctly
-        "Content-Type": file.type || "image/tiff"
+      headers: { 
+        "Content-Type": file.type || "image/tiff" 
       },
       body: file
     });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Cloudflare worker failed (${res.status}): ${text.slice(0, 200)}`);
-    }
-
-    const json = await res.json().catch(() => ({}));
-    const url = json?.url || json?.publicUrl;
     
-    if (!url) {
-      throw new Error("Worker succeeded but returned no public URL.");
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text().catch(() => "");
+      throw new Error(`Direct R2 upload failed (${uploadRes.status}): ${text}. Did you add the CORS policy to your R2 bucket?`);
     }
     
-    return url;
+    // 3. Return the public URL for the map to read later
+    return `${workerUrl}/${fileName}`;
   }
 
   // ── Save metadata to Supabase ─────────────────────────────────────────────

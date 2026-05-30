@@ -111,6 +111,7 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
   const droneGroup = new ol.layer.Group({
     title: LAYER_GROUP_TITLE,
     type: 'overlay',
+    combine: true, // Forces LayerSwitcher to render this group as a single toggleable checkbox even if empty
     fold: "open",
     layers: [],
     visible: false,
@@ -255,7 +256,7 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
     clearLocalStatus();
     
     // Fire-and-forget background upload
-    showToast(`Uploading ${file.name} to Cloudflare R2...`, "info");
+    showToast(`Uploading started/initiated for ${file.name}...`, "info");
     
     uploadToCloudflare(file)
       .then(url => {

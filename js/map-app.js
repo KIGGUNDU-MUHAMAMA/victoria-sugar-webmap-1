@@ -1197,6 +1197,8 @@ function setupInfoPopup() {
   });
 
   map.on("click", (evt) => {
+    if (activeInteraction) return; // do not popup when measuring or drawing
+
     if (document.getElementById("coordExtractDrawer")?.dataset.picking === "1") {
       return;
     }
@@ -1828,6 +1830,9 @@ function stopActiveTool() {
     map.removeInteraction(activeInteraction);
     activeInteraction = null;
   }
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "";
+  
   const ph = document.getElementById("panelHost");
   if (ph) ph.classList.remove("side-panel--minimized");
 }
@@ -1953,6 +1958,10 @@ function startMeasure(type, isDrawOnly = false) {
   stopActiveTool();
   editSource.clear(true);
   const draw = new ol.interaction.Draw({ source: editSource, type });
+  
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "crosshair";
+
   draw.on("drawend", (evt) => {
     map.removeInteraction(draw);
     activeInteraction = null;
@@ -2015,6 +2024,9 @@ function startAdvancedMeasure() {
   stopActiveTool();
   editSource.clear(true);
   
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "crosshair";
+
   // We use LineString so the user can draw 2 points or N points.
   const draw = new ol.interaction.Draw({ source: editSource, type: "LineString" });
   draw.on("drawend", (evt) => {
@@ -2155,7 +2167,14 @@ function bindEvents() {
   });
 
   measureTopBtn?.addEventListener("click", () => {
-    if (measurePanel) measurePanel.hidden = !measurePanel.hidden;
+    if (measurePanel) {
+      measurePanel.hidden = !measurePanel.hidden;
+      if (!measurePanel.hidden) {
+        // Close search panel and UAM to prevent overlap
+        closeSearchPanel({ clearHighlight: false });
+        if (typeof window.closeMenu === "function") window.closeMenu();
+      }
+    }
   });
 
   measurePanelCloseBtn?.addEventListener("click", () => {

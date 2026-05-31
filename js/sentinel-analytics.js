@@ -37,37 +37,42 @@ export function initSentinelAnalytics(opts) {
 
   if (!map || !sentinelGroup) return null;
 
-  // 1. Create a shared WMS source
+  // 1. Base URL
   const wmsBase = cfg?.SENTINEL_HUB_WMS_BASE || "https://sh.dataspace.copernicus.eu/ogc/wms/ab8b1162-e45e-4405-9db6-aa882b920217";
-  const source = new ol.source.TileWMS({
-    url: wmsBase,
-    params: {
-      LAYERS: "TRUE_COLOR",
-      STYLES: "default",
-      VERSION: "1.1.1",
-      FORMAT: "image/png",
-      TRANSPARENT: true,
-      TILED: true,
-      TIME: "2024-01-01/2024-01-31", // dummy, updated on load
-      MAXCC: "40",
-      PRIORITY: "leastCC",
-      SHOWLOGO: "false",
-      WARNINGS: "NO"
-    },
-    crossOrigin: "anonymous"
-  });
 
-  // 2. Create sub-layers and add to sentinelGroup
+  // 2. Create sub-layers and add to sentinelGroup in reverse order
+  // ol-layerswitcher renders the LAST layer at the TOP of the UI.
+  // We want TRUE COLOR at the top of the UI, so we push it last.
   const layers = {};
+  const sources = {};
   let activeLayerId = null;
 
-  LAYER_DEFS.forEach(def => {
+  [...LAYER_DEFS].reverse().forEach(def => {
+    const src = new ol.source.TileWMS({
+      url: wmsBase,
+      params: {
+        LAYERS: def.id, // Fixed layer ID for this specific source
+        STYLES: "default",
+        VERSION: "1.1.1",
+        FORMAT: "image/png",
+        TRANSPARENT: true,
+        TILED: true,
+        TIME: "2024-01-01/2024-01-31", // dummy, updated on load
+        MAXCC: "40",
+        PRIORITY: "leastCC",
+        SHOWLOGO: "false",
+        WARNINGS: "NO"
+      },
+      crossOrigin: "anonymous"
+    });
+    sources[def.id] = src;
+
     const l = new ol.layer.Tile({
       title: def.title,
       type: "base", // radio button in ol-layerswitcher
       visible: false,
       opacity: 0.88,
-      source: source,
+      source: src,
       transition: 200
     });
     layers[def.id] = l;
@@ -137,9 +142,11 @@ export function initSentinelAnalytics(opts) {
     spinner.hidden = pendingTiles <= 0;
   }
 
-  source.on("tileloadstart", () => { pendingTiles += 1; updateTileSpinner(); });
-  source.on("tileloadend", () => { pendingTiles = Math.max(0, pendingTiles - 1); updateTileSpinner(); });
-  source.on("tileloaderror", () => { pendingTiles = Math.max(0, pendingTiles - 1); updateTileSpinner(); });
+  Object.values(sources).forEach(src => {
+    src.on("tileloadstart", () => { pendingTiles += 1; updateTileSpinner(); });
+    src.on("tileloadend", () => { pendingTiles = Math.max(0, pendingTiles - 1); updateTileSpinner(); });
+    src.on("tileloaderror", () => { pendingTiles = Math.max(0, pendingTiles - 1); updateTileSpinner(); });
+  });
 
   function applyWmsParams() {
     if (!activeLayerId) return;
@@ -150,20 +157,21 @@ export function initSentinelAnalytics(opts) {
     const tParam = getMonthTimeRange(yr, mo);
     const aux = getSentinelWmsAuxParams();
 
-    const wmsP = {
-      LAYERS: activeLayerId,
-      STYLES: "default",
-      TIME: tParam,
-      SHOWLOGO: "false",
-      WARNINGS: "NO",
-      MAXCC: String(aux.MAXCC),
-      PRIORITY: aux.PRIORITY,
-      FORMAT: "image/png",
-      TRANSPARENT: "true"
-    };
-
-    source.updateParams(wmsP);
-    if (typeof source.refresh === "function") source.refresh();
+    Object.entries(sources).forEach(([id, src]) => {
+      const wmsP = {
+        LAYERS: id, // Keep the correct layer ID for each source
+        STYLES: "default",
+        TIME: tParam,
+        SHOWLOGO: "false",
+        WARNINGS: "NO",
+        MAXCC: String(aux.MAXCC),
+        PRIORITY: aux.PRIORITY,
+        FORMAT: "image/png",
+        TRANSPARENT: "true"
+      };
+      src.updateParams(wmsP);
+      if (typeof src.refresh === "function") src.refresh();
+    });
   }
 
   if (yearSel) yearSel.addEventListener("change", applyWmsParams);

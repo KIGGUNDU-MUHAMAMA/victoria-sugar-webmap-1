@@ -1,24 +1,36 @@
--- Auto-number blocks as 1, 2, 3… (globally unique). Parcels as 1, 2, 3… per block (next free slot).
+-- Auto-number blocks as 1, 2, 3… independently per estate.
+-- Parcels as 1, 2, 3… per block (next free slot).
 -- Run after 002_vsl_survey_batch.sql (replaces vsl_survey_batch_upsert).
 
-create sequence if not exists public.vsl_block_code_seq;
+-- The old global sequence (vsl_block_code_seq) is no longer used for blocks,
+-- since numbering is now partitioned by estate_name.
 
-select setval(
-  'public.vsl_block_code_seq',
-  coalesce(
-    (select max(block_code::bigint)
-     from public.vsl_blocks
-     where block_code ~ '^[0-9]+$' and char_length(block_code) <= 12),
-    0
-  )
-);
-
-create or replace function public.vsl_next_block_code()
+create or replace function public.vsl_next_block_code(p_estate text)
 returns text
-language sql
+language plpgsql
 volatile
 as $$
-  select nextval('public.vsl_block_code_seq')::text;
+declare
+  v_next bigint;
+begin
+  if p_estate is null then
+    select coalesce(max(block_code::bigint), 0) + 1
+    into v_next
+    from public.vsl_blocks
+    where estate_name is null
+      and block_code ~ '^[0-9]+$' 
+      and char_length(block_code) <= 12;
+  else
+    select coalesce(max(block_code::bigint), 0) + 1
+    into v_next
+    from public.vsl_blocks
+    where estate_name = p_estate
+      and block_code ~ '^[0-9]+$' 
+      and char_length(block_code) <= 12;
+  end if;
+  
+  return v_next::text;
+end;
 $$;
 
 create or replace function public.vsl_survey_batch_upsert(
@@ -62,7 +74,12 @@ begin
     end if;
   end if;
 
-  v_estate := left(trim(coalesce(p_additional_info, '')), 500);
+  -- Map the UI's estate name (passed via p_project_name in the Edge Function)
+  v_estate := case
+    when trim(coalesce(p_project_name, '')) <> '' then left(trim(p_project_name), 500)
+    else left(trim(coalesce(p_additional_info, '')), 500)
+  end;
+  
   if v_estate = '' then
     v_estate := null;
   end if;
@@ -80,7 +97,8 @@ begin
       end if;
 
       if p_layer_type = 'BLOCKS' then
-        v_block_code_text := public.vsl_next_block_code();
+        -- Numbering is per estate
+        v_block_code_text := public.vsl_next_block_code(v_estate);
         insert into public.vsl_blocks (
           block_code,
           block_name,
@@ -94,10 +112,7 @@ begin
         values (
           v_block_code_text,
           v_block_code_text,
-          case
-            when trim(coalesce(p_project_name, '')) <> '' then left(trim(p_project_name), 500)
-            else v_estate
-          end,
+          v_estate,
           case
             when v_item ? 'area_hectares' and (v_item->>'area_hectares') ~ '^-?[0-9]+\.?[0-9]*$'
             then (v_item->>'area_hectares')::numeric * 2.4710538146717
@@ -163,5 +178,6 @@ $$;
 revoke all on function public.vsl_survey_batch_upsert(text, text, text, text, text, jsonb) from public;
 grant execute on function public.vsl_survey_batch_upsert(text, text, text, text, text, jsonb) to service_role;
 
-revoke all on function public.vsl_next_block_code() from public;
-grant execute on function public.vsl_next_block_code() to service_role;
+revoke all on function public.vsl_next_block_code(text) from public;
+grant execute on function public.vsl_next_block_code(text) to service_role;
+

@@ -121,6 +121,8 @@ export function initSentinelAnalytics(opts) {
   let pendingTiles = 0;
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+  let userSetDate = false;
+
   const now = new Date();
   if (yearSel) {
     if (![...yearSel.options].find(o => o.value === String(now.getFullYear()))) {
@@ -154,14 +156,12 @@ export function initSentinelAnalytics(opts) {
     const yr = yearSel ? parseInt(yearSel.value, 10) : now.getFullYear();
     const mo = monthSlider ? parseInt(monthSlider.value, 10) : now.getMonth() + 1;
     
-    const tParam = getMonthTimeRange(yr, mo);
     const aux = getSentinelWmsAuxParams();
 
     Object.entries(sources).forEach(([id, src]) => {
       const wmsP = {
         LAYERS: id, // Keep the correct layer ID for each source
         STYLES: "default",
-        TIME: tParam,
         SHOWLOGO: "false",
         WARNINGS: "NO",
         MAXCC: String(aux.MAXCC),
@@ -169,17 +169,36 @@ export function initSentinelAnalytics(opts) {
         FORMAT: "image/png",
         TRANSPARENT: "true"
       };
+
+      if (userSetDate) {
+        wmsP.TIME = getMonthTimeRange(yr, mo);
+      } else {
+        // By default, search the last 3 months for the clearest image
+        // to guarantee a beautiful preview without user intervention.
+        // e.g. "2024-03-01/2024-06-01"
+        const start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        wmsP.TIME = `${start.toISOString().slice(0, 10)}/${now.toISOString().slice(0, 10)}`;
+      }
+
       src.updateParams(wmsP);
       if (typeof src.refresh === "function") src.refresh();
     });
   }
 
-  if (yearSel) yearSel.addEventListener("change", applyWmsParams);
+  if (yearSel) {
+    yearSel.addEventListener("change", () => {
+      userSetDate = true;
+      applyWmsParams();
+    });
+  }
   if (monthSlider) {
     monthSlider.addEventListener("input", () => {
       if (monthLabel) monthLabel.textContent = monthNames[parseInt(monthSlider.value, 10) - 1];
     });
-    monthSlider.addEventListener("change", applyWmsParams);
+    monthSlider.addEventListener("change", () => {
+      userSetDate = true;
+      applyWmsParams();
+    });
   }
 
   // 4. Inject Gear Icon

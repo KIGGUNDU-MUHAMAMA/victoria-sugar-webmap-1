@@ -650,9 +650,14 @@ export function initSurveyImport({
       };
     });
     
+    const type = layerSelect.value;
+    const resolvedEstate = type === "BLOCKS"
+      ? toTitleCase(estateNameInput?.value?.trim() || "")
+      : (surveyParcelEstateSelect?.value?.trim() || "");
+      
     lastPreviewPayload = {
-        layerType: layerSelect.value,
-        projectName: projectName?.value?.trim() || "",
+        layerType: type,
+        estate_name: resolvedEstate,
         parentBlockCode: parentBlockSelect?.value?.trim() || "",
         coordinateSystem: "EPSG:4326", 
         additionalInfo: additionalInfo?.value?.trim() || "",

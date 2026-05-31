@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./css/styles.css">
+  <link rel="stylesheet" href="./css/styles.css?v=1.1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
@@ -153,8 +153,7 @@
     </div>
   </div>
 
-  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
-
+  <div class="map-right-stack" id="mapRightStack" aria-label="Right Map tools">
     <!-- NEW MEASURE CONTROL -->
     <div id="measurePanel" class="sentinel-minimal-control" hidden>
       <div class="smc-header" style="justify-content: space-between;">
@@ -172,6 +171,9 @@
       </div>
       <div id="measureFeedback" style="margin-top:8px; font-size:0.8rem; color:var(--primary-2); text-align:center;"></div>
     </div>
+  </div>
+
+  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
 
     <!-- NEW MINIMALIST SENTINEL CONTROL -->
     <div id="sentinelMinimalControl" class="sentinel-minimal-control" hidden>

@@ -3006,6 +3006,12 @@ select.search-panel__input {
   pointer-events: none;
 }
 
+/* When hidden, UAM must not intercept any clicks at all */
+.uam-overlay[hidden] {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 .uam-shell {
   display: flex;
   width: min(350px, calc(100vw - 24px));

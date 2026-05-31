@@ -16,9 +16,19 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
   // ── Open / Close ──────────────────────────────────────────────
   function openMenu() {
-    // Close other panels to prevent overlap
+    // Close other panels at DOM level to prevent overlap
     const measurePanel = document.getElementById("measurePanel");
-    if (measurePanel && !measurePanel.hidden) measurePanel.hidden = true;
+    if (measurePanel) measurePanel.hidden = true;
+
+    const parcelStatusPanel = document.getElementById("parcelStatusPanel");
+    if (parcelStatusPanel) {
+      parcelStatusPanel.hidden = true;
+      parcelStatusPanel.setAttribute("aria-hidden", "true");
+    }
+    const parcelStatusBtn = document.getElementById("parcelStatusBtn");
+    parcelStatusBtn?.classList.remove("active");
+
+    // Also call the function if available
     if (typeof window.closeParcelStatusPanel === "function") window.closeParcelStatusPanel();
 
     overlay.hidden = false;

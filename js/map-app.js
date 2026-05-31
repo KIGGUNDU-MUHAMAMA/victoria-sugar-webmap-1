@@ -913,6 +913,20 @@ function closeParcelStatusPanel() {
   btn?.classList.remove("active");
 }
 
+function closeUAM() {
+  // Direct DOM close — does not rely on window.closeMenu being available yet
+  const uamOverlay = document.getElementById("unifiedActionMenu");
+  const fabBtn = document.getElementById("toolsTopBtn") || document.getElementById("toolsFabBtn");
+  if (uamOverlay && !uamOverlay.hidden) {
+    uamOverlay.hidden = true;
+    uamOverlay.setAttribute("aria-hidden", "true");
+    fabBtn?.classList.remove("uam-open");
+    fabBtn?.setAttribute("aria-expanded", "false");
+  }
+  // Also call the function if available
+  if (typeof window.closeMenu === "function") window.closeMenu();
+}
+
 function openParcelStatusPanel() {
   const panel = document.getElementById("parcelStatusPanel");
   const btn = document.getElementById("parcelStatusBtn");
@@ -920,14 +934,12 @@ function openParcelStatusPanel() {
   closeInfoHelpPopover();
   closePlaceSearchCard();
   
-  // Mutual exclusion: Close Measure panel and Survey UAM
-  const measurePanel = document.getElementById("measurePanel");
-  if (measurePanel && !measurePanel.hidden) {
-    measurePanel.hidden = true;
-  }
-  if (typeof window.closeMenu === "function") {
-    window.closeMenu();
-  }
+  // Forcibly close Measure panel
+  const mp = document.getElementById("measurePanel");
+  if (mp) mp.hidden = true;
+  
+  // Forcibly close Survey UAM at DOM level (does not depend on window.closeMenu)
+  closeUAM();
   
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
@@ -2182,9 +2194,8 @@ function bindEvents() {
       if (!measurePanel.hidden) {
         // Close search panel, UAM, and Modify panel to prevent overlap
         closeSearchPanel({ clearHighlight: false });
-        if (typeof window.closeMenu === "function") window.closeMenu();
-        if (typeof window.closeParcelStatusPanel === "function") window.closeParcelStatusPanel();
-        else closeParcelStatusPanel();
+        closeUAM();
+        closeParcelStatusPanel();
       }
     }
   });

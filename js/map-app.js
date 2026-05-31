@@ -103,7 +103,7 @@ const CULTIVATION_STATUS_LABELS = {
 const INFO_FIELD_LABELS = {
   block_code: "Block code",
   block_name: "Block name",
-  estate_name: "Estate / project",
+  estate_name: "Estate",
   parcel_no: "Plot number",
   parcel_code: "Plot code",
   parcel_label: "Plot label",
@@ -117,9 +117,9 @@ const INFO_FIELD_LABELS = {
 };
 
 const INFO_BLOCK_FIELD_ORDER = [
+  "estate_name",
   "block_code",
   "block_name",
-  "estate_name",
   "expected_area_acres",
   "geometry_status",
   "cultivation_status",
@@ -130,6 +130,7 @@ const INFO_BLOCK_FIELD_ORDER = [
 ];
 
 const INFO_PARCEL_FIELD_ORDER = [
+  "estate_name",
   "block_code",
   "parcel_no",
   "parcel_code",
@@ -1902,12 +1903,115 @@ function setupParcelSearchPopover() {
   const form = document.getElementById("parcelSearchForm");
   const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
 
+  // ── CASCADE: Estate → Block → Parcel ──────────────────────────────────────
+  const estateSelect = document.getElementById("searchEstateSelect");
+  const blockSelect  = document.getElementById("searchBlockSelect");
+  const parcelSelect = document.getElementById("searchParcelSelect");
+  const goBtn        = document.getElementById("parcelSearchGoBtn");
+
+  async function loadSearchEstates() {
+    if (!estateSelect) return;
+    try {
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=estate_name&estate_name=not.is.null`;
+      const res = await fetch(url, {
+        headers: { "apikey": cfg.SUPABASE_ANON_KEY, "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`, "Accept": "application/json" }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const names = [...new Set(data.map(d => d.estate_name).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+      estateSelect.innerHTML = '<option value="">— Select Estate —</option>';
+      names.forEach(n => {
+        const o = document.createElement("option"); o.value = n; o.textContent = n;
+        estateSelect.appendChild(o);
+      });
+    } catch(e) { console.warn("[VSL Search] estates:", e); }
+  }
+
+  async function loadSearchBlocks(estate) {
+    if (!blockSelect) return;
+    blockSelect.innerHTML = '<option value="">Loading…</option>';
+    blockSelect.disabled = true;
+    parcelSelect.innerHTML = '<option value="">— Select Block first —</option>';
+    parcelSelect.disabled = true;
+    if (!estate) { blockSelect.innerHTML = '<option value="">— Select Estate first —</option>'; return; }
+    try {
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=id,block_code,block_name&estate_name=eq.${encodeURIComponent(estate)}`;
+      const res = await fetch(url, {
+        headers: { "apikey": cfg.SUPABASE_ANON_KEY, "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`, "Accept": "application/json" }
+      });
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      data.sort((a,b) => { const na=Number(a.block_code), nb=Number(b.block_code); return Number.isFinite(na)&&Number.isFinite(nb)?na-nb:String(a.block_code).localeCompare(String(b.block_code),undefined,{numeric:true}); });
+      blockSelect.innerHTML = '<option value="">— Select Block —</option>';
+      data.forEach(b => {
+        const o = document.createElement("option");
+        o.value = b.block_code;
+        o.textContent = `Block ${b.block_code}${b.block_name ? " – "+b.block_name : ""}`;
+        blockSelect.appendChild(o);
+      });
+      blockSelect.disabled = false;
+    } catch(e) { blockSelect.innerHTML = '<option value="">Error loading blocks</option>'; console.warn("[VSL Search] blocks:", e); }
+  }
+
+  async function loadSearchParcels(blockCode, estate) {
+    if (!parcelSelect) return;
+    parcelSelect.innerHTML = '<option value="">Loading…</option>';
+    parcelSelect.disabled = true;
+    if (!blockCode) { parcelSelect.innerHTML = '<option value="">— Select Block first —</option>'; return; }
+    try {
+      let url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_parcels?select=id,parcel_no,parcel_label&block_code=eq.${encodeURIComponent(blockCode)}`;
+      if (estate) url += `&estate_name=eq.${encodeURIComponent(estate)}`;
+      url += "&order=parcel_no.asc";
+      const res = await fetch(url, {
+        headers: { "apikey": cfg.SUPABASE_ANON_KEY, "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`, "Accept": "application/json" }
+      });
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      parcelSelect.innerHTML = '<option value="">— All parcels in block —</option>';
+      data.forEach(p => {
+        const o = document.createElement("option");
+        o.value = p.parcel_no;
+        o.textContent = p.parcel_label ? `Plot ${p.parcel_no} – ${p.parcel_label}` : `Plot ${p.parcel_no}`;
+        parcelSelect.appendChild(o);
+      });
+      parcelSelect.disabled = false;
+      // Zoom to block when block selected
+      const blockInput = document.getElementById("parcelSearchBlockInput");
+      if (blockInput) blockInput.value = String(blockCode);
+      const noInput   = document.getElementById("parcelSearchNoInput");
+      if (noInput) noInput.value = "";
+      runLocateParcelFromPopover();
+    } catch(e) { parcelSelect.innerHTML = '<option value="">Error loading parcels</option>'; console.warn("[VSL Search] parcels:", e); }
+  }
+
+  estateSelect?.addEventListener("change", () => loadSearchBlocks(estateSelect.value));
+  blockSelect?.addEventListener("change", () => {
+    if (blockSelect.value) loadSearchParcels(blockSelect.value, estateSelect?.value);
+    else { parcelSelect.innerHTML = '<option value="">— Select Block first —</option>'; parcelSelect.disabled = true; }
+  });
+  parcelSelect?.addEventListener("change", () => {
+    const blockInput = document.getElementById("parcelSearchBlockInput");
+    const noInput   = document.getElementById("parcelSearchNoInput");
+    if (blockInput) blockInput.value = blockSelect?.value || "";
+    if (noInput) noInput.value = parcelSelect?.value || "";
+    if (blockSelect?.value) runLocateParcelFromPopover();
+  });
+  goBtn?.addEventListener("click", () => {
+    const blockInput = document.getElementById("parcelSearchBlockInput");
+    const noInput   = document.getElementById("parcelSearchNoInput");
+    if (blockInput) blockInput.value = blockSelect?.value || "";
+    if (noInput) noInput.value = parcelSelect?.value || "";
+    runLocateParcelFromPopover();
+  });
+
+  // ── Legacy form ────────────────────────────────────────────────────────────
   searchBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (searchPanelOpen) {
       closeSearchPanel({ clearHighlight: false });
     } else {
       openSearchPanel("parcel");
+      loadSearchEstates();
     }
   });
 
@@ -1920,6 +2024,10 @@ function setupParcelSearchPopover() {
     e.preventDefault();
     runLocateParcelFromPopover();
   });
+
+  // Also wire legacy "Go" button
+  const legacyGoBtn = document.getElementById("parcelSearchGoBtnLegacy");
+  legacyGoBtn?.addEventListener("click", () => runLocateParcelFromPopover());
 }
 
 function stopActiveTool() {

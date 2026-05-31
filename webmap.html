@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/styles.css?v=2.0.2">
+  <link rel="stylesheet" href="css/styles.css?v=2.0.3">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
@@ -365,21 +365,51 @@
 
         <!-- ── TAB 1: Block / Parcel Search ── -->
         <div id="searchTabParcel" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabParcel">
-          <form id="parcelSearchForm" novalidate>
-            <label class="search-panel__label" for="parcelSearchBlockInput">Block code or name</label>
-            <input id="parcelSearchBlockInput" name="block" type="text" class="search-panel__input" placeholder="e.g. 14 or North Block" autocomplete="off" required>
-            <label class="search-panel__label" for="parcelSearchNoInput">Plot number <span class="search-panel__muted">optional</span></label>
-            <input id="parcelSearchNoInput" name="parcelNo" type="number" class="search-panel__input" min="1" step="1" placeholder="e.g. 3" inputmode="numeric">
+          <!-- Cascade: Estate → Block → Parcel -->
+          <div class="search-cascade">
+            <div class="search-cascade__row">
+              <label class="search-panel__label" for="searchEstateSelect">Estate</label>
+              <select id="searchEstateSelect" class="search-panel__input">
+                <option value="">— Select Estate —</option>
+              </select>
+            </div>
+            <div class="search-cascade__row">
+              <label class="search-panel__label" for="searchBlockSelect">Block</label>
+              <select id="searchBlockSelect" class="search-panel__input" disabled>
+                <option value="">— Select Estate first —</option>
+              </select>
+            </div>
+            <div class="search-cascade__row">
+              <label class="search-panel__label" for="searchParcelSelect">Parcel / Plot <span class="search-panel__muted">optional</span></label>
+              <select id="searchParcelSelect" class="search-panel__input" disabled>
+                <option value="">— Select Block first —</option>
+              </select>
+            </div>
             <p id="parcelSearchPopoverError" class="search-panel__error" role="alert" hidden></p>
             <div class="search-panel__row" style="margin-top:0.75rem">
               <button type="button" class="search-panel__btn-secondary" id="parcelSearchPopoverCancelBtn" title="Clear highlight">
                 <i class="fas fa-eraser" aria-hidden="true"></i> Clear
               </button>
-              <button type="submit" class="search-panel__btn-primary" id="parcelSearchGoBtn">
+              <button type="button" class="search-panel__btn-primary" id="parcelSearchGoBtn">
                 <i class="fas fa-location-arrow" aria-hidden="true"></i> Go
               </button>
             </div>
-          </form>
+          </div>
+          <!-- Legacy text search (kept for power users) -->
+          <details style="margin-top:0.75rem;">
+            <summary class="search-panel__label" style="cursor:pointer; font-weight:600;">Search by block code / number</summary>
+            <form id="parcelSearchForm" novalidate style="margin-top:0.5rem;">
+              <label class="search-panel__label" for="parcelSearchBlockInput">Block code or name</label>
+              <input id="parcelSearchBlockInput" name="block" type="text" class="search-panel__input" placeholder="e.g. 14 or North Block" autocomplete="off">
+              <label class="search-panel__label" for="parcelSearchNoInput">Plot number <span class="search-panel__muted">optional</span></label>
+              <input id="parcelSearchNoInput" name="parcelNo" type="number" class="search-panel__input" min="1" step="1" placeholder="e.g. 3" inputmode="numeric">
+              <div class="search-panel__row" style="margin-top:0.5rem">
+                <button type="submit" class="search-panel__btn-primary" id="parcelSearchGoBtnLegacy">
+                  <i class="fas fa-location-arrow" aria-hidden="true"></i> Go
+                </button>
+              </div>
+            </form>
+          </details>
         </div>
 
         <!-- ── TAB 2: Place Search ── -->
@@ -601,7 +631,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
-  <script type="module" src="./js/map-app.js?v=1.9.9"></script>
+  <script type="module" src="./js/map-app.js?v=2.0.0"></script>
 
   <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
   <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->
@@ -649,11 +679,15 @@
           </div>
 
           <div id="surveyBlockFields" class="survey-conditional" hidden>
-            <input id="surveyProjectName" type="text" class="uam-input" placeholder="Estate / project name (optional)" autocomplete="off">
+            <input id="surveyEstateName" type="text" class="uam-input" placeholder="Estate name (required) e.g. Lugazi" autocomplete="off" list="surveyEstateNameList">
+            <datalist id="surveyEstateNameList"></datalist>
           </div>
           <div id="surveyParcelFields" class="survey-conditional" hidden>
+            <select id="surveyParcelEstateSelect" class="uam-select" style="margin-bottom:6px;">
+              <option value="">— Select Estate —</option>
+            </select>
             <select id="surveyParentBlockSelect" class="uam-select">
-              <option value="">Parent block…</option>
+              <option value="">— Select Estate first —</option>
             </select>
           </div>
 

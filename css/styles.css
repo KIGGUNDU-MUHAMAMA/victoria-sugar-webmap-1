@@ -4372,3 +4372,22 @@ select.search-panel__input {
   border-radius: 10px;
 }
 
+/* Estate → Block → Parcel cascade search */
+.search-cascade {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.search-cascade__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-cascade select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+

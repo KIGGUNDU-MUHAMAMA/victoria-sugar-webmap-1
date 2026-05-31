@@ -139,7 +139,9 @@ export function initSurveyImport({
   const layerSelect = document.getElementById("surveyLayerSelect");
   const blockFields = document.getElementById("surveyBlockFields");
   const parcelFields = document.getElementById("surveyParcelFields");
-  const projectName = document.getElementById("surveyProjectName");
+  const estateNameInput = document.getElementById("surveyEstateName"); // NEW block import estate
+  const surveyEstateNameList = document.getElementById("surveyEstateNameList"); // datalist
+  const surveyParcelEstateSelect = document.getElementById("surveyParcelEstateSelect"); // NEW parcel estate dropdown
   const parentBlockSelect = document.getElementById("surveyParentBlockSelect");
   const crsSelect = document.getElementById("surveyCrsSelect");
   const additionalInfo = document.getElementById("surveyAdditionalInfo");
@@ -226,13 +228,66 @@ export function initSurveyImport({
     drawer.setAttribute("aria-hidden", "true");
   }
 
-  async function refreshParentBlockOptions() {
+  function toTitleCase(str) {
+    return str.trim().replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  }
+
+  async function refreshEstateOptions() {
+    // Populate both the block-import datalist and parcel-import estate dropdown
+    try {
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=estate_name&estate_name=not.is.null`;
+      const res = await fetch(url, {
+        headers: {
+          "apikey": cfg.SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`,
+          "Accept": "application/json"
+        }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const names = [...new Set(
+        data.map(d => d.estate_name).filter(n => n && String(n).trim())
+      )].sort((a, b) => a.localeCompare(b));
+
+      // Fill datalist for block import
+      if (surveyEstateNameList) {
+        surveyEstateNameList.innerHTML = names.map(n => `<option value="${n}">`).join("");
+      }
+
+      // Fill estate dropdown for parcel import
+      if (surveyParcelEstateSelect) {
+        const keepEstate = surveyParcelEstateSelect.value;
+        surveyParcelEstateSelect.innerHTML = '<option value="">— Select Estate —</option>';
+        for (const name of names) {
+          const opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name;
+          surveyParcelEstateSelect.appendChild(opt);
+        }
+        if (keepEstate && [...surveyParcelEstateSelect.options].some(o => o.value === keepEstate)) {
+          surveyParcelEstateSelect.value = keepEstate;
+        }
+      }
+    } catch (e) {
+      console.error("[Victoria Survey] Error fetching estates:", e);
+    }
+  }
+
+  async function refreshParentBlockOptions(estateName) {
     if (!parentBlockSelect) return;
     const keep = parentBlockSelect.value;
+
+    if (!estateName) {
+      parentBlockSelect.innerHTML = '<option value="">— Select Estate first —</option>';
+      parentBlockSelect.disabled = true;
+      return;
+    }
+
+    parentBlockSelect.disabled = false;
     parentBlockSelect.innerHTML = '<option value="">Loading blocks…</option>';
     
     try {
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=block_code`;
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=block_code&estate_name=eq.${encodeURIComponent(estateName)}`;
       const res = await fetch(url, {
         headers: {
           "apikey": cfg.SUPABASE_ANON_KEY,
@@ -243,29 +298,21 @@ export function initSurveyImport({
       if (!res.ok) throw new Error("Failed to fetch blocks");
       
       const data = await res.json();
-      
       const codes = [...new Set(data.map(d => d.block_code).filter(c => c != null && String(c).trim() !== ""))];
-      
       codes.sort((a, b) => {
-        const ca = String(a);
-        const cb = String(b);
-        const na = Number(ca);
-        const nb = Number(cb);
-        if (Number.isFinite(na) && Number.isFinite(nb) && String(na) === ca && String(nb) === cb) {
-          return na - nb;
-        }
-        return ca.localeCompare(cb, undefined, { numeric: true });
+        const na = Number(String(a)), nb = Number(String(b));
+        if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+        return String(a).localeCompare(String(b), undefined, { numeric: true });
       });
       
-      parentBlockSelect.innerHTML = '<option value="">Select a block (codes 1, 2, 3…)</option>';
+      parentBlockSelect.innerHTML = '<option value="">— Select Block —</option>';
       for (const code of codes) {
         const opt = document.createElement("option");
         opt.value = String(code).trim();
         opt.textContent = `Block ${String(code).trim()}`;
         parentBlockSelect.appendChild(opt);
       }
-      
-      if (keep && [...parentBlockSelect.options].some((o) => o.value === keep)) {
+      if (keep && [...parentBlockSelect.options].some(o => o.value === keep)) {
         parentBlockSelect.value = keep;
       }
     } catch (e) {
@@ -278,7 +325,17 @@ export function initSurveyImport({
     const v = layerSelect.value;
     blockFields.hidden = v !== "BLOCKS";
     parcelFields.hidden = v !== "PARCELS";
-    if (v === "PARCELS") refreshParentBlockOptions();
+    if (v === "PARCELS") {
+      refreshEstateOptions();
+      // Reset block dropdown until estate chosen
+      if (parentBlockSelect) {
+        parentBlockSelect.innerHTML = '<option value="">— Select Estate first —</option>';
+        parentBlockSelect.disabled = true;
+      }
+    }
+    if (v === "BLOCKS") {
+      refreshEstateOptions();
+    }
   }
 
   function clearPreview() {
@@ -331,7 +388,11 @@ export function initSurveyImport({
       coordDrawer?.classList.remove("open");
       coordBtn?.classList.remove("active");
       window.dispatchEvent(new CustomEvent("vsl-force-close-extract-drawer"));
-      refreshParentBlockOptions();
+      refreshEstateOptions();
+      // Also refresh blocks if a parcel estate was already chosen
+      if (surveyParcelEstateSelect?.value) {
+        refreshParentBlockOptions(surveyParcelEstateSelect.value);
+      }
     } else {
       toggleBtn.classList.remove("active");
       if (drawInteraction) {
@@ -347,6 +408,11 @@ export function initSurveyImport({
     }
   }) // end toggleBtn click
   } // end hasToggle
+
+  // Estate cascade for parcel import
+  surveyParcelEstateSelect?.addEventListener("change", () => {
+    refreshParentBlockOptions(surveyParcelEstateSelect.value);
+  });
 
   closeBtn?.addEventListener("click", () => {
     closeDrawer();
@@ -657,9 +723,22 @@ export function initSurveyImport({
       setStatus(statusEl, "Select target layer (BLOCKS or PARCELS).", true);
       return;
     }
-    if (layerType === "PARCELS" && !parentBlockSelect?.value?.trim()) {
-      setStatus(statusEl, "Choose the parent block for these parcels (load blocks on the map if the list is empty).", true);
-      return;
+    if (layerType === "BLOCKS") {
+      const estateName = estateNameInput?.value?.trim() || "";
+      if (!estateName) {
+        setStatus(statusEl, "Enter an Estate name before previewing blocks.", true);
+        return;
+      }
+    }
+    if (layerType === "PARCELS") {
+      if (!surveyParcelEstateSelect?.value?.trim()) {
+        setStatus(statusEl, "Select an Estate before previewing parcels.", true);
+        return;
+      }
+      if (!parentBlockSelect?.value?.trim()) {
+        setStatus(statusEl, "Select a Block (within the chosen Estate) before previewing parcels.", true);
+        return;
+      }
     }
     if (!parsedRows.length) {
       setStatus(statusEl, "Load a CSV file first.", true);
@@ -713,9 +792,13 @@ export function initSurveyImport({
         }
       }
 
+      const resolvedEstate = layerType === "BLOCKS"
+        ? toTitleCase(estateNameInput?.value?.trim() || "")
+        : (surveyParcelEstateSelect?.value?.trim() || "");
+
       lastPreviewPayload = {
         layerType,
-        projectName: projectName?.value?.trim() || "",
+        estate_name: resolvedEstate,
         parentBlockCode: parentBlockSelect?.value?.trim() || "",
         coordinateSystem: crs,
         additionalInfo: additionalInfo?.value?.trim() || "",
@@ -737,7 +820,7 @@ export function initSurveyImport({
       const data = await callSurveyEdge(cfg, {
         action: "commit_batch",
         layerType: lastPreviewPayload.layerType,
-        projectName: lastPreviewPayload.projectName,
+        estate_name: lastPreviewPayload.estate_name,
         parentBlockCode: lastPreviewPayload.parentBlockCode,
         coordinateSystem: lastPreviewPayload.coordinateSystem,
         additionalInfo: lastPreviewPayload.additionalInfo,
@@ -762,7 +845,11 @@ export function initSurveyImport({
       lastPreviewPayload = null;
       saveBtn.disabled = true;
       await loadLayersFromDb();
-      refreshParentBlockOptions();
+      // Refresh estate+block dropdowns after save
+      await refreshEstateOptions();
+      if (surveyParcelEstateSelect?.value) {
+        await refreshParentBlockOptions(surveyParcelEstateSelect.value);
+      }
       fitMapToLayerSources(map, blocksSource, parcelsSource);
       setStatus(
         statusEl,

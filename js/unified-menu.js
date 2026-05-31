@@ -37,6 +37,9 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     fabBtn.setAttribute("aria-expanded", "false");
   }
 
+  // Expose globally so other modules can close it to prevent overlap
+  window.closeMenu = closeMenu;
+
   fabBtn.addEventListener("click", () => {
     if (overlay.hidden) openMenu(); else closeMenu();
   });

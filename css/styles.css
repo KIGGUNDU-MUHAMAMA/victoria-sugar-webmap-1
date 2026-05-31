@@ -752,22 +752,6 @@ button:hover {
   line-height: 1.4;
 }
 
-.parcel-status-preview {
-  font-size: 0.85rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: 10px;
-  background: #eef5ec;
-  border: 1px solid var(--border);
-  margin-bottom: 0.65rem;
-  line-height: 1.45;
-}
-
-.parcel-status-preview-id {
-  font-size: 0.72rem;
-  color: var(--muted);
-  word-break: break-all;
-}
-
 .parcel-status-field-label {
   display: block;
   margin-top: 0.55rem;

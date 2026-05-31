@@ -838,39 +838,21 @@ function disarmParcelStatusPick() {
 }
 
 function renderParcelStatusPreview() {
-  const box = document.getElementById("parcelStatusPreview");
   const sec = document.getElementById("parcelStatusSelectionSection");
   const countBadge = document.getElementById("parcelStatusSelectionCount");
   const features = parcelStatusState.selectedFeatures;
   const lt = parcelStatusState.selectedLayerType;
-  if (!box || !sec) return;
+  if (!sec) return;
   
   if (countBadge) {
-    countBadge.textContent = `${features.length} selected`;
+    countBadge.textContent = `${features?.length || 0} selected`;
   }
   
   if (!features || features.length === 0 || !lt) {
     sec.hidden = true;
-    box.innerHTML = "";
     return;
   }
   sec.hidden = false;
-  
-  const f = features[0];
-  const p = f.getProperties();
-  if (lt === "PARCELS") {
-    const bc = p.block_code ?? "—";
-    const pn = p.parcel_no ?? p.parcel_code ?? "—";
-    let text = `<strong>Parcel</strong> in block <strong>${bc}</strong>, plot <strong>${pn}</strong><br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
-    if (features.length > 1) text += `<br><em>...and ${features.length - 1} more selected.</em>`;
-    box.innerHTML = text;
-  } else {
-    const code = p.block_code ?? "—";
-    const name = p.block_name ?? "";
-    let text = `<strong>Block</strong> <strong>${code}</strong>${name ? ` — ${name}` : ""}<br><span class="parcel-status-preview-id">ID: ${f.getId() ?? ""}</span>`;
-    if (features.length > 1) text += `<br><em>...and ${features.length - 1} more selected.</em>`;
-    box.innerHTML = text;
-  }
 }
 
 function syncParcelStatusFormFromSelection() {

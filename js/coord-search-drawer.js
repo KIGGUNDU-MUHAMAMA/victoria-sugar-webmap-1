@@ -22,7 +22,8 @@ function normalizeCoordRow(row) {
   return { east, north, label };
 }
 
-export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, onDrawerClose, panelMode }) {
+export function initCoordSearchDrawer(opts) {
+  const { map, setStatus, statusEl, onDrawerOpen, onDrawerClose, panelMode, annotationsGroup } = opts;
   // In panelMode the coord UI lives inside #searchPanel; no aside drawer to toggle.
   const drawer = panelMode ? null : document.getElementById("coordSearchDrawer");
   const toggleBtn = panelMode ? null : document.getElementById("coordSearchBtn");
@@ -69,9 +70,14 @@ export function initCoordSearchDrawer({ map, setStatus, statusEl, onDrawerOpen, 
       });
     }
   });
-  markersLayer.set("displayInLayerSwitcher", false);
   markersLayer.set("title", "Coordinate markers");
-  map.addLayer(markersLayer);
+  if (opts && opts.annotationsGroup) {
+    markersLayer.set("displayInLayerSwitcher", true);
+    opts.annotationsGroup.getLayers().push(markersLayer);
+  } else {
+    markersLayer.set("displayInLayerSwitcher", false);
+    map.addLayer(markersLayer);
+  }
 
   let proj4lib = null;
 

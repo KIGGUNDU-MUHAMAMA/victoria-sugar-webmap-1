@@ -94,7 +94,8 @@ function guessCrsFromImage(image, fallbackCrs) {
  * @param {HTMLElement} opts.statusEl  - Global status element (optional)
  * @param {Function}  opts.getBaseGroup - Returns the OL base layer group
  */
-export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBaseGroup }) {
+export function initDroneImageModule(opts) {
+  const { map, supabase, setStatus, statusEl, getBaseGroup, droneGroup } = opts;
   // ── DOM refs ──────────────────────────────────────────────────────────────
   const fileInput      = document.getElementById("droneFileInput");
   const previewBtn     = document.getElementById("dronePreviewBtn");
@@ -108,17 +109,10 @@ export function initDroneImageModule({ map, supabase, setStatus, statusEl, getBa
   let previewBbox3857 = null;  // [minX, minY, maxX, maxY] in EPSG:3857
   let previewLayer   = null;   // ol.layer.Image placed on the map during preview
 
-  const droneGroup = new ol.layer.Group({
-    title: LAYER_GROUP_TITLE,
-    type: 'overlay',
-    combine: true, // Forces LayerSwitcher to render this group as a single toggleable checkbox even if empty
-    fold: "open",
-    layers: [],
-    visible: false,
-    zIndex: 5
-  });
-  droneGroup.set("displayInLayerSwitcher", true);
-  map?.addLayer(droneGroup);
+  if (!droneGroup) {
+    console.error("droneGroup is required");
+    return;
+  }
   
   // Explicitly ensure visibility is off to force LayerSwitcher to uncheck it
   droneGroup.setVisible(false);

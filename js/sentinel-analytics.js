@@ -10,62 +10,114 @@ export const VSL_WMS_LAYER_IDS = [
   "MOISTURE_STRESS"
 ];
 
+const LAYER_DEFS = [
+  { id: "TRUE_COLOR", title: "TRUE COLOR" },
+  { id: "NDVI", title: "NDVI" },
+  { id: "NDVI_ADVANCED", title: "NDVI ADVANCED" },
+  { id: "NDRE", title: "NDRE" },
+  { id: "MOISTURE_STRESS", title: "MOISTURE AND STRESS" }
+];
+
 function getSentinelWmsAuxParams() {
-  // Hardcoded for best cloud-free monthly mosaics
   return { MAXCC: 40, PRIORITY: "leastCC" };
 }
 
 function getMonthTimeRange(year, month) {
-  // Return YYYY-MM-01/YYYY-MM-lastDay
   const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0); // last day of month
+  const endDate = new Date(year, month, 0); 
   return `${startDate.toISOString().slice(0, 10)}/${endDate.toISOString().slice(0, 10)}`;
-}
-
-function renderWmsLegend(legendEl, layerId) {
-  if (!legendEl) return;
-  if (layerId === "TRUE_COLOR") {
-    legendEl.innerHTML = '<p class="smc-legend-note" style="margin:0">True color composite.</p>';
-  } else if (layerId === "NDVI" || layerId === "NDVI_ADVANCED") {
-    legendEl.innerHTML = `
-      <div class="smc-legend-gradient" style="background:linear-gradient(90deg,#c62828 0%,#fbc02d 50%,#1b5e20 100%); height:8px; border-radius:4px; margin-bottom:4px;"></div>
-      <div style="display:flex; justify-content:space-between; font-size:11px;"><span>Poor</span><span>Healthy</span></div>
-    `;
-  } else if (layerId === "NDRE" || layerId === "MOISTURE_STRESS") {
-    legendEl.innerHTML = `
-      <div class="smc-legend-gradient" style="background:linear-gradient(90deg,#d32f2f 0%,#ffeb3b 50%,#388e3c 100%); height:8px; border-radius:4px; margin-bottom:4px;"></div>
-      <div style="display:flex; justify-content:space-between; font-size:11px;"><span>Stress</span><span>Optimal</span></div>
-    `;
-  }
 }
 
 export function initSentinelAnalytics(opts) {
   const {
     map,
-    sentinelLayer,
-    blocksLayer
+    sentinelGroup,
+    cfg
   } = opts;
 
-  if (!map || !sentinelLayer) return null;
+  if (!map || !sentinelGroup) return null;
 
-  const source = sentinelLayer.getSource();
-  if (!source || typeof source.updateParams !== "function") return null;
+  // 1. Create a shared WMS source
+  const wmsBase = cfg?.SENTINEL_HUB_WMS_BASE || "https://sh.dataspace.copernicus.eu/ogc/wms/ab8b1162-e45e-4405-9db6-aa882b920217";
+  const source = new ol.source.TileWMS({
+    url: wmsBase,
+    params: {
+      LAYERS: "TRUE_COLOR",
+      STYLES: "default",
+      VERSION: "1.1.1",
+      FORMAT: "image/png",
+      TRANSPARENT: true,
+      TILED: true,
+      TIME: "2024-01-01/2024-01-31", // dummy, updated on load
+      MAXCC: "40",
+      PRIORITY: "leastCC",
+      SHOWLOGO: "false",
+      WARNINGS: "NO"
+    },
+    crossOrigin: "anonymous"
+  });
 
+  // 2. Create sub-layers and add to sentinelGroup
+  const layers = {};
+  let activeLayerId = null;
+
+  LAYER_DEFS.forEach(def => {
+    const l = new ol.layer.Tile({
+      title: def.title,
+      type: "base", // radio button in ol-layerswitcher
+      visible: false,
+      opacity: 0.88,
+      source: source,
+      transition: 200
+    });
+    layers[def.id] = l;
+    sentinelGroup.getLayers().push(l);
+
+    l.on("change:visible", () => {
+      if (l.getVisible()) {
+        activeLayerId = def.id;
+        applyWmsParams();
+      } else {
+        // Check if all are hidden
+        const anyVisible = LAYER_DEFS.some(d => layers[d.id].getVisible());
+        if (!anyVisible) activeLayerId = null;
+      }
+    });
+  });
+
+  // 3. DOM Elements for Settings
   const container = document.getElementById("sentinelMinimalControl");
   const yearSel = document.getElementById("smcYear");
   const monthSlider = document.getElementById("smcMonth");
   const monthLabel = document.getElementById("smcMonthLabel");
-  const layerSel = document.getElementById("smcLayer");
-  const legendBody = document.getElementById("smcLegend");
   const spinner = document.getElementById("smcSpinner");
+  
+  // Hide the layer selector in the old panel since we now use layer switcher
+  const layerSelRow = document.getElementById("smcLayer")?.closest(".form-group");
+  if (layerSelRow) layerSelRow.style.display = "none";
+  
+  // Hide the back button in the old panel
+  const backBtn = document.getElementById("smcBackBtn");
+  if (backBtn) backBtn.style.display = "none";
+
+  // Style container as a floating popup
+  if (container) {
+    container.style.position = "absolute";
+    container.style.top = "60px";
+    container.style.right = "60px"; // Next to layer switcher
+    container.style.left = "auto";
+    container.style.bottom = "auto";
+    container.style.width = "300px";
+    container.style.zIndex = "1000";
+    container.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+    container.style.borderRadius = "8px";
+  }
 
   let pendingTiles = 0;
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-  // Set current year/month
   const now = new Date();
   if (yearSel) {
-    // Make sure current year is in the list
     if (![...yearSel.options].find(o => o.value === String(now.getFullYear()))) {
       const opt = document.createElement("option");
       opt.value = String(now.getFullYear());
@@ -85,23 +137,13 @@ export function initSentinelAnalytics(opts) {
     spinner.hidden = pendingTiles <= 0;
   }
 
-  source.on("tileloadstart", () => {
-    pendingTiles += 1;
-    updateTileSpinner();
-  });
-  source.on("tileloadend", () => {
-    pendingTiles = Math.max(0, pendingTiles - 1);
-    updateTileSpinner();
-  });
-  source.on("tileloaderror", () => {
-    pendingTiles = Math.max(0, pendingTiles - 1);
-    updateTileSpinner();
-  });
+  source.on("tileloadstart", () => { pendingTiles += 1; updateTileSpinner(); });
+  source.on("tileloadend", () => { pendingTiles = Math.max(0, pendingTiles - 1); updateTileSpinner(); });
+  source.on("tileloaderror", () => { pendingTiles = Math.max(0, pendingTiles - 1); updateTileSpinner(); });
 
   function applyWmsParams() {
-    if (!sentinelLayer.getVisible()) return;
+    if (!activeLayerId) return;
 
-    const layerId = layerSel ? layerSel.value : "TRUE_COLOR";
     const yr = yearSel ? parseInt(yearSel.value, 10) : now.getFullYear();
     const mo = monthSlider ? parseInt(monthSlider.value, 10) : now.getMonth() + 1;
     
@@ -109,7 +151,7 @@ export function initSentinelAnalytics(opts) {
     const aux = getSentinelWmsAuxParams();
 
     const wmsP = {
-      LAYERS: layerId,
+      LAYERS: activeLayerId,
       STYLES: "default",
       TIME: tParam,
       SHOWLOGO: "false",
@@ -122,18 +164,6 @@ export function initSentinelAnalytics(opts) {
 
     source.updateParams(wmsP);
     if (typeof source.refresh === "function") source.refresh();
-    
-    sentinelLayer.setOpacity(1.0); // Hardcoded 100%
-    renderWmsLegend(legendBody, layerId);
-  }
-
-  const backBtn = document.getElementById("smcBackBtn");
-  if (backBtn) {
-    backBtn.addEventListener("click", () => {
-      if (container) container.hidden = true;
-      const ls = document.querySelector(".layer-switcher");
-      if (ls) ls.style.display = "";
-    });
   }
 
   if (yearSel) yearSel.addEventListener("change", applyWmsParams);
@@ -143,32 +173,49 @@ export function initSentinelAnalytics(opts) {
     });
     monthSlider.addEventListener("change", applyWmsParams);
   }
-  if (layerSel) layerSel.addEventListener("change", applyWmsParams);
 
-  // Toggle Panel visibility based on Layer Switcher
-  sentinelLayer.on("change:visible", () => {
-    const isVis = sentinelLayer.getVisible();
-    if (isVis) {
-      if (container) container.hidden = false;
-      const ls = document.querySelector(".layer-switcher");
-      if (ls) ls.style.display = "none";
-      applyWmsParams();
-    } else {
-      if (container) container.hidden = true;
-      const ls = document.querySelector(".layer-switcher");
-      if (ls) ls.style.display = "";
-    }
-  });
-  
-  // Apply initial state if already visible
-  if (sentinelLayer.getVisible() && container) {
-    container.hidden = false;
-    const ls = document.querySelector(".layer-switcher");
-    if (ls) ls.style.display = "none";
-    applyWmsParams();
+  // 4. Inject Gear Icon
+  function injectSettingsGear() {
+    const labels = document.querySelectorAll(".layer-switcher label");
+    labels.forEach(label => {
+      if (label.textContent.includes("SENTINEL") && !label.querySelector('.vsl-sentinel-gear')) {
+        const gear = document.createElement("i");
+        gear.className = "fas fa-cog vsl-sentinel-gear";
+        gear.style.cursor = "pointer";
+        gear.style.marginLeft = "8px";
+        gear.style.color = "#666";
+        gear.title = "Settings";
+        gear.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (container) {
+            container.hidden = !container.hidden;
+          }
+        });
+        label.appendChild(gear);
+      }
+    });
   }
 
-  // Removed buggy clipping logic to restore layer rendering
+  const lsPanel = document.querySelector(".layer-switcher");
+  if (lsPanel) {
+    const observer = new MutationObserver(() => injectSettingsGear());
+    observer.observe(lsPanel, { childList: true, subtree: true });
+    injectSettingsGear();
+  } else {
+    // If not rendered yet, poll a few times
+    let attempts = 0;
+    const interval = setInterval(() => {
+      const p = document.querySelector(".layer-switcher");
+      if (p) {
+        clearInterval(interval);
+        const observer = new MutationObserver(() => injectSettingsGear());
+        observer.observe(p, { childList: true, subtree: true });
+        injectSettingsGear();
+      }
+      if (attempts++ > 10) clearInterval(interval);
+    }, 500);
+  }
 
-  return { close: () => {} };
+  return { close: () => { if (container) container.hidden = true; } };
 }

@@ -54,6 +54,9 @@ let activeSnapInteractions = [];
 let surveyPreviewSnapSources = null;
 let baseGroupRef;
 let sentinelHubLayer;
+let sentinelGroupRef;
+let droneImagesGroupRef;
+let annotationsGroupRef;
 /** Set by initSentinelAnalytics so openSearchPanel can close the Sentinel dock. */
 let vslCloseSentinelPanel = () => {};
 
@@ -610,39 +613,40 @@ function buildLayerTree() {
     url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
   }));
 
-  // Copernicus Data Space WMS (single TileWMS; LAYERS + TIME range from UI)
-  const wmsBase =
-    cfg.SENTINEL_HUB_WMS_BASE ||
-    "https://sh.dataspace.copernicus.eu/ogc/wms/ab8b1162-e45e-4405-9db6-aa882b920217";
-  const sentinelWmsSource = new ol.source.TileWMS({
-    url: wmsBase,
-    params: {
-      LAYERS: "TRUE_COLOR",
-      STYLES: "default",
-      VERSION: "1.1.1",
-      FORMAT: "image/png",
-      TRANSPARENT: true,
-      TILED: true,
-      TIME: "2024-01-01/2024-01-31", // Initial dummy, updated on load
-      MAXCC: "40",
-      PRIORITY: "leastCC",
-      // Sentinel Hub custom params (see CDSE "Additional request parameters")
-      SHOWLOGO: "false",
-      WARNINGS: "NO"
-    },
-    crossOrigin: "anonymous"
+  // BASE MAPS Group
+  const baseGroup = new ol.layer.Group({
+    title: "Base Maps",
+    fold: "open",
+    layers: [osmBasemap, googleHybrid, esriImagery, noBasemap]
   });
-  sentinelHubLayer = new ol.layer.Tile({
-    title: "Sentinel-2 (Copernicus CDSE)",
-    visible: false,
-    opacity: 0.88,
-    source: sentinelWmsSource,
-    transition: 200
-  });
-  sentinelHubLayer.setZIndex(4);
-  sentinelHubLayer.set("displayInLayerSwitcher", true);
-  sentinelHubLayer.set("type", "sentinel");
+  baseGroupRef = baseGroup;
 
+  // DRONE IMAGES Group
+  const droneGroup = new ol.layer.Group({
+    title: "DRONE IMAGES",
+    type: 'overlay',
+    combine: true,
+    fold: "open",
+    layers: [],
+    visible: false,
+    zIndex: 5
+  });
+  droneGroup.set("displayInLayerSwitcher", true);
+  droneImagesGroupRef = droneGroup;
+
+  // SENTINEL Group (Radio buttons via type='base-group')
+  const sentinelGroup = new ol.layer.Group({
+    title: "SENTINEL",
+    fold: "open",
+    // We do NOT set combine: true so it shows children.
+    // By setting type to "base-group" or having children with type="base" 
+    // ol-layerswitcher will render them as radio buttons.
+    layers: [],
+    zIndex: 10
+  });
+  sentinelGroupRef = sentinelGroup;
+
+  // SURVEY LAYERS Group
   const overlaysGroup = new ol.layer.Group({
     title: "SURVEY LAYERS",
     fold: "open",
@@ -650,11 +654,16 @@ function buildLayerTree() {
   });
   overlaysGroup.setZIndex(20);
 
-  const baseGroup = new ol.layer.Group({
-    title: "Base Maps",
+  // ANNOTATIONS Group
+  sketchLayer.set("displayInLayerSwitcher", true);
+  measureLayer.set("displayInLayerSwitcher", true);
+  const annotationsGroup = new ol.layer.Group({
+    title: "ANNOTATIONS",
     fold: "open",
-    layers: [osmBasemap, googleHybrid, esriImagery, noBasemap]
+    layers: [sketchLayer, measureLayer]
   });
+  annotationsGroup.setZIndex(30);
+  annotationsGroupRef = annotationsGroup;
 
   let graticuleLayer = null;
   if (typeof ol !== "undefined" && ol.layer && typeof ol.layer.Graticule === "function") {
@@ -687,13 +696,19 @@ function buildLayerTree() {
     graticuleLayer.set("displayInLayerSwitcher", false);
   }
 
-  sketchLayer.set("displayInLayerSwitcher", false);
-  baseGroupRef = baseGroup;
   if (graticuleLayer) graticuleLayer.setZIndex(8);
-  // Order: basemap → WMS (Sentinel/terrain) → graticule → vectors / measure
-  const stack = [baseGroup, sentinelHubLayer];
+  
+  // Order on map (bottom to top). Layer switcher shows reverse (top to bottom).
+  // 1. baseGroup
+  // 2. graticule
+  // 3. droneGroup
+  // 4. sentinelGroup
+  // 5. overlaysGroup (Survey Layers)
+  // 6. annotationsGroup
+  const stack = [baseGroup];
   if (graticuleLayer) stack.push(graticuleLayer);
-  stack.push(overlaysGroup, sketchLayer, measureLayer);
+  stack.push(droneGroup, sentinelGroup, overlaysGroup, annotationsGroup);
+  
   return stack;
 }
 
@@ -2419,12 +2434,12 @@ async function initMap() {
   });
   surveyPreviewSnapSources = surveyImportHandles?.getPreviewSnapSources?.() ?? null;
 
-  if (sentinelHubLayer) {
+  if (sentinelGroupRef) {
     const sentinelCtl = initSentinelAnalytics({
       map,
       cfg,
       getBaseGroup: () => baseGroupRef,
-      sentinelLayer: sentinelHubLayer,
+      sentinelGroup: sentinelGroupRef,
       blocksLayer,
       parcelsLayer,
       getSurveyPreviewLayers: () => surveyImportHandles?.getPreviewLayers?.() ?? null,
@@ -2451,12 +2466,10 @@ async function initMap() {
     map,
     setStatus,
     statusEl,
-    onDrawerOpen: () => {
-      closePlaceSearchCard();
-    },
-    // The coord search now lives inside #searchPanel; pass a no-op open/close
-    // so the module doesn't try to toggle a non-existent aside drawer.
-    panelMode: true
+    onDrawerOpen: () => {},
+    onDrawerClose: () => {},
+    panelMode: true,
+    annotationsGroup: annotationsGroupRef
   });
   initCoordExtractDrawer({
     map,
@@ -2481,7 +2494,8 @@ async function initMap() {
     supabase,
     setStatus,
     statusEl,
-    getBaseGroup: () => baseGroupRef
+    getBaseGroup: () => baseGroupRef,
+    droneGroup: droneImagesGroupRef
   });
 
   initUnifiedMenu({

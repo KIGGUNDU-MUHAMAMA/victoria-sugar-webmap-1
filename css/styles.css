@@ -4248,13 +4248,28 @@ select.search-panel__input {
   color: #1e293b;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
   margin-bottom: 12px;
   border-bottom: 1px solid #e2e8f0;
   padding-bottom: 8px;
 }
 .vsl-ssp-header i {
   color: var(--vsl-primary, #1565c0);
+}
+
+.vsl-ssp-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  transition: color 0.2s;
+}
+.vsl-ssp-close:hover {
+  color: #ef4444;
 }
 
 .vsl-ssp-body {

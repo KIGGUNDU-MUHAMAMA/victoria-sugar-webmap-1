@@ -105,6 +105,13 @@ export function initSentinelAnalytics(opts) {
   const backBtn = document.getElementById("smcBackBtn");
   if (backBtn) backBtn.style.display = "none";
 
+  const closeBtn = document.getElementById("smcCloseBtn");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      if (container) container.hidden = true;
+    });
+  }
+
   // Container is styled by CSS class vsl-sentinel-settings-popup
 
   let pendingTiles = 0;

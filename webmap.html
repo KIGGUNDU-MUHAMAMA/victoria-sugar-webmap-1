@@ -155,26 +155,7 @@
 
   <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
 
-    <!-- NEW MEASURE CONTROL -->
-    <div id="measurePanel" class="measure-panel" hidden>
-      <div class="smc-header" style="justify-content: space-between;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <i class="fas fa-ruler-combined"></i> <span style="font-weight:600;">Measure</span>
-        </div>
-        <button type="button" id="measurePanelCloseBtn" class="smc-back-btn" aria-label="Close" style="border:none;background:transparent;color:var(--text);font-size:1.5rem;padding:0;">&times;</button>
-      </div>
-      <div class="smc-row" style="flex-direction:row; gap:8px; margin-top:12px;">
-        <button id="measureLineBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-ruler-horizontal"></i> Distance</button>
-        <button id="measureAreaBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-vector-square"></i> Area</button>
-      </div>
-      <div class="smc-row" style="margin-top:4px;">
-        <button id="measureAdvancedBtn" class="btn-primary" style="width:100%;"><i class="fas fa-draw-polygon"></i> Advanced Measure</button>
-      </div>
-      <div class="smc-row" style="margin-top:8px;">
-        <button id="clearMeasuresBtn" class="btn-secondary" style="color:var(--danger); border-color:var(--danger); width:100%;"><i class="fas fa-eraser"></i> Clear</button>
-      </div>
-      <div id="measureFeedback" style="margin-top:8px; font-size:0.8rem; color:var(--primary-2); text-align:center;"></div>
-    </div>
+
 
     <!-- NEW MINIMALIST SENTINEL CONTROL -->
     <div id="sentinelMinimalControl" class="sentinel-minimal-control" hidden>
@@ -499,11 +480,7 @@
           <input type="checkbox" id="snapParcelsCb" checked>
           <input type="checkbox" id="snapSurveyCb" checked>
         </div>
-        <div class="draw-tools__btn-row" style="margin-bottom: 12px;">
-          <button id="measureLineBtn" class="btn-secondary" type="button">Distance</button>
-          <button id="measureAreaBtn" class="btn-secondary" type="button">Area</button>
-        </div>
-        <button id="clearMeasuresBtn" class="btn-secondary draw-tools__full-btn" type="button">Clear measurements</button>
+        <!-- measure tools removed to avoid ID collision -->
       </section>
 
       <section class="draw-tools__section" style="border-top: 1px solid #e2e8f0; padding-top: 15px;">
@@ -594,6 +571,29 @@
     </div>
   </div>
 
+  <div class="map-right-stack" id="mapRightStack" aria-label="Map right tools">
+    <!-- NEW MEASURE CONTROL -->
+    <div id="measurePanel" class="measure-panel" hidden>
+      <div class="smc-header" style="justify-content: space-between;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-ruler-combined"></i> <span style="font-weight:600;">Measure</span>
+        </div>
+        <button type="button" id="measurePanelCloseBtn" class="smc-back-btn" aria-label="Close" style="border:none;background:transparent;color:var(--text);font-size:1.5rem;padding:0;">&times;</button>
+      </div>
+      <div class="smc-row" style="flex-direction:row; gap:8px; margin-top:12px;">
+        <button id="measureLineBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-ruler-horizontal"></i> Distance</button>
+        <button id="measureAreaBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-vector-square"></i> Area</button>
+      </div>
+      <div class="smc-row" style="margin-top:4px;">
+        <button id="measureAdvancedBtn" class="btn-primary" style="width:100%;"><i class="fas fa-draw-polygon"></i> Advanced Measure</button>
+      </div>
+      <div class="smc-row" style="margin-top:8px;">
+        <button id="clearMeasuresBtn" class="btn-secondary" style="color:var(--danger); border-color:var(--danger); width:100%;"><i class="fas fa-eraser"></i> Clear</button>
+      </div>
+      <div id="measureFeedback" style="margin-top:8px; font-size:0.8rem; color:var(--primary-2); text-align:center;"></div>
+    </div>
+  </div>
+
   <div id="status" class="status map-status" hidden></div>
 
   <div id="fallbackLayerSwitcher" class="fallback-switcher" hidden>
@@ -615,7 +615,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
-  <script type="module" src="./js/map-app.js?v=1.9.1"></script>
+  <script type="module" src="./js/map-app.js?v=1.9.2"></script>
 
   <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
   <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->

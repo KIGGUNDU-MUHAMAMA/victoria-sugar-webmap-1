@@ -201,15 +201,58 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
   const body =
     rows ||
     `<p class="map-popup__empty">No attributes loaded for this feature. Zoom in or reload layers.</p>`;
+    
+  const canEdit = currentProfile?.role === "ADMIN" || currentProfile?.role === "SURVEYOR";
+  const readOnlyMsg = canEdit ? "" : `<div style="font-size:0.75rem; color:#856404; background:#fff3cd; padding:6px; border-radius:4px; margin-bottom:8px;">Sign in as Admin or Surveyor to modify.</div>`;
+  const disableStr = canEdit ? "" : "disabled";
+
   return `
     <div class="map-popup__inner">
       <header class="map-popup__head">
         <span class="map-popup__badge">${badge}</span>
         <button type="button" class="map-popup__close" aria-label="Close details">&times;</button>
       </header>
-      <div class="map-popup__grid">${body}</div>
-      <div class="map-popup__actions" style="margin-top:10px;text-align:right;">
-        <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;"><i class="fas fa-trash-alt" style="margin-right:5px;"></i>Delete</button>
+      
+      <div class="map-popup__tabs" style="display:flex; border-bottom:1px solid #e2e8f0; margin-bottom:10px;">
+        <button type="button" class="map-popup__tab active" style="flex:1; background:none; border:none; border-bottom:2px solid var(--primary); font-weight:600; padding:6px; cursor:pointer; color:var(--primary);" onclick="this.parentElement.nextElementSibling.hidden=false; this.parentElement.nextElementSibling.nextElementSibling.hidden=true; this.style.borderBottomColor='var(--primary)'; this.style.color='var(--primary)'; this.nextElementSibling.style.borderBottomColor='transparent'; this.nextElementSibling.style.color='var(--muted)';">Info</button>
+        <button type="button" class="map-popup__tab" style="flex:1; background:none; border:none; border-bottom:2px solid transparent; font-weight:600; padding:6px; cursor:pointer; color:var(--muted);" onclick="this.parentElement.nextElementSibling.hidden=true; this.parentElement.nextElementSibling.nextElementSibling.hidden=false; this.style.borderBottomColor='var(--primary)'; this.style.color='var(--primary)'; this.previousElementSibling.style.borderBottomColor='transparent'; this.previousElementSibling.style.color='var(--muted)';">More</button>
+      </div>
+
+      <div class="map-popup__tab-content" id="popupTabInfo">
+        <div class="map-popup__grid">${body}</div>
+      </div>
+      
+      <div class="map-popup__tab-content" id="popupTabMore" hidden>
+        ${readOnlyMsg}
+        <div style="font-size:0.85rem; padding-bottom:8px;">
+          <div style="margin-bottom:8px;">
+            <label style="display:block;margin-bottom:4px;font-weight:600;">Cultivation status</label>
+            <select class="smc-select popup-modify-status" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+               <option value="not_in_cane" ${props.cultivation_status === 'not_in_cane' ? 'selected' : ''}>Not in cane</option>
+               <option value="prepared" ${props.cultivation_status === 'prepared' ? 'selected' : ''}>Prepared</option>
+               <option value="planted" ${props.cultivation_status === 'planted' ? 'selected' : ''}>Planted</option>
+               <option value="standing" ${props.cultivation_status === 'standing' ? 'selected' : ''}>Standing</option>
+               <option value="harvested" ${props.cultivation_status === 'harvested' ? 'selected' : ''}>Harvested</option>
+               <option value="replant_renovation" ${props.cultivation_status === 'replant_renovation' ? 'selected' : ''}>Replant / renovation</option>
+            </select>
+          </div>
+          <div style="margin-bottom:8px;">
+            <label style="display:block;margin-bottom:4px;font-weight:600;">Harvest (tonnes)</label>
+            <input type="number" step="0.001" min="0" class="popup-modify-tonnes" value="${props.harvest_tonnes || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. 450" ${disableStr}>
+          </div>
+          <div style="margin-bottom:8px;">
+            <label style="display:block;margin-bottom:4px;font-weight:600;">Last harvest date</label>
+            <input type="date" class="popup-modify-date" value="${props.last_harvest_date || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;font-weight:600;">Notes</label>
+            <textarea rows="2" class="popup-modify-notes" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="Variety, agronomy notes…" ${disableStr}>${escapeHtml(props.agronomy_notes || '')}</textarea>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="flex:1;" ${disableStr}>Save changes</button>
+            <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -1187,6 +1230,42 @@ function setupInfoPopup() {
         selectedFeature = null;
         selectedLayerType = null;
         loadLayersFromDb();
+      }
+    } else if (ev.target.closest(".btn-save-feature")) {
+      const btn = ev.target.closest(".btn-save-feature");
+      const layerType = btn.dataset.layer;
+      const featureId = btn.dataset.id;
+      const isParcel = layerType === "PARCELS";
+      
+      const newStatus = inner.querySelector(".popup-modify-status").value;
+      const newTonnes = inner.querySelector(".popup-modify-tonnes").value || null;
+      const newDate = inner.querySelector(".popup-modify-date").value || null;
+      const newNotes = inner.querySelector(".popup-modify-notes").value;
+      
+      const updateData = {
+        cultivation_status: newStatus,
+        harvest_tonnes: newTonnes ? parseFloat(newTonnes) : null,
+        last_harvest_date: newDate,
+        agronomy_notes: newNotes,
+        updated_at: new Date().toISOString()
+      };
+      
+      const tableName = isParcel ? "vsl_parcels" : "vsl_blocks";
+      const { error } = await supabase.from(tableName).update(updateData).eq("id", featureId);
+      
+      if (error) {
+        alert("Failed to modify feature: " + error.message);
+      } else {
+        // Quick visual feedback on button
+        const oldText = btn.innerHTML;
+        btn.innerHTML = `<i class="fas fa-check"></i> Saved`;
+        btn.style.background = "#28a745";
+        setTimeout(() => {
+          closeInfoPopup();
+          selectedFeature = null;
+          selectedLayerType = null;
+          loadLayersFromDb();
+        }, 800);
       }
     }
   });

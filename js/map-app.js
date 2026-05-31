@@ -25,7 +25,13 @@ const snapBlocksCb = document.getElementById("snapBlocksCb");
 const snapParcelsCb = document.getElementById("snapParcelsCb");
 const snapSurveyCb = document.getElementById("snapSurveyCb");
 const clearMeasuresBtn = document.getElementById("clearMeasuresBtn");
+const clearDrawingsBtn = document.getElementById("clearDrawingsBtn");
 const drawToolsFeedback = document.getElementById("drawToolsFeedback");
+const measureFeedback = document.getElementById("measureFeedback");
+
+const measureTopBtn = document.getElementById("measureTopBtn");
+const measurePanel = document.getElementById("measurePanel");
+const measurePanelCloseBtn = document.getElementById("measurePanelCloseBtn");
 const panelButtons = {}; // draw tools now live in UAM; no legacy panel button needed
 
 const locateBtn = document.getElementById("locateBtn");
@@ -666,9 +672,14 @@ function setActivePanel(panelId) {
 }
 
 function setDrawToolsFeedback(message, isError) {
-  if (!drawToolsFeedback) return;
-  drawToolsFeedback.textContent = message || "";
-  drawToolsFeedback.classList.toggle("draw-tools__feedback--error", !!isError && !!message);
+  if (drawToolsFeedback) {
+    drawToolsFeedback.textContent = message;
+    drawToolsFeedback.style.color = isError ? "var(--danger)" : "var(--primary-2)";
+  }
+  if (measureFeedback) {
+    measureFeedback.textContent = message;
+    measureFeedback.style.color = isError ? "var(--danger)" : "var(--primary-2)";
+  }
 }
 
 function syncDrawToolsMapInset() {
@@ -2008,10 +2019,27 @@ function bindEvents() {
   drawLineBtn?.addEventListener("click", () => startMeasure("LineString", true));
   drawPolygonBtn?.addEventListener("click", () => startMeasure("Polygon", true));
   stopDrawBtn.addEventListener("click", stopActiveTool);
+  
+  clearDrawingsBtn?.addEventListener("click", () => {
+    measureSource.clear(true);
+    setDrawToolsFeedback("Drawings cleared.", false);
+    setStatus(statusEl, "Drawings cleared.");
+  });
+  
   clearMeasuresBtn?.addEventListener("click", () => {
     measureSource.clear(true);
-    setDrawToolsFeedback("Measurements cleared.", false);
+    if (measureFeedback) measureFeedback.textContent = "Measurements cleared.";
+    setTimeout(() => { if (measureFeedback) measureFeedback.textContent = ""; }, 3000);
     setStatus(statusEl, "Measurements cleared.");
+  });
+
+  measureTopBtn?.addEventListener("click", () => {
+    if (measurePanel) measurePanel.hidden = !measurePanel.hidden;
+  });
+
+  measurePanelCloseBtn?.addEventListener("click", () => {
+    if (measurePanel) measurePanel.hidden = true;
+    stopActiveTool();
   });
 
   locateBtn.addEventListener("click", locateMe);

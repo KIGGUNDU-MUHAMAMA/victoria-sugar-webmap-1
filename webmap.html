@@ -128,6 +128,9 @@
       <button type="button" class="control-btn" id="toolsTopBtn" title="Survey">
         <i class="fas fa-drafting-compass"></i><span class="btn-label">Survey</span>
       </button>
+      <button type="button" class="control-btn" id="measureTopBtn" title="Measure Tools">
+        <i class="fas fa-ruler-combined"></i><span class="btn-label">Measure</span>
+      </button>
       <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
         <i class="fas fa-chart-simple"></i><span class="btn-label">Status</span>
       </button>
@@ -151,6 +154,24 @@
   </div>
 
   <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
+
+    <!-- NEW MEASURE CONTROL -->
+    <div id="measurePanel" class="sentinel-minimal-control" hidden>
+      <div class="smc-header" style="justify-content: space-between;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-ruler-combined"></i> <span style="font-weight:600;">Measure</span>
+        </div>
+        <button type="button" id="measurePanelCloseBtn" class="smc-back-btn" aria-label="Close" style="border:none;background:transparent;color:var(--text);font-size:1.5rem;padding:0;">&times;</button>
+      </div>
+      <div class="smc-row" style="flex-direction:row; gap:8px; margin-top:12px;">
+        <button id="measureLineBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-ruler-horizontal"></i> Distance</button>
+        <button id="measureAreaBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-vector-square"></i> Area</button>
+      </div>
+      <div class="smc-row" style="margin-top:8px;">
+        <button id="clearMeasuresBtn" class="btn-secondary" style="color:var(--danger); border-color:var(--danger); width:100%;"><i class="fas fa-eraser"></i> Clear</button>
+      </div>
+      <div id="measureFeedback" style="margin-top:8px; font-size:0.8rem; color:var(--primary-2); text-align:center;"></div>
+    </div>
 
     <!-- NEW MINIMALIST SENTINEL CONTROL -->
     <div id="sentinelMinimalControl" class="sentinel-minimal-control" hidden>
@@ -591,7 +612,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
-  <script type="module" src="./js/map-app.js?v=1.7"></script>
+  <script type="module" src="./js/map-app.js?v=1.8"></script>
 
   <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
   <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->
@@ -767,21 +788,9 @@
           </div>
 
           <div class="uam-divider"></div>
-          
-          <h4 style="margin:4px 0; font-size:0.85rem; color:var(--muted); text-transform:uppercase;">Measuring Tools</h4>
-          <div class="uam-draw-grid">
-            <button id="measureLineBtn" class="uam-draw-btn" type="button">
-              <i class="fas fa-ruler-horizontal"></i><span>Measure Distance</span>
-            </button>
-            <button id="measureAreaBtn" class="uam-draw-btn" type="button">
-              <i class="fas fa-vector-square"></i><span>Measure Area</span>
-            </button>
-          </div>
-
-          <div class="uam-divider"></div>
 
           <div class="uam-draw-grid" style="grid-template-columns: 1fr 1fr; gap:8px;">
-            <button id="clearMeasuresBtn" class="uam-btn uam-btn--ghost" type="button" style="color:var(--danger)">
+            <button id="clearDrawingsBtn" class="uam-btn uam-btn--ghost" type="button" style="color:var(--danger)">
               <i class="fas fa-eraser"></i> Clear All
             </button>
             <button id="stopDrawBtn" class="uam-btn uam-btn--ghost" type="button" style="color:var(--accent)">

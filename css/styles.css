@@ -4215,6 +4215,17 @@ select.search-panel__input {
   }
 }
 
+/* Minimalist panels inside stacks */
+.measure-panel {
+  background: var(--vsl-surface, #ffffff);
+  border: 1px solid var(--vsl-border, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 16px;
+  width: 280px;
+  font-family: var(--vsl-font-family, "Inter", sans-serif);
+}
+
 /* Minimalist Sentinel Control Panel */
 .sentinel-minimal-control {
   position: fixed;

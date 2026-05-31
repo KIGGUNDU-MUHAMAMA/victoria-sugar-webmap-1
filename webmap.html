@@ -28,83 +28,7 @@
   </script>
   <div class="map-loader" id="mapLoader"><div class="map-loader-spinner"></div></div>
 
-  <aside id="parcelStatusPanel" class="parcel-status-panel" aria-hidden="true" hidden>
-    <div class="parcel-status-panel__inner">
-      <header class="parcel-status-panel__head">
-        <div class="parcel-status-panel__head-text">
-          <h2 class="parcel-status-panel__title">Parcel status</h2>
-        </div>
-        <button type="button" class="parcel-status-panel__close" id="parcelStatusCloseBtn" aria-label="Close panel">&times;</button>
-      </header>
 
-      <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
-        Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
-      </div>
-
-      <section class="parcel-status-panel__section" aria-labelledby="parcelStatusLayerLegend">
-        <span id="parcelStatusLayerLegend" class="parcel-status-panel__section-label">Layer</span>
-        <div class="parcel-status-layer-row" role="radiogroup" aria-label="Target layer">
-          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerParcels" value="PARCELS" checked> Parcels <span class="parcel-status-hint">(default)</span></label>
-          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerBlocks" value="BLOCKS"> Blocks</label>
-        </div>
-      </section>
-
-      <section class="parcel-status-panel__section">
-        <button type="button" class="btn-secondary parcel-status-pick-btn" id="parcelStatusPickBtn">
-          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on map
-        </button>
-        <button type="button" class="btn-secondary parcel-status-cancel-pick" id="parcelStatusCancelPickBtn" hidden>Cancel picking</button>
-      </section>
-
-      <section id="parcelStatusSelectionSection" class="parcel-status-panel__section" hidden>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="parcel-status-panel__section-label">Selection</span>
-          <span id="parcelStatusSelectionCount" class="parcel-status-count-badge">0 selected</span>
-        </div>
-        <div id="parcelStatusPreview" class="parcel-status-preview" role="region" aria-live="polite"></div>
-
-        <label class="parcel-status-field-label" for="parcelStatusSelect">Cultivation status</label>
-        <select id="parcelStatusSelect" class="parcel-status-select">
-          <option value="not_in_cane">Not in cane</option>
-          <option value="prepared">Prepared</option>
-          <option value="planted">Planted</option>
-          <option value="standing">Standing</option>
-          <option value="harvested">Harvested</option>
-          <option value="replant_renovation">Replant / renovation</option>
-        </select>
-
-        <details class="parcel-status-details">
-          <summary>Harvest &amp; notes (optional)</summary>
-          <label class="parcel-status-field-label" for="parcelStatusHarvestTonnes">Harvest (tonnes cane), optional</label>
-          <input id="parcelStatusHarvestTonnes" type="number" step="0.001" min="0" placeholder="e.g. 450">
-
-          <label class="parcel-status-field-label" for="parcelStatusLastHarvest">Last harvest date</label>
-          <input id="parcelStatusLastHarvest" type="date">
-
-          <label class="parcel-status-field-label" for="parcelStatusNotes">Notes</label>
-          <textarea id="parcelStatusNotes" rows="2" placeholder="Variety, ratoon class, agronomy notes…"></textarea>
-        </details>
-
-        <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-          <button type="button" id="parcelStatusApplyBtn" style="flex:1;">Apply to selection</button>
-          <button type="button" id="parcelStatusDeleteBtn" style="flex:1; background:#dc3545; color:#fff; border:none; border-radius:4px; font-weight:600;"><i class="fas fa-trash-alt"></i> Delete Selected</button>
-        </div>
-      </section>
-
-      <section class="parcel-status-panel__legend" aria-label="Map colour legend">
-        <span class="parcel-status-panel__section-label">Map colours</span>
-        <ul class="parcel-status-legend-list">
-          <li><span class="parcel-status-swatch" data-status="not_in_cane"></span> Not in cane</li>
-          <li><span class="parcel-status-swatch" data-status="prepared"></span> Prepared</li>
-          <li><span class="parcel-status-swatch" data-status="planted"></span> Planted</li>
-          <li><span class="parcel-status-swatch" data-status="standing"></span> Standing</li>
-          <li><span class="parcel-status-swatch" data-status="harvested"></span> Harvested</li>
-          <li><span class="parcel-status-swatch" data-status="replant_renovation"></span> Replant / renovation</li>
-        </ul>
-      </section>
-    </div>
-  </aside>
 
   <div class="project-toolbar">
     <div class="project-brand">
@@ -131,8 +55,8 @@
       <button type="button" class="control-btn" id="measureTopBtn" title="Measure Tools">
         <i class="fas fa-ruler-combined"></i><span class="btn-label">Measure</span>
       </button>
-      <button type="button" class="control-btn" id="parcelStatusBtn" title="Parcel status — crop cycle and harvest">
-        <i class="fas fa-chart-simple"></i><span class="btn-label">Status</span>
+      <button type="button" class="control-btn" id="parcelStatusBtn" title="Modify parcel/block status">
+        <i class="fas fa-pen-to-square"></i><span class="btn-label">Modify</span>
       </button>
       <button type="button" class="control-btn" id="logoutBtn" title="Sign Out">
         <i class="fas fa-right-from-bracket"></i><span class="btn-label">Sign Out</span>
@@ -154,6 +78,76 @@
   </div>
 
   <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
+    <div id="parcelStatusPanel" class="measure-panel" hidden>
+      <div class="smc-header" style="justify-content: space-between;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-pen-to-square"></i> <span style="font-weight:600;">Modify status</span>
+        </div>
+        <button type="button" id="parcelStatusCloseBtn" class="smc-back-btn" aria-label="Close" style="border:none;background:transparent;color:var(--text);font-size:1.5rem;padding:0;">&times;</button>
+      </div>
+
+      <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
+        Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
+      </div>
+
+      <div class="smc-row" style="margin-top:12px;">
+        <div class="parcel-status-layer-row" role="radiogroup" aria-label="Target layer" style="display:flex; gap:16px;">
+          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerParcels" value="PARCELS" checked> Parcels</label>
+          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerBlocks" value="BLOCKS"> Blocks</label>
+        </div>
+      </div>
+
+      <div class="smc-row" style="margin-top:8px;">
+        <button type="button" class="btn-primary" id="parcelStatusPickBtn" style="width:100%;">
+          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on map
+        </button>
+        <button type="button" class="btn-secondary" id="parcelStatusCancelPickBtn" style="width:100%; border-color:var(--danger); color:var(--danger);" hidden>Cancel picking</button>
+      </div>
+
+      <div id="parcelStatusSelectionSection" style="margin-top:12px;" hidden>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; margin-bottom:8px;">
+          <span style="font-weight:600; color:var(--text);">Selection</span>
+          <span id="parcelStatusSelectionCount" class="parcel-status-count-badge">0 selected</span>
+        </div>
+        <div id="parcelStatusPreview" class="parcel-status-preview" role="region" aria-live="polite"></div>
+
+        <div class="smc-row">
+          <label for="parcelStatusSelect" style="font-size:0.85rem; margin-bottom:4px; display:block;">Cultivation status</label>
+          <select id="parcelStatusSelect" class="smc-select">
+            <option value="not_in_cane">Not in cane</option>
+            <option value="prepared">Prepared</option>
+            <option value="planted">Planted</option>
+            <option value="standing">Standing</option>
+            <option value="harvested">Harvested</option>
+            <option value="replant_renovation">Replant / renovation</option>
+          </select>
+        </div>
+
+        <details style="font-size:0.85rem; margin-top:8px;">
+          <summary style="cursor:pointer; font-weight:600; color:var(--primary-2);">Harvest &amp; notes (optional)</summary>
+          <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+            <div>
+              <label for="parcelStatusHarvestTonnes" style="display:block; margin-bottom:2px;">Harvest (tonnes)</label>
+              <input id="parcelStatusHarvestTonnes" type="number" step="0.001" min="0" placeholder="e.g. 450" class="search-panel__input">
+            </div>
+            <div>
+              <label for="parcelStatusLastHarvest" style="display:block; margin-bottom:2px;">Last harvest date</label>
+              <input id="parcelStatusLastHarvest" type="date" class="search-panel__input">
+            </div>
+            <div>
+              <label for="parcelStatusNotes" style="display:block; margin-bottom:2px;">Notes</label>
+              <textarea id="parcelStatusNotes" rows="2" placeholder="Variety, agronomy notes…" class="search-panel__input"></textarea>
+            </div>
+          </div>
+        </details>
+
+        <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button type="button" id="parcelStatusApplyBtn" class="btn-primary" style="flex:1;">Apply</button>
+          <button type="button" id="parcelStatusDeleteBtn" class="btn-secondary" style="flex:1; border-color:var(--danger); color:var(--danger);"><i class="fas fa-trash-alt"></i> Delete</button>
+        </div>
+      </div>
+    </div>
 
 
 
@@ -615,7 +609,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
-  <script type="module" src="./js/map-app.js?v=1.9.2"></script>
+  <script type="module" src="./js/map-app.js?v=1.9.3"></script>
 
   <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
   <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->

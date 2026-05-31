@@ -16,6 +16,11 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
   // ── Open / Close ──────────────────────────────────────────────
   function openMenu() {
+    // Close other panels to prevent overlap
+    const measurePanel = document.getElementById("measurePanel");
+    if (measurePanel && !measurePanel.hidden) measurePanel.hidden = true;
+    if (typeof window.closeParcelStatusPanel === "function") window.closeParcelStatusPanel();
+
     overlay.hidden = false;
     overlay.setAttribute("aria-hidden", "false");
     fabBtn.classList.add("uam-open");

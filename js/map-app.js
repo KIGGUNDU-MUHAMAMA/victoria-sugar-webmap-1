@@ -919,6 +919,16 @@ function openParcelStatusPanel() {
   if (!panel) return;
   closeInfoHelpPopover();
   closePlaceSearchCard();
+  
+  // Mutual exclusion: Close Measure panel and Survey UAM
+  const measurePanel = document.getElementById("measurePanel");
+  if (measurePanel && !measurePanel.hidden) {
+    measurePanel.hidden = true;
+  }
+  if (typeof window.closeMenu === "function") {
+    window.closeMenu();
+  }
+  
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
   parcelStatusState.panelOpen = true;
@@ -2170,9 +2180,11 @@ function bindEvents() {
     if (measurePanel) {
       measurePanel.hidden = !measurePanel.hidden;
       if (!measurePanel.hidden) {
-        // Close search panel and UAM to prevent overlap
+        // Close search panel, UAM, and Modify panel to prevent overlap
         closeSearchPanel({ clearHighlight: false });
         if (typeof window.closeMenu === "function") window.closeMenu();
+        if (typeof window.closeParcelStatusPanel === "function") window.closeParcelStatusPanel();
+        else closeParcelStatusPanel();
       }
     }
   });
@@ -2479,5 +2491,6 @@ window._vslBlocksSrc  = blocksSource;
 window._vslParcelsSrc = parcelsSource;
 window._vslBlocksLyr  = blocksLayer;
 window._vslParcelsLyr = parcelsLayer;
+window.closeParcelStatusPanel = closeParcelStatusPanel;
 
 start().catch((err) => setStatus(statusEl, err.message, true));

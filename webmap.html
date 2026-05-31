@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./css/styles.css?v=1.4">
+  <link rel="stylesheet" href="css/styles.css?v=2.0.2">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
@@ -151,38 +151,28 @@
 
 
     <!-- NEW MINIMALIST SENTINEL CONTROL -->
-    <div id="sentinelMinimalControl" class="sentinel-minimal-control" hidden>
-      <div class="smc-header" style="justify-content: space-between;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <i class="fas fa-satellite"></i> <span>Sentinel Settings</span>
+    <div id="sentinelMinimalControl" class="vsl-sentinel-settings-popup" hidden>
+      <div class="vsl-ssp-header">
+        <i class="fas fa-satellite"></i> Sentinel Date
+      </div>
+      <div class="vsl-ssp-body">
+        <div class="vsl-ssp-row">
+          <label for="smcYear">Year</label>
+          <select id="smcYear" class="vsl-ssp-select">
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+          </select>
         </div>
-        <button type="button" id="smcBackBtn" class="smc-back-btn"><i class="fas fa-arrow-left"></i> Back</button>
+        <div class="vsl-ssp-row">
+          <label for="smcMonth" style="display:flex; justify-content:space-between;">
+            <span>Month</span> <span id="smcMonthLabel" style="color:var(--vsl-primary); font-weight:700;">Jan</span>
+          </label>
+          <input type="range" id="smcMonth" min="1" max="12" value="1" class="vsl-ssp-slider">
+        </div>
       </div>
-      <div class="smc-row">
-        <label for="smcYear">Year</label>
-        <select id="smcYear" class="smc-select">
-          <option value="2024">2024</option>
-          <option value="2023">2023</option>
-          <option value="2022">2022</option>
-          <option value="2021">2021</option>
-        </select>
-      </div>
-      <div class="smc-row smc-month-row">
-        <label for="smcMonth">Month: <span id="smcMonthLabel">Jan</span></label>
-        <input type="range" id="smcMonth" min="1" max="12" value="1" class="smc-slider">
-      </div>
-      <div class="smc-row">
-        <label for="smcLayer">Crop Health</label>
-        <select id="smcLayer" class="smc-select">
-          <option value="TRUE_COLOR">True Color (Default)</option>
-          <option value="NDVI">NDVI</option>
-          <option value="NDVI_ADVANCED">NDVI adv.</option>
-          <option value="NDRE">NDRE</option>
-          <option value="MOISTURE_STRESS">Moisture stress</option>
-        </select>
-      </div>
-      <div id="smcLegend" class="smc-legend"></div>
-      <div id="smcSpinner" class="smc-spinner" hidden>Loading...</div>
+      <div id="smcSpinner" class="vsl-ssp-spinner" hidden><i class="fas fa-spinner fa-spin"></i> Fetching image...</div>
     </div>
     
     <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel" style="display:none !important;" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">

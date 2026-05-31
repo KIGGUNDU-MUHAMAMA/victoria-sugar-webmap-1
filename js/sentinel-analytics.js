@@ -105,18 +105,7 @@ export function initSentinelAnalytics(opts) {
   const backBtn = document.getElementById("smcBackBtn");
   if (backBtn) backBtn.style.display = "none";
 
-  // Style container as a floating popup
-  if (container) {
-    container.style.position = "absolute";
-    container.style.top = "60px";
-    container.style.right = "60px"; // Next to layer switcher
-    container.style.left = "auto";
-    container.style.bottom = "auto";
-    container.style.width = "300px";
-    container.style.zIndex = "1000";
-    container.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-    container.style.borderRadius = "8px";
-  }
+  // Container is styled by CSS class vsl-sentinel-settings-popup
 
   let pendingTiles = 0;
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];

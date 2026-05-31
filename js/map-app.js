@@ -18,6 +18,7 @@ const panelHost = document.getElementById("panelHost");
 
 const measureLineBtn = document.getElementById("measureLineBtn");
 const measureAreaBtn = document.getElementById("measureAreaBtn");
+const measureAdvancedBtn = document.getElementById("measureAdvancedBtn");
 const drawLineBtn = document.getElementById("drawLineBtn");
 const drawPolygonBtn = document.getElementById("drawPolygonBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
@@ -480,7 +481,7 @@ function buildAreaMeasureStyles(feature) {
   }
 
   const ip = geometry.getInteriorPoint();
-  return [
+  const styles = [
     new ol.style.Style({
       geometry,
       stroke: new ol.style.Stroke({ color: "#4e342e", width: 2.5 }),
@@ -498,6 +499,32 @@ function buildAreaMeasureStyles(feature) {
       zIndex: 2
     })
   ];
+
+  // Draw segment lengths along the perimeter
+  const ring = geometry.getLinearRing(0);
+  if (ring) {
+    const coords = ring.getCoordinates();
+    for (let i = 0; i < coords.length - 1; i += 1) {
+      const seg = new ol.geom.LineString([coords[i], coords[i + 1]]);
+      const lenM = ol.sphere.getLength(seg, { projection: MAP_DRAW_PROJ });
+      const mid = seg.getCoordinateAt(0.5);
+      styles.push(
+        new ol.style.Style({
+          geometry: new ol.geom.Point(mid),
+          text: new ol.style.Text({
+            text: formatGroundLengthM(lenM),
+            font: "600 11px Inter, system-ui, sans-serif",
+            fill: new ol.style.Fill({ color: "#3e2723" }),
+            stroke: new ol.style.Stroke({ color: "#fff", width: 3 }),
+            padding: [2, 4, 2, 4]
+          }),
+          zIndex: 2
+        })
+      );
+    }
+  }
+
+  return styles;
 }
 
 const measureLayer = new ol.layer.Vector({
@@ -714,20 +741,43 @@ function attachSnapInteractions(opts) {
   detachSnapInteractions();
   if (!map || !opts) return;
   const tol = 12;
-  if (opts.snapBlocks) {
-    activeSnapInteractions.push(new ol.interaction.Snap({ source: blocksSource, pixelTolerance: tol }));
+
+  if (opts.snapAllVisible) {
+    const getVisibleVectorSources = (group) => {
+      let sources = [];
+      group.getLayers().forEach((layer) => {
+        if (!layer.getVisible()) return;
+        if (layer instanceof ol.layer.Group) {
+          sources = sources.concat(getVisibleVectorSources(layer));
+        } else if (layer instanceof ol.layer.Vector) {
+          const src = layer.getSource();
+          if (src) sources.push(src);
+        }
+      });
+      return sources;
+    };
+    
+    const visibleSources = getVisibleVectorSources(map.getLayerGroup());
+    for (const src of visibleSources) {
+      activeSnapInteractions.push(new ol.interaction.Snap({ source: src, pixelTolerance: tol }));
+    }
+  } else {
+    if (opts.snapBlocks) {
+      activeSnapInteractions.push(new ol.interaction.Snap({ source: blocksSource, pixelTolerance: tol }));
+    }
+    if (opts.snapParcels) {
+      activeSnapInteractions.push(new ol.interaction.Snap({ source: parcelsSource, pixelTolerance: tol }));
+    }
+    if (opts.snapSurvey && surveyPreviewSnapSources) {
+      activeSnapInteractions.push(
+        new ol.interaction.Snap({ source: surveyPreviewSnapSources.polySource, pixelTolerance: tol })
+      );
+      activeSnapInteractions.push(
+        new ol.interaction.Snap({ source: surveyPreviewSnapSources.pointSource, pixelTolerance: tol })
+      );
+    }
   }
-  if (opts.snapParcels) {
-    activeSnapInteractions.push(new ol.interaction.Snap({ source: parcelsSource, pixelTolerance: tol }));
-  }
-  if (opts.snapSurvey && surveyPreviewSnapSources) {
-    activeSnapInteractions.push(
-      new ol.interaction.Snap({ source: surveyPreviewSnapSources.polySource, pixelTolerance: tol })
-    );
-    activeSnapInteractions.push(
-      new ol.interaction.Snap({ source: surveyPreviewSnapSources.pointSource, pixelTolerance: tol })
-    );
-  }
+
   for (const s of activeSnapInteractions) {
     map.addInteraction(s);
   }
@@ -1961,6 +2011,76 @@ function startMeasure(type, isDrawOnly = false) {
   setStatus(statusEl, type === "LineString" ? "Measuring distance…" : "Measuring area…");
 }
 
+function startAdvancedMeasure() {
+  stopActiveTool();
+  editSource.clear(true);
+  
+  // We use LineString so the user can draw 2 points or N points.
+  const draw = new ol.interaction.Draw({ source: editSource, type: "LineString" });
+  draw.on("drawend", (evt) => {
+    map.removeInteraction(draw);
+    activeInteraction = null;
+    detachSnapInteractions();
+    const geom = evt.feature.getGeometry();
+    editSource.removeFeature(evt.feature);
+    
+    const coords = geom.getCoordinates();
+    let isClosed = false;
+    
+    // Check if user clicked back on the first point to close it
+    if (coords.length > 2) {
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      // calculate pixel distance or ground distance
+      const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
+      if (dist < 0.1) {
+        isClosed = true;
+      }
+    }
+
+    if (isClosed) {
+      const polyGeom = new ol.geom.Polygon([coords]);
+      const feat = new ol.Feature({ geometry: polyGeom });
+      feat.set("_measureKind", "area");
+      
+      let areaAcres = 0;
+      try {
+        const ring = polyGeom.getLinearRing(0);
+        if (ring) {
+          const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+          areaAcres = computeUtmCartesianAreaAcres(lonLats);
+        }
+      } catch {}
+      if (!areaAcres || areaAcres <= 0) {
+        const areaM2 = ol.sphere.getArea(polyGeom, { projection: MAP_DRAW_PROJ });
+        areaAcres = (areaM2 / 10000) * 2.47105;
+      }
+      
+      measureSource.addFeature(feat);
+      const msg = `Advanced Measure: Area ${areaAcres.toFixed(2)} ac (Segments labeled on map)`;
+      setDrawToolsFeedback(msg, false);
+      setStatus(statusEl, msg);
+    } else {
+      const feat = new ol.Feature({ geometry: geom.clone() });
+      feat.set("_measureKind", "distance");
+      const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
+      measureSource.addFeature(feat);
+      const msg = `Advanced Measure: Total length ${formatGroundLengthM(totalM)}`;
+      setDrawToolsFeedback(msg, false);
+      setStatus(statusEl, msg);
+    }
+  });
+
+  activeInteraction = draw;
+  map.addInteraction(draw);
+  
+  // Advanced feature: snap to ALL visible vector layers!
+  attachSnapInteractions({ snapAllVisible: true });
+  
+  setDrawToolsFeedback("Advanced Measure: Trace a path. Double-click to finish, or click on the start point to close into an area.", false);
+  setStatus(statusEl, "Advanced Measuring…");
+}
+
 let userLocationLayer = null;
 
 function locateMe() {
@@ -2014,8 +2134,9 @@ function bindEvents() {
   const searchCloseBtn = document.getElementById("searchPanelCloseBtn");
   searchCloseBtn?.addEventListener("click", () => closeSearchPanel({ clearHighlight: false }));
 
-  measureLineBtn.addEventListener("click", () => startMeasure("LineString"));
-  measureAreaBtn.addEventListener("click", () => startMeasure("Polygon"));
+  measureLineBtn?.addEventListener("click", () => startMeasure("LineString"));
+  measureAreaBtn?.addEventListener("click", () => startMeasure("Polygon"));
+  measureAdvancedBtn?.addEventListener("click", startAdvancedMeasure);
   drawLineBtn?.addEventListener("click", () => startMeasure("LineString", true));
   drawPolygonBtn?.addEventListener("click", () => startMeasure("Polygon", true));
   stopDrawBtn.addEventListener("click", stopActiveTool);

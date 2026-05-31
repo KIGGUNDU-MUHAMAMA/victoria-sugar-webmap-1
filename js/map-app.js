@@ -6,7 +6,7 @@ import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initPrintComposer } from "./print-composer.js";
 import { initSentinelAnalytics } from "./sentinel-analytics.js";
 import { initFarmReports } from "./farm-reports.js";
-import { initUnifiedMenu } from "./unified-menu.js";
+import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
 import { initDroneImageModule } from "./drone-image.js?v=1.6";
 import { initExportTools } from "./export-tools.js";
 

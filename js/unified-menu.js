@@ -6,7 +6,7 @@
 
 export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, blocksSource, parcelsSource, blocksLayer, parcelsLayer, surveyPreviewSnapSources, stopActiveTool }) {
 
-  const fabBtn   = document.getElementById("toolsFabBtn");
+  const fabBtn   = document.getElementById("toolsTopBtn") || document.getElementById("toolsFabBtn");
   const overlay  = document.getElementById("unifiedActionMenu");
   const closeBtn = document.getElementById("uamCloseBtn");
   const navBtns  = overlay?.querySelectorAll(".uam-nav-btn");

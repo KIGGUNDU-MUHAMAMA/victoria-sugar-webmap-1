@@ -970,6 +970,14 @@
 /* ---- Map area ---- */
 #rvMapContainer { flex: 1; position: relative; overflow: hidden; min-height: 0; }
 #rvMap { width: 100%; height: 100%; }
+.rv-compass-btn {
+  position: absolute; right: 10px; top: 10px; z-index: 20;
+  width: 36px; height: 36px; border-radius: 18px; border: 2px solid var(--rv-border);
+  background: var(--rv-panel); color: var(--rv-txt2); font-size: 18px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3); transition: all 0.2s;
+}
+.rv-compass-btn.active { background: var(--rv-blue); color: #fff; border-color: var(--rv-blue); }
 
 /* ---- Stakeout slide-up panel ---- */
 #rvStakeoutPanel { display: none; flex-shrink: 0; background: var(--rv-panel); border-top: 2px solid var(--rv-amber); padding: 8px 10px; }
@@ -1143,6 +1151,7 @@
   <!-- Map -->
   <div id="rvMapContainer">
     <div id="rvMap"></div>
+    <button id="rvCompassBtn" class="rv-compass-btn" title="Map Rotation (Compass)"><i class="fas fa-compass"></i></button>
     <!-- Top-left collapsible action bar -->
     <div id="rvActionBar">
       <button id="rvActionToggle" title="Toggle tools">▼ Tools</button>
@@ -1417,6 +1426,7 @@ const RV = {
   satCount: null,
   gnssLat: null, gnssLon: null, gnssAlt: null, gnssAcc: null,
   gnssSpeed: null, gnssHeading: null,
+  compassMode: false,
   sessionStart: null, sessionId: null,
   clonedLayers: [],
 };
@@ -1425,6 +1435,42 @@ window._vslRoverState = RV;
 /* ================================================================
    HELPERS
 ================================================================ */
+function rvToggleCompass() {
+  RV.compassMode = !RV.compassMode;
+  const btn = document.getElementById('rvCompassBtn');
+  if (RV.compassMode) {
+    btn.classList.add('active');
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(state => {
+        if (state === 'granted') {
+          window.addEventListener('deviceorientation', rvHandleDeviceOrientation, true);
+        } else {
+          rvToast("Compass permission denied.", 3000);
+          RV.compassMode = false;
+          btn.classList.remove('active');
+        }
+      }).catch(console.error);
+    } else {
+      window.addEventListener('deviceorientationabsolute', rvHandleDeviceOrientation, true);
+      window.addEventListener('deviceorientation', rvHandleDeviceOrientation, true);
+    }
+    rvToast("Map rotation enabled.", 2000);
+  } else {
+    btn.classList.remove('active');
+    window.removeEventListener('deviceorientationabsolute', rvHandleDeviceOrientation, true);
+    window.removeEventListener('deviceorientation', rvHandleDeviceOrientation, true);
+    if (RV.map) RV.map.getView().setRotation(0);
+    rvToast("Map rotation disabled.", 2000);
+  }
+}
+function rvHandleDeviceOrientation(event) {
+  if (!RV.compassMode || !RV.map) return;
+  let heading = null;
+  if (event.webkitCompassHeading != null) heading = event.webkitCompassHeading;
+  else if (event.alpha != null && event.absolute) heading = 360 - event.alpha;
+  if (heading != null) RV.map.getView().setRotation(-(heading * Math.PI / 180));
+}
+
 function rvLoadPoints() { try { const d = localStorage.getItem('vslRoverPoints'); if (d) RV.points = JSON.parse(d); } catch(_) { RV.points = []; } }
 function rvSavePoints() { try { localStorage.setItem('vslRoverPoints', JSON.stringify(RV.points)); } catch(_){} }
 function rvLoadSettings() { try { const d = localStorage.getItem('vslRoverSettings'); if (d) Object.assign(RV.settings, JSON.parse(d)); } catch(_){} }
@@ -2187,6 +2233,7 @@ document.addEventListener('DOMContentLoaded',function() {
   if (openBtn) openBtn.addEventListener('click',rvOpen);
 
   document.getElementById('rvExitBtn').addEventListener('click',rvClose);
+  document.getElementById('rvCompassBtn').addEventListener('click',rvToggleCompass);
 
   document.getElementById('rvCrsBtn').addEventListener('click',function(){
     document.getElementById('rvCrsModal').classList.add('rv-modal-open');

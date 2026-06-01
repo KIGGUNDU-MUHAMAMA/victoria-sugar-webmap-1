@@ -2222,12 +2222,7 @@ function startMeasure(type, isDrawOnly = false) {
   activeInteraction = draw;
   map.addInteraction(draw);
   attachSnapInteractions(readSnapOptions());
-  setDrawToolsFeedback(
-    type === "LineString"
-      ? "Draw a path; double-click to finish. Snaps use the checkboxes above."
-      : "Draw a polygon; double-click to finish.",
-    false
-  );
+  setDrawToolsFeedback("", false);
   setStatus(statusEl, type === "LineString" ? "Measuring distance…" : "Measuring area…");
 }
 
@@ -2300,7 +2295,7 @@ function startAdvancedMeasure() {
   // Advanced feature: snap to ALL visible vector layers!
   attachSnapInteractions({ snapAllVisible: true });
   
-  setDrawToolsFeedback("Advanced Measure: Trace a path. Double-click to finish, or click on the start point to close into an area.", false);
+  setDrawToolsFeedback("", false);
   setStatus(statusEl, "Advanced Measuring…");
 }
 

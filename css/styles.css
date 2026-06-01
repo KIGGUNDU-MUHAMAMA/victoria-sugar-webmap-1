@@ -2428,22 +2428,21 @@ body.print-composer-open {
   }
 
   .layer-switcher {
-    top: auto;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    max-width: 100%;
+    top: 135px;
+    right: 12px;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    max-width: calc(100vw - 24px);
     height: auto;
-    max-height: 55vh;
-    max-height: 55dvh;
-    border-radius: 16px 16px 0 0;
-    border: none;
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+    max-height: calc(100vh - 150px);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
   }
 
   .layer-switcher .layer-tree {
-    max-height: calc(55vh - 60px);
+    max-height: calc(100vh - 200px);
     overflow-y: auto;
   }
 

@@ -371,7 +371,7 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(320px, calc(100vw - 24px));
+  width: min(400px, calc(100vw - 24px));
   max-height: calc(100vh - 108px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -4304,7 +4304,7 @@ select.search-panel__input {
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   padding: 16px;
-  width: 280px;
+  width: 100%;
   font-family: var(--vsl-font-family, "Inter", sans-serif);
 }
 

@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/styles.css?v=2.0.9">
+  <link rel="stylesheet" href="css/styles.css?v=2.1.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
@@ -605,11 +605,9 @@
         <button type="button" id="measurePanelCloseBtn" class="smc-back-btn" aria-label="Close" style="border:none;background:transparent;color:var(--text);font-size:1.5rem;padding:0;">&times;</button>
       </div>
       <div class="smc-row" style="flex-direction:row; gap:8px; margin-top:12px;">
-        <button id="measureLineBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-ruler-horizontal"></i> Distance</button>
-        <button id="measureAreaBtn" class="btn-secondary" style="flex:1; padding:8px 4px;"><i class="fas fa-vector-square"></i> Area</button>
-      </div>
-      <div class="smc-row" style="margin-top:4px;">
-        <button id="measureAdvancedBtn" class="btn-primary" style="width:100%;"><i class="fas fa-draw-polygon"></i> Advanced Measure</button>
+        <button id="measureLineBtn" class="btn-secondary" style="flex:1; padding:8px 4px; font-size:0.8rem;"><i class="fas fa-ruler-horizontal"></i> Distance</button>
+        <button id="measureAreaBtn" class="btn-secondary" style="flex:1; padding:8px 4px; font-size:0.8rem;"><i class="fas fa-vector-square"></i> Area</button>
+        <button id="measureAdvancedBtn" class="btn-primary" style="flex:1; padding:8px 4px; font-size:0.8rem;"><i class="fas fa-draw-polygon"></i> Advanced</button>
       </div>
       <div class="smc-row" style="margin-top:8px;">
         <button id="clearMeasuresBtn" class="btn-secondary" style="color:var(--danger); border-color:var(--danger); width:100%;"><i class="fas fa-eraser"></i> Clear</button>
@@ -639,7 +637,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
-  <script type="module" src="./js/map-app.js?v=2.0.5"></script>
+  <script type="module" src="./js/map-app.js?v=2.1.0"></script>
 
   <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
   <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->

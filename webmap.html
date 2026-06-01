@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/styles.css?v=2.0.4">
+  <link rel="stylesheet" href="css/styles.css?v=2.0.5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
@@ -366,20 +366,20 @@
         <!-- ── TAB 1: Block / Parcel Search ── -->
         <div id="searchTabParcel" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabParcel">
           <!-- Cascade: Estate → Block → Parcel -->
-          <div class="search-cascade futuristic-grid-3">
-            <div class="search-cascade__row futuristic-grid-item">
+          <div class="futuristic-grid-3">
+            <div class="futuristic-grid-item">
               <label class="search-panel__label" for="searchEstateSelect">Estate</label>
               <select id="searchEstateSelect" class="search-panel__input">
                 <option value="">— Select Estate —</option>
               </select>
             </div>
-            <div class="search-cascade__row futuristic-grid-item">
+            <div class="futuristic-grid-item">
               <label class="search-panel__label" for="searchBlockSelect">Block</label>
               <select id="searchBlockSelect" class="search-panel__input" disabled>
                 <option value="">— Select Estate first —</option>
               </select>
             </div>
-            <div class="search-cascade__row futuristic-grid-item">
+            <div class="futuristic-grid-item">
               <label class="search-panel__label" for="searchParcelSelect">Parcel / Plot</label>
               <select id="searchParcelSelect" class="search-panel__input" disabled>
                 <option value="">— Select Block first —</option>
@@ -639,7 +639,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
-  <script type="module" src="./js/map-app.js?v=2.0.4"></script>
+  <script type="module" src="./js/map-app.js?v=2.0.5"></script>
 
   <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
   <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->

@@ -2868,6 +2868,9 @@ select.search-panel__input {
   font-size: 0.85rem;
   transition: all 0.2s ease;
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .search-panel__input:focus {
   border-color: var(--vsl-primary);

@@ -2932,73 +2932,36 @@ select.search-panel__input {
   }
 }
 
-/* Phone: Stack layout (60% Map / 40% Search Panel) */
+/* Phone: Bottom-sheet style overlay (max 60% height) */
 @media (max-width: 480px) {
-  body.webmap-app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
-  }
-
-  .map-main {
-    flex: 1;
-    position: relative;
-    height: auto;
-    transition: flex 0.3s cubic-bezier(0.2, 0, 0, 1);
-  }
-
-  .map-viewport-wrap {
-    position: absolute;
-    inset: 0;
-    border-radius: 0;
-  }
-
   .webmap-app .map-left-stack {
-    position: static;
-    bottom: auto; left: auto; right: auto; top: auto;
+    /* Inherits position: fixed from desktop */
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
     width: 100%;
-    flex: 0 0 auto;
-    max-height: 40vh;
-    max-height: 40dvh;
+    max-height: 60vh;
+    max-height: 60dvh;
     padding: 0;
     gap: 0;
     border-radius: 16px 16px 0 0;
-    overflow-y: auto;
-    background: transparent;
-    transition: flex 0.3s cubic-bezier(0.2, 0, 0, 1);
-    z-index: 10;
-  }
-
-  /* 60% Map / 40% Search Panel */
-  body.webmap-app:has(.search-panel:not([hidden])) .map-main {
-    flex: 0 0 60%;
-  }
-  body.webmap-app:has(.search-panel:not([hidden])) .map-left-stack {
-    flex: 0 0 40%;
-    background: #fcfcfc;
-    box-shadow: 0 -4px 16px rgba(0,0,0,0.05);
+    overflow: visible;
+    z-index: 1300;
   }
 
   .search-panel {
     width: 100%;
-    height: 100%;
-    max-height: none;
+    max-height: 60vh;
+    max-height: 60dvh;
+    overflow-y: auto;
     border-radius: 16px 16px 0 0;
   }
 
   .search-panel__card {
     border-radius: 16px 16px 0 0;
     border-bottom: none;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .search-panel__tab-body {
-    flex: 1;
-    overflow-y: auto;
+    height: auto;
   }
 
   /* Drag handle indicator */
@@ -3009,7 +2972,7 @@ select.search-panel__input {
     height: 4px;
     background: rgba(78, 112, 61, 0.2);
     border-radius: 4px;
-    margin: 8px auto -4px;
+    margin: 8px auto 8px;
   }
 
   /* Tabs: allow text wrap at smallest sizes */

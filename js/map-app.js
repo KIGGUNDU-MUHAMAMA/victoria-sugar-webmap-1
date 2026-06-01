@@ -1945,7 +1945,8 @@ function setupParcelSearchPopover() {
       blockSelect.innerHTML = '<option value="">— Select Block —</option>';
       data.forEach(b => {
         const o = document.createElement("option");
-        o.value = b.block_code;
+        o.value = b.id;
+        o.dataset.code = b.block_code;
         o.textContent = `Block ${b.block_code}${b.block_name ? " – "+b.block_name : ""}`;
         blockSelect.appendChild(o);
       });
@@ -1953,13 +1954,13 @@ function setupParcelSearchPopover() {
     } catch(e) { blockSelect.innerHTML = '<option value="">Error loading blocks</option>'; console.warn("[VSL Search] blocks:", e); }
   }
 
-  async function loadSearchParcels(blockCode, estate) {
+  async function loadSearchParcels(blockCode, blockId, estate) {
     if (!parcelSelect) return;
     parcelSelect.innerHTML = '<option value="">Loading…</option>';
     parcelSelect.disabled = true;
-    if (!blockCode) { parcelSelect.innerHTML = '<option value="">— Select Block first —</option>'; return; }
+    if (!blockId) { parcelSelect.innerHTML = '<option value="">— Select Block first —</option>'; return; }
     try {
-      let url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_parcels?select=id,parcel_no,parcel_label&block_code=eq.${encodeURIComponent(blockCode)}`;
+      let url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_parcels?select=id,parcel_no,parcel_label&block_id=eq.${encodeURIComponent(blockId)}`;
       if (estate) url += `&estate_name=eq.${encodeURIComponent(estate)}`;
       url += "&order=parcel_no.asc";
       const res = await fetch(url, {
@@ -1989,7 +1990,8 @@ function setupParcelSearchPopover() {
 
   estateSelect?.addEventListener("change", () => loadSearchBlocks(estateSelect.value));
   blockSelect?.addEventListener("change", () => {
-    if (blockSelect.value) loadSearchParcels(blockSelect.value, estateSelect?.value);
+    const opt = blockSelect.options[blockSelect.selectedIndex];
+    if (blockSelect.value) loadSearchParcels(opt.dataset.code, blockSelect.value, estateSelect?.value);
     else { parcelSelect.innerHTML = '<option value="">— Select Block first —</option>'; parcelSelect.disabled = true; }
   });
   parcelSelect?.addEventListener("change", () => {

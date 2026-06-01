@@ -2936,10 +2936,10 @@ select.search-panel__input {
 @media (max-width: 480px) {
   .webmap-app .map-left-stack {
     /* Inherits position: fixed from desktop */
-    top: auto;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
     width: 100%;
     max-height: 60vh;
     max-height: 60dvh;

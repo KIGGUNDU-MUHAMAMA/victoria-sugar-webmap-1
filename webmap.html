@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/styles.css?v=2.0.3">
+  <link rel="stylesheet" href="css/styles.css?v=2.0.4">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
@@ -366,34 +366,35 @@
         <!-- ── TAB 1: Block / Parcel Search ── -->
         <div id="searchTabParcel" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabParcel">
           <!-- Cascade: Estate → Block → Parcel -->
-          <div class="search-cascade">
-            <div class="search-cascade__row">
+          <div class="search-cascade futuristic-grid-3">
+            <div class="search-cascade__row futuristic-grid-item">
               <label class="search-panel__label" for="searchEstateSelect">Estate</label>
               <select id="searchEstateSelect" class="search-panel__input">
                 <option value="">— Select Estate —</option>
               </select>
             </div>
-            <div class="search-cascade__row">
+            <div class="search-cascade__row futuristic-grid-item">
               <label class="search-panel__label" for="searchBlockSelect">Block</label>
               <select id="searchBlockSelect" class="search-panel__input" disabled>
                 <option value="">— Select Estate first —</option>
               </select>
             </div>
-            <div class="search-cascade__row">
-              <label class="search-panel__label" for="searchParcelSelect">Parcel / Plot <span class="search-panel__muted">optional</span></label>
+            <div class="search-cascade__row futuristic-grid-item">
+              <label class="search-panel__label" for="searchParcelSelect">Parcel / Plot</label>
               <select id="searchParcelSelect" class="search-panel__input" disabled>
                 <option value="">— Select Block first —</option>
               </select>
             </div>
-            <p id="parcelSearchPopoverError" class="search-panel__error" role="alert" hidden></p>
-            <div class="search-panel__row" style="margin-top:0.75rem">
-              <button type="button" class="search-panel__btn-secondary" id="parcelSearchPopoverCancelBtn" title="Clear highlight">
-                <i class="fas fa-eraser" aria-hidden="true"></i> Clear
-              </button>
-              <button type="button" class="search-panel__btn-primary" id="parcelSearchGoBtn">
-                <i class="fas fa-location-arrow" aria-hidden="true"></i> Go
-              </button>
-            </div>
+          </div>
+          
+          <p id="parcelSearchPopoverError" class="search-panel__error" role="alert" hidden></p>
+          <div class="search-panel__row futuristic-actions">
+            <button type="button" class="futuristic-icon-btn btn-clear" id="parcelSearchPopoverCancelBtn" title="Clear highlight">
+              <i class="fas fa-eraser" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="futuristic-icon-btn btn-go" id="parcelSearchGoBtn" title="Go">
+              <i class="fas fa-location-arrow" aria-hidden="true"></i>
+            </button>
           </div>
           <!-- Legacy text search (kept for power users) -->
           <details style="margin-top:0.75rem;">
@@ -403,9 +404,9 @@
               <input id="parcelSearchBlockInput" name="block" type="text" class="search-panel__input" placeholder="e.g. 14 or North Block" autocomplete="off">
               <label class="search-panel__label" for="parcelSearchNoInput">Plot number <span class="search-panel__muted">optional</span></label>
               <input id="parcelSearchNoInput" name="parcelNo" type="number" class="search-panel__input" min="1" step="1" placeholder="e.g. 3" inputmode="numeric">
-              <div class="search-panel__row" style="margin-top:0.5rem">
-                <button type="submit" class="search-panel__btn-primary" id="parcelSearchGoBtnLegacy">
-                  <i class="fas fa-location-arrow" aria-hidden="true"></i> Go
+              <div class="search-panel__row futuristic-actions" style="margin-top:0.5rem">
+                <button type="submit" class="futuristic-icon-btn btn-go" id="parcelSearchGoBtnLegacy" title="Go">
+                  <i class="fas fa-location-arrow" aria-hidden="true"></i>
                 </button>
               </div>
             </form>
@@ -415,9 +416,9 @@
         <!-- ── TAB 2: Place Search ── -->
         <div id="searchTabPlace" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabPlace" hidden>
           <label class="visually-hidden" for="placeSearchInput">Place or address</label>
-          <div class="search-panel__place-row">
+          <div class="search-panel__place-row futuristic-place-row">
             <input id="placeSearchInput" type="search" class="search-panel__input search-panel__place-input" placeholder="Town, road, landmark…" autocomplete="off" enterkeyhint="search">
-            <button type="button" id="placeSearchGoBtn" class="search-panel__btn-primary search-panel__place-go">
+            <button type="button" id="placeSearchGoBtn" class="futuristic-icon-btn btn-go search-panel__place-go">
               <i class="fas fa-search" aria-hidden="true"></i>
             </button>
           </div>
@@ -429,21 +430,28 @@
         <!-- ── TAB 3: Coordinate Search ── -->
         <div id="searchTabCoords" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabCoords" hidden>
           <label class="search-panel__label" for="coordDrawerCrsSelect">Coordinate system</label>
-          <select id="coordDrawerCrsSelect" class="search-panel__input"></select>
+          <select id="coordDrawerCrsSelect" class="search-panel__input" style="margin-bottom:0.75rem;"></select>
 
           <div id="coordSingleBlock">
-            <label class="search-panel__label" for="coordDrawerEasting">Easting <span class="search-panel__muted">(or longitude for WGS84)</span></label>
-            <input id="coordDrawerEasting" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 500000" autocomplete="off">
-            <label class="search-panel__label" for="coordDrawerNorthing">Northing <span class="search-panel__muted">(or latitude for WGS84)</span></label>
-            <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 200000" autocomplete="off">
-            <button type="button" id="coordPlotSingleBtn" class="search-panel__btn-primary" style="margin-top:0.7rem">
-              <i class="fas fa-map-marker-alt" aria-hidden="true"></i> Plot on Map
-            </button>
+            <div class="futuristic-grid-2">
+              <div class="futuristic-grid-item">
+                <label class="search-panel__label" for="coordDrawerEasting">Easting/Lon</label>
+                <input id="coordDrawerEasting" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 500000" autocomplete="off">
+              </div>
+              <div class="futuristic-grid-item">
+                <label class="search-panel__label" for="coordDrawerNorthing">Northing/Lat</label>
+                <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 200000" autocomplete="off">
+              </div>
+            </div>
+            <div class="search-panel__row futuristic-actions" style="margin-top:0.7rem">
+              <button type="button" id="coordClearMarkersBtn" class="futuristic-icon-btn btn-clear" title="Clear Markers">
+                <i class="fas fa-eraser" aria-hidden="true"></i>
+              </button>
+              <button type="button" id="coordPlotSingleBtn" class="futuristic-icon-btn btn-go" title="Plot on Map">
+                <i class="fas fa-crosshairs" aria-hidden="true"></i>
+              </button>
+            </div>
           </div>
-
-          <button type="button" id="coordClearMarkersBtn" class="search-panel__btn-secondary" style="margin-top:0.6rem">
-            <i class="fas fa-eraser" aria-hidden="true"></i> Clear Markers
-          </button>
         </div>
       </div>
     </section>
@@ -631,7 +639,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
-  <script type="module" src="./js/map-app.js?v=2.0.3"></script>
+  <script type="module" src="./js/map-app.js?v=2.0.4"></script>
 
   <!-- ═══ UNIFIED ACTION MENU (FAB) ═══ -->
   <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->

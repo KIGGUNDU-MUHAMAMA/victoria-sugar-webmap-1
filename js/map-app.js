@@ -1965,7 +1965,10 @@ function setupParcelSearchPopover() {
       const res = await fetch(url, {
         headers: { "apikey": cfg.SUPABASE_ANON_KEY, "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`, "Accept": "application/json" }
       });
-      if (!res.ok) throw new Error("fetch failed");
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`fetch failed: ${res.status} ${res.statusText} - ${errText}`);
+      }
       const data = await res.json();
       parcelSelect.innerHTML = '<option value="">— All parcels in block —</option>';
       data.forEach(p => {

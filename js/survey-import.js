@@ -670,9 +670,11 @@ export function initSurveyImport({
     const stBtn = document.getElementById("surveyStartTracingBtn");
     if (drawInteraction) {
       map.removeInteraction(drawInteraction);
-      map.removeInteraction(snapInteraction);
+      if (snapInteraction1) map.removeInteraction(snapInteraction1);
+      if (snapInteraction2) map.removeInteraction(snapInteraction2);
       drawInteraction = null;
-      snapInteraction = null;
+      snapInteraction1 = null;
+      snapInteraction2 = null;
       stBtn.textContent = "Start Tracing";
       stBtn.classList.replace("btn-danger", "btn-primary");
       return;

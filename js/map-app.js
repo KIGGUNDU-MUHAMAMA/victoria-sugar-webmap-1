@@ -1784,12 +1784,33 @@ function closeParcelSearchPopover(options = {}) {
 }
 
 async function runLocateParcelFromPopover() {
+  const blockSelect = document.getElementById("searchBlockSelect");
+  const parcelSelect = document.getElementById("searchParcelSelect");
+
   const blockInput = document.getElementById("parcelSearchBlockInput");
   const noInput = document.getElementById("parcelSearchNoInput");
   const goBtn = document.getElementById("parcelSearchGoBtn");
   const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
-  const blockQ = blockInput?.value?.trim() ?? "";
-  const plotStr = noInput?.value?.trim() ?? "";
+
+  // Read block code (prioritize dropdown, fallback to text input)
+  let blockQ = "";
+  if (blockSelect && blockSelect.selectedIndex >= 0) {
+    const opt = blockSelect.options[blockSelect.selectedIndex];
+    blockQ = opt.dataset.code || opt.value || "";
+  }
+  if (!blockQ) {
+    blockQ = blockInput?.value?.trim() ?? "";
+  }
+
+  // Read plot/parcel number (prioritize dropdown, fallback to text input)
+  let plotStr = "";
+  if (parcelSelect && parcelSelect.value) {
+    plotStr = parcelSelect.value;
+  }
+  if (!plotStr) {
+    plotStr = noInput?.value?.trim() ?? "";
+  }
+
   let parcelNo = null;
   if (plotStr !== "") {
     const parcelNoRaw = parseNum(plotStr);

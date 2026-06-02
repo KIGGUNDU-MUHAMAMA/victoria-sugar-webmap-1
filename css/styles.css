@@ -4582,6 +4582,9 @@ select.search-panel__input {
   justify-content: center;
   animation: fadeIn 0.2s ease-out;
 }
+.vsl-modal-overlay[hidden] {
+  display: none !important;
+}
 .vsl-modal-card {
   background: linear-gradient(170deg, #ffffff 0%, #f6faf3 100%);
   border: 1px solid rgba(78, 112, 61, 0.28);

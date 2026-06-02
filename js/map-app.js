@@ -2273,7 +2273,15 @@ function startSmartMeasure() {
     draw.on("drawstart", (evt) => {
       const sketch = evt.feature;
       sketchFeatures.clear();
-      sketchFeatures.push(sketch);
+      
+      const geom = sketch.getGeometry();
+      const coords = geom ? geom.getCoordinates() : [];
+      if (coords && coords.length > 0) {
+        const startPointFeature = new ol.Feature({
+          geometry: new ol.geom.Point(coords[0])
+        });
+        sketchFeatures.push(startPointFeature);
+      }
 
       const sketchSnap = new ol.interaction.Snap({
         features: sketchFeatures,
@@ -2292,6 +2300,21 @@ function startSmartMeasure() {
           const geom = geomEvt.target;
           const coords = geom.getCoordinates();
           
+          if (coords && coords.length > 0) {
+            // Keep the start point feature in sync with the first coordinate
+            if (sketchFeatures.getLength() === 0) {
+              const startPointFeature = new ol.Feature({
+                geometry: new ol.geom.Point(coords[0])
+              });
+              sketchFeatures.push(startPointFeature);
+            } else {
+              const firstFeat = sketchFeatures.item(0);
+              if (firstFeat && firstFeat.getGeometry()) {
+                firstFeat.getGeometry().setCoordinates(coords[0]);
+              }
+            }
+          }
+
           // Calculate based on clicked points only (exclude the moving mouse pointer at the end)
           if (coords && coords.length > 1) {
             const clickedCoords = coords.slice(0, -1);

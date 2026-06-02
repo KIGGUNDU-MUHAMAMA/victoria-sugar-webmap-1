@@ -79,22 +79,27 @@
 
   <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools">
     <div id="parcelStatusPanel" class="measure-panel" hidden>
-      <div class="smc-header" style="justify-content: space-between;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <i class="fas fa-pen-to-square"></i> <span style="font-weight:600;">Modify status</span>
+      <header class="search-panel__head">
+        <div class="search-panel__head-inner">
+          <i class="fas fa-pen-to-square search-panel__head-icon" aria-hidden="true"></i>
+          <h2 id="parcelStatusTitle" class="search-panel__title">Modify status</h2>
         </div>
         <button type="button" class="search-panel__close" id="parcelStatusCloseBtn" aria-label="Close modify panel">
           <i class="fas fa-times" aria-hidden="true"></i>
         </button>
-      </div>
+      </header>
 
       <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
         Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
       </div>
 
       <div class="search-panel__tabs" role="tablist" aria-label="Modify layer target" style="margin-top:12px; margin-bottom:8px;">
-        <button type="button" id="modifyTabParcels" class="search-panel__tab active" role="tab" aria-selected="true">Parcels</button>
-        <button type="button" id="modifyTabBlocks" class="search-panel__tab" role="tab" aria-selected="false" tabindex="-1">Blocks</button>
+        <button type="button" class="search-tab" id="modifyTabParcels" role="tab" aria-selected="true" data-tab="parcels">
+          <i class="fas fa-map" aria-hidden="true"></i> Parcels
+        </button>
+        <button type="button" class="search-tab" id="modifyTabBlocks" role="tab" aria-selected="false" tabindex="-1" data-tab="blocks">
+          <i class="fas fa-cubes" aria-hidden="true"></i> Blocks
+        </button>
       </div>
 
       <div id="parcelStatusSelectionLabel" style="font-size:0.9rem; font-weight:600; color:var(--muted); text-align:center; margin:16px 0;">Select on map</div>

@@ -202,12 +202,17 @@ begin
     raise exception 'Only Polygon geometries are allowed';
   end if;
 
-  insert into public.vsl_blocks(block_code, block_name, geometry_status, created_by, updated_by)
-  values (p_block_code, p_block_code, 'pending', p_user_id, p_user_id)
-  on conflict (block_code) do update
-    set updated_by = excluded.updated_by,
+  select id into v_block_id from public.vsl_blocks where block_code = trim(p_block_code) limit 1;
+  if v_block_id is null then
+    insert into public.vsl_blocks(block_code, block_name, geometry_status, created_by, updated_by)
+    values (p_block_code, p_block_code, 'pending', p_user_id, p_user_id)
+    returning id into v_block_id;
+  else
+    update public.vsl_blocks
+    set updated_by = p_user_id,
         updated_at = now()
-  returning id into v_block_id;
+    where id = v_block_id;
+  end if;
 
   if p_layer_type = 'BLOCKS' then
     update public.vsl_blocks
@@ -252,30 +257,43 @@ begin
     select * from public.vsl_import_rows where batch_id = p_batch_id order by row_number
   loop
     begin
-      insert into public.vsl_blocks(
-        block_code,
-        block_name,
-        estate_name,
-        expected_area_acres,
-        geometry_status,
-        created_by,
-        updated_by
-      )
-      values (
-        rec.raw_payload->>'block_code',
-        rec.raw_payload->>'block_name',
-        rec.raw_payload->>'estate_name',
-        nullif(rec.raw_payload->>'expected_area_acres', '')::numeric,
-        'pending',
-        auth.uid(),
-        auth.uid()
-      )
-      on conflict (block_code) do update
-        set block_name = excluded.block_name,
-            estate_name = excluded.estate_name,
-            expected_area_acres = excluded.expected_area_acres,
+      select id into v_block_id 
+      from public.vsl_blocks 
+      where block_code = rec.raw_payload->>'block_code'
+        and (
+          (estate_name is null and (rec.raw_payload->>'estate_name') is null) or
+          (estate_name = rec.raw_payload->>'estate_name')
+        )
+      limit 1;
+
+      if v_block_id is null then
+        insert into public.vsl_blocks(
+          block_code,
+          block_name,
+          estate_name,
+          expected_area_acres,
+          geometry_status,
+          created_by,
+          updated_by
+        )
+        values (
+          rec.raw_payload->>'block_code',
+          rec.raw_payload->>'block_name',
+          rec.raw_payload->>'estate_name',
+          nullif(rec.raw_payload->>'expected_area_acres', '')::numeric,
+          'pending',
+          auth.uid(),
+          auth.uid()
+        )
+        returning id into v_block_id;
+      else
+        update public.vsl_blocks
+        set block_name = rec.raw_payload->>'block_name',
+            estate_name = rec.raw_payload->>'estate_name',
+            expected_area_acres = nullif(rec.raw_payload->>'expected_area_acres', '')::numeric,
             updated_at = now()
-      returning id into v_block_id;
+        where id = v_block_id;
+      end if;
 
       v_parcel_no := public.vsl_next_parcel_no(v_block_id);
       insert into public.vsl_parcels(

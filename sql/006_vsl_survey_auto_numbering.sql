@@ -5,6 +5,19 @@
 -- The old global sequence (vsl_block_code_seq) is no longer used for blocks,
 -- since numbering is now partitioned by estate_name.
 
+-- Drop global unique constraint on block_code and enable block codes to be unique per estate.
+alter table public.vsl_blocks drop constraint if exists vsl_blocks_block_code_key;
+
+drop index if exists public.idx_vsl_blocks_estate_block_code_unique;
+create unique index idx_vsl_blocks_estate_block_code_unique 
+on public.vsl_blocks (estate_name, block_code) 
+where estate_name is not null;
+
+drop index if exists public.idx_vsl_blocks_no_estate_block_code_unique;
+create unique index idx_vsl_blocks_no_estate_block_code_unique 
+on public.vsl_blocks (block_code) 
+where estate_name is null;
+
 create or replace function public.vsl_next_block_code(p_estate text)
 returns text
 language plpgsql

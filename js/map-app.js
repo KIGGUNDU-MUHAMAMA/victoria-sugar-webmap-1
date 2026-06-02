@@ -2401,20 +2401,23 @@ function startSmartMeasure() {
         const coords = geom.getCoordinates();
         if (!coords || coords.length < 2) return;
 
-        let isClosed = false;
-        if (coords.length > 2) {
-          const first = coords[0];
-          const last = coords[coords.length - 1];
-          const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
-          if (dist < 0.1) {
-            isClosed = true;
+        const uniqueCoords = [];
+        for (const coord of coords) {
+          if (uniqueCoords.length === 0) {
+            uniqueCoords.push(coord);
+          } else {
+            const prev = uniqueCoords[uniqueCoords.length - 1];
+            if (Math.hypot(prev[0] - coord[0], prev[1] - coord[1]) > 0.001) {
+              uniqueCoords.push(coord);
+            }
           }
         }
 
+        const isClosed = uniqueCoords.length >= 3;
+
         if (isClosed) {
           // Explicitly close the polygon coordinate ring
-          const closedCoords = [...coords];
-          closedCoords[closedCoords.length - 1] = closedCoords[0];
+          const closedCoords = [...uniqueCoords, uniqueCoords[0]];
           
           const polyGeom = new ol.geom.Polygon([closedCoords]);
           const feat = new ol.Feature({ geometry: polyGeom });
@@ -2443,9 +2446,10 @@ function startSmartMeasure() {
           setStatus(statusEl, msg);
           if (measureFeedback) measureFeedback.textContent = msg;
         } else {
-          const feat = new ol.Feature({ geometry: geom.clone() });
+          const lineGeom = new ol.geom.LineString(uniqueCoords);
+          const feat = new ol.Feature({ geometry: lineGeom });
           feat.set("_measureKind", "distance");
-          const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
+          const totalM = ol.sphere.getLength(lineGeom, { projection: MAP_DRAW_PROJ });
           
           measureSource.addFeature(feat);
           

@@ -50,6 +50,7 @@ let selectedFeature = null;
 let selectedLayerType = null;
 let activeInteraction = null;
 let activeSnapInteractions = [];
+let smartMeasureListener = null;
 /** Survey CSV preview vector sources (for snap); set after initSurveyImport */
 let surveyPreviewSnapSources = null;
 let baseGroupRef;
@@ -2037,6 +2038,10 @@ function setupParcelSearchPopover() {
 
 function stopActiveTool() {
   detachSnapInteractions();
+  if (smartMeasureListener) {
+    ol.Observable.unByKey(smartMeasureListener);
+    smartMeasureListener = null;
+  }
   if (activeInteraction && map) {
     map.removeInteraction(activeInteraction);
     activeInteraction = null;
@@ -2226,30 +2231,109 @@ function startMeasure(type, isDrawOnly = false) {
   setStatus(statusEl, type === "LineString" ? "Measuring distance…" : "Measuring area…");
 }
 
-function startAdvancedMeasure() {
+function startSmartMeasure() {
   stopActiveTool();
   editSource.clear(true);
   
   const mapEl = document.getElementById("map");
   if (mapEl) mapEl.style.cursor = "crosshair";
 
-  // We use LineString so the user can draw 2 points or N points.
-  const draw = new ol.interaction.Draw({ source: editSource, type: "LineString" });
+  const distEl = document.getElementById("measureDistanceReadout");
+  const areaEl = document.getElementById("measureAreaReadout");
+  if (distEl) distEl.textContent = "0.00 m";
+  if (areaEl) areaEl.textContent = "0.00 ac";
+  if (measureFeedback) measureFeedback.textContent = "";
+
+  const draw = new ol.interaction.Draw({
+    source: editSource,
+    type: "LineString",
+    style: new ol.style.Style({
+      stroke: new ol.style.Stroke({
+        color: "rgba(21, 101, 192, 0.8)",
+        width: 3,
+        lineDash: [4, 6]
+      }),
+      image: new ol.style.Circle({
+        radius: 6,
+        stroke: new ol.style.Stroke({
+          color: "#ffffff",
+          width: 2
+        }),
+        fill: new ol.style.Fill({
+          color: "rgba(21, 101, 192, 0.8)"
+        })
+      })
+    })
+  });
+
+  draw.on("drawstart", (evt) => {
+    const sketch = evt.feature;
+    
+    // Clear display readouts at the start of a new draw
+    if (distEl) distEl.textContent = "0.00 m";
+    if (areaEl) areaEl.textContent = "0.00 ac";
+    if (measureFeedback) measureFeedback.textContent = "";
+
+    smartMeasureListener = sketch.getGeometry().on("change", (geomEvt) => {
+      const geom = geomEvt.target;
+      const coords = geom.getCoordinates();
+      
+      // Calculate based on clicked points only (exclude the moving mouse pointer at the end)
+      if (coords.length > 1) {
+        const clickedCoords = coords.slice(0, -1);
+        
+        // Update distance
+        if (clickedCoords.length >= 2) {
+          const tempLine = new ol.geom.LineString(clickedCoords);
+          const totalM = ol.sphere.getLength(tempLine, { projection: MAP_DRAW_PROJ });
+          if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+        } else {
+          if (distEl) distEl.textContent = "0.00 m";
+        }
+        
+        // Update area
+        if (clickedCoords.length >= 3) {
+          const tempPoly = new ol.geom.Polygon([clickedCoords]);
+          let areaAcres = 0;
+          try {
+            const ring = tempPoly.getLinearRing(0);
+            if (ring) {
+              const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+              areaAcres = computeUtmCartesianAreaAcres(lonLats);
+            }
+          } catch {}
+          if (!areaAcres || areaAcres <= 0) {
+            const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
+            areaAcres = (areaM2 / 10000) * 2.47105;
+          }
+          if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+        } else {
+          if (areaEl) areaEl.textContent = "0.00 ac";
+        }
+      }
+    });
+  });
+
   draw.on("drawend", (evt) => {
+    if (smartMeasureListener) {
+      ol.Observable.unByKey(smartMeasureListener);
+      smartMeasureListener = null;
+    }
+
     map.removeInteraction(draw);
     activeInteraction = null;
     detachSnapInteractions();
+    
     const geom = evt.feature.getGeometry();
     editSource.removeFeature(evt.feature);
     
     const coords = geom.getCoordinates();
+    if (coords.length < 2) return;
+
     let isClosed = false;
-    
-    // Check if user clicked back on the first point to close it
     if (coords.length > 2) {
       const first = coords[0];
       const last = coords[coords.length - 1];
-      // calculate pixel distance or ground distance
       const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
       if (dist < 0.1) {
         isClosed = true;
@@ -2275,28 +2359,42 @@ function startAdvancedMeasure() {
       }
       
       measureSource.addFeature(feat);
-      const msg = `Advanced Measure: Area ${areaAcres.toFixed(2)} ac (Segments labeled on map)`;
-      setDrawToolsFeedback(msg, false);
+      const totalM = ol.sphere.getLength(polyGeom, { projection: MAP_DRAW_PROJ });
+      
+      if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+      if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+      
+      const msg = `Smart Measure: Area ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
       setStatus(statusEl, msg);
+      if (measureFeedback) measureFeedback.textContent = msg;
     } else {
       const feat = new ol.Feature({ geometry: geom.clone() });
       feat.set("_measureKind", "distance");
       const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
+      
       measureSource.addFeature(feat);
-      const msg = `Advanced Measure: Total length ${formatGroundLengthM(totalM)}`;
-      setDrawToolsFeedback(msg, false);
+      
+      if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+      if (areaEl) areaEl.textContent = "0.00 ac";
+      
+      const msg = `Smart Measure: Distance ${formatGroundLengthM(totalM)}`;
       setStatus(statusEl, msg);
+      if (measureFeedback) measureFeedback.textContent = msg;
+    }
+
+    if (measurePanel && !measurePanel.hidden) {
+      setTimeout(() => {
+        if (measurePanel && !measurePanel.hidden) {
+          startSmartMeasure();
+        }
+      }, 100);
     }
   });
 
   activeInteraction = draw;
   map.addInteraction(draw);
-  
-  // Advanced feature: snap to ALL visible vector layers!
   attachSnapInteractions({ snapAllVisible: true });
-  
-  setDrawToolsFeedback("", false);
-  setStatus(statusEl, "Advanced Measuring…");
+  setStatus(statusEl, "Smart Measuring active. Click to start.");
 }
 
 let userLocationLayer = null;
@@ -2352,9 +2450,6 @@ function bindEvents() {
   const searchCloseBtn = document.getElementById("searchPanelCloseBtn");
   searchCloseBtn?.addEventListener("click", () => closeSearchPanel({ clearHighlight: false }));
 
-  measureLineBtn?.addEventListener("click", () => startMeasure("LineString"));
-  measureAreaBtn?.addEventListener("click", () => startMeasure("Polygon"));
-  measureAdvancedBtn?.addEventListener("click", startAdvancedMeasure);
   drawLineBtn?.addEventListener("click", () => startMeasure("LineString", true));
   drawPolygonBtn?.addEventListener("click", () => startMeasure("Polygon", true));
   stopDrawBtn.addEventListener("click", stopActiveTool);
@@ -2367,9 +2462,17 @@ function bindEvents() {
   
   clearMeasuresBtn?.addEventListener("click", () => {
     measureSource.clear(true);
+    const distEl = document.getElementById("measureDistanceReadout");
+    const areaEl = document.getElementById("measureAreaReadout");
+    if (distEl) distEl.textContent = "0.00 m";
+    if (areaEl) areaEl.textContent = "0.00 ac";
     if (measureFeedback) measureFeedback.textContent = "Measurements cleared.";
     setTimeout(() => { if (measureFeedback) measureFeedback.textContent = ""; }, 3000);
     setStatus(statusEl, "Measurements cleared.");
+    // Restart active smart measure to begin fresh sketch if open
+    if (measurePanel && !measurePanel.hidden) {
+      startSmartMeasure();
+    }
   });
 
   measureTopBtn?.addEventListener("click", () => {
@@ -2380,11 +2483,20 @@ function bindEvents() {
         closeSearchPanel({ clearHighlight: false });
         closeUAM();
         closeParcelStatusPanel();
+        startSmartMeasure();
+      } else {
+        stopActiveTool();
       }
     }
   });
 
   measurePanelCloseBtn?.addEventListener("click", () => {
+    if (measurePanel) measurePanel.hidden = true;
+    stopActiveTool();
+  });
+
+  const stopMeasureBtn = document.getElementById("stopMeasureBtn");
+  stopMeasureBtn?.addEventListener("click", () => {
     if (measurePanel) measurePanel.hidden = true;
     stopActiveTool();
   });
@@ -2439,10 +2551,13 @@ async function initUser() {
   if (psApply) psApply.disabled = statusReadonly;
 
   if (currentProfile.role === "MANAGMENT") {
-    measureLineBtn.disabled = true;
-    measureAreaBtn.disabled = true;
-    stopDrawBtn.disabled = true;
-    clearMeasuresBtn.disabled = true;
+    if (measureLineBtn) measureLineBtn.disabled = true;
+    if (measureAreaBtn) measureAreaBtn.disabled = true;
+    if (measureTopBtn) measureTopBtn.disabled = true;
+    const stopMeasureBtn = document.getElementById("stopMeasureBtn");
+    if (stopMeasureBtn) stopMeasureBtn.disabled = true;
+    if (stopDrawBtn) stopDrawBtn.disabled = true;
+    if (clearMeasuresBtn) clearMeasuresBtn.disabled = true;
     for (const el of [
       snapBlocksCb,
       snapParcelsCb,

@@ -2246,24 +2246,7 @@ function startSmartMeasure() {
 
   const draw = new ol.interaction.Draw({
     source: editSource,
-    type: "LineString",
-    style: new ol.style.Style({
-      stroke: new ol.style.Stroke({
-        color: "rgba(21, 101, 192, 0.8)",
-        width: 3,
-        lineDash: [4, 6]
-      }),
-      image: new ol.style.Circle({
-        radius: 6,
-        stroke: new ol.style.Stroke({
-          color: "#ffffff",
-          width: 2
-        }),
-        fill: new ol.style.Fill({
-          color: "rgba(21, 101, 192, 0.8)"
-        })
-      })
-    })
+    type: "LineString"
   });
 
   draw.on("drawstart", (evt) => {
@@ -2275,48 +2258,57 @@ function startSmartMeasure() {
     if (measureFeedback) measureFeedback.textContent = "";
 
     smartMeasureListener = sketch.getGeometry().on("change", (geomEvt) => {
-      const geom = geomEvt.target;
-      const coords = geom.getCoordinates();
-      
-      // Calculate based on clicked points only (exclude the moving mouse pointer at the end)
-      if (coords.length > 1) {
-        const clickedCoords = coords.slice(0, -1);
+      try {
+        const geom = geomEvt.target;
+        const coords = geom.getCoordinates();
         
-        // Update distance
-        if (clickedCoords.length >= 2) {
-          const tempLine = new ol.geom.LineString(clickedCoords);
-          const totalM = ol.sphere.getLength(tempLine, { projection: MAP_DRAW_PROJ });
-          if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-        } else {
-          if (distEl) distEl.textContent = "0.00 m";
-        }
-        
-        // Update area
-        if (clickedCoords.length >= 3) {
-          const tempPoly = new ol.geom.Polygon([clickedCoords]);
-          let areaAcres = 0;
-          try {
-            const ring = tempPoly.getLinearRing(0);
-            if (ring) {
-              const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
-              areaAcres = computeUtmCartesianAreaAcres(lonLats);
-            }
-          } catch {}
-          if (!areaAcres || areaAcres <= 0) {
-            const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
-            areaAcres = (areaM2 / 10000) * 2.47105;
+        // Calculate based on clicked points only (exclude the moving mouse pointer at the end)
+        if (coords && coords.length > 1) {
+          const clickedCoords = coords.slice(0, -1);
+          
+          // Update distance
+          if (clickedCoords.length >= 2) {
+            const tempLine = new ol.geom.LineString(clickedCoords);
+            const totalM = ol.sphere.getLength(tempLine, { projection: MAP_DRAW_PROJ });
+            if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+          } else {
+            if (distEl) distEl.textContent = "0.00 m";
           }
-          if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
-        } else {
-          if (areaEl) areaEl.textContent = "0.00 ac";
+          
+          // Update area
+          if (clickedCoords.length >= 3) {
+            const closedCoords = [...clickedCoords, clickedCoords[0]];
+            const tempPoly = new ol.geom.Polygon([closedCoords]);
+            let areaAcres = 0;
+            try {
+              const ring = tempPoly.getLinearRing(0);
+              if (ring) {
+                const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+                areaAcres = computeUtmCartesianAreaAcres(lonLats);
+              }
+            } catch (err) {}
+            if (!areaAcres || areaAcres <= 0) {
+              const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
+              areaAcres = (areaM2 / 10000) * 2.47105;
+            }
+            if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+          } else {
+            if (areaEl) areaEl.textContent = "0.00 ac";
+          }
         }
+      } catch (err) {
+        console.error("Error in smart measure change listener:", err);
       }
     });
   });
 
   draw.on("drawend", (evt) => {
     if (smartMeasureListener) {
-      ol.Observable.unByKey(smartMeasureListener);
+      try {
+        ol.Observable.unByKey(smartMeasureListener);
+      } catch (e) {
+        console.warn("Error unbinding listener:", e);
+      }
       smartMeasureListener = null;
     }
 
@@ -2324,62 +2316,70 @@ function startSmartMeasure() {
     activeInteraction = null;
     detachSnapInteractions();
     
-    const geom = evt.feature.getGeometry();
-    editSource.removeFeature(evt.feature);
-    
-    const coords = geom.getCoordinates();
-    if (coords.length < 2) return;
-
-    let isClosed = false;
-    if (coords.length > 2) {
-      const first = coords[0];
-      const last = coords[coords.length - 1];
-      const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
-      if (dist < 0.1) {
-        isClosed = true;
-      }
-    }
-
-    if (isClosed) {
-      const polyGeom = new ol.geom.Polygon([coords]);
-      const feat = new ol.Feature({ geometry: polyGeom });
-      feat.set("_measureKind", "area");
+    try {
+      const geom = evt.feature.getGeometry();
+      editSource.removeFeature(evt.feature);
       
-      let areaAcres = 0;
-      try {
-        const ring = polyGeom.getLinearRing(0);
-        if (ring) {
-          const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
-          areaAcres = computeUtmCartesianAreaAcres(lonLats);
+      const coords = geom.getCoordinates();
+      if (!coords || coords.length < 2) return;
+
+      let isClosed = false;
+      if (coords.length > 2) {
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
+        if (dist < 0.1) {
+          isClosed = true;
         }
-      } catch {}
-      if (!areaAcres || areaAcres <= 0) {
-        const areaM2 = ol.sphere.getArea(polyGeom, { projection: MAP_DRAW_PROJ });
-        areaAcres = (areaM2 / 10000) * 2.47105;
       }
-      
-      measureSource.addFeature(feat);
-      const totalM = ol.sphere.getLength(polyGeom, { projection: MAP_DRAW_PROJ });
-      
-      if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-      if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
-      
-      const msg = `Smart Measure: Area ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
-      setStatus(statusEl, msg);
-      if (measureFeedback) measureFeedback.textContent = msg;
-    } else {
-      const feat = new ol.Feature({ geometry: geom.clone() });
-      feat.set("_measureKind", "distance");
-      const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
-      
-      measureSource.addFeature(feat);
-      
-      if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-      if (areaEl) areaEl.textContent = "0.00 ac";
-      
-      const msg = `Smart Measure: Distance ${formatGroundLengthM(totalM)}`;
-      setStatus(statusEl, msg);
-      if (measureFeedback) measureFeedback.textContent = msg;
+
+      if (isClosed) {
+        // Explicitly close the polygon coordinate ring
+        const closedCoords = [...coords];
+        closedCoords[closedCoords.length - 1] = closedCoords[0];
+        
+        const polyGeom = new ol.geom.Polygon([closedCoords]);
+        const feat = new ol.Feature({ geometry: polyGeom });
+        feat.set("_measureKind", "area");
+        
+        let areaAcres = 0;
+        try {
+          const ring = polyGeom.getLinearRing(0);
+          if (ring) {
+            const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+            areaAcres = computeUtmCartesianAreaAcres(lonLats);
+          }
+        } catch (err) {}
+        if (!areaAcres || areaAcres <= 0) {
+          const areaM2 = ol.sphere.getArea(polyGeom, { projection: MAP_DRAW_PROJ });
+          areaAcres = (areaM2 / 10000) * 2.47105;
+        }
+        
+        measureSource.addFeature(feat);
+        const totalM = ol.sphere.getLength(polyGeom, { projection: MAP_DRAW_PROJ });
+        
+        if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+        if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+        
+        const msg = `Smart Measure: Area ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
+        setStatus(statusEl, msg);
+        if (measureFeedback) measureFeedback.textContent = msg;
+      } else {
+        const feat = new ol.Feature({ geometry: geom.clone() });
+        feat.set("_measureKind", "distance");
+        const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
+        
+        measureSource.addFeature(feat);
+        
+        if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+        if (areaEl) areaEl.textContent = "0.00 ac";
+        
+        const msg = `Smart Measure: Distance ${formatGroundLengthM(totalM)}`;
+        setStatus(statusEl, msg);
+        if (measureFeedback) measureFeedback.textContent = msg;
+      }
+    } catch (err) {
+      console.error("Error finalizing smart measure:", err);
     }
 
     if (measurePanel && !measurePanel.hidden) {

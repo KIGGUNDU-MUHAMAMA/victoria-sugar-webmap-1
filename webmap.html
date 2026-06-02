@@ -83,68 +83,27 @@
         <div style="display:flex; align-items:center; gap:8px;">
           <i class="fas fa-pen-to-square"></i> <span style="font-weight:600;">Modify status</span>
         </div>
-        <button type="button" id="parcelStatusCloseBtn" class="smc-back-btn" aria-label="Close" style="border:none;background:transparent;color:var(--text);font-size:1.5rem;padding:0;">&times;</button>
+        <button type="button" class="search-panel__close" id="parcelStatusCloseBtn" aria-label="Close modify panel">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
       </div>
 
       <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
         Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
       </div>
 
-      <div class="smc-row" style="margin-top:12px;">
-        <div class="parcel-status-layer-row" role="radiogroup" aria-label="Target layer" style="display:flex; gap:16px;">
-          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerParcels" value="PARCELS" checked> Parcels</label>
-          <label class="parcel-status-radio"><input type="radio" name="parcelStatusLayer" id="parcelStatusLayerBlocks" value="BLOCKS"> Blocks</label>
-        </div>
+      <div class="search-panel__tabs" role="tablist" aria-label="Modify layer target" style="margin-top:12px; margin-bottom:8px;">
+        <button type="button" id="modifyTabParcels" class="search-panel__tab active" role="tab" aria-selected="true">Parcels</button>
+        <button type="button" id="modifyTabBlocks" class="search-panel__tab" role="tab" aria-selected="false" tabindex="-1">Blocks</button>
       </div>
 
-      <div class="smc-row" style="margin-top:8px;">
-        <button type="button" class="btn-primary" id="parcelStatusPickBtn" style="width:100%;">
-          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on map
-        </button>
-        <button type="button" class="btn-secondary" id="parcelStatusCancelPickBtn" style="width:100%; border-color:var(--danger); color:var(--danger);" hidden>Cancel picking</button>
-      </div>
+      <div id="parcelStatusSelectionLabel" style="font-size:0.9rem; font-weight:600; color:var(--muted); text-align:center; margin:16px 0;">Select on map</div>
 
-      <div id="parcelStatusSelectionSection" style="margin-top:12px;" hidden>
-        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; margin-bottom:8px;">
-          <span style="font-weight:600; color:var(--text);">Selection</span>
-          <span id="parcelStatusSelectionCount" class="parcel-status-count-badge">0 selected</span>
-        </div>
-
-        <div class="smc-row">
-          <label for="parcelStatusSelect" style="font-size:0.85rem; margin-bottom:4px; display:block;">Cultivation status</label>
-          <select id="parcelStatusSelect" class="smc-select">
-            <option value="not_in_cane">Not in cane</option>
-            <option value="prepared">Prepared</option>
-            <option value="planted">Planted</option>
-            <option value="standing">Standing</option>
-            <option value="harvested">Harvested</option>
-            <option value="replant_renovation">Replant / renovation</option>
-          </select>
-        </div>
-
-        <details style="font-size:0.85rem; margin-top:8px;">
-          <summary style="cursor:pointer; font-weight:600; color:var(--primary-2);">Harvest &amp; notes (optional)</summary>
-          <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
-            <div>
-              <label for="parcelStatusHarvestTonnes" style="display:block; margin-bottom:2px;">Harvest (tonnes)</label>
-              <input id="parcelStatusHarvestTonnes" type="number" step="0.001" min="0" placeholder="e.g. 450" class="search-panel__input">
-            </div>
-            <div>
-              <label for="parcelStatusLastHarvest" style="display:block; margin-bottom:2px;">Last harvest date</label>
-              <input id="parcelStatusLastHarvest" type="date" class="search-panel__input">
-            </div>
-            <div>
-              <label for="parcelStatusNotes" style="display:block; margin-bottom:2px;">Notes</label>
-              <textarea id="parcelStatusNotes" rows="2" placeholder="Variety, agronomy notes…" class="search-panel__input"></textarea>
-            </div>
-          </div>
-        </details>
-
-        <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
-        <div style="display:flex; gap:8px; margin-top:12px;">
-          <button type="button" id="parcelStatusApplyBtn" class="btn-primary" style="flex:1;">Apply</button>
-          <button type="button" id="parcelStatusDeleteBtn" class="btn-secondary" style="flex:1; border-color:var(--danger); color:var(--danger);"><i class="fas fa-trash-alt"></i> Delete</button>
-        </div>
+      <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
+      
+      <div id="parcelStatusActionsRow" style="display:flex; gap:8px; margin-top:12px;" hidden>
+        <button type="button" id="parcelStatusModifyBtn" class="btn-primary" style="flex:1;">Modify</button>
+        <button type="button" id="parcelStatusDeleteBtn" class="btn-secondary" style="flex:1; border-color:var(--danger); color:var(--danger);"><i class="fas fa-trash-alt"></i> Delete</button>
       </div>
     </div>
 
@@ -2471,6 +2430,56 @@ if (document.readyState!=='loading') rvWirePhoto();
 else document.addEventListener('DOMContentLoaded',rvWirePhoto);
 })();
 </script>
+
+  <!-- ── EDIT DETAILS MODAL ── -->
+  <div id="editDetailsModal" class="vsl-modal-overlay" hidden>
+    <div class="vsl-modal-card">
+      <header class="vsl-modal-header">
+        <h3 id="editDetailsTitle" class="vsl-modal-title">Edit Details</h3>
+        <button type="button" id="editDetailsCloseBtn" class="vsl-modal-close" aria-label="Close">&times;</button>
+      </header>
+      <form id="editDetailsForm" novalidate style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.8rem;">
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsNameInput" id="editDetailsNameLabel">Name / Label</label>
+          <input id="editDetailsNameInput" type="text" class="search-panel__input" placeholder="Enter name or label">
+        </div>
+        
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsStatusSelect">Cultivation Status</label>
+          <select id="editDetailsStatusSelect" class="search-panel__input">
+            <option value="not_in_cane">Not in cane</option>
+            <option value="prepared">Prepared</option>
+            <option value="planted">Planted</option>
+            <option value="standing">Standing</option>
+            <option value="harvested">Harvested</option>
+            <option value="replant_renovation">Replant / renovation</option>
+          </select>
+        </div>
+
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsHarvestTonnes">Harvest (tonnes)</label>
+          <input id="editDetailsHarvestTonnes" type="number" step="0.001" min="0" placeholder="e.g. 450" class="search-panel__input">
+        </div>
+
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsLastHarvest">Last Harvest Date</label>
+          <input id="editDetailsLastHarvest" type="date" class="search-panel__input">
+        </div>
+
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsNotes">Notes</label>
+          <textarea id="editDetailsNotes" rows="3" placeholder="Agronomy notes, details..." class="search-panel__input"></textarea>
+        </div>
+
+        <p id="editDetailsError" class="search-panel__error" role="alert" hidden></p>
+
+        <div class="vsl-modal-actions" style="margin-top: 0.5rem; display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="editDetailsCancelBtn" class="futuristic-icon-btn btn-clear" style="padding: 0.5rem 1rem; border-radius: 8px;">Cancel</button>
+          <button type="submit" class="futuristic-icon-btn btn-add" style="padding: 0.5rem 1rem; border-radius: 8px;">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
 </body>
 </html>

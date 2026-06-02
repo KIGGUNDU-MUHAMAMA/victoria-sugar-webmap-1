@@ -4569,5 +4569,73 @@ select.search-panel__input {
   color: var(--text, #1e293b);
 }
 
+/* ── EDIT DETAILS MODAL STYLING ── */
+.vsl-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 40, 28, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+.vsl-modal-card {
+  background: linear-gradient(170deg, #ffffff 0%, #f6faf3 100%);
+  border: 1px solid rgba(78, 112, 61, 0.28);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(12, 40, 28, 0.18);
+  width: 90%;
+  max-width: 440px;
+  padding: 1.5rem;
+  animation: modalScaleIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.vsl-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(78, 112, 61, 0.15);
+  padding-bottom: 0.75rem;
+}
+.vsl-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--primary-2);
+}
+.vsl-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.vsl-modal-close:hover {
+  color: var(--danger);
+}
+.vsl-modal-field {
+  display: flex;
+  flex-direction: column;
+}
+.vsl-modal-field input:disabled,
+.vsl-modal-field input[readonly] {
+  background: rgba(0, 0, 0, 0.05);
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modalScaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 
 

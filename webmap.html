@@ -419,8 +419,8 @@
           <label class="visually-hidden" for="placeSearchInput">Place or address</label>
           <div class="search-panel__place-row futuristic-place-row">
             <input id="placeSearchInput" type="search" class="search-panel__input search-panel__place-input" placeholder="Town, road, landmark…" autocomplete="off" enterkeyhint="search">
-            <button type="button" id="placeSearchGoBtn" class="futuristic-icon-btn btn-go search-panel__place-go">
-              <i class="fas fa-search" aria-hidden="true"></i>
+            <button type="button" id="placeSearchGoBtn" class="futuristic-icon-btn btn-add search-panel__place-go" title="Go">
+              <i class="fas fa-location-arrow" aria-hidden="true"></i>
             </button>
           </div>
           <p id="placeSearchError" class="search-panel__error" role="alert" hidden></p>
@@ -430,26 +430,26 @@
 
         <!-- ── TAB 3: Coordinate Search ── -->
         <div id="searchTabCoords" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabCoords" hidden>
-          <label class="search-panel__label" for="coordDrawerCrsSelect">Coordinate system</label>
-          <select id="coordDrawerCrsSelect" class="search-panel__input" style="margin-bottom:0.75rem;"></select>
+          <label class="search-panel__label" for="coordDrawerCrsSelect" style="display:none;">Coordinate system</label>
+          <select id="coordDrawerCrsSelect" class="search-panel__input" style="display:none;"></select>
 
           <div id="coordSingleBlock">
             <div class="futuristic-grid-2">
               <div class="futuristic-grid-item">
-                <label class="search-panel__label" for="coordDrawerEasting">Easting/Lon</label>
-                <input id="coordDrawerEasting" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 500000" autocomplete="off">
+                <label class="search-panel__label" for="coordDrawerEasting">Longitudes</label>
+                <input id="coordDrawerEasting" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 32.59" autocomplete="off">
               </div>
               <div class="futuristic-grid-item">
-                <label class="search-panel__label" for="coordDrawerNorthing">Northing/Lat</label>
-                <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 200000" autocomplete="off">
+                <label class="search-panel__label" for="coordDrawerNorthing">Latitudes</label>
+                <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 0.35" autocomplete="off">
               </div>
             </div>
             <div class="search-panel__row futuristic-actions" style="margin-top:0.7rem">
               <button type="button" id="coordClearMarkersBtn" class="futuristic-icon-btn btn-clear" title="Clear Markers">
                 <i class="fas fa-eraser" aria-hidden="true"></i>
               </button>
-              <button type="button" id="coordPlotSingleBtn" class="futuristic-icon-btn btn-go" title="Plot on Map">
-                <i class="fas fa-crosshairs" aria-hidden="true"></i>
+              <button type="button" id="coordPlotSingleBtn" class="futuristic-icon-btn btn-add" title="Plot on Map">
+                <i class="fas fa-location-arrow" aria-hidden="true"></i>
               </button>
             </div>
           </div>

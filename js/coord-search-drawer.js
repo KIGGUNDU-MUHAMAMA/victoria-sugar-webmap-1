@@ -44,7 +44,7 @@ export function initCoordSearchDrawer(opts) {
     opt.textContent = o.label;
     crsSelect?.appendChild(opt);
   });
-  if (crsSelect) crsSelect.value = "EPSG:32636";
+  if (crsSelect) crsSelect.value = "EPSG:4326";
 
   const markersSource = new ol.source.Vector();
   const markersLayer = new ol.layer.Vector({
@@ -149,7 +149,10 @@ export function initCoordSearchDrawer(opts) {
     const east = parseFloat(String(eastInput?.value ?? "").replace(/,/g, ""));
     const north = parseFloat(String(northInput?.value ?? "").replace(/,/g, ""));
     if (!crs || !Number.isFinite(east) || !Number.isFinite(north)) {
-      setStatus(statusEl, "Choose CRS and enter valid easting and northing.", true);
+      const msg = crs === "EPSG:4326"
+        ? "Please enter valid longitude and latitude coordinates."
+        : "Choose CRS and enter valid easting and northing.";
+      setStatus(statusEl, msg, true);
       return;
     }
     try {
@@ -163,12 +166,13 @@ export function initCoordSearchDrawer(opts) {
       const pt = new ol.Feature({
         geometry: new ol.geom.Point(coord3857)
       });
-      pt.set("label", `${east.toFixed(2)}, ${north.toFixed(2)}`);
+      const precision = crs === "EPSG:4326" ? 6 : 2;
+      pt.set("label", `${east.toFixed(precision)}, ${north.toFixed(precision)}`);
       markersSource.addFeature(pt);
       map.getView().animate({ center: coord3857, zoom: 17, duration: 450 });
       setStatus(
         statusEl,
-        `Plotted WGS84 ${lon.toFixed(6)}, ${lat.toFixed(6)} (from ${crs}).`
+        `Plotted WGS84 ${lon.toFixed(6)}, ${lat.toFixed(6)}.`
       );
     } catch (e) {
       setStatus(statusEl, e.message || "Transform failed", true);

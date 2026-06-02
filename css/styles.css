@@ -2896,11 +2896,13 @@ select.search-panel__input {
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
-.futuristic-icon-btn.btn-go {
+.futuristic-icon-btn.btn-go,
+.futuristic-icon-btn.btn-add {
   background: linear-gradient(135deg, var(--vsl-primary) 0%, #2e7d32 100%);
   color: white;
 }
-.futuristic-icon-btn.btn-go:hover {
+.futuristic-icon-btn.btn-go:hover,
+.futuristic-icon-btn.btn-add:hover {
   transform: translateY(-2px) scale(1.08);
   box-shadow: 0 6px 16px rgba(46, 125, 50, 0.3);
 }

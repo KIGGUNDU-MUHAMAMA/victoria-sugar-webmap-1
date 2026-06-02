@@ -798,48 +798,61 @@ function detachSnapInteractions() {
 }
 
 function attachSnapInteractions(opts) {
-  detachSnapInteractions();
-  if (!map || !opts) return;
-  const tol = 12;
+  try {
+    detachSnapInteractions();
+    if (!map || !opts) return;
+    const tol = 12;
 
-  if (opts.snapAllVisible) {
-    const getVisibleVectorSources = (group) => {
-      let sources = [];
-      group.getLayers().forEach((layer) => {
-        if (!layer.getVisible()) return;
-        if (layer instanceof ol.layer.Group) {
-          sources = sources.concat(getVisibleVectorSources(layer));
-        } else if (layer instanceof ol.layer.Vector) {
-          const src = layer.getSource();
-          if (src) sources.push(src);
+    if (opts.snapAllVisible) {
+      const getVisibleVectorSources = (group) => {
+        let sources = [];
+        if (!group || typeof group.getLayers !== "function") return sources;
+        group.getLayers().forEach((layer) => {
+          try {
+            if (!layer || typeof layer.getVisible !== "function" || !layer.getVisible()) return;
+            if (layer instanceof ol.layer.Group) {
+              sources = sources.concat(getVisibleVectorSources(layer));
+            } else if (layer instanceof ol.layer.Vector) {
+              const src = layer.getSource();
+              if (src) sources.push(src);
+            }
+          } catch (e) {
+            console.warn("Error checking layer in snap setup:", e);
+          }
+        });
+        return sources;
+      };
+      
+      const visibleSources = getVisibleVectorSources(map.getLayerGroup());
+      for (const src of visibleSources) {
+        try {
+          activeSnapInteractions.push(new ol.interaction.Snap({ source: src, pixelTolerance: tol }));
+        } catch (e) {
+          console.warn("Error creating snap interaction:", e);
         }
-      });
-      return sources;
-    };
-    
-    const visibleSources = getVisibleVectorSources(map.getLayerGroup());
-    for (const src of visibleSources) {
-      activeSnapInteractions.push(new ol.interaction.Snap({ source: src, pixelTolerance: tol }));
+      }
+    } else {
+      if (opts.snapBlocks && blocksSource) {
+        activeSnapInteractions.push(new ol.interaction.Snap({ source: blocksSource, pixelTolerance: tol }));
+      }
+      if (opts.snapParcels && parcelsSource) {
+        activeSnapInteractions.push(new ol.interaction.Snap({ source: parcelsSource, pixelTolerance: tol }));
+      }
+      if (opts.snapSurvey && surveyPreviewSnapSources) {
+        activeSnapInteractions.push(
+          new ol.interaction.Snap({ source: surveyPreviewSnapSources.polySource, pixelTolerance: tol })
+        );
+        activeSnapInteractions.push(
+          new ol.interaction.Snap({ source: surveyPreviewSnapSources.pointSource, pixelTolerance: tol })
+        );
+      }
     }
-  } else {
-    if (opts.snapBlocks) {
-      activeSnapInteractions.push(new ol.interaction.Snap({ source: blocksSource, pixelTolerance: tol }));
-    }
-    if (opts.snapParcels) {
-      activeSnapInteractions.push(new ol.interaction.Snap({ source: parcelsSource, pixelTolerance: tol }));
-    }
-    if (opts.snapSurvey && surveyPreviewSnapSources) {
-      activeSnapInteractions.push(
-        new ol.interaction.Snap({ source: surveyPreviewSnapSources.polySource, pixelTolerance: tol })
-      );
-      activeSnapInteractions.push(
-        new ol.interaction.Snap({ source: surveyPreviewSnapSources.pointSource, pixelTolerance: tol })
-      );
-    }
-  }
 
-  for (const s of activeSnapInteractions) {
-    map.addInteraction(s);
+    for (const s of activeSnapInteractions) {
+      map.addInteraction(s);
+    }
+  } catch (err) {
+    console.error("Error in attachSnapInteractions:", err);
   }
 }
 
@@ -2037,20 +2050,28 @@ function setupParcelSearchPopover() {
 }
 
 function stopActiveTool() {
-  detachSnapInteractions();
-  if (smartMeasureListener) {
-    ol.Observable.unByKey(smartMeasureListener);
-    smartMeasureListener = null;
+  try {
+    detachSnapInteractions();
+    if (smartMeasureListener) {
+      try {
+        ol.Observable.unByKey(smartMeasureListener);
+      } catch (e) {
+        console.warn("Error unbinding listener:", e);
+      }
+      smartMeasureListener = null;
+    }
+    if (activeInteraction && map) {
+      map.removeInteraction(activeInteraction);
+      activeInteraction = null;
+    }
+    const mapEl = document.getElementById("map");
+    if (mapEl) mapEl.style.cursor = "";
+    
+    const ph = document.getElementById("panelHost");
+    if (ph) ph.classList.remove("side-panel--minimized");
+  } catch (err) {
+    console.error("Error stopping active tool:", err);
   }
-  if (activeInteraction && map) {
-    map.removeInteraction(activeInteraction);
-    activeInteraction = null;
-  }
-  const mapEl = document.getElementById("map");
-  if (mapEl) mapEl.style.cursor = "";
-  
-  const ph = document.getElementById("panelHost");
-  if (ph) ph.classList.remove("side-panel--minimized");
 }
 
 function drawGeometry(layerType) {
@@ -2232,169 +2253,176 @@ function startMeasure(type, isDrawOnly = false) {
 }
 
 function startSmartMeasure() {
-  stopActiveTool();
-  editSource.clear(true);
-  
-  const mapEl = document.getElementById("map");
-  if (mapEl) mapEl.style.cursor = "crosshair";
-
-  const distEl = document.getElementById("measureDistanceReadout");
-  const areaEl = document.getElementById("measureAreaReadout");
-  if (distEl) distEl.textContent = "0.00 m";
-  if (areaEl) areaEl.textContent = "0.00 ac";
-  if (measureFeedback) measureFeedback.textContent = "";
-
-  const draw = new ol.interaction.Draw({
-    source: editSource,
-    type: "LineString"
-  });
-
-  draw.on("drawstart", (evt) => {
-    const sketch = evt.feature;
+  try {
+    stopActiveTool();
+    editSource.clear(true);
     
-    // Clear display readouts at the start of a new draw
+    const mapEl = document.getElementById("map");
+    if (mapEl) mapEl.style.cursor = "crosshair";
+
+    const distEl = document.getElementById("measureDistanceReadout");
+    const areaEl = document.getElementById("measureAreaReadout");
     if (distEl) distEl.textContent = "0.00 m";
     if (areaEl) areaEl.textContent = "0.00 ac";
     if (measureFeedback) measureFeedback.textContent = "";
 
-    smartMeasureListener = sketch.getGeometry().on("change", (geomEvt) => {
-      try {
-        const geom = geomEvt.target;
-        const coords = geom.getCoordinates();
-        
-        // Calculate based on clicked points only (exclude the moving mouse pointer at the end)
-        if (coords && coords.length > 1) {
-          const clickedCoords = coords.slice(0, -1);
+    const draw = new ol.interaction.Draw({
+      source: editSource,
+      type: "LineString"
+    });
+
+    draw.on("drawstart", (evt) => {
+      const sketch = evt.feature;
+      
+      // Clear display readouts at the start of a new draw
+      if (distEl) distEl.textContent = "0.00 m";
+      if (areaEl) areaEl.textContent = "0.00 ac";
+      if (measureFeedback) measureFeedback.textContent = "";
+
+      smartMeasureListener = sketch.getGeometry().on("change", (geomEvt) => {
+        try {
+          const geom = geomEvt.target;
+          const coords = geom.getCoordinates();
           
-          // Update distance
-          if (clickedCoords.length >= 2) {
-            const tempLine = new ol.geom.LineString(clickedCoords);
-            const totalM = ol.sphere.getLength(tempLine, { projection: MAP_DRAW_PROJ });
-            if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-          } else {
-            if (distEl) distEl.textContent = "0.00 m";
-          }
-          
-          // Update area
-          if (clickedCoords.length >= 3) {
-            const closedCoords = [...clickedCoords, clickedCoords[0]];
-            const tempPoly = new ol.geom.Polygon([closedCoords]);
-            let areaAcres = 0;
-            try {
-              const ring = tempPoly.getLinearRing(0);
-              if (ring) {
-                const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
-                areaAcres = computeUtmCartesianAreaAcres(lonLats);
-              }
-            } catch (err) {}
-            if (!areaAcres || areaAcres <= 0) {
-              const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
-              areaAcres = (areaM2 / 10000) * 2.47105;
+          // Calculate based on clicked points only (exclude the moving mouse pointer at the end)
+          if (coords && coords.length > 1) {
+            const clickedCoords = coords.slice(0, -1);
+            
+            // Update distance
+            if (clickedCoords.length >= 2) {
+              const tempLine = new ol.geom.LineString(clickedCoords);
+              const totalM = ol.sphere.getLength(tempLine, { projection: MAP_DRAW_PROJ });
+              if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+            } else {
+              if (distEl) distEl.textContent = "0.00 m";
             }
-            if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
-          } else {
-            if (areaEl) areaEl.textContent = "0.00 ac";
+            
+            // Update area
+            if (clickedCoords.length >= 3) {
+              const closedCoords = [...clickedCoords, clickedCoords[0]];
+              const tempPoly = new ol.geom.Polygon([closedCoords]);
+              let areaAcres = 0;
+              try {
+                const ring = tempPoly.getLinearRing(0);
+                if (ring) {
+                  const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+                  areaAcres = computeUtmCartesianAreaAcres(lonLats);
+                }
+              } catch (err) {}
+              if (!areaAcres || areaAcres <= 0) {
+                const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
+                areaAcres = (areaM2 / 10000) * 2.47105;
+              }
+              if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+            } else {
+              if (areaEl) areaEl.textContent = "0.00 ac";
+            }
           }
+        } catch (err) {
+          console.error("Error in smart measure change listener:", err);
+        }
+      });
+    });
+
+    draw.on("drawend", (evt) => {
+      if (smartMeasureListener) {
+        try {
+          ol.Observable.unByKey(smartMeasureListener);
+        } catch (e) {
+          console.warn("Error unbinding listener:", e);
+        }
+        smartMeasureListener = null;
+      }
+
+      map.removeInteraction(draw);
+      activeInteraction = null;
+      detachSnapInteractions();
+      
+      try {
+        const geom = evt.feature.getGeometry();
+        editSource.removeFeature(evt.feature);
+        
+        const coords = geom.getCoordinates();
+        if (!coords || coords.length < 2) return;
+
+        let isClosed = false;
+        if (coords.length > 2) {
+          const first = coords[0];
+          const last = coords[coords.length - 1];
+          const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
+          if (dist < 0.1) {
+            isClosed = true;
+          }
+        }
+
+        if (isClosed) {
+          // Explicitly close the polygon coordinate ring
+          const closedCoords = [...coords];
+          closedCoords[closedCoords.length - 1] = closedCoords[0];
+          
+          const polyGeom = new ol.geom.Polygon([closedCoords]);
+          const feat = new ol.Feature({ geometry: polyGeom });
+          feat.set("_measureKind", "area");
+          
+          let areaAcres = 0;
+          try {
+            const ring = polyGeom.getLinearRing(0);
+            if (ring) {
+              const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+              areaAcres = computeUtmCartesianAreaAcres(lonLats);
+            }
+          } catch (err) {}
+          if (!areaAcres || areaAcres <= 0) {
+            const areaM2 = ol.sphere.getArea(polyGeom, { projection: MAP_DRAW_PROJ });
+            areaAcres = (areaM2 / 10000) * 2.47105;
+          }
+          
+          measureSource.addFeature(feat);
+          const totalM = ol.sphere.getLength(polyGeom, { projection: MAP_DRAW_PROJ });
+          
+          if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+          if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+          
+          const msg = `Smart Measure: Area ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
+          setStatus(statusEl, msg);
+          if (measureFeedback) measureFeedback.textContent = msg;
+        } else {
+          const feat = new ol.Feature({ geometry: geom.clone() });
+          feat.set("_measureKind", "distance");
+          const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
+          
+          measureSource.addFeature(feat);
+          
+          if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+          if (areaEl) areaEl.textContent = "0.00 ac";
+          
+          const msg = `Smart Measure: Distance ${formatGroundLengthM(totalM)}`;
+          setStatus(statusEl, msg);
+          if (measureFeedback) measureFeedback.textContent = msg;
         }
       } catch (err) {
-        console.error("Error in smart measure change listener:", err);
+        console.error("Error finalizing smart measure:", err);
+      }
+
+      if (measurePanel && !measurePanel.hidden) {
+        setTimeout(() => {
+          if (measurePanel && !measurePanel.hidden) {
+            startSmartMeasure();
+          }
+        }, 100);
       }
     });
-  });
 
-  draw.on("drawend", (evt) => {
-    if (smartMeasureListener) {
-      try {
-        ol.Observable.unByKey(smartMeasureListener);
-      } catch (e) {
-        console.warn("Error unbinding listener:", e);
-      }
-      smartMeasureListener = null;
+    activeInteraction = draw;
+    map.addInteraction(draw);
+    attachSnapInteractions({ snapAllVisible: true });
+    setStatus(statusEl, "Smart Measuring active. Click to start.");
+  } catch (err) {
+    console.error("Error starting smart measure:", err);
+    if (measureFeedback) {
+      measureFeedback.textContent = "Error: " + err.message;
     }
-
-    map.removeInteraction(draw);
-    activeInteraction = null;
-    detachSnapInteractions();
-    
-    try {
-      const geom = evt.feature.getGeometry();
-      editSource.removeFeature(evt.feature);
-      
-      const coords = geom.getCoordinates();
-      if (!coords || coords.length < 2) return;
-
-      let isClosed = false;
-      if (coords.length > 2) {
-        const first = coords[0];
-        const last = coords[coords.length - 1];
-        const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
-        if (dist < 0.1) {
-          isClosed = true;
-        }
-      }
-
-      if (isClosed) {
-        // Explicitly close the polygon coordinate ring
-        const closedCoords = [...coords];
-        closedCoords[closedCoords.length - 1] = closedCoords[0];
-        
-        const polyGeom = new ol.geom.Polygon([closedCoords]);
-        const feat = new ol.Feature({ geometry: polyGeom });
-        feat.set("_measureKind", "area");
-        
-        let areaAcres = 0;
-        try {
-          const ring = polyGeom.getLinearRing(0);
-          if (ring) {
-            const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
-            areaAcres = computeUtmCartesianAreaAcres(lonLats);
-          }
-        } catch (err) {}
-        if (!areaAcres || areaAcres <= 0) {
-          const areaM2 = ol.sphere.getArea(polyGeom, { projection: MAP_DRAW_PROJ });
-          areaAcres = (areaM2 / 10000) * 2.47105;
-        }
-        
-        measureSource.addFeature(feat);
-        const totalM = ol.sphere.getLength(polyGeom, { projection: MAP_DRAW_PROJ });
-        
-        if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-        if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
-        
-        const msg = `Smart Measure: Area ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
-        setStatus(statusEl, msg);
-        if (measureFeedback) measureFeedback.textContent = msg;
-      } else {
-        const feat = new ol.Feature({ geometry: geom.clone() });
-        feat.set("_measureKind", "distance");
-        const totalM = ol.sphere.getLength(geom, { projection: MAP_DRAW_PROJ });
-        
-        measureSource.addFeature(feat);
-        
-        if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-        if (areaEl) areaEl.textContent = "0.00 ac";
-        
-        const msg = `Smart Measure: Distance ${formatGroundLengthM(totalM)}`;
-        setStatus(statusEl, msg);
-        if (measureFeedback) measureFeedback.textContent = msg;
-      }
-    } catch (err) {
-      console.error("Error finalizing smart measure:", err);
-    }
-
-    if (measurePanel && !measurePanel.hidden) {
-      setTimeout(() => {
-        if (measurePanel && !measurePanel.hidden) {
-          startSmartMeasure();
-        }
-      }, 100);
-    }
-  });
-
-  activeInteraction = draw;
-  map.addInteraction(draw);
-  attachSnapInteractions({ snapAllVisible: true });
-  setStatus(statusEl, "Smart Measuring active. Click to start.");
+  }
 }
 
 let userLocationLayer = null;

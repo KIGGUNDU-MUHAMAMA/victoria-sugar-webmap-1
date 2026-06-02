@@ -2262,9 +2262,8 @@ function startSmartMeasure() {
 
     const distEl = document.getElementById("measureDistanceReadout");
     const areaEl = document.getElementById("measureAreaReadout");
-    if (distEl) distEl.textContent = "0.00 m";
-    if (areaEl) areaEl.textContent = "0.00 ac";
-    if (measureFeedback) measureFeedback.textContent = "";
+
+    const sketchFeatures = new ol.Collection();
 
     const draw = new ol.interaction.Draw({
       source: editSource,
@@ -2273,6 +2272,15 @@ function startSmartMeasure() {
 
     draw.on("drawstart", (evt) => {
       const sketch = evt.feature;
+      sketchFeatures.clear();
+      sketchFeatures.push(sketch);
+
+      const sketchSnap = new ol.interaction.Snap({
+        features: sketchFeatures,
+        pixelTolerance: 12
+      });
+      map.addInteraction(sketchSnap);
+      activeSnapInteractions.push(sketchSnap);
       
       // Clear display readouts at the start of a new draw
       if (distEl) distEl.textContent = "0.00 m";
@@ -2288,6 +2296,26 @@ function startSmartMeasure() {
           if (coords && coords.length > 1) {
             const clickedCoords = coords.slice(0, -1);
             
+            // Programmatically finish drawing if clicked back on start point
+            if (clickedCoords.length >= 4) {
+              const first = clickedCoords[0];
+              const last = clickedCoords[clickedCoords.length - 1];
+              const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
+              if (dist < 0.1) {
+                // User clicked on start point! Let's finish the drawing programmatically.
+                setTimeout(() => {
+                  try {
+                    if (activeInteraction === draw) {
+                      draw.finishDrawing();
+                    }
+                  } catch (e) {
+                    console.warn("Error auto-closing drawing:", e);
+                  }
+                }, 10);
+                return;
+              }
+            }
+
             // Update distance
             if (clickedCoords.length >= 2) {
               const tempLine = new ol.geom.LineString(clickedCoords);
@@ -2299,7 +2327,9 @@ function startSmartMeasure() {
             
             // Update area
             if (clickedCoords.length >= 3) {
-              const closedCoords = [...clickedCoords, clickedCoords[0]];
+              const isClosedAlready = clickedCoords.length >= 4 &&
+                Math.hypot(clickedCoords[0][0] - clickedCoords[clickedCoords.length - 1][0], clickedCoords[0][1] - clickedCoords[clickedCoords.length - 1][1]) < 0.1;
+              const closedCoords = isClosedAlready ? [...clickedCoords] : [...clickedCoords, clickedCoords[0]];
               const tempPoly = new ol.geom.Polygon([closedCoords]);
               let areaAcres = 0;
               try {
@@ -2337,6 +2367,7 @@ function startSmartMeasure() {
         smartMeasureListener = null;
       }
 
+      sketchFeatures.clear();
       map.removeInteraction(draw);
       activeInteraction = null;
       detachSnapInteractions();

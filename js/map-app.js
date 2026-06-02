@@ -2295,84 +2295,83 @@ function startSmartMeasure() {
       if (areaEl) areaEl.textContent = "0.00 ac";
       if (measureFeedback) measureFeedback.textContent = "";
 
+      let lastClickedCoordsLength = 0;
+
       smartMeasureListener = sketch.getGeometry().on("change", (geomEvt) => {
         try {
           const geom = geomEvt.target;
           const coords = geom.getCoordinates();
           
-          if (coords && coords.length > 0) {
-            // Keep the start point feature in sync with the first coordinate
-            if (sketchFeatures.getLength() === 0) {
-              const startPointFeature = new ol.Feature({
-                geometry: new ol.geom.Point(coords[0])
-              });
-              sketchFeatures.push(startPointFeature);
-            } else {
-              const firstFeat = sketchFeatures.item(0);
-              if (firstFeat && firstFeat.getGeometry()) {
-                firstFeat.getGeometry().setCoordinates(coords[0]);
-              }
-            }
+          if (coords && coords.length > 0 && sketchFeatures.getLength() === 0) {
+            const startPointFeature = new ol.Feature({
+              geometry: new ol.geom.Point(coords[0])
+            });
+            sketchFeatures.push(startPointFeature);
           }
 
           // Calculate based on clicked points only (exclude the moving mouse pointer at the end)
           if (coords && coords.length > 1) {
             const clickedCoords = coords.slice(0, -1);
             
-            // Programmatically finish drawing if clicked back on start point
-            if (clickedCoords.length >= 4) {
-              const first = clickedCoords[0];
-              const last = clickedCoords[clickedCoords.length - 1];
-              const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
-              if (dist < 0.1) {
-                // User clicked on start point! Let's finish the drawing programmatically.
-                setTimeout(() => {
-                  try {
-                    if (activeInteraction === draw) {
-                      draw.finishDrawing();
-                    }
-                  } catch (e) {
-                    console.warn("Error auto-closing drawing:", e);
-                  }
-                }, 10);
-                return;
-              }
-            }
+            if (clickedCoords.length !== lastClickedCoordsLength) {
+              lastClickedCoordsLength = clickedCoords.length;
 
-            // Update distance
-            if (clickedCoords.length >= 2) {
-              const tempLine = new ol.geom.LineString(clickedCoords);
-              const totalM = ol.sphere.getLength(tempLine, { projection: MAP_DRAW_PROJ });
-              if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-            } else {
-              if (distEl) distEl.textContent = "0.00 m";
-            }
-            
-            // Update area
-            if (clickedCoords.length >= 3) {
-              const isClosedAlready = clickedCoords.length >= 4 &&
-                Math.hypot(clickedCoords[0][0] - clickedCoords[clickedCoords.length - 1][0], clickedCoords[0][1] - clickedCoords[clickedCoords.length - 1][1]) < 0.1;
-              const closedCoords = isClosedAlready ? [...clickedCoords] : [...clickedCoords, clickedCoords[0]];
-              const tempPoly = new ol.geom.Polygon([closedCoords]);
-              let areaAcres = 0;
-              try {
-                const ring = tempPoly.getLinearRing(0);
-                if (ring) {
-                  const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
-                  areaAcres = computeUtmCartesianAreaAcres(lonLats);
+              // Programmatically finish drawing if clicked back on start point
+              if (clickedCoords.length >= 4) {
+                const first = clickedCoords[0];
+                const last = clickedCoords[clickedCoords.length - 1];
+                const dist = Math.hypot(first[0] - last[0], first[1] - last[1]);
+                if (dist < 0.1) {
+                  // User clicked on start point! Let's finish the drawing programmatically.
+                  setTimeout(() => {
+                    try {
+                      if (activeInteraction === draw) {
+                        draw.finishDrawing();
+                      }
+                    } catch (e) {
+                      console.warn("Error auto-closing drawing:", e);
+                    }
+                  }, 10);
+                  return;
                 }
-              } catch (err) {}
-              if (!areaAcres || areaAcres <= 0) {
-                const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
-                areaAcres = (areaM2 / 10000) * 2.47105;
               }
-              if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
-            } else {
-              if (areaEl) areaEl.textContent = "0.00 ac";
+
+              // Update distance
+              if (clickedCoords.length >= 2) {
+                const tempLine = new ol.geom.LineString(clickedCoords);
+                const totalM = ol.sphere.getLength(tempLine, { projection: MAP_DRAW_PROJ });
+                if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+              } else {
+                if (distEl) distEl.textContent = "0.00 m";
+              }
+              
+              // Update area
+              if (clickedCoords.length >= 3) {
+                const isClosedAlready = clickedCoords.length >= 4 &&
+                  Math.hypot(clickedCoords[0][0] - clickedCoords[clickedCoords.length - 1][0], clickedCoords[0][1] - clickedCoords[clickedCoords.length - 1][1]) < 0.1;
+                const closedCoords = isClosedAlready ? [...clickedCoords] : [...clickedCoords, clickedCoords[0]];
+                const tempPoly = new ol.geom.Polygon([closedCoords]);
+                let areaAcres = 0;
+                try {
+                  const ring = tempPoly.getLinearRing(0);
+                  if (ring) {
+                    const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+                    areaAcres = computeUtmCartesianAreaAcres(lonLats);
+                  }
+                } catch (err) {}
+                if (!areaAcres || areaAcres <= 0) {
+                  const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
+                  areaAcres = (areaM2 / 10000) * 2.47105;
+                }
+                if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+              } else {
+                if (areaEl) areaEl.textContent = "0.00 ac";
+              }
             }
           } else {
             if (distEl) distEl.textContent = "0.00 m";
             if (areaEl) areaEl.textContent = "0.00 ac";
+            lastClickedCoordsLength = 0;
           }
         } catch (err) {
           console.error("Error in smart measure change listener:", err);
@@ -2537,15 +2536,25 @@ function bindEvents() {
 
   drawLineBtn?.addEventListener("click", () => startMeasure("LineString", true));
   drawPolygonBtn?.addEventListener("click", () => startMeasure("Polygon", true));
-  stopDrawBtn.addEventListener("click", stopActiveTool);
+  stopDrawBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stopActiveTool();
+  });
   
-  clearDrawingsBtn?.addEventListener("click", () => {
+  clearDrawingsBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     measureSource.clear(true);
     setDrawToolsFeedback("Drawings cleared.", false);
     setStatus(statusEl, "Drawings cleared.");
   });
   
-  clearMeasuresBtn?.addEventListener("click", () => {
+  const handleClearMeasures = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     measureSource.clear(true);
     const distEl = document.getElementById("measureDistanceReadout");
     const areaEl = document.getElementById("measureAreaReadout");
@@ -2558,9 +2567,11 @@ function bindEvents() {
     if (measurePanel && !measurePanel.hidden) {
       startSmartMeasure();
     }
-  });
+  };
+  clearMeasuresBtn?.addEventListener("click", handleClearMeasures);
+  clearMeasuresBtn?.addEventListener("touchstart", handleClearMeasures, { passive: false });
 
-  measureTopBtn?.addEventListener("click", () => {
+  measureTopBtn?.addEventListener("click", (e) => {
     if (measurePanel) {
       measurePanel.hidden = !measurePanel.hidden;
       if (!measurePanel.hidden) {
@@ -2575,17 +2586,29 @@ function bindEvents() {
     }
   });
 
-  measurePanelCloseBtn?.addEventListener("click", () => {
+  const handleCloseMeasurePanel = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (measurePanel) measurePanel.hidden = true;
     stopActiveTool();
-  });
+  };
+  measurePanelCloseBtn?.addEventListener("click", handleCloseMeasurePanel);
+  measurePanelCloseBtn?.addEventListener("touchstart", handleCloseMeasurePanel, { passive: false });
 
   const undoMeasureBtn = document.getElementById("undoMeasureBtn");
-  undoMeasureBtn?.addEventListener("click", () => {
+  const handleUndo = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (activeInteraction && typeof activeInteraction.removeLastPoint === "function") {
       activeInteraction.removeLastPoint();
     }
-  });
+  };
+  undoMeasureBtn?.addEventListener("click", handleUndo);
+  undoMeasureBtn?.addEventListener("touchstart", handleUndo, { passive: false });
 
   locateBtn.addEventListener("click", locateMe);
   fullscreenBtn.addEventListener("click", () => {
@@ -2670,6 +2693,21 @@ async function initMap() {
     controls: [
       new ol.control.ScaleLine()
     ]
+  });
+
+  map.on("dblclick", (evt) => {
+    if (activeInteraction && typeof activeInteraction.finishDrawing === "function") {
+      if (evt.originalEvent) {
+        evt.originalEvent.preventDefault();
+        evt.originalEvent.stopPropagation();
+      }
+      try {
+        activeInteraction.finishDrawing();
+      } catch (e) {
+        console.warn("Error auto-closing drawing on dblclick:", e);
+      }
+      return false;
+    }
   });
 
   const luweeroExtent = ol.proj.transformExtent(

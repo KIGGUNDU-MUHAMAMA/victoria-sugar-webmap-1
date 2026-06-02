@@ -2317,6 +2317,9 @@ function startSmartMeasure() {
             } else {
               if (areaEl) areaEl.textContent = "0.00 ac";
             }
+          } else {
+            if (distEl) distEl.textContent = "0.00 m";
+            if (areaEl) areaEl.textContent = "0.00 ac";
           }
         } catch (err) {
           console.error("Error in smart measure change listener:", err);
@@ -2523,10 +2526,11 @@ function bindEvents() {
     stopActiveTool();
   });
 
-  const stopMeasureBtn = document.getElementById("stopMeasureBtn");
-  stopMeasureBtn?.addEventListener("click", () => {
-    if (measurePanel) measurePanel.hidden = true;
-    stopActiveTool();
+  const undoMeasureBtn = document.getElementById("undoMeasureBtn");
+  undoMeasureBtn?.addEventListener("click", () => {
+    if (activeInteraction && typeof activeInteraction.removeLastPoint === "function") {
+      activeInteraction.removeLastPoint();
+    }
   });
 
   locateBtn.addEventListener("click", locateMe);
@@ -2582,8 +2586,8 @@ async function initUser() {
     if (measureLineBtn) measureLineBtn.disabled = true;
     if (measureAreaBtn) measureAreaBtn.disabled = true;
     if (measureTopBtn) measureTopBtn.disabled = true;
-    const stopMeasureBtn = document.getElementById("stopMeasureBtn");
-    if (stopMeasureBtn) stopMeasureBtn.disabled = true;
+    const undoMeasureBtn = document.getElementById("undoMeasureBtn");
+    if (undoMeasureBtn) undoMeasureBtn.disabled = true;
     if (stopDrawBtn) stopDrawBtn.disabled = true;
     if (clearMeasuresBtn) clearMeasuresBtn.disabled = true;
     for (const el of [

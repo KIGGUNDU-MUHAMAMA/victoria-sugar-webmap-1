@@ -218,9 +218,13 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
         <button type="button" class="map-popup__close" aria-label="Close details">&times;</button>
       </header>
       
-      <div class="map-popup__tabs" style="display:flex; border-bottom:1px solid #e2e8f0; margin-bottom:10px;">
-        <button type="button" class="map-popup__tab active" style="flex:1; background:none; border:none; border-bottom:2px solid var(--primary); font-weight:600; padding:6px; cursor:pointer; color:var(--primary);" onclick="this.parentElement.nextElementSibling.hidden=false; this.parentElement.nextElementSibling.nextElementSibling.hidden=true; this.style.borderBottomColor='var(--primary)'; this.style.color='var(--primary)'; this.nextElementSibling.style.borderBottomColor='transparent'; this.nextElementSibling.style.color='var(--muted)';">Info</button>
-        <button type="button" class="map-popup__tab" style="flex:1; background:none; border:none; border-bottom:2px solid transparent; font-weight:600; padding:6px; cursor:pointer; color:var(--muted);" onclick="this.parentElement.nextElementSibling.hidden=true; this.parentElement.nextElementSibling.nextElementSibling.hidden=false; this.style.borderBottomColor='var(--primary)'; this.style.color='var(--primary)'; this.previousElementSibling.style.borderBottomColor='transparent'; this.previousElementSibling.style.color='var(--muted)';">More</button>
+      <div class="search-panel__tabs" role="tablist" style="margin-bottom:10px;">
+        <button type="button" class="search-tab" role="tab" aria-selected="true" onclick="this.parentElement.nextElementSibling.hidden=false; this.parentElement.nextElementSibling.nextElementSibling.hidden=true; this.setAttribute('aria-selected', 'true'); this.nextElementSibling.setAttribute('aria-selected', 'false');">
+          <i class="fas fa-info-circle" aria-hidden="true"></i> Info
+        </button>
+        <button type="button" class="search-tab" role="tab" aria-selected="false" onclick="this.parentElement.nextElementSibling.hidden=true; this.parentElement.nextElementSibling.nextElementSibling.hidden=false; this.setAttribute('aria-selected', 'true'); this.previousElementSibling.setAttribute('aria-selected', 'false');">
+          <i class="fas fa-pen-to-square" aria-hidden="true"></i> Modify
+        </button>
       </div>
 
       <div class="map-popup__tab-content" id="popupTabInfo">
@@ -230,6 +234,12 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
       <div class="map-popup__tab-content" id="popupTabMore" hidden>
         ${readOnlyMsg}
         <div style="font-size:0.85rem; padding-bottom:8px;">
+          ${layerType === "PARCELS" ? `
+          <div style="margin-bottom:8px;">
+            <label style="display:block;margin-bottom:4px;font-weight:600;">Plot label</label>
+            <input type="text" class="popup-modify-label" value="${escapeHtml(props.parcel_label || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. A1" ${disableStr}>
+          </div>
+          ` : ""}
           <div style="margin-bottom:8px;">
             <label style="display:block;margin-bottom:4px;font-weight:600;">Cultivation status</label>
             <select class="smc-select popup-modify-status" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
@@ -255,7 +265,7 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
           </div>
           <div style="display:flex;gap:8px;">
             <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="flex:1;" ${disableStr}>Save changes</button>
-            <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
+            <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;flex:1;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
           </div>
         </div>
       </div>
@@ -1312,6 +1322,7 @@ function setupInfoPopup() {
       const newTonnes = inner.querySelector(".popup-modify-tonnes").value || null;
       const newDate = inner.querySelector(".popup-modify-date").value || null;
       const newNotes = inner.querySelector(".popup-modify-notes").value;
+      const newLabelEl = inner.querySelector(".popup-modify-label");
       
       const updateData = {
         cultivation_status: newStatus,
@@ -1320,6 +1331,10 @@ function setupInfoPopup() {
         cultivation_notes: newNotes,
         updated_at: new Date().toISOString()
       };
+      
+      if (isParcel && newLabelEl) {
+        updateData.parcel_label = newLabelEl.value || null;
+      }
       
       const tableName = isParcel ? "vsl_parcels" : "vsl_blocks";
       const { error } = await supabase.from(tableName).update(updateData).eq("id", featureId);

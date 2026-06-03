@@ -2723,6 +2723,19 @@ function redrawWalkMode() {
   
   walkModeCoords.forEach((coord, idx) => {
     const pt = new ol.Feature(new ol.geom.Point(coord));
+    const pointStyle = new ol.style.Style({
+      image: new ol.style.Circle({
+        radius: 12,
+        fill: new ol.style.Fill({ color: '#f59e0b' }),
+        stroke: new ol.style.Stroke({ color: '#ffffff', width: 2 })
+      }),
+      text: new ol.style.Text({
+        text: String(idx + 1),
+        font: 'bold 12px sans-serif',
+        fill: new ol.style.Fill({ color: '#ffffff' })
+      })
+    });
+    pt.setStyle(pointStyle);
     editSource.addFeature(pt);
   });
   

@@ -4301,7 +4301,7 @@ select.search-panel__input {
   border: 1px solid var(--vsl-border, #e2e8f0);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  padding: 16px;
+  padding: 6px;
   width: 100%;
   font-family: var(--vsl-font-family, "Inter", sans-serif);
 }
@@ -4507,7 +4507,7 @@ select.search-panel__input {
 }
 
 .measure-dashboard {
-  margin-top: 14px;
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -4517,7 +4517,7 @@ select.search-panel__input {
   background: var(--vsl-surface, #ffffff);
   border: 1px solid var(--vsl-border, #e2e8f0);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 6px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;

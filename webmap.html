@@ -2439,9 +2439,11 @@ else document.addEventListener('DOMContentLoaded',rvWirePhoto);
   <!-- ── EDIT DETAILS MODAL ── -->
   <div id="editDetailsModal" class="vsl-modal-overlay" hidden>
     <div class="vsl-modal-card">
-      <header class="vsl-modal-header">
-        <h3 id="editDetailsTitle" class="vsl-modal-title">Edit Details</h3>
-        <button type="button" id="editDetailsCloseBtn" class="vsl-modal-close" aria-label="Close">&times;</button>
+      <header class="search-panel__head">
+        <h3 id="editDetailsTitle" class="search-panel__title" style="margin: 0; padding: 0;">Edit Details</h3>
+        <button type="button" class="search-panel__close" id="editDetailsCloseBtn" aria-label="Close edit details">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
       </header>
       <form id="editDetailsForm" novalidate style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.8rem;">
         <div class="vsl-modal-field">

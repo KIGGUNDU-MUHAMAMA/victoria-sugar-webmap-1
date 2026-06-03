@@ -251,7 +251,7 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
           </div>
           <div style="margin-bottom:12px;">
             <label style="display:block;margin-bottom:4px;font-weight:600;">Notes</label>
-            <textarea rows="2" class="popup-modify-notes" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="Variety, agronomy notes…" ${disableStr}>${escapeHtml(props.agronomy_notes || '')}</textarea>
+            <textarea rows="2" class="popup-modify-notes" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="Variety, cultivation notes…" ${disableStr}>${escapeHtml(props.cultivation_notes || '')}</textarea>
           </div>
           <div style="display:flex;gap:8px;">
             <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="flex:1;" ${disableStr}>Save changes</button>
@@ -1321,7 +1321,7 @@ function setupInfoPopup() {
         cultivation_status: newStatus,
         harvest_tonnes: newTonnes ? parseFloat(newTonnes) : null,
         last_harvest_date: newDate,
-        agronomy_notes: newNotes,
+        cultivation_notes: newNotes,
         updated_at: new Date().toISOString()
       };
       

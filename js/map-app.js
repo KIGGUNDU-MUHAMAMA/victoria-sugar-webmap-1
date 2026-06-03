@@ -2563,13 +2563,12 @@ function startSmartMeasure() {
 }
 
 let userLocationLayer = null;
+let currentBackgroundLocation = null;
+let backgroundWatchId = null;
 
-function locateMe() {
-  if (!navigator.geolocation) {
-    setStatus(statusEl, "Geolocation is not supported in this browser.", true);
-    return;
-  }
-
+function startBackgroundLocationTracking() {
+  if (!navigator.geolocation) return;
+  
   if (!userLocationLayer && map) {
     userLocationLayer = new ol.layer.Vector({
       source: new ol.source.Vector(),
@@ -2587,10 +2586,11 @@ function locateMe() {
     map.addLayer(userLocationLayer);
   }
 
-  setStatus(statusEl, "Locating your device...");
+  if (backgroundWatchId) return;
 
-  navigator.geolocation.getCurrentPosition((pos) => {
+  backgroundWatchId = navigator.geolocation.watchPosition((pos) => {
     const coord = ol.proj.fromLonLat([pos.coords.longitude, pos.coords.latitude]);
+    currentBackgroundLocation = coord;
     
     if (userLocationLayer) {
       userLocationLayer.getSource().clear();
@@ -2598,14 +2598,173 @@ function locateMe() {
         geometry: new ol.geom.Point(coord)
       }));
     }
+  }, (err) => {
+    console.warn("Background location error:", err.message);
+  }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+}
 
-    map.getView().animate({ center: coord, zoom: 16, duration: 350 });
+function locateMe() {
+  if (!navigator.geolocation) {
+    setStatus(statusEl, "Geolocation is not supported in this browser.", true);
+    return;
+  }
+  
+  if (currentBackgroundLocation && map) {
+    map.getView().animate({ center: currentBackgroundLocation, zoom: 16, duration: 350 });
     setStatus(statusEl, "Location found.");
-    setTimeout(() => clearStatus(statusEl), 3000); // Clear after 3s
-  }, (err) => setStatus(statusEl, err.message, true), { enableHighAccuracy: true, timeout: 9000 });
+    setTimeout(() => clearStatus(statusEl), 3000);
+  } else {
+    setStatus(statusEl, "Waiting for location...", true);
+    if (!backgroundWatchId) {
+      startBackgroundLocationTracking();
+    }
+  }
+}
+let isWalkModeActive = false;
+let walkModeCoords = [];
+
+function setupWalkMode() {
+  window.addEventListener("vsl-measure-mode", (e) => {
+    const mode = e.detail; // 'pick' or 'walk'
+    const activeContainer = document.getElementById("measureActiveContainer");
+    const startContainer = document.getElementById("measureStartWalkContainer");
+    const clearBtn = document.getElementById("clearMeasuresBtn");
+    const markBtn = document.getElementById("markWalkBtn");
+    const finishBtn = document.getElementById("finishWalkBtn");
+    
+    if (mode === 'pick') {
+      isWalkModeActive = false;
+      if (startContainer) startContainer.style.display = "none";
+      if (activeContainer) activeContainer.style.display = "block";
+      if (clearBtn) clearBtn.style.display = "flex";
+      if (markBtn) markBtn.style.display = "none";
+      if (finishBtn) finishBtn.style.display = "none";
+      startSmartMeasure();
+    } else {
+      isWalkModeActive = false;
+      stopActiveTool();
+      editSource.clear(true);
+      if (startContainer) startContainer.style.display = "block";
+      if (activeContainer) activeContainer.style.display = "none";
+      if (clearBtn) clearBtn.style.display = "none";
+      if (markBtn) markBtn.style.display = "none";
+      if (finishBtn) finishBtn.style.display = "none";
+    }
+  });
+
+  const startWalkBtn = document.getElementById("startWalkBtn");
+  if (startWalkBtn) {
+    startWalkBtn.addEventListener("click", () => {
+      if (!currentBackgroundLocation) {
+        alert("Waiting for GPS location. Please ensure location services are enabled.");
+        if (!backgroundWatchId) startBackgroundLocationTracking();
+        return;
+      }
+      isWalkModeActive = true;
+      walkModeCoords = [];
+      editSource.clear(true);
+      document.getElementById("measureStartWalkContainer").style.display = "none";
+      document.getElementById("measureActiveContainer").style.display = "block";
+      
+      document.getElementById("markWalkBtn").style.display = "flex";
+      document.getElementById("finishWalkBtn").style.display = "flex";
+      
+      const distEl = document.getElementById("measureDistanceReadout");
+      const areaEl = document.getElementById("measureAreaReadout");
+      if (distEl) distEl.textContent = "0.00 m";
+      if (areaEl) areaEl.textContent = "0.00 ac";
+    });
+  }
+
+  const markWalkBtn = document.getElementById("markWalkBtn");
+  if (markWalkBtn) {
+    markWalkBtn.addEventListener("click", () => {
+      if (!currentBackgroundLocation) {
+        alert("No GPS location available yet. Please wait for signal.");
+        return;
+      }
+      walkModeCoords.push([...currentBackgroundLocation]);
+      redrawWalkMode();
+    });
+  }
+
+  const finishWalkBtn = document.getElementById("finishWalkBtn");
+  if (finishWalkBtn) {
+    finishWalkBtn.addEventListener("click", () => {
+      if (walkModeCoords.length >= 3) {
+        const polyCoords = [...walkModeCoords, walkModeCoords[0]];
+        const poly = new ol.geom.Polygon([polyCoords]);
+        const feat = new ol.Feature({ geometry: poly });
+        feat.set("_measureKind", "area");
+        measureSource.addFeature(feat);
+        setStatus(statusEl, "Walk area measurement finished.");
+      } else if (walkModeCoords.length >= 2) {
+        const line = new ol.geom.LineString(walkModeCoords);
+        const feat = new ol.Feature({ geometry: line });
+        feat.set("_measureKind", "distance");
+        measureSource.addFeature(feat);
+        setStatus(statusEl, "Walk distance measurement finished.");
+      }
+      
+      isWalkModeActive = false;
+      walkModeCoords = [];
+      editSource.clear(true);
+      
+      document.getElementById("measureStartWalkContainer").style.display = "block";
+      document.getElementById("measureActiveContainer").style.display = "none";
+      document.getElementById("markWalkBtn").style.display = "none";
+      document.getElementById("finishWalkBtn").style.display = "none";
+    });
+  }
+}
+
+function redrawWalkMode() {
+  editSource.clear(true);
+  
+  walkModeCoords.forEach((coord, idx) => {
+    const pt = new ol.Feature(new ol.geom.Point(coord));
+    editSource.addFeature(pt);
+  });
+  
+  const distEl = document.getElementById("measureDistanceReadout");
+  const areaEl = document.getElementById("measureAreaReadout");
+  
+  if (walkModeCoords.length >= 2) {
+    const line = new ol.Feature(new ol.geom.LineString(walkModeCoords));
+    editSource.addFeature(line);
+    
+    const totalM = ol.sphere.getLength(line.getGeometry(), { projection: MAP_DRAW_PROJ });
+    if (distEl) distEl.textContent = formatGroundLengthM(totalM);
+  } else {
+    if (distEl) distEl.textContent = "0.00 m";
+  }
+  
+  if (walkModeCoords.length >= 3) {
+    const polyCoords = [...walkModeCoords, walkModeCoords[0]];
+    const poly = new ol.geom.Polygon([polyCoords]);
+    
+    let areaAcres = 0;
+    try {
+      const ring = poly.getLinearRing(0);
+      if (ring) {
+        const lonLats = ring.getCoordinates().map(pt => ol.proj.transform(pt, MAP_DRAW_PROJ, "EPSG:4326"));
+        areaAcres = computeUtmCartesianAreaAcres(lonLats);
+      }
+    } catch {}
+    
+    if (!areaAcres || areaAcres <= 0) {
+      const areaM2 = ol.sphere.getArea(poly, { projection: MAP_DRAW_PROJ });
+      areaAcres = (areaM2 / 10000) * 2.47105;
+    }
+    
+    if (areaEl) areaEl.textContent = areaAcres.toFixed(2) + " ac";
+  } else {
+    if (areaEl) areaEl.textContent = "0.00 ac";
+  }
 }
 
 function bindEvents() {
+  setupWalkMode();
   setupPanels();
   setupSearchTabSwitching();
   setupParcelSearchPopover();
@@ -2646,7 +2805,12 @@ function bindEvents() {
     setStatus(statusEl, "Measurements cleared.");
     // Restart active smart measure to begin fresh sketch if open
     if (measurePanel && !measurePanel.hidden) {
-      startSmartMeasure();
+      if (isWalkModeActive) {
+        walkModeCoords = [];
+        redrawWalkMode();
+      } else {
+        startSmartMeasure();
+      }
     }
   };
   clearMeasuresBtn?.addEventListener("click", handleClearMeasures);
@@ -2660,7 +2824,16 @@ function bindEvents() {
         closeSearchPanel({ clearHighlight: false });
         closeUAM();
         closeParcelStatusPanel();
-        startSmartMeasure();
+        
+        const tabPick = document.getElementById('measureTabPick');
+        const tabWalk = document.getElementById('measureTabWalk');
+        if (tabPick && tabWalk) {
+          tabPick.setAttribute('aria-selected', 'true');
+          tabWalk.setAttribute('aria-selected', 'false');
+          window.dispatchEvent(new CustomEvent('vsl-measure-mode', {detail:'pick'}));
+        } else {
+          startSmartMeasure();
+        }
       } else {
         stopActiveTool();
       }
@@ -2684,7 +2857,12 @@ function bindEvents() {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (activeInteraction && typeof activeInteraction.removeLastPoint === "function") {
+    if (isWalkModeActive) {
+      if (walkModeCoords.length > 0) {
+        walkModeCoords.pop();
+        redrawWalkMode();
+      }
+    } else if (activeInteraction && typeof activeInteraction.removeLastPoint === "function") {
       activeInteraction.removeLastPoint();
     }
   };

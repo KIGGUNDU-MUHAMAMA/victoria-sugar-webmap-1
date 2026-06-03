@@ -580,8 +580,21 @@
       </div>
     -->
 
+      <div class="search-panel__tabs" role="tablist" style="margin:12px 0;">
+        <button type="button" class="search-tab" id="measureTabPick" role="tab" aria-selected="true" data-tab="pick" onclick="this.setAttribute('aria-selected', 'true'); document.getElementById('measureTabWalk').setAttribute('aria-selected', 'false'); window.dispatchEvent(new CustomEvent('vsl-measure-mode', {detail:'pick'}));">
+          <i class="fas fa-mouse-pointer" aria-hidden="true"></i> Pick Mode
+        </button>
+        <button type="button" class="search-tab" id="measureTabWalk" role="tab" aria-selected="false" data-tab="walk" onclick="this.setAttribute('aria-selected', 'true'); document.getElementById('measureTabPick').setAttribute('aria-selected', 'false'); window.dispatchEvent(new CustomEvent('vsl-measure-mode', {detail:'walk'}));">
+          <i class="fas fa-shoe-prints" aria-hidden="true"></i> Walk Mode
+        </button>
+      </div>
+
+      <div id="measureStartWalkContainer" style="display:none; text-align:center; padding: 20px 0;">
+        <button id="startWalkBtn" class="btn-primary" style="padding:10px 20px; font-size:1rem; border-radius:30px;"><i class="fas fa-play"></i> Start walking</button>
+      </div>
+
       <!-- Real-time Readings Dashboard -->
-      <div class="measure-dashboard">
+      <div id="measureActiveContainer" class="measure-dashboard">
         <!-- Distance Card -->
         <div class="measure-card">
           <div class="measure-card-left">
@@ -605,10 +618,11 @@
           </div>
         </div>
 
-
       <!-- Action buttons -->
       <div style="margin-top:7px; display: flex; gap: 8px;">
         <button id="clearMeasuresBtn" class="btn-secondary" style="flex: 1; color:var(--danger); border-color:var(--danger); padding: 8px; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; gap: 6px;"><i class="fas fa-eraser"></i> Clear</button>
+        <button id="markWalkBtn" class="btn-primary" style="display:none; flex: 1; padding: 8px; font-size: 0.78rem; align-items: center; justify-content: center; gap: 6px;"><i class="fas fa-map-pin"></i> Mark</button>
+        <button id="finishWalkBtn" class="btn-secondary" style="display:none; flex: 1; padding: 8px; font-size: 0.78rem; align-items: center; justify-content: center; gap: 6px; border-color:#28a745; color:#28a745;"><i class="fas fa-check"></i> Finish</button>
         <button id="undoMeasureBtn" class="btn-primary" style="flex: 1; padding: 8px; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; gap: 6px;"><i class="fas fa-undo"></i> Undo</button>
       </div>
       <div id="measureFeedback" style="margin-top:8px; font-size:0.75rem; color:var(--primary-2); text-align:center;"></div>

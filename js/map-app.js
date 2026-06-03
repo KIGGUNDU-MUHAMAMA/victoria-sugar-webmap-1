@@ -667,48 +667,13 @@ function buildLayerTree() {
   annotationsGroup.setZIndex(30);
   annotationsGroupRef = annotationsGroup;
 
-  let graticuleLayer = null;
-  if (typeof ol !== "undefined" && ol.layer && typeof ol.layer.Graticule === "function") {
-    graticuleLayer = new ol.layer.Graticule({
-      visible: true,
-      maxLines: 12,
-      targetSize: 300,
-      strokeStyle: new ol.style.Stroke({
-        color: "rgba(34, 78, 34, 0.42)",
-        width: 1,
-        lineDash: [10, 14]
-      }),
-      showLabels: true,
-      lonLabelStyle: new ol.style.Text({
-        font: "600 10px Inter, system-ui, sans-serif",
-        fill: new ol.style.Fill({ color: "#1b3d1b" }),
-        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.88)", width: 2.5 }),
-        textBaseline: "bottom"
-      }),
-      latLabelStyle: new ol.style.Text({
-        font: "600 10px Inter, system-ui, sans-serif",
-        fill: new ol.style.Fill({ color: "#1b3d1b" }),
-        stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.88)", width: 2.5 }),
-        textAlign: "end"
-      }),
-      lonLabelFormatter: (lon) => `${lon.toFixed(1)}°`,
-      latLabelFormatter: (lat) => `${lat.toFixed(1)}°`,
-      zIndex: 0
-    });
-    graticuleLayer.set("displayInLayerSwitcher", false);
-  }
-
-  if (graticuleLayer) graticuleLayer.setZIndex(8);
-  
   // Order on map (bottom to top). Layer switcher shows reverse (top to bottom).
   // 1. baseGroup
-  // 2. graticule
-  // 3. droneGroup
-  // 4. sentinelGroup
-  // 5. overlaysGroup (Survey Layers)
-  // 6. annotationsGroup
+  // 2. droneGroup
+  // 3. sentinelGroup
+  // 4. overlaysGroup (Survey Layers)
+  // 5. annotationsGroup
   const stack = [baseGroup];
-  if (graticuleLayer) stack.push(graticuleLayer);
   stack.push(droneGroup, sentinelGroup, overlaysGroup, annotationsGroup);
   
   return stack;
@@ -2795,9 +2760,7 @@ async function initMap() {
       center: ol.proj.fromLonLat(cfg.DEFAULT_CENTER || [32.59, 0.35]),
       zoom: cfg.DEFAULT_ZOOM || 11
     }),
-    controls: [
-      new ol.control.ScaleLine()
-    ]
+    controls: []
   });
 
   map.on("dblclick", (evt) => {

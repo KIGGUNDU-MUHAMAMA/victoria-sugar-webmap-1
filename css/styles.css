@@ -2429,7 +2429,7 @@ body.print-composer-open {
   }
 
   .layer-switcher {
-    top: 162px;
+    top: 12px;
     right: 12px;
     bottom: auto;
     left: auto;
@@ -2442,13 +2442,9 @@ body.print-composer-open {
     box-shadow: 0 4px 16px rgba(0,0,0,0.15);
   }
 
-  .layer-switcher .layer-tree {
-    max-height: calc(100vh - 220px);
-    overflow-y: auto;
-  }
 
   .fallback-switcher {
-    top: 162px;
+    top: 12px;
     width: calc(100vw - 24px);
   }
 

@@ -3040,6 +3040,7 @@ async function initMap() {
 
   setupInfoPopup();
   bindEvents();
+  startBackgroundLocationTracking();
   initPrintComposer({
     getMap: () => map,
     getBaseGroup: () => baseGroupRef,

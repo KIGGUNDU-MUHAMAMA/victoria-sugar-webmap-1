@@ -1595,14 +1595,14 @@ body.print-composer-open {
 }
 
 .layer-switcher {
-  top: 96px;
+  top: 12px;
   right: 12px;
   z-index: 1190;
 }
 
 .fallback-switcher {
   position: fixed;
-  top: 96px;
+  top: 12px;
   right: 12px;
   z-index: 1192;
   width: 220px;

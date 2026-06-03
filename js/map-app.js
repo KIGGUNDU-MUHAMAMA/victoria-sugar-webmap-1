@@ -2660,6 +2660,11 @@ function setupWalkMode() {
         if (!backgroundWatchId) startBackgroundLocationTracking();
         return;
       }
+      
+      if (map) {
+        map.getView().animate({ center: currentBackgroundLocation, zoom: 16, duration: 350 });
+      }
+      
       isWalkModeActive = true;
       walkModeCoords = [];
       editSource.clear(true);
@@ -2723,18 +2728,24 @@ function redrawWalkMode() {
   
   walkModeCoords.forEach((coord, idx) => {
     const pt = new ol.Feature(new ol.geom.Point(coord));
-    const pointStyle = new ol.style.Style({
-      image: new ol.style.Circle({
-        radius: 12,
-        fill: new ol.style.Fill({ color: '#f59e0b' }),
-        stroke: new ol.style.Stroke({ color: '#ffffff', width: 2 })
+    const pointStyle = [
+      new ol.style.Style({
+        image: new ol.style.Circle({
+          radius: 6,
+          fill: new ol.style.Fill({ color: '#f59e0b' }), 
+          stroke: new ol.style.Stroke({ color: '#fff', width: 2 })
+        })
       }),
-      text: new ol.style.Text({
-        text: String(idx + 1),
-        font: 'bold 12px sans-serif',
-        fill: new ol.style.Fill({ color: '#ffffff' })
+      new ol.style.Style({
+        text: new ol.style.Text({
+          text: String(idx + 1),
+          font: 'bold 12px sans-serif',
+          fill: new ol.style.Fill({ color: '#fff' }),
+          stroke: new ol.style.Stroke({ color: '#000', width: 3 }),
+          offsetY: -18
+        })
       })
-    });
+    ];
     pt.setStyle(pointStyle);
     editSource.addFeature(pt);
   });

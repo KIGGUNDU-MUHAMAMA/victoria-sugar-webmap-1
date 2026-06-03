@@ -367,14 +367,10 @@ const parcelsLayer = new ol.layer.Vector({
 
     let textStyle = null;
     if (hi || resolution <= 12) {
-      const num = feature.get("parcel_no");
-      const label =
-        num != null && num !== ""
-          ? String(num)
-          : String(feature.get("parcel_code") ?? "")
-              .replace(/^P-/i, "")
-              .trim() || "—";
-      const area = surveyFeatureAreaAcresText(feature);
+      const pLabel = feature.get("parcel_label") || feature.get("parcel_no");
+      const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
+      const expArea = feature.get("expected_area_acres");
+      const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
       const text = area ? `${label}\n${area}` : label;
 
       textStyle = new ol.style.Text({

@@ -2440,7 +2440,7 @@ function startSmartMeasure() {
             lastClickedCoordsLength = 0;
           }
         } catch (err) {
-          console.error("Error in smart measure change listener:", err);
+          console.error("Error in Measure change listener:", err);
         }
       });
     });
@@ -2508,7 +2508,7 @@ function startSmartMeasure() {
           if (distEl) distEl.textContent = formatGroundLengthM(totalM);
           if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
           
-          const msg = `Smart Measure: Area ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
+          const msg = `Area: ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
           setStatus(statusEl, msg);
           if (measureFeedback) measureFeedback.textContent = msg;
         } else {
@@ -2522,12 +2522,12 @@ function startSmartMeasure() {
           if (distEl) distEl.textContent = formatGroundLengthM(totalM);
           if (areaEl) areaEl.textContent = "0.00 ac";
           
-          const msg = `Smart Measure: Distance ${formatGroundLengthM(totalM)}`;
+          const msg = `Distance: ${formatGroundLengthM(totalM)}`;
           setStatus(statusEl, msg);
           if (measureFeedback) measureFeedback.textContent = msg;
         }
       } catch (err) {
-        console.error("Error finalizing smart measure:", err);
+        console.error("Error finalizing measure:", err);
       }
 
       if (measurePanel && !measurePanel.hidden) {
@@ -2542,9 +2542,9 @@ function startSmartMeasure() {
     activeInteraction = draw;
     map.addInteraction(draw);
     attachSnapInteractions({ snapAllVisible: true });
-    setStatus(statusEl, "Smart Measuring active. Click to start.");
+    setStatus(statusEl, "Measuring active. Click to start.");
   } catch (err) {
-    console.error("Error starting smart measure:", err);
+    console.error("Error starting measure:", err);
     if (measureFeedback) {
       measureFeedback.textContent = "Error: " + err.message;
     }

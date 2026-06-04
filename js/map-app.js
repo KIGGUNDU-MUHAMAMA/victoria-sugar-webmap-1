@@ -325,9 +325,9 @@ const blocksLayer = new ol.layer.Vector({
 
     let textStyle = null;
     if (hi || resolution <= 25) {
-      const code = String(feature.get("block_code") ?? "").trim() || "—";
+      const name = String(feature.get("block_name") ?? "").trim() || "—";
       textStyle = new ol.style.Text({
-        text: code,
+        text: name,
         font: hi ? "700 13px Inter, sans-serif" : "600 12px Inter, sans-serif",
         fill: new ol.style.Fill({ color: hi ? "#bf360c" : textColor }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),

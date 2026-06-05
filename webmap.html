@@ -71,7 +71,7 @@
       
       <!-- Floating Stats Button -->
       <div style="position: absolute; top: 1rem; left: 1rem; z-index: 50;">
-        <button type="button" id="statsBtn" title="View Statistics" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #0ca678, #2d6a3a); color: white; border-radius: 50px; border: none; box-shadow: 0 4px 12px rgba(12, 166, 120, 0.4); font-weight: 700; padding: 0.7rem 1.4rem; transition: transform 0.2s, box-shadow 0.2s; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; font-size: 0.95rem;">
+        <button type="button" id="statsBtn" title="View Statistics" style="display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, #0ca678, #2d6a3a); color: white; border-radius: 50px; border: none; box-shadow: 0 4px 12px rgba(12, 166, 120, 0.4); font-weight: 700; padding: 0.35rem 0.7rem; transition: transform 0.2s, box-shadow 0.2s; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; font-size: 0.7rem;">
           <i class="fas fa-bars"></i><span style="color: white;">Stats</span>
         </button>
       </div>
@@ -651,77 +651,78 @@
     <label><input type="radio" name="fbBasemap" value="No Basemap"> No Basemap</label>
   </div>
 
-  <!-- ═══ STATISTICS MODAL ═══ -->
-  <div id="statsModal" class="print-composer" hidden aria-hidden="true">
-    <div class="print-composer__backdrop" id="statsModalBackdrop" tabindex="-1"></div>
-    <div class="print-composer__shell" role="dialog" aria-modal="true" aria-labelledby="statsModalTitle" style="width: min(1000px, 95%);">
-      <header class="print-composer__header">
-        <div class="print-composer__header-text">
-          <h2 id="statsModalTitle" class="print-composer__title" style="font-size: 1.4rem; letter-spacing: 0.1em; text-transform: uppercase;">VICTORIA SUGAR LTD STATISTICS</h2>
-          <p class="print-composer__subtitle">Comprehensive dashboard for agronomy reporting and yield analysis.</p>
+  <!-- ═══ STATISTICS PANEL (LEFT SIDEBAR) ═══ -->
+  <div id="statsModal" hidden aria-hidden="true" style="position: absolute; top: 70px; left: 15px; width: 450px; max-height: calc(100vh - 90px); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.6); z-index: 1000; display: flex; flex-direction: column; overflow: hidden; transition: opacity 0.2s, transform 0.2s; font-family: 'Inter', sans-serif;">
+    <header style="padding: 1.2rem 1.5rem; background: linear-gradient(135deg, #f8fdf6, #ffffff); border-bottom: 1px solid #e2ece0; display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h2 id="statsModalTitle" style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1a4a25; letter-spacing: 0.05em; text-transform: uppercase;">Statistics</h2>
+        <p style="margin: 0; font-size: 0.75rem; color: #666; font-weight: 500;">Agronomy & Yield Reporting</p>
+      </div>
+      <button type="button" id="statsModalCloseBtn" aria-label="Close" style="background: none; border: none; font-size: 1.5rem; color: #888; cursor: pointer; padding: 0;">&times;</button>
+    </header>
+    
+    <div style="flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+      
+      <!-- Filters -->
+      <div style="display: flex; flex-direction: column; gap: 0.8rem; background: #fafdf8; padding: 1rem; border-radius: 8px; border: 1px solid #e2ece0;">
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">Estate / Block Filter</label>
+          <select id="statsFilterBlock" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
+            <option value="ALL">All Estates & Blocks</option>
+          </select>
         </div>
-        <button type="button" class="print-composer__close" id="statsModalCloseBtn" aria-label="Close">&times;</button>
-      </header>
-      <div class="print-composer__body" style="flex-direction: column; overflow-y: auto; padding: 1.5rem;">
-        
-        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; background: #fff; padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+        <div style="display: flex; gap: 0.8rem;">
           <div style="flex: 1;">
-            <label class="search-panel__label">Estate / Block Filter</label>
-            <select id="statsFilterBlock" class="search-panel__input">
-              <option value="ALL">All Estates & Blocks</option>
-            </select>
+            <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">From Date</label>
+            <input type="date" id="statsFilterFrom" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
           </div>
           <div style="flex: 1;">
-            <label class="search-panel__label">From Date</label>
-            <input type="date" id="statsFilterFrom" class="search-panel__input">
-          </div>
-          <div style="flex: 1;">
-            <label class="search-panel__label">To Date</label>
-            <input type="date" id="statsFilterTo" class="search-panel__input">
-          </div>
-          <div style="display: flex; align-items: flex-end;">
-            <button type="button" id="statsGenerateBtn" class="btn-primary" style="padding: 0.65rem 1.2rem;">Generate Report</button>
+            <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">To Date</label>
+            <input type="date" id="statsFilterTo" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
           </div>
         </div>
+        <button type="button" id="statsGenerateBtn" style="margin-top: 0.5rem; width: 100%; padding: 0.6rem; background: linear-gradient(135deg, #0ca678, #2d6a3a); color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: 0.2s;">Generate Report</button>
+      </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-          <div style="background: linear-gradient(135deg, #eef5ec, #fff); padding: 1.5rem; border-radius: 12px; border: 1px solid #c8d6c4; text-align: center;">
-            <div style="font-size: 2.2rem; font-weight: 800; color: #2d6a3a;" id="statTotalArea">0.00</div>
-            <div style="font-size: 0.85rem; font-weight: 600; color: #666; text-transform: uppercase; margin-top: 0.5rem;">Total Area (Acres)</div>
-          </div>
-          <div style="background: linear-gradient(135deg, #fff7e6, #fff); padding: 1.5rem; border-radius: 12px; border: 1px solid #ffe8cc; text-align: center;">
-            <div style="font-size: 2.2rem; font-weight: 800; color: #e67700;" id="statHarvestedArea">0.00</div>
-            <div style="font-size: 0.85rem; font-weight: 600; color: #666; text-transform: uppercase; margin-top: 0.5rem;">Harvested Area</div>
-          </div>
-          <div style="background: linear-gradient(135deg, #e6fcf5, #fff); padding: 1.5rem; border-radius: 12px; border: 1px solid #c3fae8; text-align: center;">
-            <div style="font-size: 2.2rem; font-weight: 800; color: #0ca678;" id="statCultivatedArea">0.00</div>
-            <div style="font-size: 0.85rem; font-weight: 600; color: #666; text-transform: uppercase; margin-top: 0.5rem;">Cultivated Area</div>
-          </div>
-          <div style="background: linear-gradient(135deg, #fff5f5, #fff); padding: 1.5rem; border-radius: 12px; border: 1px solid #ffc9c9; text-align: center;">
-            <div style="font-size: 2.2rem; font-weight: 800; color: #e03131;" id="statIdlePlots">0</div>
-            <div style="font-size: 0.85rem; font-weight: 600; color: #666; text-transform: uppercase; margin-top: 0.5rem;">Idle Plots</div>
-          </div>
+      <!-- KPI Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c8d6c4; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+          <div style="font-size: 1.8rem; font-weight: 800; color: #2d6a3a;" id="statTotalArea">0.00</div>
+          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Total Area (Acres)</div>
         </div>
+        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffe8cc; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+          <div style="font-size: 1.8rem; font-weight: 800; color: #e67700;" id="statHarvestedArea">0.00</div>
+          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Harvested Area</div>
+        </div>
+        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c3fae8; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+          <div style="font-size: 1.8rem; font-weight: 800; color: #0ca678;" id="statCultivatedArea">0.00</div>
+          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Cultivated Area</div>
+        </div>
+        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffc9c9; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+          <div style="font-size: 1.8rem; font-weight: 800; color: #e03131;" id="statIdlePlots">0</div>
+          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Idle Plots</div>
+        </div>
+      </div>
 
-        <div style="background: #fff; padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border);">
-          <h3 style="margin-top: 0; color: var(--primary-2);">Recent Activity & Harvest Yields</h3>
-          <p class="search-panel__muted" style="margin-bottom: 1rem;">Aggregated data based on your filters.</p>
-          <table class="map-popup__table" id="statsDataTable">
+      <!-- Data Table -->
+      <div style="background: #fff; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;">
+        <h3 style="margin: 0; padding: 1rem; font-size: 0.9rem; font-weight: 700; background: #fafdf8; border-bottom: 1px solid var(--border);">Recent Harvests</h3>
+        <div style="max-height: 200px; overflow-y: auto;">
+          <table class="map-popup__table" id="statsDataTable" style="border: none; margin: 0;">
             <thead>
               <tr>
-                <th>Block / Parcel</th>
-                <th>Event Type</th>
-                <th>Date</th>
-                <th>Details / Tonnes</th>
+                <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Block/Parcel</th>
+                <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Date</th>
+                <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem; text-align: right;">Yield (t)</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="4" style="text-align: center; color: #888;">Select filters and click Generate Report</td></tr>
+              <tr><td colspan="3" style="text-align: center; color: #888; font-size: 0.8rem; padding: 1rem;">Select filters & generate</td></tr>
             </tbody>
           </table>
         </div>
-
       </div>
+      
     </div>
   </div>
 

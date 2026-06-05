@@ -96,7 +96,7 @@ async function generateStatisticsReport() {
     tbody.innerHTML = "";
     
     if (filteredHarvests.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#888;">No harvest records found for this period.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#888; font-size: 0.8rem; padding: 1rem;">No harvest records found for this period.</td></tr>';
     } else {
       filteredHarvests.forEach(h => {
         const blockCode = h.vsl_parcels?.vsl_blocks?.block_code || "Unknown";
@@ -104,10 +104,9 @@ async function generateStatisticsReport() {
         
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td><strong>${blockCode}</strong> / ${parcelLabel}</td>
-          <td><span style="background:#eef5ec;color:#2d6a3a;padding:2px 6px;border-radius:4px;font-size:0.75rem;font-weight:700;text-transform:uppercase;">Harvest</span></td>
-          <td>${h.harvest_date}</td>
-          <td style="font-weight:700;">${h.gross_weight_tonnes} tonnes</td>
+          <td style="font-size: 0.75rem; padding: 0.4rem 0.6rem;"><strong>${blockCode}</strong> / ${parcelLabel}</td>
+          <td style="font-size: 0.75rem; padding: 0.4rem 0.6rem;">${h.harvest_date}</td>
+          <td style="font-size: 0.75rem; padding: 0.4rem 0.6rem; text-align: right; font-weight:700; color:#2d6a3a;">${h.gross_weight_tonnes}</td>
         `;
         tbody.appendChild(tr);
       });

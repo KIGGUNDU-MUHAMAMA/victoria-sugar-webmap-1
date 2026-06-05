@@ -138,20 +138,20 @@ async function generateStatisticsReport() {
   
   try {
     // 1. Fetch block aggregate stats
-    let statsQuery = supabase.from("vsl_block_stats").select("*, vsl_blocks!inner(estate_name)");
-    
-    if (estateFilter !== "ALL") {
-      statsQuery = statsQuery.eq("vsl_blocks.estate_name", estateFilter);
-    }
-    if (blockFilter !== "ALL") {
-      statsQuery = statsQuery.eq("block_id", blockFilter);
-    }
-    
-    const { data: statsData, error: statsError } = await statsQuery;
+    const { data: statsData, error: statsError } = await supabase.from("vsl_block_stats").select("*");
     if (statsError) throw statsError;
     
+    // Filter statsData in memory using allBlocksData
+    const filteredStatsData = statsData.filter(row => {
+      const b = allBlocksData.find(block => block.id === row.block_id);
+      if (!b) return false;
+      if (estateFilter !== "ALL" && b.estate_name !== estateFilter) return false;
+      if (blockFilter !== "ALL" && row.block_id !== blockFilter) return false;
+      return true;
+    });
+    
     let totalArea = 0, harvestedArea = 0, cultivatedArea = 0, idlePlots = 0;
-    statsData.forEach(r => {
+    filteredStatsData.forEach(r => {
       totalArea += r.total_parcel_area_acres || 0;
       harvestedArea += r.harvested_plots_area_acres || 0;
       cultivatedArea += r.cultivated_plots_area_acres || 0;

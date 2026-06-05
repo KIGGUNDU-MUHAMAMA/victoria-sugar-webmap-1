@@ -46,19 +46,23 @@ const cfg = {
 };
 
 export function createSupabaseClient() {
+  if (window.supabaseClient) {
+    return window.supabaseClient;
+  }
   if (!window.supabase?.createClient) {
     throw new Error("Supabase library failed to load.");
   }
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) {
     throw new Error("Missing Supabase configuration.");
   }
-  return window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+  window.supabaseClient = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
     auth: {
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true
     }
   });
+  return window.supabaseClient;
 }
 
 export function getConfig() {

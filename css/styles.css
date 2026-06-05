@@ -1468,32 +1468,29 @@ body.print-composer-open {
   border-collapse: collapse;
   font-size: 0.82rem;
   line-height: 1.35;
+  border: 1px solid #c8d6c4;
 }
 
 .map-popup__table th,
 .map-popup__table td {
-  padding: 0.45rem 0.35rem;
-  border-bottom: 1px solid #edf3e9;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #c8d6c4;
   text-align: left;
 }
 
-.map-popup__table tr:last-child th,
-.map-popup__table tr:last-child td {
-  border-bottom: none;
-}
-
 .map-popup__table th {
-  color: var(--muted);
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 700;
   width: 42%;
   vertical-align: top;
+  background-color: #eef5ec;
 }
 
 .map-popup__table td {
   color: var(--text);
   font-weight: 500;
-  text-align: right;
   word-break: break-word;
+  background-color: #ffffff;
 }
 
 .map-popup__empty {

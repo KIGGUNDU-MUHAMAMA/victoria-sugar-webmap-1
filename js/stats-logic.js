@@ -113,8 +113,6 @@ if (statsBtn && statsModal) {
       loadRecipients();
     }
   });
-
-  });
 }
 
 async function populateStatsDropdowns() {

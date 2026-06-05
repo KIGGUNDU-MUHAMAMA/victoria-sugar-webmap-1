@@ -72,7 +72,8 @@ if (statsBtn && statsModal) {
   });
 
   statsMailBtn.addEventListener("click", () => {
-    const selected = Array.from(statsMailRecipients.selectedOptions).map(o => o.value);
+    const checkboxes = statsMailRecipients.querySelectorAll('input[type="checkbox"]:checked');
+    const selected = Array.from(checkboxes).map(cb => cb.value);
     if (selected.length === 0) {
       alert("Please select at least one recipient email from the list.");
       return;
@@ -120,11 +121,24 @@ async function loadRecipients() {
   }
   
   statsMailRecipients.innerHTML = "";
+  if (data.length === 0) {
+    statsMailRecipients.innerHTML = '<span style="color:#888; font-style:italic;">No saved emails</span>';
+    return;
+  }
+  
   data.forEach(r => {
-    const opt = document.createElement("option");
-    opt.value = r.email;
-    opt.textContent = r.email;
-    statsMailRecipients.appendChild(opt);
+    const label = document.createElement("label");
+    label.style.cssText = "display:flex; align-items:center; gap:0.5rem; font-size:0.8rem; color:#333; cursor:pointer;";
+    
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = r.email;
+    cb.style.cursor = "pointer";
+    
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(r.email));
+    
+    statsMailRecipients.appendChild(label);
   });
 }
 

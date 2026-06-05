@@ -13,12 +13,14 @@ if (statsBtn && statsModal) {
   statsBtn.addEventListener("click", () => {
     statsModal.hidden = false;
     statsModal.setAttribute("aria-hidden", "false");
+    statsModal.style.display = "flex";
     populateStatsBlocksDropdown();
   });
 
   const closeStats = () => {
     statsModal.hidden = true;
     statsModal.setAttribute("aria-hidden", "true");
+    statsModal.style.display = "none";
   };
 
   statsModalCloseBtn.addEventListener("click", closeStats);

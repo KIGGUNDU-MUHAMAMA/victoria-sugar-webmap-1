@@ -76,6 +76,79 @@
         </button>
       </div>
 
+      <!-- ═══ STATISTICS PANEL (FLOATING SIDEBAR) ═══ -->
+      <div id="statsModal" hidden aria-hidden="true" style="position: absolute; top: 3.5rem; left: 1rem; width: 25vw; min-width: 320px; bottom: 1rem; height: auto; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border-radius: 12px; box-shadow: 4px 10px 30px rgba(0,0,0,0.15); border: 1px solid rgba(0,0,0,0.05); z-index: 1000; display: none; flex-direction: column; overflow: hidden; font-family: 'Inter', sans-serif;">
+        <header style="padding: 1.2rem 1.5rem; background: linear-gradient(135deg, #f8fdf6, #ffffff); border-bottom: 1px solid #e2ece0; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h2 id="statsModalTitle" style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1a4a25; letter-spacing: 0.05em; text-transform: uppercase;">Statistics</h2>
+            <p style="margin: 0; font-size: 0.75rem; color: #666; font-weight: 500;">Agronomy & Yield Reporting</p>
+          </div>
+          <button type="button" id="statsModalCloseBtn" aria-label="Close" style="background: none; border: none; font-size: 1.5rem; color: #888; cursor: pointer; padding: 0;">&times;</button>
+        </header>
+        
+        <div style="flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+          <!-- Filters -->
+          <div style="display: flex; flex-direction: column; gap: 0.8rem; background: #fafdf8; padding: 1rem; border-radius: 8px; border: 1px solid #e2ece0;">
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">Estate / Block Filter</label>
+              <select id="statsFilterBlock" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
+                <option value="ALL">All Estates & Blocks</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 0.8rem;">
+              <div style="flex: 1;">
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">From Date</label>
+                <input type="date" id="statsFilterFrom" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
+              </div>
+              <div style="flex: 1;">
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">To Date</label>
+                <input type="date" id="statsFilterTo" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
+              </div>
+            </div>
+            <button type="button" id="statsGenerateBtn" style="margin-top: 0.5rem; width: 100%; padding: 0.6rem; background: linear-gradient(135deg, #0ca678, #2d6a3a); color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: 0.2s;">Generate Report</button>
+          </div>
+
+          <!-- KPI Grid -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c8d6c4; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+              <div style="font-size: 1.8rem; font-weight: 800; color: #2d6a3a;" id="statTotalArea">0.00</div>
+              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Total Area (Acres)</div>
+            </div>
+            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffe8cc; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+              <div style="font-size: 1.8rem; font-weight: 800; color: #e67700;" id="statHarvestedArea">0.00</div>
+              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Harvested Area</div>
+            </div>
+            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c3fae8; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+              <div style="font-size: 1.8rem; font-weight: 800; color: #0ca678;" id="statCultivatedArea">0.00</div>
+              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Cultivated Area</div>
+            </div>
+            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffc9c9; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+              <div style="font-size: 1.8rem; font-weight: 800; color: #e03131;" id="statIdlePlots">0</div>
+              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Idle Plots</div>
+            </div>
+          </div>
+
+          <!-- Data Table -->
+          <div style="background: #fff; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;">
+            <h3 style="margin: 0; padding: 1rem; font-size: 0.9rem; font-weight: 700; background: #fafdf8; border-bottom: 1px solid var(--border);">Recent Harvests</h3>
+            <div style="max-height: 200px; overflow-y: auto;">
+              <table class="map-popup__table" id="statsDataTable" style="border: none; margin: 0;">
+                <thead>
+                  <tr>
+                    <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Block/Parcel</th>
+                    <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Date</th>
+                    <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem; text-align: right;">Yield (t)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="3" style="text-align: center; color: #888; font-size: 0.8rem; padding: 1rem;">Select filters & generate</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Tools FAB removed by user request (moved to top panel) -->
       <div class="map-fab-cluster map-fab-cluster--right">
         <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
@@ -651,78 +724,6 @@
     <label><input type="radio" name="fbBasemap" value="No Basemap"> No Basemap</label>
   </div>
 
-  <!-- ═══ STATISTICS PANEL (LEFT SIDEBAR) ═══ -->
-  <div id="statsModal" hidden aria-hidden="true" style="position: absolute; top: 58px; left: 0; width: 25vw; min-width: 320px; height: calc(100vh - 58px); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border-radius: 0; box-shadow: 4px 0 24px rgba(0,0,0,0.1); border: none; border-right: 1px solid rgba(0,0,0,0.05); z-index: 1000; display: flex; flex-direction: column; overflow: hidden; transition: opacity 0.2s, transform 0.2s; font-family: 'Inter', sans-serif;">
-    <header style="padding: 1.2rem 1.5rem; background: linear-gradient(135deg, #f8fdf6, #ffffff); border-bottom: 1px solid #e2ece0; display: flex; justify-content: space-between; align-items: center;">
-      <div>
-        <h2 id="statsModalTitle" style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1a4a25; letter-spacing: 0.05em; text-transform: uppercase;">Statistics</h2>
-        <p style="margin: 0; font-size: 0.75rem; color: #666; font-weight: 500;">Agronomy & Yield Reporting</p>
-      </div>
-      <button type="button" id="statsModalCloseBtn" aria-label="Close" style="background: none; border: none; font-size: 1.5rem; color: #888; cursor: pointer; padding: 0;">&times;</button>
-    </header>
-    
-    <div style="flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
-      
-      <!-- Filters -->
-      <div style="display: flex; flex-direction: column; gap: 0.8rem; background: #fafdf8; padding: 1rem; border-radius: 8px; border: 1px solid #e2ece0;">
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">Estate / Block Filter</label>
-          <select id="statsFilterBlock" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
-            <option value="ALL">All Estates & Blocks</option>
-          </select>
-        </div>
-        <div style="display: flex; gap: 0.8rem;">
-          <div style="flex: 1;">
-            <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">From Date</label>
-            <input type="date" id="statsFilterFrom" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
-          </div>
-          <div style="flex: 1;">
-            <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">To Date</label>
-            <input type="date" id="statsFilterTo" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem;">
-          </div>
-        </div>
-        <button type="button" id="statsGenerateBtn" style="margin-top: 0.5rem; width: 100%; padding: 0.6rem; background: linear-gradient(135deg, #0ca678, #2d6a3a); color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: 0.2s;">Generate Report</button>
-      </div>
-
-      <!-- KPI Grid -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c8d6c4; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-          <div style="font-size: 1.8rem; font-weight: 800; color: #2d6a3a;" id="statTotalArea">0.00</div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Total Area (Acres)</div>
-        </div>
-        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffe8cc; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-          <div style="font-size: 1.8rem; font-weight: 800; color: #e67700;" id="statHarvestedArea">0.00</div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Harvested Area</div>
-        </div>
-        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c3fae8; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-          <div style="font-size: 1.8rem; font-weight: 800; color: #0ca678;" id="statCultivatedArea">0.00</div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Cultivated Area</div>
-        </div>
-        <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffc9c9; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-          <div style="font-size: 1.8rem; font-weight: 800; color: #e03131;" id="statIdlePlots">0</div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Idle Plots</div>
-        </div>
-      </div>
-
-      <!-- Data Table -->
-      <div style="background: #fff; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;">
-        <h3 style="margin: 0; padding: 1rem; font-size: 0.9rem; font-weight: 700; background: #fafdf8; border-bottom: 1px solid var(--border);">Recent Harvests</h3>
-        <div style="max-height: 200px; overflow-y: auto;">
-          <table class="map-popup__table" id="statsDataTable" style="border: none; margin: 0;">
-            <thead>
-              <tr>
-                <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Block/Parcel</th>
-                <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Date</th>
-                <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem; text-align: right;">Yield (t)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td colspan="3" style="text-align: center; color: #888; font-size: 0.8rem; padding: 1rem;">Select filters & generate</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
     </div>
   </div>
 

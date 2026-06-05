@@ -343,7 +343,7 @@ alter table public.vsl_import_rows enable row level security;
 
 create policy "profiles self read" on public.vsl_profiles
   for select to authenticated
-  using (id = auth.uid() or public.vsl_is_role('ADMIN'));
+  using (id = auth.uid() or public.vsl_is_role('ADMIN') or public.vsl_is_role('SURVEYOR'));
 
 create policy "profiles self insert" on public.vsl_profiles
   for insert to authenticated
@@ -354,12 +354,12 @@ create policy "profiles self insert" on public.vsl_profiles
 
 create policy "profiles self update" on public.vsl_profiles
   for update to authenticated
-  using (id = auth.uid() or public.vsl_is_role('ADMIN'))
-  with check (id = auth.uid() or public.vsl_is_role('ADMIN'));
+  using (id = auth.uid() or public.vsl_is_role('ADMIN') or public.vsl_is_role('SURVEYOR'))
+  with check (id = auth.uid() or public.vsl_is_role('ADMIN') or public.vsl_is_role('SURVEYOR'));
 
 create policy "profiles admin delete" on public.vsl_profiles
   for delete to authenticated
-  using (public.vsl_is_role('ADMIN'));
+  using (public.vsl_is_role('ADMIN') or public.vsl_is_role('SURVEYOR'));
 
 create policy "blocks read all" on public.vsl_blocks
   for select to authenticated using (true);

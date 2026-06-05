@@ -15,7 +15,6 @@ const statsGenerateBtn = document.getElementById("statsGenerateBtn");
 const statsMailRecipients = document.getElementById("statsMailRecipients");
 const statsNewEmailInput = document.getElementById("statsNewEmailInput");
 const statsAddEmailBtn = document.getElementById("statsAddEmailBtn");
-const statsMailBtn = document.getElementById("statsMailBtn");
 
 let allBlocksData = [];
 
@@ -36,8 +35,52 @@ if (statsBtn && statsModal) {
 
   statsModalCloseBtn.addEventListener("click", closeStats);
   
-  statsGenerateBtn.addEventListener("click", generateStatisticsReport);
+  statsModalCloseBtn.addEventListener("click", closeStats);
   
+  statsGenerateBtn.addEventListener("click", async () => {
+    const checkboxes = statsMailRecipients.querySelectorAll('input[type="checkbox"]:checked');
+    const selected = Array.from(checkboxes).map(cb => cb.value);
+    
+    // First generate the report data and UI
+    const success = await generateStatisticsReport();
+    if (!success) return;
+    
+    // Then generate the PDF
+    statsGenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
+    
+    const exportArea = document.getElementById("statsExportArea");
+    const exportHeader = document.getElementById("statsExportHeader");
+    const exportDate = document.getElementById("statsExportDate");
+    
+    exportDate.textContent = `Generated: ${new Date().toLocaleString()}`;
+    exportHeader.style.display = "block";
+    
+    const opt = {
+      margin:       0.5,
+      filename:     'Victoria_Sugar_Agronomy_Report.pdf',
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+    
+    try {
+      await html2pdf().set(opt).from(exportArea).save();
+    } catch (err) {
+      console.error("PDF Export failed:", err);
+      alert("Failed to export PDF.");
+    } finally {
+      exportHeader.style.display = "none";
+      statsGenerateBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate, Export & Mail PDF';
+    }
+    
+    // Finally trigger the mailto if recipients selected
+    if (selected.length > 0) {
+      const to = selected.join(",");
+      const subject = encodeURIComponent("Victoria Sugar Agronomy Report");
+      const body = encodeURIComponent("Please find the generated Victoria Sugar Agronomy Report attached.\n\n(Note: Automatic PDF attachments will be supported once Resend integration is complete. For now, please manually attach the downloaded PDF.)");
+      window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+    }
+  });
   // Cascade Dropdowns
   statsFilterEstate.addEventListener("change", (e) => {
     const est = e.target.value;
@@ -71,17 +114,6 @@ if (statsBtn && statsModal) {
     }
   });
 
-  statsMailBtn.addEventListener("click", () => {
-    const checkboxes = statsMailRecipients.querySelectorAll('input[type="checkbox"]:checked');
-    const selected = Array.from(checkboxes).map(cb => cb.value);
-    if (selected.length === 0) {
-      alert("Please select at least one recipient email from the list.");
-      return;
-    }
-    const to = selected.join(",");
-    const subject = encodeURIComponent("Victoria Sugar Agronomy Report");
-    const body = encodeURIComponent("Please find the generated Victoria Sugar Agronomy Report details attached.\n\n(Note: Automatic PDF attachments will be supported once Resend integration is complete.)");
-    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
   });
 }
 
@@ -245,9 +277,14 @@ async function generateStatisticsReport() {
       });
     });
     
+    
+    return true;
   } catch (err) {
     alert("Error generating report: " + err.message);
+    return false;
   } finally {
-    statsGenerateBtn.innerHTML = 'Generate Report';
+    if (statsGenerateBtn.innerHTML.includes("Loading")) {
+      statsGenerateBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate, Export & Mail PDF';
+    }
   }
 }

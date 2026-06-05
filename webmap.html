@@ -18,6 +18,7 @@
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5"></script>
   <script src="./config/app-config.js?v=1.6"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body class="webmap-app webmap-app--sidebar">
   <script>
@@ -119,47 +120,53 @@
                 </div>
               </div>
             </div>
-            <button type="button" id="statsGenerateBtn" style="margin-top: 0.5rem; width: 100%; padding: 0.6rem; background: linear-gradient(135deg, #0ca678, #2d6a3a); color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: 0.2s;">Generate Report</button>
           </div>
 
-          <!-- KPI Grid -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c8d6c4; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-              <div style="font-size: 1.8rem; font-weight: 800; color: #2d6a3a;" id="statTotalArea">0.00</div>
-              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Total Area (Acres)</div>
+          <!-- Exportable Area -->
+          <div id="statsExportArea" style="display: flex; flex-direction: column; gap: 1.5rem; background: #fff; padding: 1rem; border-radius: 8px;">
+            <div style="text-align: center; margin-bottom: -0.5rem; display: none;" id="statsExportHeader">
+              <h2 style="margin:0; color:#1a4a25;">Victoria Sugar Agronomy Report</h2>
+              <p style="margin:0; font-size:0.8rem; color:#666;" id="statsExportDate"></p>
             </div>
-            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffe8cc; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-              <div style="font-size: 1.8rem; font-weight: 800; color: #e67700;" id="statHarvestedArea">0.00</div>
-              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Harvested Area</div>
+            <!-- KPI Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c8d6c4; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                <div style="font-size: 1.8rem; font-weight: 800; color: #2d6a3a;" id="statTotalArea">0.00</div>
+                <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Total Area (Acres)</div>
+              </div>
+              <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffe8cc; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                <div style="font-size: 1.8rem; font-weight: 800; color: #e67700;" id="statHarvestedArea">0.00</div>
+                <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Harvested Area</div>
+              </div>
+              <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c3fae8; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                <div style="font-size: 1.8rem; font-weight: 800; color: #0ca678;" id="statCultivatedArea">0.00</div>
+                <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Cultivated Area</div>
+              </div>
+              <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffc9c9; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                <div style="font-size: 1.8rem; font-weight: 800; color: #e03131;" id="statIdlePlots">0</div>
+                <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Idle Plots</div>
+              </div>
             </div>
-            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #c3fae8; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-              <div style="font-size: 1.8rem; font-weight: 800; color: #0ca678;" id="statCultivatedArea">0.00</div>
-              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Cultivated Area</div>
-            </div>
-            <div style="background: #fff; padding: 1.2rem; border-radius: 10px; border: 1px solid #ffc9c9; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-              <div style="font-size: 1.8rem; font-weight: 800; color: #e03131;" id="statIdlePlots">0</div>
-              <div style="font-size: 0.7rem; font-weight: 700; color: #666; text-transform: uppercase; margin-top: 0.3rem;">Idle Plots</div>
-            </div>
-          </div>
 
-          <!-- Data Table -->
-          <div style="background: #fff; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;">
-            <h3 style="margin: 0; padding: 1rem; font-size: 0.9rem; font-weight: 700; background: #fafdf8; border-bottom: 1px solid var(--border);">Recent Harvests</h3>
-            <div style="max-height: 200px; overflow-y: auto;">
-              <table class="map-popup__table" id="statsDataTable" style="border: none; margin: 0;">
-                <thead>
-                  <tr>
-                    <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Block/Parcel</th>
-                    <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Date</th>
-                    <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem; text-align: right;">Yield (t)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td colspan="3" style="text-align: center; color: #888; font-size: 0.8rem; padding: 1rem;">Select filters & generate</td></tr>
-                </tbody>
-              </table>
+            <!-- Data Table -->
+            <div style="background: #fff; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;">
+              <h3 style="margin: 0; padding: 1rem; font-size: 0.9rem; font-weight: 700; background: #fafdf8; border-bottom: 1px solid var(--border);">Recent Harvests</h3>
+              <div style="max-height: 200px; overflow-y: auto;">
+                <table class="map-popup__table" id="statsDataTable" style="border: none; margin: 0;">
+                  <thead>
+                    <tr>
+                      <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Block/Parcel</th>
+                      <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem;">Date</th>
+                      <th style="font-size: 0.7rem; padding: 0.4rem 0.6rem; text-align: right;">Yield (t)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="3" style="text-align: center; color: #888; font-size: 0.8rem; padding: 1rem;">Select filters & generate</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </div> <!-- End Export Area -->
 
           <!-- Report Distribution -->
           <div style="background: #fff; padding: 1rem; border-radius: 8px; border: 1px solid #c8d6c4; display: flex; flex-direction: column; gap: 0.8rem; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
@@ -178,8 +185,8 @@
               <button type="button" id="statsAddEmailBtn" class="btn-secondary" style="padding: 0 0.8rem; border-radius: 6px;" title="Save Email"><i class="fas fa-plus"></i></button>
             </div>
             
-            <button type="button" id="statsMailBtn" style="width: 100%; padding: 0.6rem; background: linear-gradient(135deg, #1864ab, #1971c2); color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;">
-              <i class="fas fa-paper-plane"></i> Mail PDF Report
+            <button type="button" id="statsGenerateBtn" style="width: 100%; padding: 0.8rem; background: linear-gradient(135deg, #1864ab, #1971c2); color: white; border: none; border-radius: 6px; font-weight: 800; font-size: 0.9rem; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <i class="fas fa-file-pdf"></i> Generate, Export & Mail PDF
             </button>
           </div>
         </div>

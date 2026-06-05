@@ -170,6 +170,151 @@ function formatInfoFieldValue(key, val) {
   return escapeHtml(val);
 }
 
+function buildAdvancedModifyHtml(layerType, props, featureId, disableStr) {
+  if (layerType === "BLOCKS") {
+    return `
+      <div style="margin-bottom:8px;">
+        <label style="display:block;margin-bottom:4px;font-weight:600;">Block Name</label>
+        <input type="text" class="popup-modify-bname" value="${escapeHtml(props.block_name || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="display:block;margin-bottom:4px;font-weight:600;">Location / Address</label>
+        <input type="text" class="popup-modify-loc" value="${escapeHtml(props.location_address || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+      </div>
+      <div style="margin-bottom:8px; display:flex; gap:8px;">
+        <div style="flex:1;">
+          <label style="display:block;margin-bottom:4px;font-weight:600;">Soil Type</label>
+          <input type="text" class="popup-modify-soil" value="${escapeHtml(props.soil_type || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+        </div>
+        <div style="flex:1;">
+          <label style="display:block;margin-bottom:4px;font-weight:600;">Soil pH</label>
+          <input type="number" step="0.1" class="popup-modify-ph" value="${props.soil_ph || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+        </div>
+      </div>
+      <div style="margin-bottom:8px; display:flex; gap:8px;">
+        <div style="flex:1;">
+          <label style="display:block;margin-bottom:4px;font-weight:600;">Irrigation</label>
+          <select class="popup-modify-irrigation" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+             <option value="" ${!props.irrigation_type ? 'selected' : ''}>-- Select --</option>
+             <option value="drip" ${props.irrigation_type === 'drip' ? 'selected' : ''}>Drip</option>
+             <option value="furrow" ${props.irrigation_type === 'furrow' ? 'selected' : ''}>Furrow</option>
+             <option value="overhead" ${props.irrigation_type === 'overhead' ? 'selected' : ''}>Overhead</option>
+             <option value="rainfed" ${props.irrigation_type === 'rainfed' ? 'selected' : ''}>Rainfed</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label style="display:block;margin-bottom:4px;font-weight:600;">Ownership</label>
+          <select class="popup-modify-ownership" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+             <option value="" ${!props.ownership ? 'selected' : ''}>-- Select --</option>
+             <option value="bought" ${props.ownership === 'bought' ? 'selected' : ''}>Bought</option>
+             <option value="rented" ${props.ownership === 'rented' ? 'selected' : ''}>Rented</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:8px; display:flex; gap:8px;">
+        <div style="flex:1;">
+          <label style="display:block;margin-bottom:4px;font-weight:600;">Manager</label>
+          <input type="text" class="popup-modify-mname" value="${escapeHtml(props.manager_name || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+        </div>
+        <div style="flex:1;">
+          <label style="display:block;margin-bottom:4px;font-weight:600;">Phone</label>
+          <input type="text" class="popup-modify-mphone" value="${escapeHtml(props.manager_phone || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+        </div>
+      </div>
+      <hr style="margin:12px 0; border:none; border-top:1px solid var(--border);">
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${featureId}" style="flex:1;" ${disableStr}>Save changes</button>
+        <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${featureId}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;flex:1;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
+      </div>
+    `;
+  }
+
+  // PARCELS
+  const ad = props.agronomy_data || {};
+  return `
+    <div style="margin-bottom:8px;">
+      <label style="display:block;margin-bottom:4px;font-weight:600;">Plot label</label>
+      <input type="text" class="popup-modify-label" value="${escapeHtml(props.parcel_label || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. A1" ${disableStr}>
+    </div>
+    <div style="margin-bottom:8px; display:flex; gap:8px;">
+      <div style="flex:1;">
+        <label style="display:block;margin-bottom:4px;font-weight:600;">Planting Date</label>
+        <input type="date" class="popup-modify-pdate" value="${props.planting_date || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+      </div>
+      <div style="flex:1;">
+        <label style="display:block;margin-bottom:4px;font-weight:600;">Ratoon #</label>
+        <input type="number" min="0" class="popup-modify-ratoon" value="${props.ratoon_number || 0}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+      </div>
+    </div>
+    <div style="margin-bottom:8px;">
+      <label style="display:block;margin-bottom:4px;font-weight:600;">Cultivation status</label>
+      <select class="popup-modify-status" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+         <option value="not_in_cane" ${props.cultivation_status === 'not_in_cane' ? 'selected' : ''}>Not in cane</option>
+         <option value="prepared" ${props.cultivation_status === 'prepared' ? 'selected' : ''}>Prepared</option>
+         <option value="planted" ${props.cultivation_status === 'planted' ? 'selected' : ''}>Planted</option>
+         <option value="standing" ${props.cultivation_status === 'standing' ? 'selected' : ''}>Standing</option>
+         <option value="harvested" ${props.cultivation_status === 'harvested' ? 'selected' : ''}>Harvested</option>
+         <option value="replant_renovation" ${props.cultivation_status === 'replant_renovation' ? 'selected' : ''}>Replant / renovation</option>
+      </select>
+    </div>
+    
+    <div style="margin-bottom:8px; display:flex; gap:8px; background:#f4faf1; padding:8px; border-radius:6px; border:1px solid #c8d6c4;">
+      <div style="flex:1;">
+        <label style="display:block;margin-bottom:4px;font-weight:600;font-size:0.8rem;color:#2d6a3a;">Log Harvest</label>
+        <input type="date" class="popup-modify-hdate" value="${props.last_harvest_date || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;" placeholder="Date" ${disableStr}>
+        
+        <div style="display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden;">
+          <input type="number" step="0.01" class="popup-modify-tonnes" value="${props.harvest_tonnes || ''}" style="width:100%;padding:6px;border:none;" placeholder="Yield" ${disableStr}>
+          <select class="popup-modify-unit" style="background:#eef5ec; border:none; border-left:1px solid var(--border); padding:0 4px;" ${disableStr}>
+            <option value="tonnes">Tonnes</option>
+            <option value="kg">Kg</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    
+    <details style="margin-bottom:8px; border:1px solid var(--border); border-radius:4px; padding:4px;">
+      <summary style="font-weight:600; cursor:pointer;">Inputs & Fertilizer</summary>
+      <div style="margin-top:6px; display:flex; gap:8px;">
+        <input type="text" class="popup-modify-ferttype" value="${escapeHtml(ad.fertilizer_type || '')}" placeholder="Type (e.g. NPK)" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+        <div style="display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; flex:1;">
+          <input type="number" class="popup-modify-fertqty" value="${ad.fertilizer_quantity || ''}" placeholder="Qty" style="width:100%;padding:6px;border:none;" ${disableStr}>
+          <select class="popup-modify-fertunit" style="background:#eef5ec; border:none; border-left:1px solid var(--border); padding:0 4px;" ${disableStr}>
+            <option value="kg" ${ad.fertilizer_unit === 'kg' ? 'selected' : ''}>Kg</option>
+            <option value="l" ${ad.fertilizer_unit === 'l' ? 'selected' : ''}>Liters</option>
+          </select>
+        </div>
+      </div>
+    </details>
+
+    <details style="margin-bottom:8px; border:1px solid var(--border); border-radius:4px; padding:4px;">
+      <summary style="font-weight:600; cursor:pointer;">Activities</summary>
+      <div style="margin-top:6px;">
+        <select class="popup-modify-activity" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;" ${disableStr}>
+           <option value="">-- Select Activity --</option>
+           <option value="land_prep" ${ad.current_activity === 'land_prep' ? 'selected' : ''}>Land Prep</option>
+           <option value="weeding" ${ad.current_activity === 'weeding' ? 'selected' : ''}>Weeding</option>
+           <option value="spraying" ${ad.current_activity === 'spraying' ? 'selected' : ''}>Spraying</option>
+           <option value="irrigation" ${ad.current_activity === 'irrigation' ? 'selected' : ''}>Irrigation</option>
+        </select>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" class="popup-modify-assigned" value="${escapeHtml(ad.assigned_to || '')}" placeholder="Assigned To" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+          <input type="number" class="popup-modify-progress" value="${ad.activity_status || ''}" placeholder="%" style="width:60px;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+        </div>
+      </div>
+    </details>
+
+    <div style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:4px;font-weight:600;">General Notes / Issues</label>
+      <textarea rows="2" class="popup-modify-notes" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="Disease, theft, general notes…" ${disableStr}>${escapeHtml(props.cultivation_notes || '')}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${featureId}" style="flex:1;" ${disableStr}>Save changes</button>
+      <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${featureId}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;flex:1;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
+    </div>
+  `;
+}
+
 function buildFeatureInfoPopupHtml(layerType, feature) {
   const props = feature.getProperties();
   const order = layerType === "PARCELS" ? INFO_PARCEL_FIELD_ORDER : INFO_BLOCK_FIELD_ORDER;
@@ -220,39 +365,7 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
       <div class="map-popup__tab-content" id="popupTabMore" hidden>
         ${readOnlyMsg}
         <div style="font-size:0.85rem; padding-bottom:8px;">
-          ${layerType === "PARCELS" ? `
-          <div style="margin-bottom:8px;">
-            <label style="display:block;margin-bottom:4px;font-weight:600;">Plot label</label>
-            <input type="text" class="popup-modify-label" value="${escapeHtml(props.parcel_label || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. A1" ${disableStr}>
-          </div>
-          ` : ""}
-          <div style="margin-bottom:8px;">
-            <label style="display:block;margin-bottom:4px;font-weight:600;">Cultivation status</label>
-            <select class="smc-select popup-modify-status" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-               <option value="not_in_cane" ${props.cultivation_status === 'not_in_cane' ? 'selected' : ''}>Not in cane</option>
-               <option value="prepared" ${props.cultivation_status === 'prepared' ? 'selected' : ''}>Prepared</option>
-               <option value="planted" ${props.cultivation_status === 'planted' ? 'selected' : ''}>Planted</option>
-               <option value="standing" ${props.cultivation_status === 'standing' ? 'selected' : ''}>Standing</option>
-               <option value="harvested" ${props.cultivation_status === 'harvested' ? 'selected' : ''}>Harvested</option>
-               <option value="replant_renovation" ${props.cultivation_status === 'replant_renovation' ? 'selected' : ''}>Replant / renovation</option>
-            </select>
-          </div>
-          <div style="margin-bottom:8px;">
-            <label style="display:block;margin-bottom:4px;font-weight:600;">Harvest (tonnes)</label>
-            <input type="number" step="0.001" min="0" class="popup-modify-tonnes" value="${props.harvest_tonnes || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. 450" ${disableStr}>
-          </div>
-          <div style="margin-bottom:8px;">
-            <label style="display:block;margin-bottom:4px;font-weight:600;">Last harvest date</label>
-            <input type="date" class="popup-modify-date" value="${props.last_harvest_date || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-          </div>
-          <div style="margin-bottom:12px;">
-            <label style="display:block;margin-bottom:4px;font-weight:600;">Notes</label>
-            <textarea rows="2" class="popup-modify-notes" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="Variety, cultivation notes…" ${disableStr}>${escapeHtml(props.cultivation_notes || '')}</textarea>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="flex:1;" ${disableStr}>Save changes</button>
-            <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${feature.getId()}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;flex:1;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
-          </div>
+          ${buildAdvancedModifyHtml(layerType, props, feature.getId(), disableStr)}
         </div>
       </div>
     </div>`;
@@ -1304,22 +1417,67 @@ function setupInfoPopup() {
       const featureId = btn.dataset.id;
       const isParcel = layerType === "PARCELS";
       
-      const newStatus = inner.querySelector(".popup-modify-status").value;
-      const newTonnes = inner.querySelector(".popup-modify-tonnes").value || null;
-      const newDate = inner.querySelector(".popup-modify-date").value || null;
-      const newNotes = inner.querySelector(".popup-modify-notes").value;
-      const newLabelEl = inner.querySelector(".popup-modify-label");
+      let updateData = {};
       
-      const updateData = {
-        cultivation_status: newStatus,
-        harvest_tonnes: newTonnes ? parseFloat(newTonnes) : null,
-        last_harvest_date: newDate,
-        cultivation_notes: newNotes,
-        updated_at: new Date().toISOString()
-      };
-      
-      if (isParcel && newLabelEl) {
-        updateData.parcel_label = newLabelEl.value || null;
+      if (!isParcel) {
+        // BLOCKS
+        updateData = {
+          block_name: inner.querySelector(".popup-modify-bname")?.value || null,
+          location_address: inner.querySelector(".popup-modify-loc")?.value || null,
+          soil_type: inner.querySelector(".popup-modify-soil")?.value || null,
+          soil_ph: parseFloat(inner.querySelector(".popup-modify-ph")?.value) || null,
+          irrigation_type: inner.querySelector(".popup-modify-irrigation")?.value || null,
+          ownership: inner.querySelector(".popup-modify-ownership")?.value || null,
+          manager_name: inner.querySelector(".popup-modify-mname")?.value || null,
+          manager_phone: inner.querySelector(".popup-modify-mphone")?.value || null,
+          updated_at: new Date().toISOString()
+        };
+      } else {
+        // PARCELS
+        const rawTonnes = parseFloat(inner.querySelector(".popup-modify-tonnes")?.value) || null;
+        const harvestUnit = inner.querySelector(".popup-modify-unit")?.value || "tonnes";
+        const tonnesCalc = (rawTonnes && harvestUnit === "kg") ? (rawTonnes / 1000) : rawTonnes;
+        
+        const agronomy_data = {
+          fertilizer_type: inner.querySelector(".popup-modify-ferttype")?.value || null,
+          fertilizer_quantity: parseFloat(inner.querySelector(".popup-modify-fertqty")?.value) || null,
+          fertilizer_unit: inner.querySelector(".popup-modify-fertunit")?.value || "kg",
+          current_activity: inner.querySelector(".popup-modify-activity")?.value || null,
+          assigned_to: inner.querySelector(".popup-modify-assigned")?.value || null,
+          activity_status: parseFloat(inner.querySelector(".popup-modify-progress")?.value) || null,
+        };
+
+        updateData = {
+          parcel_label: inner.querySelector(".popup-modify-label")?.value || null,
+          planting_date: inner.querySelector(".popup-modify-pdate")?.value || null,
+          ratoon_number: parseInt(inner.querySelector(".popup-modify-ratoon")?.value) || 0,
+          cultivation_status: inner.querySelector(".popup-modify-status")?.value || "not_in_cane",
+          last_harvest_date: inner.querySelector(".popup-modify-hdate")?.value || null,
+          harvest_tonnes: tonnesCalc,
+          cultivation_notes: inner.querySelector(".popup-modify-notes")?.value || null,
+          agronomy_data: agronomy_data,
+          cultivation_updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        // Log to history tables (Harvests & Activities) async in background if there's new data
+        if (tonnesCalc > 0 && updateData.last_harvest_date) {
+           supabase.from('vsl_harvests').insert({
+             parcel_id: featureId,
+             harvest_date: updateData.last_harvest_date,
+             gross_weight_tonnes: tonnesCalc,
+             ratoon_at_harvest: updateData.ratoon_number
+           }).then();
+        }
+        if (agronomy_data.current_activity) {
+           supabase.from('vsl_activities').insert({
+             parcel_id: featureId,
+             activity_type: agronomy_data.current_activity,
+             status_percent: agronomy_data.activity_status || 0,
+             assigned_to: agronomy_data.assigned_to,
+             activity_date: new Date().toISOString().split('T')[0]
+           }).then();
+        }
       }
       
       const tableName = isParcel ? "vsl_parcels" : "vsl_blocks";

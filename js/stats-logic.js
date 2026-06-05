@@ -1,11 +1,12 @@
 /* -------------------------------------------------------------------------- */
 /* STATISTICS MODAL LOGIC                                                     */
 /* -------------------------------------------------------------------------- */
+import { createSupabaseClient } from "./supabase-client.js";
+const supabase = createSupabaseClient();
 
 const statsBtn = document.getElementById("statsBtn");
 const statsModal = document.getElementById("statsModal");
 const statsModalCloseBtn = document.getElementById("statsModalCloseBtn");
-const statsModalBackdrop = document.getElementById("statsModalBackdrop");
 
 const statsFilterEstate = document.getElementById("statsFilterEstate");
 const statsFilterBlock = document.getElementById("statsFilterBlock");
@@ -34,7 +35,6 @@ if (statsBtn && statsModal) {
   };
 
   statsModalCloseBtn.addEventListener("click", closeStats);
-  statsModalBackdrop.addEventListener("click", closeStats);
   
   statsGenerateBtn.addEventListener("click", generateStatisticsReport);
   

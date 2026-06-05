@@ -820,12 +820,65 @@ export function initSurveyImport({
     }
   });
 
+  function promptForStartingId() {
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; display:flex; align-items:center; justify-content:center; backdrop-filter: blur(2px);";
+      
+      const modal = document.createElement("div");
+      modal.style.cssText = "background:#fff; padding:20px; border-radius:8px; width:280px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.15); font-family: system-ui, -apple-system, sans-serif;";
+      
+      modal.innerHTML = `
+        <h4 style="margin:0 0 8px 0; font-size:1.1rem; color:#333;">Starting Parcel ID</h4>
+        <p style="margin:0 0 16px 0; font-size:0.85rem; color:#666;">Provide the first ID to auto-number the rest (e.g. A1)</p>
+        <input type="text" id="dxfStartIdPromptInput" placeholder="A1" style="width:100%; padding:8px 12px; margin-bottom:20px; border:1px solid #ddd; border-radius:6px; font-size:1rem; box-sizing:border-box; outline:none; transition:border-color 0.2s;" />
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button id="dxfStartIdPromptCancel" style="padding:8px 16px; border-radius:6px; background:#f1f3f5; color:#495057; border:none; cursor:pointer; font-size:0.9rem; font-weight:500; transition:background 0.2s;">Cancel</button>
+          <button id="dxfStartIdPromptOk" style="padding:8px 16px; border-radius:6px; background:#007bff; color:#fff; border:none; cursor:pointer; font-size:0.9rem; font-weight:500; transition:background 0.2s;">Save</button>
+        </div>
+      `;
+      
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      
+      const input = document.getElementById("dxfStartIdPromptInput");
+      input.focus();
+      
+      input.addEventListener("focus", () => input.style.borderColor = "#007bff");
+      input.addEventListener("blur", () => input.style.borderColor = "#ddd");
+      
+      const cleanup = () => {
+        if (document.body.contains(overlay)) {
+          document.body.removeChild(overlay);
+        }
+      };
+
+      document.getElementById("dxfStartIdPromptCancel").onclick = () => {
+        cleanup();
+        resolve(null);
+      };
+      
+      document.getElementById("dxfStartIdPromptOk").onclick = () => {
+        cleanup();
+        resolve(input.value);
+      };
+      
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          document.getElementById("dxfStartIdPromptOk").click();
+        } else if (e.key === "Escape") {
+          document.getElementById("dxfStartIdPromptCancel").click();
+        }
+      });
+    });
+  }
+
   saveBtn?.addEventListener("click", async () => {
     if (getManagementLocked?.() || !lastPreviewPayload) return;
     
     // Auto-generate labels for digitized/DXF parcels
     if (lastPreviewPayload.layerType === "PARCELS" && parsedRows.length === 0) {
-      const firstId = prompt("Enter the starting Parcel ID for these digitized polygons (e.g., A1):");
+      const firstId = await promptForStartingId();
       if (firstId === null) {
         setStatus(statusEl, "Save cancelled.");
         return; // User cancelled

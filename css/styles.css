@@ -1463,21 +1463,33 @@ body.print-composer-open {
   overflow-y: auto;
 }
 
-.map-popup__row {
-  display: grid;
-  grid-template-columns: minmax(0, 42%) minmax(0, 58%);
-  gap: 0.35rem 0.65rem;
-  align-items: baseline;
+.map-popup__table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 0.82rem;
   line-height: 1.35;
 }
 
-.map-popup__dt {
-  color: var(--muted);
-  font-weight: 600;
+.map-popup__table th,
+.map-popup__table td {
+  padding: 0.45rem 0.35rem;
+  border-bottom: 1px solid #edf3e9;
+  text-align: left;
 }
 
-.map-popup__dd {
+.map-popup__table tr:last-child th,
+.map-popup__table tr:last-child td {
+  border-bottom: none;
+}
+
+.map-popup__table th {
+  color: var(--muted);
+  font-weight: 600;
+  width: 42%;
+  vertical-align: top;
+}
+
+.map-popup__table td {
   color: var(--text);
   font-weight: 500;
   text-align: right;

@@ -119,30 +119,16 @@ const INFO_FIELD_LABELS = {
 
 const INFO_BLOCK_FIELD_ORDER = [
   "estate_name",
-  "block_code",
   "block_name",
-  "expected_area_acres",
-  "geometry_status",
   "cultivation_status",
-  "harvest_tonnes",
-  "last_harvest_date",
-  "cultivation_notes",
   "cultivation_updated_at"
 ];
 
 const INFO_PARCEL_FIELD_ORDER = [
-  "estate_name",
-  "block_code",
-  "parcel_no",
-  "parcel_code",
   "parcel_label",
+  "block_code",
   "expected_area_acres",
-  "geometry_status",
-  "cultivation_status",
-  "harvest_tonnes",
-  "last_harvest_date",
-  "cultivation_notes",
-  "cultivation_updated_at"
+  "cultivation_status"
 ];
 
 let infoHelpPopoverOpen = false;
@@ -199,13 +185,13 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
       if (raw == null || raw === "") return null;
       const label = INFO_FIELD_LABELS[key] || key;
       const display = formatInfoFieldValue(key, raw);
-      return `<div class="map-popup__row"><span class="map-popup__dt">${escapeHtml(label)}</span><span class="map-popup__dd">${display}</span></div>`;
+      return `<tr><th>${escapeHtml(label)}</th><td>${display}</td></tr>`;
     })
     .filter(Boolean)
     .join("");
-  const body =
-    rows ||
-    `<p class="map-popup__empty">No attributes loaded for this feature. Zoom in or reload layers.</p>`;
+  const body = rows
+    ? `<table class="map-popup__table"><tbody>${rows}</tbody></table>`
+    : `<p class="map-popup__empty">No attributes loaded for this feature. Zoom in or reload layers.</p>`;
     
   const canEdit = currentProfile?.role === "ADMIN" || currentProfile?.role === "SURVEYOR";
   const readOnlyMsg = canEdit ? "" : `<div style="font-size:0.75rem; color:#856404; background:#fff3cd; padding:6px; border-radius:4px; margin-bottom:8px;">Sign in as Admin or Surveyor to modify.</div>`;

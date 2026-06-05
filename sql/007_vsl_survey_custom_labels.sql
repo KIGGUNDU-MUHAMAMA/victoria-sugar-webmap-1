@@ -65,8 +65,8 @@ begin
       end if;
 
       if p_layer_type = 'BLOCKS' then
-        -- Numbering is per estate
-        v_block_code_text := public.vsl_next_block_code(v_estate);
+        -- Numbering is per estate, use csv_parcel_id if provided
+        v_block_code_text := coalesce(nullif(trim(v_item->>'csv_parcel_id'), ''), public.vsl_next_block_code(v_estate));
         insert into public.vsl_blocks (
           block_code,
           block_name,

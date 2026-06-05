@@ -822,6 +822,36 @@ export function initSurveyImport({
 
   saveBtn?.addEventListener("click", async () => {
     if (getManagementLocked?.() || !lastPreviewPayload) return;
+    
+    // Auto-generate labels for digitized/DXF parcels
+    if (lastPreviewPayload.layerType === "PARCELS" && parsedRows.length === 0) {
+      const firstId = prompt("Enter the starting Parcel ID for these digitized polygons (e.g., A1):");
+      if (firstId === null) {
+        setStatus(statusEl, "Save cancelled.");
+        return; // User cancelled
+      }
+      if (firstId.trim() !== "") {
+        let prefix = "";
+        let numStr = "";
+        const match = firstId.trim().match(/^(.*?)(\d+)$/);
+        if (match) {
+          prefix = match[1];
+          numStr = match[2];
+        } else {
+          prefix = firstId.trim();
+          numStr = "1";
+        }
+        
+        let currentNum = parseInt(numStr, 10);
+        const numLength = numStr.length;
+        
+        lastPreviewPayload.results.forEach((r, idx) => {
+          const seqNumStr = String(currentNum + idx).padStart(numLength, '0');
+          r.parcelId = prefix + seqNumStr;
+        });
+      }
+    }
+
     try {
       setStatus(statusEl, "Saving to database…");
       const data = await callSurveyEdge(cfg, {

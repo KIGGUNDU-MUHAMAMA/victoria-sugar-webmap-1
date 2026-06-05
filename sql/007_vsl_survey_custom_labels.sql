@@ -1,50 +1,5 @@
--- Auto-number blocks as 1, 2, 3… independently per estate.
--- Parcels as 1, 2, 3… per block (next free slot).
--- Run after 002_vsl_survey_batch.sql (replaces vsl_survey_batch_upsert).
-
--- The old global sequence (vsl_block_code_seq) is no longer used for blocks,
--- since numbering is now partitioned by estate_name.
-
--- Drop global unique constraint on block_code and enable block codes to be unique per estate.
-alter table public.vsl_blocks drop constraint if exists vsl_blocks_block_code_key;
-
-drop index if exists public.idx_vsl_blocks_estate_block_code_unique;
-create unique index idx_vsl_blocks_estate_block_code_unique 
-on public.vsl_blocks (estate_name, block_code) 
-where estate_name is not null;
-
-drop index if exists public.idx_vsl_blocks_no_estate_block_code_unique;
-create unique index idx_vsl_blocks_no_estate_block_code_unique 
-on public.vsl_blocks (block_code) 
-where estate_name is null;
-
-create or replace function public.vsl_next_block_code(p_estate text)
-returns text
-language plpgsql
-volatile
-as $$
-declare
-  v_next bigint;
-begin
-  if p_estate is null then
-    select coalesce(max(block_code::bigint), 0) + 1
-    into v_next
-    from public.vsl_blocks
-    where estate_name is null
-      and block_code ~ '^[0-9]+$' 
-      and char_length(block_code) <= 12;
-  else
-    select coalesce(max(block_code::bigint), 0) + 1
-    into v_next
-    from public.vsl_blocks
-    where estate_name = p_estate
-      and block_code ~ '^[0-9]+$' 
-      and char_length(block_code) <= 12;
-  end if;
-  
-  return v_next::text;
-end;
-$$;
+-- This migration updates vsl_survey_batch_upsert to use the csv_parcel_id as the parcel_label
+-- for newly inserted parcels, keeping v_parcel_no as the auto-incrementing DB sequence.
 
 create or replace function public.vsl_survey_batch_upsert(
   p_layer_type text,
@@ -190,7 +145,3 @@ $$;
 
 revoke all on function public.vsl_survey_batch_upsert(text, text, text, text, text, jsonb) from public;
 grant execute on function public.vsl_survey_batch_upsert(text, text, text, text, text, jsonb) to service_role;
-
-revoke all on function public.vsl_next_block_code(text) from public;
-grant execute on function public.vsl_next_block_code(text) to service_role;
-

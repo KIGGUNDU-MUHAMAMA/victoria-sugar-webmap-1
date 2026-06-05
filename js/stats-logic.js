@@ -6,15 +6,25 @@ const statsBtn = document.getElementById("statsBtn");
 const statsModal = document.getElementById("statsModal");
 const statsModalCloseBtn = document.getElementById("statsModalCloseBtn");
 const statsModalBackdrop = document.getElementById("statsModalBackdrop");
+
+const statsFilterEstate = document.getElementById("statsFilterEstate");
 const statsFilterBlock = document.getElementById("statsFilterBlock");
 const statsGenerateBtn = document.getElementById("statsGenerateBtn");
+
+const statsMailRecipients = document.getElementById("statsMailRecipients");
+const statsNewEmailInput = document.getElementById("statsNewEmailInput");
+const statsAddEmailBtn = document.getElementById("statsAddEmailBtn");
+const statsMailBtn = document.getElementById("statsMailBtn");
+
+let allBlocksData = [];
 
 if (statsBtn && statsModal) {
   statsBtn.addEventListener("click", () => {
     statsModal.hidden = false;
     statsModal.setAttribute("aria-hidden", "false");
     statsModal.style.display = "flex";
-    populateStatsBlocksDropdown();
+    populateStatsDropdowns();
+    loadRecipients();
   });
 
   const closeStats = () => {
@@ -27,14 +37,59 @@ if (statsBtn && statsModal) {
   statsModalBackdrop.addEventListener("click", closeStats);
   
   statsGenerateBtn.addEventListener("click", generateStatisticsReport);
+  
+  // Cascade Dropdowns
+  statsFilterEstate.addEventListener("change", (e) => {
+    const est = e.target.value;
+    statsFilterBlock.innerHTML = '<option value="ALL">All Blocks</option>';
+    if (est === "ALL") {
+      statsFilterBlock.disabled = true;
+    } else {
+      statsFilterBlock.disabled = false;
+      const filteredBlocks = allBlocksData.filter(b => b.estate_name === est);
+      filteredBlocks.forEach(b => {
+        const opt = document.createElement("option");
+        opt.value = b.id;
+        opt.textContent = `${b.block_code} - ${b.block_name}`;
+        statsFilterBlock.appendChild(opt);
+      });
+    }
+  });
+
+  // Mail Functions
+  statsAddEmailBtn.addEventListener("click", async () => {
+    const email = statsNewEmailInput.value.trim();
+    if (email && email.includes("@")) {
+      statsAddEmailBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      const { error } = await supabase.from("vsl_report_recipients").insert([{ email }]);
+      if (error && error.code !== "23505") { // Ignore unique constraint error
+        alert("Error saving email: " + error.message);
+      }
+      statsNewEmailInput.value = "";
+      statsAddEmailBtn.innerHTML = '<i class="fas fa-plus"></i>';
+      loadRecipients();
+    }
+  });
+
+  statsMailBtn.addEventListener("click", () => {
+    const selected = Array.from(statsMailRecipients.selectedOptions).map(o => o.value);
+    if (selected.length === 0) {
+      alert("Please select at least one recipient email from the list.");
+      return;
+    }
+    const to = selected.join(",");
+    const subject = encodeURIComponent("Victoria Sugar Agronomy Report");
+    const body = encodeURIComponent("Please find the generated Victoria Sugar Agronomy Report details attached.\n\n(Note: Automatic PDF attachments will be supported once Resend integration is complete.)");
+    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  });
 }
 
-async function populateStatsBlocksDropdown() {
-  if (statsFilterBlock.options.length > 1) return; // already populated
+async function populateStatsDropdowns() {
+  if (statsFilterEstate.options.length > 1) return; // already populated
   
   const { data, error } = await supabase
     .from("vsl_blocks")
-    .select("id, block_name, block_code")
+    .select("id, block_name, block_code, estate_name")
     .order("block_code");
     
   if (error) {
@@ -42,33 +97,60 @@ async function populateStatsBlocksDropdown() {
     return;
   }
   
-  data.forEach(b => {
+  allBlocksData = data;
+  
+  const estates = [...new Set(data.map(b => b.estate_name).filter(Boolean))].sort();
+  estates.forEach(est => {
     const opt = document.createElement("option");
-    opt.value = b.id;
-    opt.textContent = `${b.block_code} - ${b.block_name}`;
-    statsFilterBlock.appendChild(opt);
+    opt.value = est;
+    opt.textContent = est;
+    statsFilterEstate.appendChild(opt);
+  });
+}
+
+async function loadRecipients() {
+  const { data, error } = await supabase
+    .from("vsl_report_recipients")
+    .select("email")
+    .order("created_at", { ascending: false });
+    
+  if (error) {
+    console.error("Failed to load recipients:", error);
+    return;
+  }
+  
+  statsMailRecipients.innerHTML = "";
+  data.forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r.email;
+    opt.textContent = r.email;
+    statsMailRecipients.appendChild(opt);
   });
 }
 
 async function generateStatisticsReport() {
-  const blockId = statsFilterBlock.value;
+  const estateFilter = statsFilterEstate.value;
+  const blockFilter = statsFilterBlock.value;
   const fromDate = document.getElementById("statsFilterFrom").value;
   const toDate = document.getElementById("statsFilterTo").value;
   
-  document.getElementById("statsGenerateBtn").innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+  statsGenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
   
   try {
     // 1. Fetch block aggregate stats
-    let statsQuery = supabase.from("vsl_block_stats").select("*");
-    if (blockId !== "ALL") {
-      statsQuery = statsQuery.eq("block_id", blockId);
+    let statsQuery = supabase.from("vsl_block_stats").select("*, vsl_blocks!inner(estate_name)");
+    
+    if (estateFilter !== "ALL") {
+      statsQuery = statsQuery.eq("vsl_blocks.estate_name", estateFilter);
+    }
+    if (blockFilter !== "ALL") {
+      statsQuery = statsQuery.eq("block_id", blockFilter);
     }
     
     const { data: statsData, error: statsError } = await statsQuery;
     if (statsError) throw statsError;
     
     let totalArea = 0, harvestedArea = 0, cultivatedArea = 0, idlePlots = 0;
-    
     statsData.forEach(r => {
       totalArea += r.total_parcel_area_acres || 0;
       harvestedArea += r.harvested_plots_area_acres || 0;
@@ -81,42 +163,77 @@ async function generateStatisticsReport() {
     document.getElementById("statCultivatedArea").textContent = cultivatedArea.toFixed(2);
     document.getElementById("statIdlePlots").textContent = idlePlots;
     
-    // 2. Fetch Harvest History
-    let harvestQuery = supabase.from("vsl_harvests").select("harvest_date, gross_weight_tonnes, parcel_id, vsl_parcels(parcel_label, block_id, vsl_blocks(block_code))").order("harvest_date", { ascending: false }).limit(50);
-    
+    // 2. Fetch Harvest History with joins
+    let harvestQuery = supabase
+      .from("vsl_harvests")
+      .select("harvest_date, gross_weight_tonnes, vsl_parcels!inner(parcel_label, block_id, vsl_blocks!inner(block_code, estate_name))")
+      .order("harvest_date", { ascending: false });
+      
     if (fromDate) harvestQuery = harvestQuery.gte("harvest_date", fromDate);
     if (toDate) harvestQuery = harvestQuery.lte("harvest_date", toDate);
     
     const { data: harvestData, error: hError } = await harvestQuery;
     if (hError) throw hError;
     
-    // Filter by block if needed
-    const filteredHarvests = blockId === "ALL" ? harvestData : harvestData.filter(h => h.vsl_parcels?.block_id === blockId);
+    // Filter harvests in memory based on dropdowns (since Postgrest deep filtering can be tricky)
+    const filteredHarvests = harvestData.filter(h => {
+      const p = h.vsl_parcels;
+      if (!p) return false;
+      if (estateFilter !== "ALL" && p.vsl_blocks?.estate_name !== estateFilter) return false;
+      if (blockFilter !== "ALL" && p.block_id !== blockFilter) return false;
+      return true;
+    });
     
-    // 3. Render table
+    // 3. Render table (Grouped by Estate > Block)
     const tbody = document.querySelector("#statsDataTable tbody");
     tbody.innerHTML = "";
     
     if (filteredHarvests.length === 0) {
       tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#888; font-size: 0.8rem; padding: 1rem;">No harvest records found for this period.</td></tr>';
-    } else {
-      filteredHarvests.forEach(h => {
-        const blockCode = h.vsl_parcels?.vsl_blocks?.block_code || "Unknown";
-        const parcelLabel = h.vsl_parcels?.parcel_label || "Unknown";
-        
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td style="font-size: 0.75rem; padding: 0.4rem 0.6rem;"><strong>${blockCode}</strong> / ${parcelLabel}</td>
-          <td style="font-size: 0.75rem; padding: 0.4rem 0.6rem;">${h.harvest_date}</td>
-          <td style="font-size: 0.75rem; padding: 0.4rem 0.6rem; text-align: right; font-weight:700; color:#2d6a3a;">${h.gross_weight_tonnes}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+      return;
     }
+    
+    // Grouping
+    const grouped = {};
+    filteredHarvests.forEach(h => {
+      const estate = h.vsl_parcels?.vsl_blocks?.estate_name || "Unknown Estate";
+      const blockCode = h.vsl_parcels?.vsl_blocks?.block_code || "Unknown Block";
+      
+      if (!grouped[estate]) grouped[estate] = {};
+      if (!grouped[estate][blockCode]) grouped[estate][blockCode] = [];
+      grouped[estate][blockCode].push(h);
+    });
+    
+    // Render Groups
+    Object.keys(grouped).sort().forEach(estate => {
+      // Estate Header
+      const estTr = document.createElement("tr");
+      estTr.innerHTML = `<td colspan="3" style="background:#f1f8f4; font-weight:800; color:#1a4a25; font-size:0.75rem; padding:0.4rem 0.6rem;">🏢 Estate: ${estate}</td>`;
+      tbody.appendChild(estTr);
+      
+      Object.keys(grouped[estate]).sort().forEach(blockCode => {
+        // Block Header
+        const blkTr = document.createElement("tr");
+        blkTr.innerHTML = `<td colspan="3" style="background:#fafdf8; font-weight:700; color:#333; font-size:0.75rem; padding:0.3rem 0.6rem; border-bottom: 1px solid #e2ece0;">📍 Block: ${blockCode}</td>`;
+        tbody.appendChild(blkTr);
+        
+        // Harvest Records
+        grouped[estate][blockCode].forEach(h => {
+          const parcelLabel = h.vsl_parcels?.parcel_label || "Unknown";
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td style="font-size: 0.75rem; padding: 0.3rem 0.6rem; padding-left: 1.5rem; color:#555;">Parcel: ${parcelLabel}</td>
+            <td style="font-size: 0.75rem; padding: 0.3rem 0.6rem; color:#555;">${h.harvest_date}</td>
+            <td style="font-size: 0.75rem; padding: 0.3rem 0.6rem; text-align: right; font-weight:700; color:#2d6a3a;">${h.gross_weight_tonnes}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      });
+    });
     
   } catch (err) {
     alert("Error generating report: " + err.message);
   } finally {
-    document.getElementById("statsGenerateBtn").innerHTML = 'Generate Report';
+    statsGenerateBtn.innerHTML = 'Generate Report';
   }
 }

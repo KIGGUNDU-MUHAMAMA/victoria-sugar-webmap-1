@@ -107,15 +107,15 @@
               <div style="flex: 1;">
                 <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">From Date</label>
                 <div style="position: relative;">
-                  <input type="date" id="statsFilterFrom" style="width: 100%; padding: 0.5rem; padding-right: 2rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; -webkit-appearance: none; appearance: none;">
-                  <i class="fas fa-calendar-alt" style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); color: #0ca678; cursor: pointer;" onclick="document.getElementById('statsFilterFrom').showPicker()"></i>
+                  <input type="text" id="statsFilterFrom" placeholder="Select..." onfocus="this.type='date'; this.showPicker();" onblur="if(!this.value) this.type='text';" style="width: 100%; padding: 0.5rem; padding-right: 2rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; -webkit-appearance: none; appearance: none; color: #333;">
+                  <i class="fas fa-calendar-alt" style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); color: #0ca678; cursor: pointer;" onclick="const el=document.getElementById('statsFilterFrom'); el.type='date'; el.showPicker();"></i>
                 </div>
               </div>
               <div style="flex: 1;">
                 <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #555; margin-bottom: 0.3rem;">To Date</label>
                 <div style="position: relative;">
-                  <input type="date" id="statsFilterTo" style="width: 100%; padding: 0.5rem; padding-right: 2rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; -webkit-appearance: none; appearance: none;">
-                  <i class="fas fa-calendar-alt" style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); color: #0ca678; cursor: pointer;" onclick="document.getElementById('statsFilterTo').showPicker()"></i>
+                  <input type="text" id="statsFilterTo" placeholder="Select..." onfocus="this.type='date'; this.showPicker();" onblur="if(!this.value) this.type='text';" style="width: 100%; padding: 0.5rem; padding-right: 2rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; -webkit-appearance: none; appearance: none; color: #333;">
+                  <i class="fas fa-calendar-alt" style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); color: #0ca678; cursor: pointer;" onclick="const el=document.getElementById('statsFilterTo'); el.type='date'; el.showPicker();"></i>
                 </div>
               </div>
             </div>

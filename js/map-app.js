@@ -293,9 +293,22 @@ function buildAdvancedModifyHtml(layerType, props, featureId, disableStr) {
         <select class="popup-modify-activity" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;" ${disableStr}>
            <option value="">-- Select Activity --</option>
            <option value="land_prep" ${ad.current_activity === 'land_prep' ? 'selected' : ''}>Land Prep</option>
+           <option value="bush_clearing" ${ad.current_activity === 'bush_clearing' ? 'selected' : ''}>Bush Clearing</option>
+           <option value="ghasiya_collection" ${ad.current_activity === 'ghasiya_collection' ? 'selected' : ''}>Ghasiya Collection</option>
+           <option value="repeating" ${ad.current_activity === 'repeating' ? 'selected' : ''}>Repeating</option>
+           <option value="first_ploughing" ${ad.current_activity === 'first_ploughing' ? 'selected' : ''}>First Ploughing</option>
+           <option value="second_ploughing" ${ad.current_activity === 'second_ploughing' ? 'selected' : ''}>Second Ploughing</option>
+           <option value="harroe" ${ad.current_activity === 'harroe' ? 'selected' : ''}>Harroe</option>
+           <option value="ridging" ${ad.current_activity === 'ridging' ? 'selected' : ''}>Ridging</option>
+           <option value="planting" ${ad.current_activity === 'planting' ? 'selected' : ''}>Planting</option>
+           <option value="medicine" ${ad.current_activity === 'medicine' ? 'selected' : ''}>Medicine</option>
            <option value="weeding" ${ad.current_activity === 'weeding' ? 'selected' : ''}>Weeding</option>
            <option value="spraying" ${ad.current_activity === 'spraying' ? 'selected' : ''}>Spraying</option>
            <option value="irrigation" ${ad.current_activity === 'irrigation' ? 'selected' : ''}>Irrigation</option>
+           <option value="cultivating" ${ad.current_activity === 'cultivating' ? 'selected' : ''}>Cultivating</option>
+           <option value="harvesting" ${ad.current_activity === 'harvesting' ? 'selected' : ''}>Harvesting</option>
+           <option value="loading" ${ad.current_activity === 'loading' ? 'selected' : ''}>Loading</option>
+           <option value="trans_line" ${ad.current_activity === 'trans_line' ? 'selected' : ''}>Trans Line</option>
         </select>
         <div style="display:flex; gap:8px; align-items:center;">
           <input type="text" class="popup-modify-assigned" value="${escapeHtml(ad.assigned_to || '')}" placeholder="Assigned To" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>

@@ -13,6 +13,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="css/styles.css?v=2.2.0">
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2196f3">
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
@@ -2060,13 +2064,13 @@ function rvAvgTick(pos) {
     const avgAlt=RV.avgReadings.reduce((s,r)=>s+(r.alt||0),0)/RV.avgReadings.length;
     rvSavePoint(RV._avgName,RV._avgDesc,avgLon,avgLat,avgAcc,avgAlt);
     document.getElementById('rvMarkSaveBtn').disabled=false;
-    document.getElementById('rvMarkSaveBtn').textContent='📌 MARK';
+    document.getElementById('rvMarkSaveBtn').textContent=' MARK';
   }
 }
 function rvSavePoint(name,desc,lon,lat,acc,alt) {
   const pt={id:Date.now(),name,desc,lon,lat,acc:acc||0,alt:alt||0,ts:new Date().toISOString()};
   RV.points.push(pt); rvSavePoints(); rvRefreshPtList(); rvRefreshPtLayer();
-  rvToast('✅ Point "'+name+'" saved!');
+  rvToast('Point "'+name+'" saved!');
   if (RV.map) RV.map.getView().animate({center:ol.proj.fromLonLat([lon,lat]),zoom:18,duration:600});
 }
 
@@ -2630,5 +2634,6 @@ else document.addEventListener('DOMContentLoaded',rvWirePhoto);
   </div>
 
   <script type="module" src="js/stats-logic.js?v=2.2.0"></script>
+  <script type="module" src="./js/sw loader.js"></script>
 </body>
 </html>

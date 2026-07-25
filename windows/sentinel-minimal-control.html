@@ -1,0 +1,26 @@
+    <div id="sentinelMinimalControl" class="vsl-sentinel-settings-popup" hidden>
+      <div class="vsl-ssp-header">
+        <div class="u-flex u-items-center u-gap-6">
+          <i class="fas fa-satellite"></i> Sentinel Date
+        </div>
+        <button type="button" id="smcCloseBtn" class="vsl-ssp-close" aria-label="Close Settings"><i class="fas fa-times" aria-hidden="true"></i></button>
+      </div>
+      <div class="vsl-ssp-body">
+        <div class="vsl-ssp-row">
+          <label for="smcYear">Year</label>
+          <select id="smcYear" class="vsl-ssp-select">
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+          </select>
+        </div>
+        <div class="vsl-ssp-row">
+          <label for="smcMonth" class="u-flex u-justify-between">
+            <span>Month</span> <span id="smcMonthLabel" class="u-text-vsl-primary-strong">Jan</span>
+          </label>
+          <input type="range" id="smcMonth" min="1" max="12" value="1" class="vsl-ssp-slider">
+        </div>
+      </div>
+      <div id="smcSpinner" class="vsl-ssp-spinner" hidden><i class="fas fa-spinner fa-spin"></i> Fetching image...</div>
+    </div>

@@ -1,0 +1,50 @@
+  <div id="editDetailsModal" class="vsl-modal-overlay" hidden>
+    <div class="vsl-modal-card">
+      <header class="search-panel__head">
+        <h3 id="editDetailsTitle" class="search-panel__title u-m-0 u-p-0">Edit Details</h3>
+        <button type="button" class="search-panel__close" id="editDetailsCloseBtn" aria-label="Close edit details">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+      <form id="editDetailsForm" novalidate class="vsl-modal-form">
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsNameInput" id="editDetailsNameLabel">Name / Label</label>
+          <input id="editDetailsNameInput" type="text" class="search-panel__input" placeholder="Enter name or label">
+        </div>
+        
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsStatusSelect">Cultivation Status</label>
+          <select id="editDetailsStatusSelect" class="search-panel__input">
+            <option value="not_in_cane">Not in cane</option>
+            <option value="prepared">Prepared</option>
+            <option value="planted">Planted</option>
+            <option value="standing">Standing</option>
+            <option value="harvested">Harvested</option>
+            <option value="replant_renovation">Replant / renovation</option>
+          </select>
+        </div>
+
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsHarvestTonnes">Harvest (tonnes)</label>
+          <input id="editDetailsHarvestTonnes" type="number" step="0.001" min="0" placeholder="e.g. 450" class="search-panel__input">
+        </div>
+
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsLastHarvest">Last Harvest Date</label>
+          <input id="editDetailsLastHarvest" type="date" class="search-panel__input">
+        </div>
+
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="editDetailsNotes">Notes</label>
+          <textarea id="editDetailsNotes" rows="3" placeholder="Cultivation notes, details..." class="search-panel__input"></textarea>
+        </div>
+
+        <p id="editDetailsError" class="search-panel__error" role="alert" hidden></p>
+
+        <div class="vsl-modal-actions">
+          <button type="button" id="editDetailsCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
+          <button type="submit" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>

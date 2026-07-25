@@ -1,0 +1,256 @@
+/* ---- VSL Rover Root Variables ---- */
+:root {
+  --rv-bg:       #0d1117;
+  --rv-panel:    #161b22;
+  --rv-card:     #1c2333;
+  --rv-border:   #30363d;
+  --rv-amber:    #f59e0b;
+  --rv-amber-dk: #b45309;
+  --rv-blue:     #3b82f6;
+  --rv-green:    #22c55e;
+  --rv-red:      #ef4444;
+  --rv-warn:     #f59e0b;
+  --rv-txt:      #f8fafc;
+  --rv-txt2:     #94a3b8;
+  --rv-radius:   8px;
+}
+
+/* ---- Overlay container ---- */
+#vslRoverOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200000;
+  background: var(--rv-bg);
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--rv-txt);
+  overflow: hidden;
+}
+#vslRoverOverlay.rv-open { display: flex; }
+#rvMap { flex: 1; position: relative; }
+
+/* Desktop right-panel mode */
+@media (min-width: 1200px) {
+  #vslRoverOverlay {
+    left: auto;
+    right: 0;
+    width: 420px;
+    border-left: 2px solid var(--rv-amber);
+    box-shadow: -6px 0 40px rgba(0,0,0,.7);
+  }
+}
+
+/* ---- Top status bar ---- */
+#rvStatusBar {
+  flex-shrink: 0;
+  background: var(--rv-panel);
+  border-bottom: 1px solid var(--rv-border);
+  padding: 6px 10px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.rv-sbar-row1 { display: flex; align-items: center; gap: 8px; }
+.rv-brand { font-size: 13px; font-weight: 700; color: var(--rv-amber); letter-spacing: 1px; white-space: nowrap; }
+.rv-src-sel {
+  flex: 1; background: var(--rv-card); border: 1px solid var(--rv-border);
+  color: var(--rv-txt); font-size: 12px; padding: 3px 6px;
+  border-radius: 5px; max-width: 140px;
+}
+.rv-exit-btn {
+  background: var(--rv-red); color: #fff; border: none; border-radius: 5px;
+  width: 30px; height: 30px; font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.rv-sbar-row2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rv-spacer { flex: 1; }
+.rv-coord-lbl { font-size: 11px; color: var(--rv-txt2); white-space: nowrap; }
+.rv-coord-lbl--gap { margin-left: 6px; }
+.rv-coord-val { font-size: 12px; font-weight: 600; color: var(--rv-txt); white-space: nowrap; font-family: 'Courier New', monospace; }
+.rv-crs-btn {
+  background: var(--rv-card); border: 1px solid var(--rv-amber); color: var(--rv-amber);
+  font-size: 10px; padding: 2px 7px; border-radius: 4px; cursor: pointer; white-space: nowrap;
+}
+.rv-sbar-row3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rv-stat { font-size: 11px; color: var(--rv-txt2); white-space: nowrap; }
+.rv-stat b { color: var(--rv-txt); }
+#rvFixBadge {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  background: var(--rv-card); border: 1px solid var(--rv-border); color: var(--rv-txt2);
+  letter-spacing: 0.5px; transition: all 0.4s;
+}
+#rvFixBadge.fix-good { background: #14532d; border-color: var(--rv-green); color: var(--rv-green); }
+#rvFixBadge.fix-warn { background: #451a03; border-color: var(--rv-amber); color: var(--rv-amber); }
+#rvFixBadge.fix-bad  { background: #450a0a; border-color: var(--rv-red);   color: var(--rv-red);   }
+
+/* ---- Map area ---- */
+#rvMapContainer { flex: 1; position: relative; overflow: hidden; min-height: 0; }
+#rvMap { width: 100%; height: 100%; }
+.rv-compass-btn {
+  position: absolute; right: 10px; top: 10px; z-index: 20;
+  width: 36px; height: 36px; border-radius: 18px; border: 2px solid var(--rv-border);
+  background: var(--rv-panel); color: var(--rv-txt2); font-size: 18px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3); transition: all 0.2s;
+}
+.rv-compass-btn.active { background: var(--rv-blue); color: #fff; border-color: var(--rv-blue); }
+
+/* ---- Stakeout slide-up panel ---- */
+#rvStakeoutPanel { display: none; flex-shrink: 0; background: var(--rv-panel); border-top: 2px solid var(--rv-amber); padding: 8px 10px; }
+#rvStakeoutPanel.rv-so-active { display: block; }
+.rv-so-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.rv-so-label { font-size: 13px; color: var(--rv-txt2); }
+.rv-so-dist { font-size: 22px; font-weight: 800; color: var(--rv-amber); font-family: monospace; }
+.rv-so-bearing { font-size: 13px; color: var(--rv-blue); font-weight: 600; }
+.rv-so-progress { height: 4px; background: var(--rv-border); border-radius: 2px; margin-bottom: 8px; overflow: hidden; }
+.rv-so-progress-fill { height: 100%; width: 0; background: var(--rv-amber); border-radius: 2px; transition: width 0.5s; }
+.rv-so-nav { display: flex; gap: 6px; }
+.rv-so-nav button { flex: 1; padding: 7px; border: 1px solid var(--rv-border); border-radius: 5px; background: var(--rv-card); color: var(--rv-txt); font-size: 12px; font-weight: 600; cursor: pointer; }
+.rv-so-nav button:hover { background: var(--rv-border); }
+.rv-so-nav button.rv-exit-so { background: var(--rv-red); border-color: var(--rv-red); }
+
+/* ---- Corner list panel ---- */
+#rvCornerPanel { display: none; flex-shrink: 0; background: var(--rv-panel); border-top: 1px solid var(--rv-border); max-height: 180px; overflow-y: auto; }
+#rvCornerPanel.rv-cp-active { display: block; }
+.rv-corner-header {
+  padding: 6px 10px; font-size: 11px; color: var(--rv-txt2); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--rv-border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.rv-corner-close-btn { background: none; border: none; color: var(--rv-txt2); cursor: pointer; font-size: 14px; }
+.rv-corner-item { display: flex; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--rv-border); gap: 8px; cursor: pointer; transition: background 0.15s; }
+.rv-corner-item:hover { background: var(--rv-card); }
+.rv-corner-item.rv-active-corner { background: #451a03; border-left: 3px solid var(--rv-amber); }
+.rv-corner-idx { font-size: 11px; color: var(--rv-txt2); min-width: 26px; font-weight: 600; }
+.rv-corner-coords { font-size: 11px; color: var(--rv-txt); font-family: monospace; flex: 1; }
+.rv-corner-go { font-size: 11px; background: var(--rv-amber-dk); color: var(--rv-txt); border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+
+/* ---- Bottom-left collapsible action bar ---- */
+#rvActionBar { position: absolute; left: 8px; top: 0px; z-index: 20; display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; }
+#rvActionBar * { pointer-events: auto; }
+#rvActionBtns {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px 5px;
+  background: var(--rv-panel); border: 1px solid var(--rv-border); border-top: none;
+  border-radius: 0 0 10px 10px; max-height: 65vh; overflow-y: auto; overflow-x: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease, opacity 0.2s ease;
+}
+#rvActionBtns.rv-collapsed { max-height: 0; padding: 0 5px; opacity: 0; overflow: hidden; pointer-events: none; }
+#rvActionToggle {
+  width: 62px; height: 24px; background: var(--rv-panel); border: 1px solid var(--rv-border);
+  border-radius: 0 0 8px 8px; color: var(--rv-amber); font-size: 11px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  flex-shrink: 0; transition: background 0.15s;
+  border-top: none;
+}
+#rvActionToggle:hover { background: var(--rv-amber-dk); }
+.rv-action-btn {
+  width: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 7px 4px; background: var(--rv-card); border: 1px solid var(--rv-border);
+  border-radius: 7px; color: var(--rv-txt2); font-size: 9px; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+}
+.rv-action-btn i { font-size: 15px; margin-bottom: 1px; }
+.rv-action-btn span { display: block; }
+.rv-action-btn:hover, .rv-action-btn.rv-active { background: var(--rv-amber-dk); border-color: var(--rv-amber); color: var(--rv-txt); }
+.rv-action-btn.rv-red-btn   { background: #450a0a; border-color: var(--rv-red);   color: var(--rv-red);   }
+.rv-action-btn.rv-green-btn { background: #14532d; border-color: var(--rv-green); color: var(--rv-green); }
+.rv-action-btn.rv-blue-btn  { background: #1e3a5f; border-color: var(--rv-blue);  color: var(--rv-blue);  }
+
+/* ---- Record walk banner ---- */
+#rvRecordBanner {
+  display: none; position: absolute; bottom: 0; left: 0; right: 0; z-index: 30;
+  background: #14532d; border-top: 2px solid var(--rv-green); padding: 6px 14px;
+  flex-direction: row; align-items: center; justify-content: space-between;
+}
+#rvRecordBanner.rv-recording { display: flex; }
+.rv-rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rv-green); animation: rvPulse 1s infinite; }
+.rv-rec-info { font-size: 12px; color: var(--rv-txt); font-weight: 600; }
+#rvRecStopBtn { background: var(--rv-red); border: none; color: #fff; padding: 4px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+
+/* ---- Modals ---- */
+.rv-modal-backdrop { display: none; position: fixed; inset: 0; z-index: 210000; background: rgba(0,0,0,.75); align-items: center; justify-content: center; }
+.rv-modal-backdrop.rv-modal-open { display: flex; }
+.rv-modal { background: var(--rv-panel); border: 1px solid var(--rv-border); border-radius: 12px; width: 340px; max-width: 95vw; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.rv-modal h3 { margin: 0 0 14px; color: var(--rv-amber); font-size: 16px; }
+.rv-modal label { display: block; font-size: 12px; color: var(--rv-txt2); margin-bottom: 4px; margin-top: 10px; }
+.rv-modal input, .rv-modal select, .rv-modal textarea { width: 100%; box-sizing: border-box; background: var(--rv-card); border: 1px solid var(--rv-border); color: var(--rv-txt); border-radius: 5px; padding: 8px 10px; font-size: 13px; }
+.rv-modal input:focus, .rv-modal select:focus, .rv-modal textarea:focus { outline: none; border-color: var(--rv-amber); }
+.rv-modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+.rv-modal-btns--mt12 { margin-top: 12px; }
+.rv-modal-btns--col { flex-direction: column; }
+.rv-btn-primary   { flex: 1; padding: 10px; background: var(--rv-amber); color: #000; border: none; border-radius: 6px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.rv-btn-secondary { flex: 1; padding: 10px; background: var(--rv-card); color: var(--rv-txt); border: 1px solid var(--rv-border); border-radius: 6px; font-size: 13px; cursor: pointer; }
+.rv-btn-danger    { flex: 1; padding: 10px; background: var(--rv-red); color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.rv-btn-full { width: 100%; }
+.rv-btn-outline { background: transparent; border: 1px solid var(--rv-border); }
+
+/* ---- Checkbox-style label rows (Mark / Settings modals) ---- */
+.rv-checkbox-row { display: flex; align-items: center; }
+.rv-checkbox-row--mt8 { margin-top: 8px; }
+
+/* ---- Small hint / status text used inside modals ---- */
+.rv-hint-text { font-size: 12px; color: var(--rv-txt2); }
+.rv-hint-text--tight { margin: 0 0 8px; }
+.rv-avg-status { font-size: 11px; color: var(--rv-txt2); margin-top: 4px; }
+.rv-divider { border-color: var(--rv-border); margin: 14px 0 8px; }
+.rv-pt-count-row { font-size: 11px; color: var(--rv-txt2); margin-bottom: 4px; }
+.rv-clear-btn { float: right; background: none; border: none; color: var(--rv-red); cursor: pointer; font-size: 11px; }
+.rv-area-result { font-size: 28px; font-weight: 800; color: var(--rv-amber); text-align: center; margin: 16px 0; }
+.rv-area-result-sub { font-size: 13px; color: var(--rv-txt2); text-align: center; }
+.rv-exit-summary { font-size: 12px; color: var(--rv-txt2); margin: 8px 0; line-height: 1.6; }
+
+/* ---- Basemap switcher ---- */
+#rvBasemapBar {
+  display: none; position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(13,17,23,.9); border-top: 1px solid var(--rv-border);
+  padding: 6px 8px; flex-direction: row; gap: 6px; overflow-x: auto; z-index: 10;
+}
+#rvBasemapBar.rv-bm-open { display: flex; }
+.rv-bm-thumb { flex-shrink: 0; width: 64px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; }
+.rv-bm-thumb .rv-bm-img { width: 60px; height: 40px; border-radius: 5px; border: 2px solid var(--rv-border); background: var(--rv-card); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.rv-bm-thumb.active .rv-bm-img { border-color: var(--rv-amber); }
+.rv-bm-thumb span { font-size: 9px; color: var(--rv-txt2); text-align: center; }
+.rv-bm-thumb.active span { color: var(--rv-amber); }
+
+/* ---- Averaging progress ---- */
+#rvAvgProgress { display: none; height: 3px; background: var(--rv-border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+#rvAvgProgressFill { height: 100%; background: var(--rv-amber); border-radius: 2px; width: 0%; transition: width 0.3s; }
+
+/* ---- Animations ---- */
+@keyframes rvPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes rvSlideDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ---- Alert toast ---- */
+#rvAlertToast {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+  background: var(--rv-amber); color: #000; padding: 10px 20px;
+  border-radius: 8px; font-weight: 700; font-size: 14px; z-index: 220000;
+  display: none; animation: rvSlideDown 0.3s ease; text-align: center;
+  max-width: 340px; box-shadow: 0 4px 20px rgba(245,158,11,.4);
+}
+
+/* ---- Export grid ---- */
+#rvExportModal .rv-export-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+.rv-export-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px; background: var(--rv-card); border: 1px solid var(--rv-border); border-radius: 8px; color: var(--rv-txt2); font-size: 11px; cursor: pointer; transition: all 0.15s; }
+.rv-export-btn i { font-size: 20px; }
+.rv-export-btn:hover { background: var(--rv-border); color: var(--rv-txt); }
+.rv-export-btn.csv:hover { border-color: var(--rv-green); color: var(--rv-green); }
+.rv-export-btn.kml:hover { border-color: var(--rv-blue);  color: var(--rv-blue);  }
+.rv-export-btn.dxf:hover { border-color: var(--rv-amber); color: var(--rv-amber); }
+
+/* ---- Points list ---- */
+.rv-pt-list { max-height: 120px; overflow-y: auto; margin-top: 8px; }
+.rv-pt-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--rv-border); font-size: 11px; }
+.rv-pt-row span { color: var(--rv-txt2); font-family: monospace; }
+.rv-pt-row b { color: var(--rv-amber); }
+.rv-pt-del { background: none; border: none; color: var(--rv-red); cursor: pointer; font-size: 14px; }
+
+/* ---- Scrollbar ---- */
+#rvCornerPanel::-webkit-scrollbar { width: 4px; }
+#rvCornerPanel::-webkit-scrollbar-track { background: var(--rv-panel); }
+#rvCornerPanel::-webkit-scrollbar-thumb { background: var(--rv-border); border-radius: 2px; }
+.rv-modal input[type=checkbox] { width: auto; margin-right: 6px; }

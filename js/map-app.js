@@ -359,7 +359,7 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
     <div class="map-popup__inner">
       <header class="map-popup__head">
         <span class="map-popup__badge">${badge}</span>
-        <button type="button" class="map-popup__close" aria-label="Close details">&times;</button>
+        <button type="button" class="map-popup__close" aria-label="Close details"><i class="fas fa-times" aria-hidden="true"></i></button>
       </header>
       
       <div class="search-panel__tabs" role="tablist" style="margin-bottom:10px;">

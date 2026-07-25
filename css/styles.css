@@ -15,6 +15,14 @@
   --map-bezel-edge: rgba(255, 252, 245, 0.42);
   /* Draw / side panel sits below fixed project-toolbar (same band as survey drawer) */
   --draw-side-panel-top: 86px;
+
+  --green-900: #0d2318;
+  --green-800: #1a3d2b;
+  --green-700: #234f38;
+  --green-600: #2e6647;
+  --green-400: #4a9e6e;
+  --green-200: #9fd4b8;
+  --green-50:  #edf7f2;
 }
 
 * {
@@ -188,6 +196,10 @@ button:hover {
   color: var(--text);
   border: 1px solid var(--border);
 }
+.btn-secondary--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
 
 .small {
   font-size: 0.84rem;
@@ -293,6 +305,11 @@ button:hover {
   width: 100%;
   height: 100%;
   z-index: 0;
+  /* Mobile fix: without this, a pinch gesture over the map zooms the whole
+     page (native browser gesture) instead of only the OpenLayers map, which
+     already implements its own pinch-zoom. touch-action: none hands all
+     touch gestures on the map surface to OpenLayers. */
+  touch-action: none;
 }
 
 #map.map-drop-active::after {
@@ -961,6 +978,18 @@ button:hover {
 
 .draw-tools__section {
   margin-bottom: 1.15rem;
+}
+
+/* Legacy panelHost "Extract Boundaries" block used a plain divider
+   instead of the standard section-title treatment. */
+.draw-tools__section--divider {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 15px;
+}
+.draw-tools__subheading {
+  font-size: 0.85rem;
+  color: #475569;
+  margin: 0 0 10px 0;
 }
 
 .draw-tools__section-title {
@@ -2534,6 +2563,20 @@ body.print-composer-open {
   color: var(--primary-2);
   font-size: 1rem;
 }
+/* Sentinel panel's satellite icon uses its own brand blue instead of the
+   shared green primary-2 accent. */
+.search-panel__head-icon--blue {
+  color: #1565c0;
+}
+
+/* Centered placeholder text shown before a modify/status selection is made. */
+.panel-empty-hint {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+  margin: 16px 0;
+}
 
 .search-panel__title {
   margin: 0;
@@ -2921,6 +2964,12 @@ select.search-panel__input {
   transform: translateY(-2px) scale(1.08);
   box-shadow: 0 6px 16px rgba(0,0,0,0.08);
 }
+/* Rectangular text-label variant used by the Edit Details modal's
+   Cancel/Save actions (instead of the round icon-only button). */
+.futuristic-icon-btn--modal-pad {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+}
 .futuristic-place-row {
   display: flex;
   gap: 0.5rem;
@@ -3006,6 +3055,14 @@ select.search-panel__input {
   .map-status {
     display: none !important;
   }
+}
+
+/* ── Floating dashboard button (top-left, over the map) ── */
+.map-dashboard-btn-wrap {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 50;
 }
 
 /* ── FAB Cluster ── */
@@ -3179,6 +3236,16 @@ select.search-panel__input {
 }
 
 /* uam-close-btn removed from here, now using .uam-nav-close in the nav column */
+.uam-nav-close {
+  margin-top: auto;
+}
+.uam-nav-close__icon {
+  font-size: 1.8rem;
+  color: #f8d7da;
+}
+.uam-nav-close__label {
+  color: #f8d7da;
+}
 
 /* Tabs (right panels) */
 .uam-tab {
@@ -3225,6 +3292,33 @@ select.search-panel__input {
 .uam-field-row {
   display: flex;
   gap: 6px;
+}
+
+.uam-inline-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.uam-digitize-count {
+  font-size: 0.78rem;
+  color: var(--primary-2);
+  font-weight: 600;
+}
+
+.uam-section-heading {
+  margin: 0 0 4px 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.uam-btn--danger-text {
+  color: var(--danger);
+}
+
+.uam-btn--accent-text {
+  color: var(--accent);
 }
 
 /* File input */
@@ -3622,6 +3716,13 @@ select.search-panel__input {
   grid-template-columns: 1fr 1fr;
   gap: 0.45rem 0.6rem;
   margin: 0.4rem 0 0.15rem;
+}
+
+.sentinel-report__chart-wrap {
+  display: none;
+  margin-top: 0.4rem;
+  height: 200px;
+  position: relative;
 }
 
 .sentinel-report__chart-wrap canvas {
@@ -4574,6 +4675,64 @@ select.search-panel__input {
   color: var(--text, #1e293b);
 }
 
+/* ── Small mini-header used by measure-panel (icon + label + close) ── */
+.smc-header {
+  justify-content: space-between;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--vsl-border, rgba(226, 232, 240, 0.8));
+  padding-bottom: 10px;
+}
+.smc-header__icon {
+  color: var(--primary, #1b5e20);
+  font-size: 1.1rem;
+}
+.smc-header__label {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.95rem;
+}
+
+/* ── Measure panel: start-walk prompt + pill start button ── */
+.measure-start-walk {
+  display: none;
+  text-align: center;
+  padding: 20px 0;
+}
+.btn-primary--pill-lg {
+  padding: 10px 20px;
+  font-size: 1rem;
+  border-radius: 30px;
+}
+
+/* ── Measure panel: action button row (Clear / Mark / Finish / Undo) ── */
+.measure-action-btn {
+  flex: 1;
+  padding: 8px;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.measure-action-btn--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.measure-action-btn--success {
+  border-color: #28a745;
+  color: #28a745;
+}
+.measure-action-btn--hidden {
+  display: none;
+}
+.measure-feedback-text {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--primary-2);
+  text-align: center;
+}
+
 /* ── EDIT DETAILS MODAL STYLING ── */
 .vsl-modal-overlay {
   position: fixed;
@@ -4629,6 +4788,18 @@ select.search-panel__input {
   display: flex;
   flex-direction: column;
 }
+.vsl-modal-form {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.vsl-modal-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .vsl-modal-field input:disabled,
 .vsl-modal-field input[readonly] {
   background: rgba(0, 0, 0, 0.05);
@@ -4645,5 +4816,41 @@ select.search-panel__input {
   to { transform: scale(1); opacity: 1; }
 }
 
+/* 
+.menu-toggle { 
+  position: fixed; 
+  top: 12px; 
+  left: 12px;
+  background: var(--green-700); 
+  border: none; 
+  font-size: 14px; 
+  font-weight: 700;
+  cursor: pointer; 
+  color: #fff; 
+  height: 32px; 
+  padding: 0 12px;
+  border-radius: 30px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.menu-toggle:hover { background: var(--green-600); } */
 
 
+.dashboard-btn {   
+  display: flex;
+   align-items: center; 
+   justify-content: center; 
+
+  background: var(--green-600); 
+  color: white; 
+  border-radius: 5px; border: white 1px solid; 
+  font-weight: 700; padding: 0.35rem 0.7rem; 
+  transition: transform 0.2s, border-radius 0.2s; 
+  text-transform: uppercase; 
+  cursor: pointer; 
+  font-size: 20px;
+          
+}

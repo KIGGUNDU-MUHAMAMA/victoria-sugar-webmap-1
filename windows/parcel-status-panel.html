@@ -1,0 +1,33 @@
+    <div id="parcelStatusPanel" class="measure-panel" hidden>
+      <header class="search-panel__head">
+        <div class="search-panel__head-inner">
+          <i class="fas fa-pen-to-square search-panel__head-icon" aria-hidden="true"></i>
+          <h2 id="parcelStatusTitle" class="search-panel__title">Modify status</h2>
+        </div>
+        <button type="button" class="search-panel__close" id="parcelStatusCloseBtn" aria-label="Close modify panel">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
+        Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
+      </div>
+
+      <div class="search-panel__tabs u-mt-12 u-mb-8" role="tablist" aria-label="Modify layer target">
+        <button type="button" class="search-tab" id="modifyTabParcels" role="tab" aria-selected="true" data-tab="parcels">
+          <i class="fas fa-map" aria-hidden="true"></i> Parcels
+        </button>
+        <button type="button" class="search-tab" id="modifyTabBlocks" role="tab" aria-selected="false" tabindex="-1" data-tab="blocks">
+          <i class="fas fa-cubes" aria-hidden="true"></i> Blocks
+        </button>
+      </div>
+
+      <div id="parcelStatusSelectionLabel" class="panel-empty-hint">Select on map</div>
+
+      <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
+
+      <div id="parcelStatusActionsRow" class="u-flex u-gap-8 u-mt-12" hidden>
+        <button type="button" id="parcelStatusModifyBtn" class="btn-primary u-flex-1">Modify</button>
+        <button type="button" id="parcelStatusDeleteBtn" class="btn-secondary u-flex-1 btn-secondary--danger"><i class="fas fa-trash-alt"></i> Delete</button>
+      </div>
+    </div>

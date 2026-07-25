@@ -1,0 +1,65 @@
+BLOCKS
+
+blocks — the core table
+Fields: block_id, block_name, block_code, total_area_hectares, district, sub_county, parish, village, gps_centroid (PostGIS point), boundary_geom (PostGIS polygon), elevation_m, created_by, created_at, updated_at, status (active/inactive)
+
+block_soil_profiles — soil data per block
+Fields: soil_profile_id, block_id, soil_type, soil_ph, organic_matter_pct, nitrogen_level, phosphorus_level, potassium_level, texture (clay/loam/sandy), drainage_class, tested_by, test_date
+
+block_managers — who is responsible for the block
+Fields: assignment_id, block_id, user_id, role (manager/supervisor/agronomist), assigned_from, assigned_to, is_active
+
+block_infrastructure — physical infrastructure on the block
+Fields: infra_id, block_id, infra_type (road/irrigation canal/water point/storage), name, geom (PostGIS line or point), condition (good/fair/poor), notes
+
+block_documents — survey certificates, title deeds, maps
+Fields: doc_id, block_id, doc_type, file_url, uploaded_by, upload_date, description
+
+PARCELS
+
+parcels — the core table
+Fields: parcel_id, parcel_code, block_id, parcel_name, area_hectares, boundary_geom (PostGIS polygon), gps_centroid, perimeter_m, slope_pct, aspect_direction, created_by, created_at, updated_at, status (active/fallow/abandoned)
+
+parcel_ownership — who owns or leases each parcel
+Fields: ownership_id, parcel_id, owner_type (company/outgrower/leased), owner_name, national_id, contact_phone, lease_start, lease_end, lease_terms, document_url
+
+parcel_seasons — one record per growing season per parcel
+Fields: season_id, parcel_id, season_name (e.g. "2024-A"), cane_variety, ratoon_number (plant crop = 0, first ratoon = 1, etc.), planting_date, expected_harvest_date, actual_harvest_date, growth_stage, season_status (planned/active/harvested/failed)
+
+parcel_soil_tests — parcel-level soil tests (more granular than block)
+Fields: test_id, parcel_id, season_id, soil_ph, nitrogen, phosphorus, potassium, organic_matter_pct, sampled_by, sample_date, lab_name, results_url
+
+parcel_inputs — every input applied to the parcel
+Fields: input_id, parcel_id, season_id, input_type (fertilizer/herbicide/pesticide/lime), product_name, quantity, unit (kg/litre/bag), application_method, applied_by, application_date, cost_ugx, supplier
+
+parcel_irrigation — irrigation events
+Fields: irrigation_id, parcel_id, season_id, irrigation_type (drip/furrow/overhead), water_source, volume_m3, duration_hours, irrigated_by, irrigation_date, cost_ugx
+
+parcel_scouting — field scouting and crop health observations
+Fields: scout_id, parcel_id, season_id, scouted_by, scout_date, growth_stage_observed, pest_present, pest_type, disease_present, disease_type, weed_pressure (low/medium/high), canopy_cover_pct, health_rating (1–5), recommendations, gps_location
+
+parcel_media — photos and videos attached to a parcel
+Fields: media_id, parcel_id, season_id, scout_id (nullable), media_type (photo/video), file_url, caption, gps_lat, gps_lng, captured_by, captured_at
+
+parcel_harvest — harvest records
+Fields: harvest_id, parcel_id, season_id, harvest_date, gross_weight_tonnes, tare_weight_tonnes, net_weight_tonnes, brix_reading, sucrose_pct, fiber_pct, pol_purity, cutting_crew, transport_vehicle, mill_destination, delivery_ticket_no, harvested_by, notes
+
+parcel_yield_estimates — pre-harvest estimates for planning
+Fields: estimate_id, parcel_id, season_id, estimated_by, estimate_date, method (visual/formula/remote sensing), estimated_yield_tonnes, confidence_level (low/medium/high), notes
+
+parcel_costs — aggregated cost tracking per parcel per season
+Fields: cost_id, parcel_id, season_id, cost_category (land prep/planting/inputs/labor/irrigation/harvest/transport), amount_ugx, recorded_by, cost_date, reference_no, notes
+
+parcel_comments — stakeholder comments and annotations
+Fields: comment_id, parcel_id, season_id (nullable), user_id, comment_text, comment_type (observation/issue/recommendation/approval), is_resolved, resolved_by, resolved_at, created_at
+
+parcel_tasks — tasks assigned on a parcel
+Fields: task_id, parcel_id, season_id, task_type (land prep/planting/weeding/spraying/irrigation/harvest), description, assigned_to, assigned_by, due_date, completed_date, status (pending/in-progress/completed/cancelled), cost_ugx, notes
+
+parcel_documents — survey plans, title extracts, agreements
+Fields: doc_id, parcel_id, doc_type (survey plan/title/agreement/other), file_url, uploaded_by, upload_date, description
+
+LINKING TABLES
+
+block_parcel_history — tracks if a parcel ever moved between blocks (boundary adjustments)
+Fields: history_id, parcel_id, old_block_id, new_block_id, changed_by, changed_at, reason

@@ -1,0 +1,207 @@
+  <div id="unifiedActionMenu" class="uam-overlay" aria-hidden="true" hidden>
+    <div class="uam-shell" role="dialog" aria-modal="true" aria-label="Field tools">
+
+      <!-- LEFT NAV -->
+      <nav class="uam-nav" aria-label="Tool sections">
+        <button type="button" class="uam-nav-btn" data-uam-tab="rover" aria-selected="false">
+          <i class="fas fa-satellite-dish"></i><span>Rover</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="import" aria-selected="true">
+          <i class="fas fa-file-import"></i><span>Import</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="drone" aria-selected="false">
+          <i class="fas fa-drone-alt"></i><span>Drone</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="draw" aria-selected="false">
+          <i class="fas fa-pencil-ruler"></i><span>Draw</span>
+        </button>
+        <button type="button" class="uam-nav-btn" data-uam-tab="export" aria-selected="false">
+          <i class="fas fa-file-export"></i><span>Export</span>
+        </button>
+
+        <button type="button" class="uam-nav-btn uam-nav-close" id="uamCloseBtn" aria-label="Close tools panel">
+          <i class="fas fa-times-circle uam-nav-close__icon"></i><span class="uam-nav-close__label">Close</span>
+        </button>
+      </nav>
+
+      <!-- RIGHT CONTENT -->
+      <div class="uam-content">
+
+        <!-- ── IMPORT TAB ── -->
+        <div class="uam-tab" id="uamTabImport" data-uam-panel="import">
+          <div class="uam-field-row">
+            <select id="surveyLayerSelect" class="uam-select">
+              <option value="">Layer…</option>
+              <option value="BLOCKS">BLOCKS</option>
+              <option value="PARCELS">PARCELS</option>
+            </select>
+          </div>
+
+          <div id="surveyBlockFields" class="survey-conditional" hidden>
+            <input id="surveyEstateName" type="text" class="uam-input" placeholder="Estate name (required) e.g. Lugazi" autocomplete="off" list="surveyEstateNameList">
+            <datalist id="surveyEstateNameList"></datalist>
+          </div>
+          <div id="surveyParcelFields" class="survey-conditional" hidden>
+            <select id="surveyParcelEstateSelect" class="uam-select u-mb-6">
+              <option value="">— Select Estate —</option>
+            </select>
+            <select id="surveyParentBlockSelect" class="uam-select">
+              <option value="">— Select Estate first —</option>
+            </select>
+          </div>
+
+          <div class="uam-field-row">
+            <select id="importFormatSelect" class="uam-select">
+              <option value="">Format…</option>
+              <option value="csv">CSV</option>
+              <option value="dxf">DXF</option>
+              <option value="kml">KML</option>
+              <option value="geojson">GeoJSON</option>
+            </select>
+          </div>
+
+          <div class="uam-field-row">
+            <!-- Options populated from CRS_OPTIONS by survey-import.js (was previously
+                 hardcoded here AND appended by JS, so every CRS appeared twice). -->
+            <select id="surveyCrsSelect" class="uam-select"></select>
+          </div>
+
+          <div class="uam-field-row">
+            <label class="uam-file-label">
+              <i class="fas fa-folder-open"></i>
+              <input id="surveyFileInput" type="file" accept=".csv,.dxf,.kml,.geojson,text/csv" class="uam-file-input">
+              <span id="surveyFileName">Choose file…</span>
+            </label>
+          </div>
+
+          <div id="surveyDropzone" class="uam-dropzone">
+            <i class="fas fa-cloud-upload-alt"></i>
+          </div>
+
+          <div id="surveyDigitizeTools" class="survey-digitize" hidden>
+            <div class="uam-field-row u-gap-8">
+              <button type="button" id="surveyStartTracingBtn" class="uam-btn uam-btn--primary u-flex-1">
+                <i class="fas fa-pen-nib"></i> Trace
+              </button>
+              <button type="button" id="surveyClearTracingBtn" class="uam-btn uam-btn--ghost u-flex-1">
+                <i class="fas fa-eraser"></i> Clear
+              </button>
+            </div>
+            <div id="surveyDigitizeCount" class="uam-digitize-count">0 polygons</div>
+          </div>
+
+          <div id="surveySummary" class="survey-summary" hidden></div>
+
+          <div class="uam-field-row u-items-center u-gap-6">
+            <input type="checkbox" id="surveySkipSelfIntersect" class="u-checkbox-auto">
+            <label for="surveySkipSelfIntersect" class="uam-inline-label">Allow self-intersect</label>
+          </div>
+
+          <textarea id="surveyAdditionalInfo" class="uam-textarea" rows="2" placeholder="Notes (optional)"></textarea>
+
+          <div class="uam-actions">
+            <button type="button" id="surveyPreviewBtn" class="uam-btn uam-btn--ghost">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button type="button" id="surveySaveBtn" class="uam-btn uam-btn--primary" disabled>
+              <i class="fas fa-database"></i> Save
+            </button>
+          </div>
+        </div>
+
+        <!-- ── DRONE TAB ── -->
+        <div class="uam-tab" id="uamTabDrone" data-uam-panel="drone" hidden>
+          <div class="uam-field-row">
+            <!-- Options populated from CRS_OPTIONS by drone-image.js. -->
+            <select id="droneCrsSelect" class="uam-select"></select>
+          </div>
+          <div class="uam-field-row">
+            <label class="uam-file-label">
+              <i class="fas fa-satellite"></i>
+              <input id="droneFileInput" type="file" accept=".tif,.tiff" class="uam-file-input">
+              <span id="droneFileName">Choose COG (.tif)…</span>
+            </label>
+          </div>
+          <canvas id="dronePreviewCanvas" class="uam-drone-preview" width="240" height="160" hidden></canvas>
+          <span id="droneUploadStatus" class="uam-status-text"></span>
+          <div class="uam-actions">
+            <button type="button" id="dronePreviewBtn" class="uam-btn uam-btn--ghost">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button type="button" id="droneUploadBtn" class="uam-btn uam-btn--primary" disabled>
+              <i class="fas fa-cloud-upload-alt"></i> Upload
+            </button>
+          </div>
+        </div>
+
+        <!-- ── DRAW TAB ── -->
+        <div class="uam-tab" id="uamTabDraw" data-uam-panel="draw" hidden>
+          <div class="u-hidden">
+            <input type="checkbox" id="snapBlocksCb" checked>
+            <input type="checkbox" id="snapParcelsCb" checked>
+            <input type="checkbox" id="snapSurveyCb" checked>
+          </div>
+
+          <h4 class="uam-section-heading">Drawing Tools</h4>
+          <div class="uam-draw-grid">
+            <button id="drawPolygonBtn" class="uam-draw-btn" type="button">
+              <i class="fas fa-draw-polygon"></i><span>Draw Polygon</span>
+            </button>
+            <button id="drawLineBtn" class="uam-draw-btn" type="button">
+              <i class="fas fa-pen"></i><span>Draw Line</span>
+            </button>
+          </div>
+
+          <div class="uam-divider"></div>
+
+          <div class="uam-draw-grid">
+            <button id="clearDrawingsBtn" class="uam-btn uam-btn--ghost uam-btn--danger-text" type="button">
+              <i class="fas fa-eraser"></i> Clear All
+            </button>
+            <button id="stopDrawBtn" class="uam-btn uam-btn--ghost uam-btn--accent-text" type="button">
+              <i class="fas fa-stop-circle"></i> Stop Action
+            </button>
+          </div>
+
+          <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+        </div>
+
+        <!-- ── ROVER TAB ── -->
+        <div class="uam-tab" id="uamTabRover" data-uam-panel="rover" hidden>
+          <div class="uam-rover-launch">
+            <i class="fas fa-satellite-dish uam-rover-icon"></i>
+            <button type="button" id="uamLaunchRoverBtn" class="uam-btn uam-btn--primary uam-btn--large">
+              <i class="fas fa-play-circle"></i> Launch Rover
+            </button>
+          </div>
+        </div>
+
+        <!-- ── EXPORT TAB ── -->
+        <div class="uam-tab" id="uamTabExport" data-uam-panel="export" hidden>
+          <div class="uam-field-row">
+            <!-- Options populated from CRS_OPTIONS by export-tools.js. -->
+            <select id="exportCrsSelect" class="uam-select"></select>
+          </div>
+          <div class="uam-field-row">
+            <select id="exportFormatSelect" class="uam-select">
+              <option value="geojson">GeoJSON</option>
+              <option value="kml">KML</option>
+              <option value="csv">CSV</option>
+              <option value="dxf">DXF</option>
+            </select>
+          </div>
+          <button type="button" id="exportSelectBtn" class="uam-btn uam-btn--ghost u-w-100 u-mt-6">
+            <i class="fas fa-hand-pointer"></i> Select parcels
+          </button>
+          <div id="exportSelCount" class="uam-sel-count" hidden>0 selected</div>
+          <div class="uam-actions u-mt-8">
+            <button type="button" id="exportCancelBtn" class="uam-btn uam-btn--ghost">Cancel</button>
+            <button type="button" id="exportDoBtn" class="uam-btn uam-btn--primary" disabled>
+              <i class="fas fa-download"></i> Export
+            </button>
+          </div>
+        </div>
+
+      </div><!-- .uam-content -->
+    </div><!-- .uam-shell -->
+  </div><!-- #unifiedActionMenu -->

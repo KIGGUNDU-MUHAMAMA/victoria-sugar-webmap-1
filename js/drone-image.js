@@ -7,7 +7,7 @@
  *  - VIC-GEOTIFF layer group in the OL layer tree
  */
 
-import { PROJ4_DEFS, registerProj4Defs } from "./crs-definitions.js";
+import { PROJ4_DEFS, registerProj4Defs, CRS_OPTIONS } from "./crs-definitions.js";
 
 const SUPABASE_TABLE  = "vsl_drone_images";
 const LAYER_GROUP_TITLE = "VIC-GEOTIFF";
@@ -103,6 +103,19 @@ export function initDroneImageModule(opts) {
   const crsSelect      = document.getElementById("droneCrsSelect");
   const uploadStatusEl = document.getElementById("droneUploadStatus");
   const previewCanvas  = document.getElementById("dronePreviewCanvas");
+
+  // Populate CRS dropdown (previously hardcoded in the HTML, duplicated across
+  // three separate <select> elements — now a single source in crs-definitions.js).
+  if (crsSelect && !crsSelect.options.length) {
+    CRS_OPTIONS.forEach((opt) => {
+      const el = document.createElement("option");
+      el.value = opt.value;
+      el.textContent = opt.label;
+      crsSelect.appendChild(el);
+    });
+    // Matches the default that used to be hardcoded in the HTML (<option selected>).
+    crsSelect.value = "EPSG:32636";
+  }
 
   // ── Module state ──────────────────────────────────────────────────────────
   let currentFile    = null;

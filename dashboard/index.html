@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SugarEstate Admin — Victoria Sugar Webmap</title>
+<link rel="stylesheet" href="style.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<!-- ═══ LOADING OVERLAY (shown while live Supabase data loads) ═══ -->
+<div class="data-loading-overlay" id="data-loading-overlay">
+  <div class="data-loading-box">
+    <div class="data-loading-spinner"></div>
+    <div class="data-loading-text">Loading live estate data…</div>
+    <div class="data-loading-sub">Connecting to Victoria Sugar Webmap</div>
+  </div>
+</div>
+
+<!-- ═══ MAP BACKGROUND ═══ -->
+<div class="map-bg" id="map-bg">
+  <div class="map-label">GOOGLE MAP</div>
+</div>
+
+<!-- ═══ SIDEBAR ═══ -->
+<aside class="sidebar" id="sidebar">
+
+  <!-- Brand + collapse toggle always visible -->
+  <div class="sidebar-brand">
+    <div class="brand-icon">🌿</div>
+    <div class="brand-text">
+      <div class="brand-name">SugarEstate</div>
+      <div class="brand-sub">Admin Console</div>
+    </div>
+    <button class="sidebar-collapse-btn" id="collapse-btn" onclick="toggleSidebar()" title="Collapse sidebar">‹</button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">OVERVIEW</div>
+    <a href="#" class="nav-item" onclick="openPanel('dashboard',this)">
+      <span class="nav-icon">◈</span><span class="nav-label"> Dashboard</span>
+    </a>
+    <a href="#" class="nav-item" onclick="openPanel('analytics',this)">
+      <span class="nav-icon">◉</span><span class="nav-label"> Estate Analytics</span>
+    </a>
+
+    <div class="nav-section-label">MANAGEMENT</div>
+    <a href="#" class="nav-item" onclick="openPanel('estates',this)">
+      <span class="nav-icon">▦</span><span class="nav-label"> Estates</span>
+    </a>
+    <a href="#" class="nav-item" onclick="openPanel('production',this)">
+      <span class="nav-icon">◐</span><span class="nav-label"> Production</span>
+    </a>
+    <a href="#" class="nav-item" onclick="openPanel('activities',this)">
+      <span class="nav-icon">◷</span><span class="nav-label"> Activities</span>
+    </a>
+    <a href="#" class="nav-item" onclick="openPanel('users',this)">
+      <span class="nav-icon">◎</span><span class="nav-label"> Users</span>
+    </a>
+
+    <div class="nav-section-label">COMMUNICATIONS</div>
+    <a href="#" class="nav-item" onclick="openPanel('notifications',this)">
+      <span class="nav-icon">◌</span><span class="nav-label"> Email Reports</span>
+    </a>
+    <a href="#" class="nav-item" onclick="openPanel('alerts',this)">
+      <span class="nav-icon">⬡</span><span class="nav-label"> Alerts</span>
+    </a>
+
+    <div class="nav-section-label">SYSTEM</div>
+    <a href="#" class="nav-item" onclick="openPanel('settings',this)">
+      <span class="nav-icon">◧</span><span class="nav-label"> Settings</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-estate-status">
+    <div class="estate-status-title">Estate Health</div>
+    <div id="sidebar-estate-health-list">
+      <div class="estate-status-row"><span class="dot gray"></span><span class="nav-label">Loading…</span></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ SLIDE-UP PANEL ═══ -->
+<div class="panel-backdrop" id="panel-backdrop" onclick="closePanel()"></div>
+<div class="panel" id="panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Dashboard</div>
+    <div class="topbar-row">
+      <div class="topbar-season">Season: <strong>2024-B</strong></div>
+      <div class="topbar-alert-badge" onclick="closePanel();setTimeout(()=>openPanel('alerts',null),50)">
+        <span>⬡</span><span class="badge-count">3</span>
+      </div>
+      <div class="topbar-avatar">AM</div>
+      <button class="panel-close-btn" onclick="closePanel()" title="Close panel">✕</button>
+    </div>
+  </div>
+  <div class="panel-body" id="panel-body">
+    <!-- page content injected here -->
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="data.js"></script>
+<script src="supabase-client.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

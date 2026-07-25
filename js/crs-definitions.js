@@ -2,7 +2,10 @@
  * Uganda-focused CRS list + proj4 strings (aligned with Survey Edge Function).
  */
 
+// Order matches what used to be hand-copied into the survey/drone/export <select>
+// elements (EPSG:32636 — Uganda's primary projected CRS — first, as the default).
 export const CRS_OPTIONS = [
+  { value: "EPSG:32636", label: "WGS 84 / UTM zone 36N" },
   { value: "EPSG:4326", label: "WGS 84 — geographic (longitude / latitude)" },
   { value: "EPSG:21095", label: "Arc 1960 / UTM zone 35N" },
   { value: "EPSG:21035", label: "Arc 1960 / UTM zone 35S" },
@@ -10,7 +13,6 @@ export const CRS_OPTIONS = [
   { value: "EPSG:21036", label: "Arc 1960 / UTM zone 36S" },
   { value: "EPSG:32635", label: "WGS 84 / UTM zone 35N" },
   { value: "EPSG:32735", label: "WGS 84 / UTM zone 35S" },
-  { value: "EPSG:32636", label: "WGS 84 / UTM zone 36N" },
   { value: "EPSG:32736", label: "WGS 84 / UTM zone 36S" }
 ];
 

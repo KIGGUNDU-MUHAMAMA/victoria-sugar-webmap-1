@@ -1,0 +1,61 @@
+  <div id="printComposerModal" class="print-composer" hidden aria-hidden="true">
+    <div class="print-composer__backdrop" id="printComposerBackdrop" tabindex="-1"></div>
+    <div class="print-composer__shell" role="dialog" aria-modal="true" aria-labelledby="printComposerTitle">
+      <header class="print-composer__header">
+        <div class="print-composer__header-text">
+          <h2 id="printComposerTitle" class="print-composer__title">Map export to PDF</h2>
+          <p class="print-composer__subtitle">Frame the preview map, add sheet details, then use <strong>Preview PDF</strong> to verify the layout before <strong>Print to PDF</strong>. The preview uses the same basemap as the main map until you change it and use <strong>Match main map</strong>.</p>
+        </div>
+        <button type="button" class="print-composer__close" id="printComposerCloseBtn" aria-label="Close"><i class="fas fa-times" aria-hidden="true"></i></button>
+      </header>
+      <div class="print-composer__body">
+        <aside class="print-composer__sidebar">
+          <section class="print-composer__section">
+            <h3 class="print-composer__section-title">Sheet details</h3>
+            <p class="print-composer__hint small">These lines appear in the PDF footer for filing and field records.</p>
+            <label class="print-composer__label" for="printSheetTitle">Sheet title <span class="print-composer__opt">optional</span></label>
+            <input id="printSheetTitle" type="text" class="print-composer__input" placeholder="e.g. Block 14 — pre-harvest sketch" autocomplete="off">
+            <label class="print-composer__label" for="printBlockRef">Block reference</label>
+            <input id="printBlockRef" type="text" class="print-composer__input" placeholder="Block code or name" autocomplete="off">
+            <label class="print-composer__label" for="printParcelRef">Plot / parcel reference</label>
+            <input id="printParcelRef" type="text" class="print-composer__input" placeholder="Plot numbers, parcel ID, or short label" autocomplete="off">
+            <label class="print-composer__label" for="printLocationNotes">Location or job notes</label>
+            <textarea id="printLocationNotes" class="print-composer__textarea" rows="2" placeholder="Estate, shift, agronomist, or job reference"></textarea>
+          </section>
+          <section class="print-composer__section">
+            <h3 class="print-composer__section-title">Grid on preview</h3>
+            <label class="print-composer__check">
+              <input type="checkbox" id="printGridShow"> Show coordinate grid on preview
+            </label>
+            <label class="print-composer__label" for="printGridCrs">Grid / label CRS</label>
+            <select id="printGridCrs" class="print-composer__input"></select>
+            <label class="print-composer__label" for="printGridSpacing">Grid spacing (metres, projected CRS only)</label>
+            <input id="printGridSpacing" type="number" class="print-composer__input" min="25" step="25" value="500">
+            <p class="print-composer__hint small">WGS84 geographic shows a lon/lat graticule plus straight <strong>WGS 84 / UTM zone 36N</strong> meter grid lines (spacing below). Other CRS options draw only that projection’s grid. Pan or zoom the preview to refresh a projected grid.</p>
+          </section>
+          <div class="print-composer__sync-row">
+            <button type="button" class="btn-secondary print-composer__sync-btn" id="printComposerSyncBtn">Match main map</button>
+          </div>
+          <p class="print-composer__hint small">Wait for imagery to finish loading, then use <strong>Preview PDF</strong> to check the export before printing.</p>
+          <div class="print-composer__actions">
+            <button type="button" class="btn-secondary" id="printComposerCancelBtn">Cancel</button>
+            <button type="button" class="btn-secondary" id="printComposerPreviewBtn">Preview PDF</button>
+            <button type="button" id="printComposerExportBtn">Print to PDF</button>
+          </div>
+        </aside>
+        <div class="print-composer__map-col">
+          <div class="print-composer__map-frame">
+            <div id="printPreviewMap" class="print-composer__map"></div>
+          </div>
+          <p class="print-composer__map-hint">Pan and zoom here. No toolbar or layer list — only what will be printed (basemap, blocks, parcels, optional grid).</p>
+          <div id="printPdfPreviewWrap" class="print-composer__pdf-preview" hidden>
+            <div class="print-composer__pdf-preview-bar">
+              <span class="print-composer__pdf-preview-label">PDF preview</span>
+            </div>
+            <iframe id="printPdfPreviewFrame" class="print-composer__pdf-preview-frame" title="PDF export preview"></iframe>
+            <p id="printPdfPreviewNote" class="print-composer__pdf-preview-note" hidden></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

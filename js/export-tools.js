@@ -251,7 +251,8 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
       el.textContent = opt.label;
       exportCrsSelectEl.appendChild(el);
     });
-    exportCrsSelectEl.value = "EPSG:4326";
+    // Matches the default that used to be hardcoded in the HTML (<option selected>).
+    exportCrsSelectEl.value = "EPSG:32636";
   }
 
   // ── State ─────────────────────────────────────────────────────────────────

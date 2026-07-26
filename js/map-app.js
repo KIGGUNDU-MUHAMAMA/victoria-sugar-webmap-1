@@ -48,6 +48,7 @@ let currentProfile;
 let isAuthenticated = false;
 let selectedFeature = null;
 let selectedLayerType = null;
+let parcelActionOverlay;
 let activeInteraction = null;
 let activeSnapInteractions = [];
 let smartMeasureListener = null;
@@ -83,6 +84,100 @@ const CULTIVATION_PALETTE = {
 function cultivationKeyFromFeature(feature) {
   const s = feature.get("cultivation_status");
   return s && CULTIVATION_PALETTE[s] ? s : "not_in_cane";
+}
+
+/** Ratoon-number badge fill — matches the green already used for parcel area/label text. */
+const RATOON_BADGE_COLOR = "#2e7d32";
+
+/** Alert badge fill by severity (vsl_alerts.severity: information | warning | critical). */
+const ALERT_SEVERITY_COLORS = {
+  critical: "#d32f2f",
+  warning: "#f9a825",
+  information: "#1976d2"
+};
+
+/** Interior anchor point for badge/label placement — handles Polygon and MultiPolygon. */
+function getFeatureInteriorPoint(geometry) {
+  if (!geometry) return null;
+  const type = geometry.getType();
+  if (type === "Polygon") return geometry.getInteriorPoint();
+  if (type === "MultiPolygon") {
+    const polys = geometry.getPolygons();
+    if (polys.length) return polys[0].getInteriorPoint();
+  }
+  return null;
+}
+
+/**
+ * Ratoon-number + alert-severity badge styles, anchored above the parcel's
+ * label point. Ratoon reads directly off the feature (ratoon_number is a
+ * real column); alert fields (_alert_severity / _alert_count) are left as
+ * no-ops until the alerts-fetch logic populates them on the feature — for
+ * now the alert badge simply won't render if they're unset.
+ */
+function buildParcelBadgeStyles(feature, geometry) {
+  const ip = getFeatureInteriorPoint(geometry);
+  if (!ip) return [];
+
+  const ratoonVal = feature.get("ratoon_number");
+  const hasRatoon = ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
+
+  const alertSeverity = feature.get("_alert_severity");
+  const alertCount = feature.get("_alert_count");
+  const hasAlert = !!alertSeverity && !!alertCount;
+
+  if (!hasRatoon && !hasAlert) return [];
+
+  const BADGE_RADIUS = 9;
+  const BADGE_UP = 26; // px above the label anchor
+  const BADGE_GAP = 20; // px between the two badges when both are shown
+
+  const styles = [];
+
+  if (hasRatoon) {
+    const dx = hasAlert ? -BADGE_GAP / 2 : 0;
+    styles.push(new ol.style.Style({
+      geometry: ip,
+      zIndex: 6,
+      image: new ol.style.Circle({
+        radius: BADGE_RADIUS,
+        fill: new ol.style.Fill({ color: RATOON_BADGE_COLOR }),
+        stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 }),
+        displacement: [dx, BADGE_UP]
+      }),
+      text: new ol.style.Text({
+        text: String(ratoonVal),
+        font: "800 10px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: "#ffffff" }),
+        offsetX: dx,
+        offsetY: -BADGE_UP
+      })
+    }));
+  }
+
+  if (hasAlert) {
+    const dx = hasRatoon ? BADGE_GAP / 2 : 0;
+    const fillColor = ALERT_SEVERITY_COLORS[alertSeverity] || ALERT_SEVERITY_COLORS.information;
+    styles.push(new ol.style.Style({
+      geometry: ip,
+      zIndex: 6,
+      image: new ol.style.Circle({
+        radius: BADGE_RADIUS,
+        fill: new ol.style.Fill({ color: fillColor }),
+        stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 }),
+        displacement: [dx, BADGE_UP]
+      }),
+      text: new ol.style.Text({
+        text: String(alertCount),
+        font: "800 10px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: "#ffffff" }),
+        offsetX: dx,
+        offsetY: -BADGE_UP
+      })
+    }));
+  }
+
+  return styles;
 }
 
 const parcelStatusState = {
@@ -475,6 +570,10 @@ const parcelsLayer = new ol.layer.Vector({
       stroke: new ol.style.Stroke({ color: hi ? "#f9a825" : strokeColor, width: strokeWidth }),
       text: textStyle
     }));
+
+    if (hi || resolution <= 12) {
+      styles.push(...buildParcelBadgeStyles(feature, feature.getGeometry()));
+    }
 
     if (hi || resolution <= 4) {
       const geometry = feature.getGeometry();
@@ -1361,6 +1460,56 @@ function closeInfoPopup() {
   const panel = document.getElementById("featureInfoPanel");
   if (inner) inner.innerHTML = "";
   if (panel) panel.hidden = true;
+  hideParcelActionToolbar();
+}
+
+/**
+ * Floating 3-button action toolbar (log activity / log alert / info) that
+ * appears above whichever block/parcel is currently selected. Positioned via
+ * an ol.Overlay bound to #parcelActionToolbar (see setupParcelActionToolbar).
+ * Buttons are UI-only for now — click handling is a follow-up.
+ */
+function showParcelActionToolbar(feature) {
+  const el = document.getElementById("parcelActionToolbar");
+  const geometry = feature?.getGeometry?.();
+  if (!el || !parcelActionOverlay || !geometry) return;
+  const extent = geometry.getExtent();
+  const topCenter = [(extent[0] + extent[2]) / 2, extent[3]];
+  el.hidden = false;
+  parcelActionOverlay.setPosition(topCenter);
+}
+
+function hideParcelActionToolbar() {
+  const el = document.getElementById("parcelActionToolbar");
+  if (el) el.hidden = true;
+  parcelActionOverlay?.setPosition(undefined);
+}
+
+function setupParcelActionToolbar() {
+  const el = document.getElementById("parcelActionToolbar");
+  if (!el) return;
+
+  parcelActionOverlay = new ol.Overlay({
+    element: el,
+    positioning: "bottom-center",
+    offset: [0, -14],
+    stopEvent: true
+  });
+  map.addOverlay(parcelActionOverlay);
+
+  // Stub handlers — real activity/alert logging and info wiring come later.
+  document.getElementById("parcelActionLogActivityBtn")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    setStatus(statusEl, "Log activity — coming soon.", true);
+  });
+  document.getElementById("parcelActionLogAlertBtn")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    setStatus(statusEl, "Log alert — coming soon.", true);
+  });
+  document.getElementById("parcelActionInfoBtn")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    setStatus(statusEl, "Feature info — coming soon.", true);
+  });
 }
 
 // popWinHead's icon/title are static markup, so the layer type needs to be
@@ -1548,6 +1697,7 @@ function setupInfoPopup() {
     selectedLayerType = null;
     inner.innerHTML = "";
     panel.hidden = true;
+    hideParcelActionToolbar();
 
     map.forEachFeatureAtPixel(
       evt.pixel,
@@ -1564,6 +1714,7 @@ function setupInfoPopup() {
         inner.innerHTML = buildFeatureInfoPopupHtml(selectedLayerType, feature);
         panel.hidden = false;
         panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        showParcelActionToolbar(feature);
         return true;
       },
       { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 20 }
@@ -3192,6 +3343,7 @@ async function initMap() {
   }
 
   setupInfoPopup();
+  setupParcelActionToolbar();
   bindEvents();
   startBackgroundLocationTracking();
   initPrintComposer({

@@ -4772,3 +4772,76 @@ select.search-panel__input {
   flex: 1 1 auto;
   min-height: 0;
 }
+
+/* =============================================================
+   Selected-feature action toolbar — small floating pill that
+   appears above a block/parcel on the map once it's selected.
+   Positioned via an ol.Overlay (see map-app.js); this file only
+   owns the look. Buttons are UI-only right now (logic follow-up).
+   ============================================================= */
+.parcel-action-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+}
+.parcel-action-toolbar[hidden] {
+  display: none !important;
+}
+
+.parcel-action-toolbar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.08);
+  z-index: -1;
+}
+
+.parcel-action-toolbar__btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.parcel-action-toolbar__btn:hover {
+  transform: scale(1.08);
+  filter: brightness(1.08);
+}
+
+.parcel-action-toolbar__btn:active {
+  transform: scale(0.94);
+}
+
+.parcel-action-toolbar__btn--activity {
+  background: linear-gradient(145deg, #3f8f3f, #2e6647);
+}
+
+.parcel-action-toolbar__btn--alert {
+  background: linear-gradient(145deg, #f9a825, #c77800);
+}
+
+.parcel-action-toolbar__btn--info {
+  background: linear-gradient(145deg, #1976d2, #0d47a1);
+}

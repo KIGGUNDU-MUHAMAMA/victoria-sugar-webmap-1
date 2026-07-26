@@ -83,6 +83,21 @@
           <i class="fas fa-location-crosshairs"></i>
         </button>
       </div>
+
+      <!-- Selected-feature action toolbar (OL Overlay target — positioned in JS
+           above the selected block/parcel each time one is clicked). Buttons are
+           UI-only for now; click handling/logic comes in a follow-up pass. -->
+      <div class="parcel-action-toolbar" id="parcelActionToolbar" hidden>
+        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--activity" id="parcelActionLogActivityBtn" title="Log Activity" aria-label="Log Activity">
+          <i class="fas fa-plus" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--alert" id="parcelActionLogAlertBtn" title="Log Alert" aria-label="Log Alert">
+          <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--info" id="parcelActionInfoBtn" title="Feature Info" aria-label="Feature Info">
+          <i class="fas fa-info" aria-hidden="true"></i>
+        </button>
+      </div>
     </div>
   </div>
 

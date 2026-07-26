@@ -1,0 +1,35 @@
+THERE ARE SOME PROPERTIES THAT WILL BE DISPLAYED TO THE USER IN THE WHILE OTHERS WILL BE JUST IN THE DATABSE, ILL SEPARATE THEM,
+
+PLOT DETAILS 
+plot_id, plot_code, plot_name, block_NAME, estate_NAME, boundary_geom, gps_centroid, area_hectares, perimeter_m, slope_pct, aspect_direction, elevation_m, 
+
+soil_type, drainage_class, irrigation_type, water_source, ownership_type, owner_id, current_season_id, current_growth_stage, current_ratoon_number, current_variety, planting_date, expected_harvest_date, ACTUAL HARVEST DATE, health_status, last_scouted_date, last_activity_date, status, notes, LAST UPDATED BY, updated_at
+
+
+ACTIVITY
+plot_seasons — plot_season_id, plot_id, season_id, block_id, cane_variety, ratoon_number, planting_date, expected_harvest_date, actual_harvest_date, growth_stage, target_yield_tonnes, actual_yield_tonnes, yield_per_hectare, season_status, failure_reason, notes
+
+SOIL TESTS 
+test_id, plot_id, plot_season_id, soil_ph, nitrogen, phosphorus, potassium, organic_matter_pct, texture, sample_date, sampled_by, lab_name, results_url
+
+INPUTS
+input_id, plot_id, plot_season_id, input_type, product_name, quantity, unit, application_method, applied_by, application_date, cost, currency, supplier, notes
+
+IRRIGATION 
+irrigation_id, plot_id, plot_season_id, irrigation_type, water_source, volume_m3, duration_hours, irrigated_by, irrigation_date, cost, currency, notes
+
+plot_scouting — scout_id, plot_id, plot_season_id, scouted_by, scout_date, growth_stage_observed, canopy_cover_pct, pest_present, pest_type, pest_severity, disease_present, disease_type, disease_severity, weed_pressure, health_rating, recommendations, gps_lat, gps_lng, created_at
+
+
+harvest
+harvest_id, plot_id, plot_season_id, harvest_date, gross_weight_tonnes, tare_weight_tonnes, net_weight_tonnes, yield_per_hectare, brix_reading, sucrose_pct, fiber_pct, pol_purity, cutting_crew, transport_vehicle, mill_destination, delivery_ticket_no, harvested_by, notes, created_at
+
+plot_yield_estimates — estimate_id, plot_id, plot_season_id, estimated_by, estimate_date, method, estimated_yield_tonnes, confidence_level, notes
+
+plot_costs — cost_id, plot_id, plot_season_id, cost_category, amount, currency, cost_date, recorded_by, reference_no, notes, created_at
+
+plot_comments — comment_id, plot_id, plot_season_id, user_id, comment_text, comment_type, is_resolved, resolved_by, resolved_at, created_at
+
+plot_media — media_id, plot_id, plot_season_id, scout_id, media_type, file_url, caption, gps_lat, gps_lng, captured_by, captured_at
+
+plot_documents — doc_id, plot_id, doc_type, document_title, file_url, uploaded_by, upload_date, description

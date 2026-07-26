@@ -1,15 +1,15 @@
-    <div id="measurePanel" class="measure-panel" hidden>
-      <div class="smc-header">
-        <div class="u-flex u-items-center u-gap-8">
-          <i class="fas fa-ruler-combined smc-header__icon"></i>
-          <span class="smc-header__label">Measure</span>
+    <div id="measurePanel" class="popWinMain popWin-mobileDock" hidden>
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-ruler-combined" aria-hidden="true"></i></span>
+          <h2 class="popWinTitle">Measure</h2>
         </div>
-        <button type="button" class="search-panel__close" id="measurePanelCloseBtn" aria-label="Close measure panel">
+        <button type="button" class="popWinCloseBtn" id="measurePanelCloseBtn" aria-label="Close measure panel">
           <i class="fas fa-times" aria-hidden="true"></i>
         </button>
-      </div>
+      </header>
 
-      <div class="search-panel__tabs u-my-12" role="tablist">
+      <div class="popWinTabs" role="tablist">
         <button type="button" class="search-tab" id="measureTabPick" role="tab" aria-selected="true" data-tab="pick" onclick="this.setAttribute('aria-selected', 'true'); document.getElementById('measureTabWalk').setAttribute('aria-selected', 'false'); window.dispatchEvent(new CustomEvent('vsl-measure-mode', {detail:'pick'}));">
           <i class="fas fa-mouse-pointer" aria-hidden="true"></i> Pick Mode
         </button>
@@ -18,42 +18,44 @@
         </button>
       </div>
 
-      <div id="measureStartWalkContainer" class="measure-start-walk">
-        <button id="startWalkBtn" class="btn-primary btn-primary--pill-lg"><i class="fas fa-play"></i> Start walking</button>
-      </div>
-
-      <!-- Real-time Readings Dashboard -->
-      <div id="measureActiveContainer" class="measure-dashboard">
-        <!-- Distance Card -->
-        <div class="measure-card">
-          <div class="measure-card-left">
-            <div class="measure-card-icon">
-              <i class="fas fa-ruler-horizontal"></i>
-            </div>
-            <div>
-              <div class="measure-card-lbl">Distance</div>
-              <div id="measureDistanceReadout" class="measure-card-val">0.00 m</div>
-            </div>
-          </div>
-
-          <div class="measure-card-left">
-            <div class="measure-card-icon">
-              <i class="fas fa-vector-square"></i>
-            </div>
-            <div>
-              <div class="measure-card-lbl">Area</div>
-              <div id="measureAreaReadout" class="measure-card-val">0.00 ac</div>
-            </div>
-          </div>
+      <div class="popWinBody">
+        <div id="measureStartWalkContainer" class="measure-start-walk">
+          <button id="startWalkBtn" class="btn-primary btn-primary--pill-lg"><i class="fas fa-play"></i> Start walking</button>
         </div>
 
-      <!-- Action buttons -->
-      <div class="u-flex u-gap-8 u-mt-7">
-        <button id="clearMeasuresBtn" class="btn-secondary measure-action-btn measure-action-btn--danger"><i class="fas fa-eraser"></i> Clear</button>
-        <button id="markWalkBtn" class="btn-primary measure-action-btn measure-action-btn--hidden"><i class="fas fa-map-pin"></i> Mark</button>
-        <button id="finishWalkBtn" class="btn-secondary measure-action-btn measure-action-btn--hidden measure-action-btn--success"><i class="fas fa-check"></i> Finish</button>
-        <button id="undoMeasureBtn" class="btn-primary measure-action-btn"><i class="fas fa-undo"></i> Undo</button>
-      </div>
-      <div id="measureFeedback" class="measure-feedback-text"></div>
+        <!-- Real-time Readings Dashboard -->
+        <div id="measureActiveContainer" class="measure-dashboard">
+          <!-- Distance Card -->
+          <div class="measure-card">
+            <div class="measure-card-left">
+              <div class="measure-card-icon">
+                <i class="fas fa-ruler-horizontal"></i>
+              </div>
+              <div>
+                <div class="measure-card-lbl">Distance</div>
+                <div id="measureDistanceReadout" class="measure-card-val">0.00 m</div>
+              </div>
+            </div>
+
+            <div class="measure-card-left">
+              <div class="measure-card-icon">
+                <i class="fas fa-vector-square"></i>
+              </div>
+              <div>
+                <div class="measure-card-lbl">Area</div>
+                <div id="measureAreaReadout" class="measure-card-val">0.00 ac</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="u-flex u-gap-8 u-mt-7">
+            <button id="clearMeasuresBtn" class="btn-secondary measure-action-btn measure-action-btn--danger"><i class="fas fa-eraser"></i> Clear</button>
+            <button id="markWalkBtn" class="btn-primary measure-action-btn measure-action-btn--hidden"><i class="fas fa-map-pin"></i> Mark</button>
+            <button id="finishWalkBtn" class="btn-secondary measure-action-btn measure-action-btn--hidden measure-action-btn--success"><i class="fas fa-check"></i> Finish</button>
+            <button id="undoMeasureBtn" class="btn-primary measure-action-btn"><i class="fas fa-undo"></i> Undo</button>
+          </div>
+          <div id="measureFeedback" class="measure-feedback-text"></div>
+        </div>
       </div>
     </div>

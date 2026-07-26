@@ -1,0 +1,69 @@
+<!--
+  STANDARD POPUP WINDOW TEMPLATE — reference markup only, not loaded by the
+  app. Copy this structure when building a new popup/panel window; the CSS
+  for every class below lives in the "POPUP WINDOW TEMPLATE" section near
+  the end of css/styles.css.
+
+  Windows already converted to this template: search-panel.html,
+  measure-panel.html, parcel-status-panel.html, edit-details-modal.html,
+  feature-info-panel.html (+ js/map-app.js). All new windows should follow
+  it too.
+
+  Classes (rename/remove as needed per window — see the note at the bottom):
+    .popWinMain     root element. Add [hidden] to start closed; toggle that
+                    attribute via JS to open/close. This is also the visual
+                    card (background/border/radius/shadow), so nothing else
+                    needs its own "card" styling.
+    .popWinHead     header bar: icon + title on the left, close button on
+                    the right. Never scrolls (flex-shrink: 0).
+    .popWinIcon     small icon badge, first thing in the header.
+    .popWinTitle    header text, right next to the icon.
+    .popWinCloseBtn always top-right of the header.
+    .popWinTabs     optional switch-tab bar between the head and the body.
+                    Add the `hidden` attribute if this window has no tabs.
+    .popWinBody     the ONLY element that scrolls. Its height is whatever
+                    the content needs, up to popWinMain's max-height — put
+                    all of the window's actual content in here.
+    .popWinActionBtns
+                    optional footer row for 0-3 action buttons. Add the
+                    `hidden` attribute if this window has none.
+
+  Note on overlay-style modals (e.g. edit-details-modal.html): a full-screen
+  dimmed backdrop is a separate concern from this template — keep a thin
+  wrapper (e.g. class="vsl-modal-overlay") around .popWinMain for that, and
+  put the `hidden` toggle on the wrapper instead of on .popWinMain itself.
+
+  Note on windows docked inside .map-left-stack / .map-right-stack (like
+  this template's default): add the .popWin-mobileDock class alongside
+  .popWinMain so the window becomes a bottom sheet on phones, matching
+  search-panel / measure-panel / parcel-status-panel.
+-->
+<div id="popWindowTemplate" class="popWinMain popWin-mobileDock" hidden role="dialog" aria-modal="true" aria-labelledby="popWindowTemplateTitle">
+
+  <header class="popWinHead">
+    <div class="popWinHead__inner">
+      <span class="popWinIcon"><i class="fas fa-window-restore" aria-hidden="true"></i></span>
+      <h2 id="popWindowTemplateTitle" class="popWinTitle">Window title</h2>
+    </div>
+    <button type="button" class="popWinCloseBtn" aria-label="Close">
+      <i class="fas fa-times" aria-hidden="true"></i>
+    </button>
+  </header>
+
+  <!-- Remove the hidden attribute (and add tab buttons) if this window has tabs. -->
+  <div class="popWinTabs" role="tablist" hidden>
+    <button type="button" class="search-tab" role="tab" aria-selected="true" data-tab="one">Tab one</button>
+    <button type="button" class="search-tab" role="tab" aria-selected="false" data-tab="two">Tab two</button>
+  </div>
+
+  <div class="popWinBody">
+    <!-- Window-specific content goes here. -->
+  </div>
+
+  <!-- Remove the hidden attribute (and add buttons) if this window has footer actions. -->
+  <div class="popWinActionBtns" hidden>
+    <button type="button" class="btn-secondary">Cancel</button>
+    <button type="button" class="btn-primary">Save</button>
+  </div>
+
+</div>

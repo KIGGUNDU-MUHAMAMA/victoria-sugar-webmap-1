@@ -1,3 +1,22 @@
-    <section id="featureInfoPanel" class="feature-info-panel" hidden role="region" aria-label="Selected map feature">
-      <div id="featureInfoPanelInner" class="feature-info-panel__inner"></div>
+    <section id="featureInfoPanel" class="popWinMain feature-info-panel" hidden role="region" aria-label="Selected map feature">
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon" id="featureInfoPanelIcon"><i class="fas fa-map" aria-hidden="true"></i></span>
+          <h2 class="popWinTitle" id="featureInfoPanelTitle">Parcel</h2>
+        </div>
+        <button type="button" class="popWinCloseBtn" id="featureInfoPanelCloseBtn" aria-label="Close details">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div class="popWinTabs" role="tablist">
+        <button type="button" class="search-tab" id="featureInfoTabInfo" role="tab" aria-selected="true" aria-controls="popupTabInfo" data-tab="info">
+          <i class="fas fa-info-circle" aria-hidden="true"></i> Info
+        </button>
+        <button type="button" class="search-tab" id="featureInfoTabModify" role="tab" aria-selected="false" aria-controls="popupTabMore" data-tab="modify">
+          <i class="fas fa-pen-to-square" aria-hidden="true"></i> Modify
+        </button>
+      </div>
+
+      <div id="featureInfoPanelInner" class="popWinBody"></div>
     </section>

@@ -1,10 +1,28 @@
+import { showToast, hideToast } from "../toast/toast.js";
+
+// setStatus()/clearStatus() are called from ~120 places across the app.
+// Elements using the .toast class (see toast/toast.css) get the full toast
+// treatment (auto-hide after a few seconds); anything else keeps the old
+// plain behavior (e.g. login.html's inline, non-floating form message,
+// which should stay up until the next status change, not vanish on its
+// own).
 export function setStatus(el, message, isError = false) {
+  if (!el) return;
+  if (el.classList.contains("toast")) {
+    showToast(el, message, { isError });
+    return;
+  }
   el.hidden = false;
   el.textContent = message;
   el.classList.toggle("error", Boolean(isError));
 }
 
 export function clearStatus(el) {
+  if (!el) return;
+  if (el.classList.contains("toast")) {
+    hideToast(el);
+    return;
+  }
   el.hidden = true;
   el.textContent = "";
   el.classList.remove("error");

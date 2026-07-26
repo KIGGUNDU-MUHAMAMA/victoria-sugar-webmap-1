@@ -328,10 +328,13 @@ function buildAdvancedModifyHtml(layerType, props, featureId, disableStr) {
   `;
 }
 
+// Badge/icon text shown in the panel's static popWinHead — kept alongside
+// the field-order tables so both stay in one place.
+const FEATURE_INFO_BADGE = { PARCELS: "Parcel", BLOCKS: "Block" };
+
 function buildFeatureInfoPopupHtml(layerType, feature) {
   const props = feature.getProperties();
   const order = layerType === "PARCELS" ? INFO_PARCEL_FIELD_ORDER : INFO_BLOCK_FIELD_ORDER;
-  const badge = layerType === "PARCELS" ? "Parcel" : "Block";
   const rows = order
     .map((key) => {
       let raw = props[key];
@@ -350,36 +353,23 @@ function buildFeatureInfoPopupHtml(layerType, feature) {
   const body = rows
     ? `<table class="map-popup__table"><tbody>${rows}</tbody></table>`
     : `<p class="map-popup__empty">No attributes loaded for this feature. Zoom in or reload layers.</p>`;
-    
+
   const canEdit = currentProfile?.role === "ADMIN" || currentProfile?.role === "SURVEYOR";
-  const readOnlyMsg = canEdit ? "" : `<div style="font-size:0.75rem; color:#856404; background:#fff3cd; padding:6px; border-radius:4px; margin-bottom:8px;">Sign in as Admin or Surveyor to modify.</div>`;
+  const readOnlyMsg = canEdit ? "" : `<div class="feature-info-readonly-msg">Sign in as Admin or Surveyor to modify.</div>`;
   const disableStr = canEdit ? "" : "disabled";
 
+  // popWinHead (icon/title) and popWinTabs are static markup in
+  // windows/feature-info-panel.html — this only rebuilds popWinBody's
+  // content (the Info/Modify tab panes), via setFeatureInfoHeader() /
+  // resetFeatureInfoTabs() in setupInfoPopup() below.
   return `
-    <div class="map-popup__inner">
-      <header class="map-popup__head">
-        <span class="map-popup__badge">${badge}</span>
-        <button type="button" class="map-popup__close" aria-label="Close details"><i class="fas fa-times" aria-hidden="true"></i></button>
-      </header>
-      
-      <div class="search-panel__tabs" role="tablist" style="margin-bottom:10px;">
-        <button type="button" class="search-tab" role="tab" aria-selected="true" onclick="this.parentElement.nextElementSibling.hidden=false; this.parentElement.nextElementSibling.nextElementSibling.hidden=true; this.setAttribute('aria-selected', 'true'); this.nextElementSibling.setAttribute('aria-selected', 'false');">
-          <i class="fas fa-info-circle" aria-hidden="true"></i> Info
-        </button>
-        <button type="button" class="search-tab" role="tab" aria-selected="false" onclick="this.parentElement.nextElementSibling.hidden=true; this.parentElement.nextElementSibling.nextElementSibling.hidden=false; this.setAttribute('aria-selected', 'true'); this.previousElementSibling.setAttribute('aria-selected', 'false');">
-          <i class="fas fa-pen-to-square" aria-hidden="true"></i> Modify
-        </button>
-      </div>
-
-      <div class="map-popup__tab-content" id="popupTabInfo">
-        <div class="map-popup__grid">${body}</div>
-      </div>
-      
-      <div class="map-popup__tab-content" id="popupTabMore" hidden>
-        ${readOnlyMsg}
-        <div style="font-size:0.85rem; padding-bottom:8px;">
-          ${buildAdvancedModifyHtml(layerType, props, feature.getId(), disableStr)}
-        </div>
+    <div class="map-popup__tab-content" id="popupTabInfo">
+      <div class="map-popup__grid">${body}</div>
+    </div>
+    <div class="map-popup__tab-content" id="popupTabMore" hidden>
+      ${readOnlyMsg}
+      <div class="feature-info-modify-wrap">
+        ${buildAdvancedModifyHtml(layerType, props, feature.getId(), disableStr)}
       </div>
     </div>`;
 }
@@ -1396,17 +1386,63 @@ function closeInfoPopup() {
   if (panel) panel.hidden = true;
 }
 
+// popWinHead's icon/title are static markup, so the layer type needs to be
+// pushed into them explicitly each time a different feature is clicked.
+function setFeatureInfoHeader(layerType) {
+  const iconEl = document.querySelector("#featureInfoPanelIcon i");
+  const titleEl = document.getElementById("featureInfoPanelTitle");
+  const isParcel = layerType === "PARCELS";
+  if (iconEl) iconEl.className = isParcel ? "fas fa-map" : "fas fa-cubes";
+  if (titleEl) titleEl.textContent = FEATURE_INFO_BADGE[layerType] || "Feature";
+}
+
+// popWinTabs is also static, so it doesn't get wiped/rebuilt with the rest
+// of the popup on every click — reset it back to "Info" selected instead.
+function resetFeatureInfoTabs() {
+  const tabInfo = document.getElementById("featureInfoTabInfo");
+  const tabModify = document.getElementById("featureInfoTabModify");
+  const paneInfo = document.getElementById("popupTabInfo");
+  const paneModify = document.getElementById("popupTabMore");
+  tabInfo?.setAttribute("aria-selected", "true");
+  tabModify?.setAttribute("aria-selected", "false");
+  if (paneInfo) paneInfo.hidden = false;
+  if (paneModify) paneModify.hidden = true;
+}
+
 function setupInfoPopup() {
   const inner = document.getElementById("featureInfoPanelInner");
   const panel = document.getElementById("featureInfoPanel");
+  const closeBtn = document.getElementById("featureInfoPanelCloseBtn");
+  const tabInfo = document.getElementById("featureInfoTabInfo");
+  const tabModify = document.getElementById("featureInfoTabModify");
   if (!inner || !panel) return;
 
+  closeBtn?.addEventListener("click", () => {
+    closeInfoPopup();
+    selectedFeature = null;
+    selectedLayerType = null;
+  });
+
+  tabInfo?.addEventListener("click", () => {
+    tabInfo.setAttribute("aria-selected", "true");
+    tabModify?.setAttribute("aria-selected", "false");
+    const paneInfo = document.getElementById("popupTabInfo");
+    const paneModify = document.getElementById("popupTabMore");
+    if (paneInfo) paneInfo.hidden = false;
+    if (paneModify) paneModify.hidden = true;
+  });
+
+  tabModify?.addEventListener("click", () => {
+    tabModify.setAttribute("aria-selected", "true");
+    tabInfo?.setAttribute("aria-selected", "false");
+    const paneInfo = document.getElementById("popupTabInfo");
+    const paneModify = document.getElementById("popupTabMore");
+    if (paneInfo) paneInfo.hidden = true;
+    if (paneModify) paneModify.hidden = false;
+  });
+
   inner.addEventListener("click", async (ev) => {
-    if (ev.target.closest(".map-popup__close")) {
-      closeInfoPopup();
-      selectedFeature = null;
-      selectedLayerType = null;
-    } else if (ev.target.closest(".btn-delete-feature")) {
+    if (ev.target.closest(".btn-delete-feature")) {
       const btn = ev.target.closest(".btn-delete-feature");
       const layerType = btn.dataset.layer;
       const featureId = btn.dataset.id;
@@ -1548,10 +1584,9 @@ function setupInfoPopup() {
         selectedFeature = feature;
         selectedLayerType = isBlocks ? "BLOCKS" : "PARCELS";
 
-        inner.innerHTML = `<div class="map-popup map-popup--feature map-popup--feature-dock">${buildFeatureInfoPopupHtml(
-          selectedLayerType,
-          feature
-        )}</div>`;
+        setFeatureInfoHeader(selectedLayerType);
+        resetFeatureInfoTabs();
+        inner.innerHTML = buildFeatureInfoPopupHtml(selectedLayerType, feature);
         panel.hidden = false;
         panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
         return true;

@@ -1,0 +1,305 @@
+object_type,object_status,table_name,column_name,data_type,is_primary_key,foreign_key,nullable,default_value,check_constraint,new_or_existing,deprecated,note
+table,existing (extended),vsl_estate,id,bigint,YES,,YES,,,EXISTING,,"identity, existing"
+table,existing (extended),vsl_estate,estate_code,text,,,YES,,,NEW,,"unique short code, e.g. VSL-EST-01"
+table,existing (extended),vsl_estate,estate_name,text,,,NO,,,EXISTING,,existing
+table,existing (extended),vsl_estate,registration_number,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,country,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,region,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,district,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,sub_county,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,parish,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,village,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,location,text,,,YES,,,EXISTING,,"existing free-text address, kept for backward compat"
+table,existing (extended),vsl_estate,geom,"geometry(Polygon,4326)",,,YES,,,NEW,,"boundary — MISSING today, flagged by user as an important gap"
+table,existing (extended),vsl_estate,gps_centroid,"geometry(Point,4326)",,,YES,,,NEW,,
+table,existing (extended),vsl_estate,total_area_hectares,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,elevation_min_m,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,elevation_max_m,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,average_rainfall_mm,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,primary_soil_type,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,water_sources,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,established_date,date,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,ownership_type,text,,,YES,,"ownership_type IN ('owned','leased','other')",NEW,,
+table,existing (extended),vsl_estate,owner_name,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,owner_contact_phone,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,owner_contact_email,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,estate_manager_id,uuid,,vsl_profiles.id,YES,,,NEW,,
+table,existing (extended),vsl_estate,manager_name,text,,,YES,,,EXISTING,,"existing (typo 'nanager_name' in live DB — rename recommended, not applied)"
+table,existing (extended),vsl_estate,manager_phone,text,,,YES,,,EXISTING,,existing
+table,existing (extended),vsl_estate,status,text,,,YES,'active',"status IN ('active','inactive')",NEW,,
+table,existing (extended),vsl_estate,notes,text,,,YES,,,NEW,,
+table,existing (extended),vsl_estate,created_by,uuid,,auth.users.id,YES,,,NEW,,
+table,existing (extended),vsl_estate,created_at,timestamptz,,,YES,now(),,EXISTING,,existing
+table,existing (extended),vsl_estate,updated_at,timestamptz,,,YES,now(),,NEW,,
+table,existing (extended),vsl_estate,updated_by,uuid,,auth.users.id,YES,,,NEW,,
+table,existing (extended),vsl_blocks,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,existing (extended),vsl_blocks,estate_id,bigint,,vsl_estate.id,YES,,,NEW,,proper FK — currently only estate_name text exists
+table,existing (extended),vsl_blocks,block_code,text,,,NO,,,EXISTING,,
+table,existing (extended),vsl_blocks,block_name,text,,,NO,,,EXISTING,,
+table,existing (extended),vsl_blocks,estate_name,text,,,YES,,,EXISTING,YES,"denormalized text; kept for backward compat, superseded by estate_id join"
+table,existing (extended),vsl_blocks,expected_area_acres,numeric,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,geometry_status,text,,,YES,'pending',"geometry_status IN ('pending','captured')",EXISTING,,
+table,existing (extended),vsl_blocks,geom,"geometry(Polygon,4326)",,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,gps_centroid,"geometry(Point,4326)",,,YES,,,NEW,,
+table,existing (extended),vsl_blocks,created_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,updated_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (extended),vsl_blocks,updated_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (extended),vsl_blocks,cultivation_status,text,,,YES,'not_in_cane',"cultivation_status IN ('not_in_cane','prepared','planted','standing','harvested','replant_renovation')",EXISTING,,
+table,existing (extended),vsl_blocks,harvest_tonnes,numeric,,,YES,,,EXISTING,YES,single flat latest value; superseded by v_block_harvest_summary (history-aware)
+table,existing (extended),vsl_blocks,last_harvest_date,date,,,YES,,,EXISTING,YES,superseded by v_block_harvest_summary
+table,existing (extended),vsl_blocks,cultivation_notes,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,cultivation_updated_at,timestamptz,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,cultivation_updated_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,location_address,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,soil_type,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,irrigation_type,text,,,YES,,"irrigation_type IN ('drip','furrow','overhead','rainfed')",EXISTING,,
+table,existing (extended),vsl_blocks,soil_ph,numeric,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,water_source,text,,,YES,,,NEW,,distinct from irrigation_type per block-details.md Details group
+table,existing (extended),vsl_blocks,elevation_m,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_blocks,access_road,text,,,YES,,,NEW,,
+table,existing (extended),vsl_blocks,average_slope_pct,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_blocks,drainage_class,text,,,YES,,,NEW,,
+table,existing (extended),vsl_blocks,manager_name,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,manager_phone,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_blocks,ownership,text,,,YES,,"ownership IN ('bought','rented')",EXISTING,,
+table,existing (extended),vsl_parcels,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,existing (extended),vsl_parcels,block_id,uuid,,vsl_blocks.id,NO,,,EXISTING,,
+table,existing (extended),vsl_parcels,parcel_no,integer,,,NO,,,EXISTING,,
+table,existing (extended),vsl_parcels,parcel_code,text,,,YES,,,EXISTING,,generated: 'P-' || parcel_no
+table,existing (extended),vsl_parcels,parcel_label,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,expected_area_acres,numeric,,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,geometry_status,text,,,YES,'pending',"geometry_status IN ('pending','captured')",EXISTING,,
+table,existing (extended),vsl_parcels,geom,"geometry(Polygon,4326)",,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,gps_centroid,"geometry(Point,4326)",,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,perimeter_m,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,slope_pct,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,aspect_direction,text,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,elevation_m,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,dominant_soil_type,text,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,drainage_class,text,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,water_source,text,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,irrigation_type,text,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,ownership_type,text,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,created_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,updated_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (extended),vsl_parcels,updated_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (extended),vsl_parcels,cultivation_status,text,,,YES,'not_in_cane',"cultivation_status IN ('not_in_cane','prepared','planted','standing','harvested','replant_renovation')",EXISTING,,
+table,existing (extended),vsl_parcels,health_status,text,,,YES,,"health_status IN ('good','watch','critical','unplanted','not_in_cane')",NEW,,
+table,existing (extended),vsl_parcels,harvest_tonnes,numeric,,,YES,,,EXISTING,YES,superseded by v_parcel history via vsl_harvests
+table,existing (extended),vsl_parcels,last_harvest_date,date,,,YES,,,EXISTING,YES,superseded by vsl_harvests + actual_harvest_date on current season
+table,existing (extended),vsl_parcels,cultivation_notes,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,cultivation_updated_at,timestamptz,,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,cultivation_updated_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,estate_name,text,,,YES,,,EXISTING,YES,denormalized; superseded by block_id -> vsl_blocks.estate_id join
+table,existing (extended),vsl_parcels,agronomy_notes,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,current_variety,text,,,YES,,,NEW,,was entirely missing — cane variety had nowhere to live on the parcel itself
+table,existing (extended),vsl_parcels,current_growth_stage,text,,,YES,,"current_growth_stage IN ('germination','tillering','grand_growth','ripening','mature')",NEW,,
+table,existing (extended),vsl_parcels,ratoon_number,integer,,,YES,0,,EXISTING,,
+table,existing (extended),vsl_parcels,planting_date,date,,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,expected_harvest_date,date,,,YES,,,EXISTING,,
+table,existing (extended),vsl_parcels,actual_harvest_date,date,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,earliest_safe_harvest_date,date,,,YES,,,NEW,,"planting-vs-spray withholding derived, from Spraying activity"
+table,existing (extended),vsl_parcels,last_brix_reading,numeric,,,YES,,,NEW,,<- Harvesting
+table,existing (extended),vsl_parcels,current_season_id,uuid,,vsl_parcel_seasons.id,YES,,,NEW,,points at the active row in vsl_parcel_seasons
+table,existing (extended),vsl_parcels,soil_moisture_current,text,,,YES,,,NEW,,"<- Ploughing, Harrow, Irrigation"
+table,existing (extended),vsl_parcels,soil_compaction_current,text,,,YES,,,NEW,,<- Ripping
+table,existing (extended),vsl_parcels,soil_ph_field_current,numeric,,,YES,,,NEW,,<- Lime Application
+table,existing (extended),vsl_parcels,target_soil_ph,numeric,,,YES,,,NEW,,<- Lime Application
+table,existing (extended),vsl_parcels,soil_tilth_condition,text,,,YES,,,NEW,,<- Harrow
+table,existing (extended),vsl_parcels,last_amendment_type,text,,,YES,,,NEW,,"lime / manure / fertilizer <- Lime Application, Manuring, Fertilization"
+table,existing (extended),vsl_parcels,last_amendment_date,date,,,YES,,,NEW,,
+table,existing (extended),vsl_parcels,last_npk_ratio_applied,text,,,YES,,,NEW,,<- Fertilization
+table,existing (extended),vsl_parcels,current_row_spacing_m,numeric,,,YES,,,NEW,,"<- Planting, Ridging, Furrowing, Cultivator"
+table,existing (extended),vsl_parcels,current_ridge_height_cm,numeric,,,YES,,,NEW,,<- Ridging
+table,existing (extended),vsl_parcels,current_ridge_width_cm,numeric,,,YES,,,NEW,,<- Ridging
+table,existing (extended),vsl_parcels,current_furrow_depth_cm,numeric,,,YES,,,NEW,,<- Furrowing
+table,existing (extended),vsl_parcels,current_weed_pressure,text,,,YES,,,NEW,,"<- Weeding, Spraying"
+table,existing (extended),vsl_parcels,dominant_weed_type,text,,,YES,,,NEW,,<- Weeding
+table,existing (extended),vsl_parcels,current_pest_disease_pressure,text,,,YES,,,NEW,,"<- Spraying, Scouting; also raises a row in vsl_alerts"
+table,existing (extended),vsl_parcels,residue_management_state,text,,,YES,,,NEW,,"<- Trash Lining, Trash Collection"
+table,existing (extended),vsl_parcels,land_status_marker,text,,,YES,,,NEW,,new land / fallow reclamation <- Bush Clearing
+table,existing (extended),vsl_parcels,agronomy_data,jsonb,,,YES,'{}'::jsonb,,EXISTING,,existing catch-all — kept for any field not worth a typed column
+table,new,vsl_parcel_seasons,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,new,vsl_parcel_seasons,parcel_id,uuid,,vsl_parcels.id,NO,,,EXISTING,,
+table,new,vsl_parcel_seasons,season_name,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,cane_variety,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,ratoon_number,integer,,,YES,0,,EXISTING,,
+table,new,vsl_parcel_seasons,planting_date,date,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,expected_harvest_date,date,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,actual_harvest_date,date,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,growth_stage,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,target_yield_tonnes,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,actual_yield_tonnes,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,yield_per_hectare,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,season_status,text,,,YES,,"season_status IN ('planned','planted','growing','harvested','failed')",EXISTING,,
+table,new,vsl_parcel_seasons,failure_reason,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,notes,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,created_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,new,vsl_parcel_seasons,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (extended),vsl_activities,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,existing (extended),vsl_activities,parcel_id,uuid,,vsl_parcels.id,NO,,,EXISTING,,
+table,existing (extended),vsl_activities,block_id,uuid,,vsl_blocks.id,YES,,,NEW,,denormalized for fast block/estate-level rollup views
+table,existing (extended),vsl_activities,plot_season_id,uuid,,vsl_parcel_seasons.id,YES,,,NEW,,
+table,existing (extended),vsl_activities,activity_type,text,,,NO,,,EXISTING,,one of the 18 types in activities.md Appendix A
+table,existing (extended),vsl_activities,activity_name,text,,,YES,,,EXISTING,,
+table,existing (extended),vsl_activities,task_description,text,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,status,text,,,YES,'planned',"status IN ('planned','in_progress','completed','cancelled')",NEW,,
+table,existing (extended),vsl_activities,status_percent,integer,,,YES,0,status_percent BETWEEN 0 AND 100,EXISTING,YES,superseded by completion_value + completion_unit
+table,existing (extended),vsl_activities,completion_unit,text,,,YES,,"completion_unit IN ('acres','percent')",NEW,,
+table,existing (extended),vsl_activities,completion_value,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,team_size,integer,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,method,text,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,number_of_machines,integer,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,assigned_to,uuid,,vsl_profiles.id,YES,,,NEW,,was free text; FK'd to profiles
+table,existing (extended),vsl_activities,assigned_to_name,text,,,YES,,,EXISTING,YES,"legacy free-text value, kept for rows created before the FK existed"
+table,existing (extended),vsl_activities,due_date,date,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,activity_date,date,,,YES,CURRENT_DATE,,EXISTING,,
+table,existing (extended),vsl_activities,completed_date,date,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,estimated_cost,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,actual_cost,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,currency,text,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,challenges,text,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,comments,text,,,YES,,,NEW,,
+table,existing (extended),vsl_activities,activity_properties,jsonb,,,YES,'{}'::jsonb,,NEW,,"per-activity-type structured fields, e.g. {""plough_depth_cm"":25,""implement_used"":""disc plough""} — see Appendix map in plot-details-v2.md"
+table,existing (extended),vsl_activities,created_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_activities,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (extended),vsl_harvests,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,existing (extended),vsl_harvests,parcel_id,uuid,,vsl_parcels.id,NO,,,EXISTING,,
+table,existing (extended),vsl_harvests,plot_season_id,uuid,,vsl_parcel_seasons.id,YES,,,NEW,,
+table,existing (extended),vsl_harvests,harvest_date,date,,,NO,,,EXISTING,,
+table,existing (extended),vsl_harvests,gross_weight_tonnes,numeric,,,NO,,,EXISTING,,
+table,existing (extended),vsl_harvests,tare_weight_tonnes,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,net_weight_tonnes,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,yield_per_hectare,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,ratoon_at_harvest,integer,,,YES,,,EXISTING,,
+table,existing (extended),vsl_harvests,brix_reading,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,sucrose_pct,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,fiber_pct,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,pol_purity,numeric,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,cutting_crew,text,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,transport_vehicle,text,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,mill_destination,text,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,delivery_ticket_no,text,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,notes,text,,,YES,,,NEW,,
+table,existing (extended),vsl_harvests,created_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (extended),vsl_harvests,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,new,vsl_parcel_soil_tests,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,new,vsl_parcel_soil_tests,parcel_id,uuid,,vsl_parcels.id,NO,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,plot_season_id,uuid,,vsl_parcel_seasons.id,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,soil_ph,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,nitrogen,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,phosphorus,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,potassium,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,organic_matter_pct,numeric,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,texture,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,sample_date,date,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,sampled_by,uuid,,vsl_profiles.id,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,lab_name,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,results_url,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_soil_tests,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,new,vsl_parcel_land_state_log,id,bigint,YES,,YES,,,EXISTING,,identity
+table,new,vsl_parcel_land_state_log,parcel_id,uuid,,vsl_parcels.id,NO,,,EXISTING,,
+table,new,vsl_parcel_land_state_log,source_activity_id,uuid,,vsl_activities.id,YES,,,EXISTING,,"which logged activity caused this change, if any"
+table,new,vsl_parcel_land_state_log,field_name,text,,,NO,,,EXISTING,,"e.g. 'soil_moisture_current', 'current_weed_pressure'"
+table,new,vsl_parcel_land_state_log,old_value,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_land_state_log,new_value,text,,,YES,,,EXISTING,,
+table,new,vsl_parcel_land_state_log,recorded_at,timestamptz,,,YES,now(),,EXISTING,,
+table,renamed + extended (was vsl_flags),vsl_alerts,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,renamed + extended (was vsl_flags),vsl_alerts,layer_type,text,,,NO,,"layer_type IN ('ESTATE','BLOCKS','PARCELS')",EXISTING,,widened from BLOCKS/PARCELS
+table,renamed + extended (was vsl_flags),vsl_alerts,target_id,text,,,NO,,,EXISTING,,existing — text so it can hold uuid (blocks/parcels) or bigint (estate) ids
+table,renamed + extended (was vsl_flags),vsl_alerts,severity,text,,,NO,'information',"severity IN ('information','warning','critical')",NEW,,THE missing field — didn't exist in vsl_flags
+table,renamed + extended (was vsl_flags),vsl_alerts,alert_type,text,,,YES,,"alert_type IN ('pest','disease','general','other')",NEW,,
+table,renamed + extended (was vsl_flags),vsl_alerts,alert_name,text,,,YES,,,NEW,,short title; existing 'note' becomes the long description
+table,renamed + extended (was vsl_flags),vsl_alerts,source,text,,,YES,,"source IN ('scouting','satellite','manual')",NEW,,
+table,renamed + extended (was vsl_flags),vsl_alerts,note,text,,,NO,,,EXISTING,,
+table,renamed + extended (was vsl_flags),vsl_alerts,status,text,,,YES,'open',"status IN ('open','investigating','resolved')",EXISTING,,"existing, 'investigating' added"
+table,renamed + extended (was vsl_flags),vsl_alerts,created_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,renamed + extended (was vsl_flags),vsl_alerts,resolved_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,renamed + extended (was vsl_flags),vsl_alerts,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,renamed + extended (was vsl_flags),vsl_alerts,resolved_at,timestamptz,,,YES,,,EXISTING,,
+table,new,vsl_media,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,new,vsl_media,entity_type,text,,,NO,,"entity_type IN ('estate','block','parcel')",EXISTING,,
+table,new,vsl_media,entity_id,text,,,NO,,,EXISTING,,
+table,new,vsl_media,scout_activity_id,uuid,,vsl_activities.id,YES,,,EXISTING,,
+table,new,vsl_media,media_type,text,,,YES,,"media_type IN ('photo','video')",EXISTING,,
+table,new,vsl_media,file_url,text,,,NO,,,EXISTING,,
+table,new,vsl_media,caption,text,,,YES,,,EXISTING,,
+table,new,vsl_media,gps_lat,numeric,,,YES,,,EXISTING,,
+table,new,vsl_media,gps_lng,numeric,,,YES,,,EXISTING,,
+table,new,vsl_media,captured_by,uuid,,vsl_profiles.id,YES,,,EXISTING,,
+table,new,vsl_media,captured_at,timestamptz,,,YES,now(),,EXISTING,,
+table,new,vsl_documents,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,new,vsl_documents,entity_type,text,,,NO,,"entity_type IN ('estate','block','parcel')",EXISTING,,
+table,new,vsl_documents,entity_id,text,,,NO,,,EXISTING,,
+table,new,vsl_documents,doc_type,text,,,YES,,,EXISTING,,
+table,new,vsl_documents,document_title,text,,,NO,,,EXISTING,,
+table,new,vsl_documents,file_url,text,,,NO,,,EXISTING,,
+table,new,vsl_documents,uploaded_by,uuid,,vsl_profiles.id,YES,,,EXISTING,,
+table,new,vsl_documents,upload_date,date,,,YES,CURRENT_DATE,,EXISTING,,
+table,new,vsl_documents,description,text,,,YES,,,EXISTING,,
+table,new,vsl_comments,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,new,vsl_comments,entity_type,text,,,NO,,"entity_type IN ('estate','block','parcel')",EXISTING,,
+table,new,vsl_comments,entity_id,text,,,NO,,,EXISTING,,
+table,new,vsl_comments,user_id,uuid,,vsl_profiles.id,NO,,,EXISTING,,
+table,new,vsl_comments,comment_text,text,,,NO,,,EXISTING,,
+table,new,vsl_comments,comment_type,text,,,YES,,"comment_type IN ('observation','issue','recommendation','approval')",EXISTING,,
+table,new,vsl_comments,is_resolved,boolean,,,YES,false,,EXISTING,,
+table,new,vsl_comments,resolved_by,uuid,,vsl_profiles.id,YES,,,EXISTING,,
+table,new,vsl_comments,resolved_at,timestamptz,,,YES,,,EXISTING,,
+table,new,vsl_comments,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,new,vsl_infrastructure,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,new,vsl_infrastructure,entity_type,text,,,NO,,"entity_type IN ('estate','block')",EXISTING,,
+table,new,vsl_infrastructure,entity_id,text,,,NO,,,EXISTING,,
+table,new,vsl_infrastructure,infra_type,text,,,YES,,,EXISTING,,
+table,new,vsl_infrastructure,infra_name,text,,,YES,,,EXISTING,,
+table,new,vsl_infrastructure,geom,"geometry(Point,4326)",,,YES,,,EXISTING,,
+table,new,vsl_infrastructure,condition,text,,,YES,,,EXISTING,,
+table,new,vsl_infrastructure,construction_date,date,,,YES,,,EXISTING,,
+table,new,vsl_infrastructure,last_maintained,date,,,YES,,,EXISTING,,
+table,new,vsl_infrastructure,notes,text,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_profiles,id,uuid,YES,auth.users.id,YES,,,EXISTING,,
+table,existing (unchanged),vsl_profiles,email,text,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_profiles,role,text,,,YES,,"role IN ('ADMIN','SURVEYOR','MANAGMENT')",EXISTING,,"typo in live check constraint, flagged not fixed"
+table,existing (unchanged),vsl_profiles,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (unchanged),vsl_profiles,updated_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (unchanged),vsl_drone_images,id,bigint,YES,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_drone_images,url,text,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_drone_images,name,text,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_drone_images,uploaded_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (unchanged),vsl_import_batches,id,bigint,YES,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_batches,source_file_name,text,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_batches,row_count,integer,,,YES,0,,EXISTING,,
+table,existing (unchanged),vsl_import_batches,status,text,,,YES,'processing',"status IN ('processing','completed','failed')",EXISTING,,
+table,existing (unchanged),vsl_import_batches,imported_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_batches,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (unchanged),vsl_import_batches,completed_at,timestamptz,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_rows,id,bigint,YES,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_rows,batch_id,bigint,,vsl_import_batches.id,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_rows,row_number,integer,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_rows,raw_payload,jsonb,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_rows,status,text,,,YES,'queued',"status IN ('queued','imported','failed')",EXISTING,,
+table,existing (unchanged),vsl_import_rows,error_message,text,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_import_rows,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (unchanged),vsl_report_recipients,id,uuid,YES,,YES,gen_random_uuid(),,EXISTING,,
+table,existing (unchanged),vsl_report_recipients,email,text,,,NO,,,EXISTING,,
+table,existing (unchanged),vsl_report_recipients,name,text,,,YES,,,EXISTING,,
+table,existing (unchanged),vsl_report_recipients,created_by,uuid,,auth.users.id,YES,,,EXISTING,,
+table,existing (unchanged),vsl_report_recipients,created_at,timestamptz,,,YES,now(),,EXISTING,,
+table,existing (unchanged),vsl_report_recipients,freq,frequency_enum,,,YES,,,EXISTING,,"enum: Weekly, Monthly"
+view,new,v_block_status_counts,,,,,,,,NEW,,"Grouped by: block_id, cultivation_status. Source: vsl_parcels. Plot count by lifecycle status per block."
+view,new,v_block_ratoon_counts,,,,,,,,NEW,,"Grouped by: block_id, ratoon_bucket (0,1,2,3,4,'5+'). Source: vsl_parcels. Plot count by current ratoon number per block."
+view,new,v_block_activity_counts,,,,,,,,NEW,,"Grouped by: block_id, activity_type. Source: vsl_activities (open/most-recent per parcel). Plot count by open/most-recent activity type per block."
+view,new,v_block_alert_counts,,,,,,,,NEW,,"Grouped by: block_id, severity. Source: vsl_alerts (status != resolved) join vsl_parcels. Plot count by open alert severity per block."
+view,new,v_block_variety_counts,,,,,,,,NEW,,"Grouped by: block_id, current_variety. Source: vsl_parcels. Plot count by current cane variety per block, top 5 taken at query time."
+view,new,v_block_harvest_summary,,,,,,,,NEW,,"Grouped by: block_id. Source: vsl_harvests join vsl_parcels. Total harvests, plots harvested, weights, avg yield/brix, last harvest date per block."
+view,new,v_block_planting_summary,,,,,,,,NEW,,"Grouped by: block_id. Source: vsl_parcel_seasons join vsl_parcels. Plots planted, area planted, date range, plots pending, sett cost per block."
+view,new,v_estate_status_counts,,,,,,,,NEW,,"Grouped by: estate_id, cultivation_status. Source: vsl_parcels join vsl_blocks. Estate-wide version of v_block_status_counts."
+view,new,v_estate_ratoon_counts,,,,,,,,NEW,,"Grouped by: estate_id, ratoon_bucket. Source: vsl_parcels join vsl_blocks. Estate-wide version of v_block_ratoon_counts."
+view,new,v_estate_activity_counts,,,,,,,,NEW,,"Grouped by: estate_id, activity_type. Source: vsl_activities join vsl_blocks. Estate-wide version of v_block_activity_counts."
+view,new,v_estate_alert_counts,,,,,,,,NEW,,"Grouped by: estate_id, severity. Source: vsl_alerts join vsl_parcels join vsl_blocks. Estate-wide version of v_block_alert_counts."
+view,new,v_estate_variety_counts,,,,,,,,NEW,,"Grouped by: estate_id, current_variety. Source: vsl_parcels join vsl_blocks. Estate-wide version of v_block_variety_counts."
+view,new,v_estate_block_summary,,,,,,,,NEW,,"Grouped by: estate_id, block_id. Source: vsl_blocks + all block_* views. One row per block: plot count, area, dominant status, critical/warning alert counts — backs the estate panel's Blocks table."
+view,new,v_estate_harvest_summary,,,,,,,,NEW,,Grouped by: estate_id. Source: vsl_harvests join vsl_parcels join vsl_blocks. Estate-wide version of v_block_harvest_summary.
+view,new,v_estate_planting_summary,,,,,,,,NEW,,Grouped by: estate_id. Source: vsl_parcel_seasons join vsl_parcels join vsl_blocks. Estate-wide version of v_block_planting_summary.

@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="css/styles.css?v=2.2.0">
   <link rel="stylesheet" href="css/rover.css?v=1.0">
   <link rel="stylesheet" href="css/utilities.css?v=1.0">
+  <link rel="stylesheet" href="toast/toast.css?v=1.0">
 
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2196f3">
@@ -150,7 +151,9 @@
   <!-- measure-panel fetched at runtime from windows/measure-panel.html (js/app-boot.js). -->
   <div class="map-right-stack" id="mapRightStack" aria-label="Map right tools"></div>
 
-  <div id="status" class="status map-status" hidden></div>
+  <!-- Auto-hiding toast (see toast/toast.js) — same #status element every
+       module's setStatus()/clearStatus() (js/utils.js) already targets. -->
+  <div id="status" class="toast" hidden></div>
 
   <div id="fallbackLayerSwitcher" class="fallback-switcher" hidden>
     <h4>SURVEY LAYERS</h4>

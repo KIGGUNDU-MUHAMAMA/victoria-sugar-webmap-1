@@ -1,29 +1,28 @@
-    <section id="searchPanel" class="search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="searchPanelTitle">
-      <div class="search-panel__card">
-        <!-- Header -->
-        <header class="search-panel__head">
-          <div class="search-panel__head-inner">
-            <i class="fas fa-magnifying-glass search-panel__head-icon" aria-hidden="true"></i>
-            <h2 id="searchPanelTitle" class="search-panel__title">Search</h2>
-          </div>
-          <button type="button" class="search-panel__close" id="searchPanelCloseBtn" aria-label="Close search panel">
-            <i class="fas fa-times" aria-hidden="true"></i>
-          </button>
-        </header>
-
-        <!-- Tab pills -->
-        <div class="search-panel__tabs" role="tablist" aria-label="Search method">
-          <button type="button" class="search-tab" id="tabParcel" role="tab" aria-selected="true" aria-controls="searchTabParcel" data-tab="parcel">
-            <i class="fas fa-map-location-dot" aria-hidden="true"></i> Block / Parcel
-          </button>
-          <button type="button" class="search-tab" id="tabPlace" role="tab" aria-selected="false" aria-controls="searchTabPlace" data-tab="place">
-            <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i> Place
-          </button>
-          <button type="button" class="search-tab" id="tabCoords" role="tab" aria-selected="false" aria-controls="searchTabCoords" data-tab="coords">
-            <i class="fas fa-crosshairs" aria-hidden="true"></i> Coordinates
-          </button>
+    <section id="searchPanel" class="search-panel search-panel__card popWinMain popWin-mobileDock" hidden role="dialog" aria-modal="true" aria-labelledby="searchPanelTitle">
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-magnifying-glass" aria-hidden="true"></i></span>
+          <h2 id="searchPanelTitle" class="popWinTitle">Search</h2>
         </div>
+        <button type="button" class="popWinCloseBtn" id="searchPanelCloseBtn" aria-label="Close search panel">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
 
+      <!-- Tab pills -->
+      <div class="popWinTabs" role="tablist" aria-label="Search method">
+        <button type="button" class="search-tab" id="tabParcel" role="tab" aria-selected="true" aria-controls="searchTabParcel" data-tab="parcel">
+          <i class="fas fa-map-location-dot" aria-hidden="true"></i> Block / Parcel
+        </button>
+        <button type="button" class="search-tab" id="tabPlace" role="tab" aria-selected="false" aria-controls="searchTabPlace" data-tab="place">
+          <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i> Place
+        </button>
+        <button type="button" class="search-tab" id="tabCoords" role="tab" aria-selected="false" aria-controls="searchTabCoords" data-tab="coords">
+          <i class="fas fa-crosshairs" aria-hidden="true"></i> Coordinates
+        </button>
+      </div>
+
+      <div class="popWinBody">
         <!-- ── TAB 1: Block / Parcel Search ── -->
         <div id="searchTabParcel" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabParcel">
           <!-- Cascade: Estate → Block → Parcel -->
@@ -47,7 +46,7 @@
               </select>
             </div>
           </div>
-          
+
           <p id="parcelSearchPopoverError" class="search-panel__error" role="alert" hidden></p>
           <div class="search-panel__row futuristic-actions">
             <button type="button" class="futuristic-icon-btn btn-clear" id="parcelSearchPopoverCancelBtn" title="Clear highlight">

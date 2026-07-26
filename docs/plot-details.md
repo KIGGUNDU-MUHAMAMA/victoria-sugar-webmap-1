@@ -20,11 +20,19 @@ Your current popup shows 4 fields (plot label, block code, expected area, cultiv
 - Notes
 - Last Updated by:
 
-## WARNING FLAG
-- Warning Flag (Information/Warning/Critical)
-- Warning Flag Name
-- Flagged By
-- Flag Date
+## Alerts
+Unifies the former separate Warning Flag and Alerts groups — every plot-level concern, whether pest/disease-sourced from scouting/satellite or manually raised, is one Alert record with one of 3 severities.
+
+- Alert severity (Information / Warning / Critical)
+- Alert type (Pest / Disease / General / Other)
+- Alert name / description
+- Source (Scouting / Satellite / Manual)
+- Detected/Flagged date
+- Detected/Flagged by
+- Status (Open / Investigating / Resolved)
+- Resolved by
+- Resolved at
+- Resolution notes
 
 ## Current Crop Cycle
 - Current season name
@@ -82,9 +90,6 @@ Your current popup shows 4 fields (plot label, block code, expected area, cultiv
 
 ## Comments
 - Threaded comments — author, text, type (observation/issue/recommendation/approval), resolved status, resolved by/at
-
-## Alerts
-- Pest/disease alerts — type, severity, source (scouting/satellite/manual), detected date, status, resolution notes
 
 ## History / Audit
 - Change log — field changed, old/new value, changed by, changed at

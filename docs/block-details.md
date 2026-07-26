@@ -178,3 +178,13 @@ Threaded comments at block level — author, text, type (observation/issue/recom
 ---
 
 Note: Estate detail panel can follow the same pattern one level up again — swapping block-level tables for `estate_financial_summary`, `estate_seasons`, `estate_soil_profiles`, `estate_infrastructure`, `estate_documents`, with block status/ratoon/activity/alert tables rolled up to estate scope.
+
+## Implementation notes (v3, as actually live in Supabase)
+
+Table name mapping — the generic names in this doc map to these live tables: `plots` → `vsl_parcels`, `plot_tasks`/activity → `vsl_activities`, plot alerts/flags → `vsl_alerts`, `plot_seasons` → `vsl_parcel_seasons`, `plot_harvest` → `vsl_harvests`, `block_managers` → `vsl_estate_managers` (rows scoped by `block_id`), `block_infrastructure`/`block_documents`/block-level media/comments → the shared polymorphic tables `vsl_infrastructure` / `vsl_documents` / `vsl_media` / `vsl_comments`, filtered by `entity_type = 'block'` and `entity_id = <block id>`.
+
+- **Estate name** → `vsl_blocks.estate_id` FK to `vsl_estate` (there is no `estate_name` text column on blocks anymore).
+- **Block manager**: two sources exist live — `vsl_blocks.manager_name`/`manager_phone` (simple flat fields, unchanged) and the new `vsl_estate_managers` junction table (links a `vsl_profiles` user to this block with a role, active flag, and assigned-from/to dates). Prefer `vsl_estate_managers` going forward since it links to a real user profile; the flat fields remain for backward compatibility.
+- **Status / Ratoon Number / Activities / Alerts / Season Summary / Top 5 Cane Varieties** rollup tables: all computed at query time from `vsl_parcels`/`vsl_activities`/`vsl_alerts`/`vsl_parcel_seasons`/`vsl_harvests` filtered by `block_id` (`vsl_activities` and going forward other tables carry a denormalized `block_id` for exactly this purpose) — matches this doc's existing "computed, not stored" guidance. `v_block_last_harvest` already exists live for the Harvests subsection's tonnage/date rollup; the other rollup views listed here (`v_block_status_counts`, `v_block_ratoon_counts`, `v_block_activity_counts`, `v_block_alert_counts`, `v_block_variety_counts`) are still to be created when this panel is built.
+- Activities table: the 18 rows match `vsl_activities.activity_name` (single canonical column — `activity_type` does not exist as a separate column).
+- `agronomy_notes`/`agronomy_data`/`harvest_tonnes`/`last_harvest_date` were dropped from `vsl_blocks`; harvest figures now come from `vsl_harvests` via `v_block_last_harvest`.

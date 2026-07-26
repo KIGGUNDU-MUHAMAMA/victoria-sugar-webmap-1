@@ -120,16 +120,18 @@ async function populateStatsDropdowns() {
   
   const { data, error } = await supabase
     .from("vsl_blocks")
-    .select("id, block_name, block_code, estate_name")
+    .select("id, block_name, block_code, estate_id, vsl_estate(estate_name)")
     .order("block_code");
-    
+
   if (error) {
     console.error("Failed to load blocks for stats:", error);
     return;
   }
-  
+
+  // Flatten the embedded estate name so the rest of this file can keep reading b.estate_name
+  data.forEach(b => { b.estate_name = b.vsl_estate?.estate_name || null; });
   allBlocksData = data;
-  
+
   const estates = [...new Set(data.map(b => b.estate_name).filter(Boolean))].sort();
   estates.forEach(est => {
     const opt = document.createElement("option");
@@ -210,7 +212,7 @@ async function generateStatisticsReport() {
     // 2. Fetch Harvest History with joins
     let harvestQuery = supabase
       .from("vsl_harvests")
-      .select("harvest_date, gross_weight_tonnes, vsl_parcels!inner(parcel_label, block_id, vsl_blocks!inner(block_code, estate_name))")
+      .select("harvest_date, gross_weight_tonnes, vsl_parcels!inner(parcel_name, block_id, vsl_blocks!inner(block_code, vsl_estate(estate_name)))")
       .order("harvest_date", { ascending: false });
       
     if (fromDate) harvestQuery = harvestQuery.gte("harvest_date", fromDate);
@@ -223,7 +225,7 @@ async function generateStatisticsReport() {
     const filteredHarvests = harvestData.filter(h => {
       const p = h.vsl_parcels;
       if (!p) return false;
-      if (estateFilter !== "ALL" && p.vsl_blocks?.estate_name !== estateFilter) return false;
+      if (estateFilter !== "ALL" && p.vsl_blocks?.vsl_estate?.estate_name !== estateFilter) return false;
       if (blockFilter !== "ALL" && p.block_id !== blockFilter) return false;
       return true;
     });
@@ -240,7 +242,7 @@ async function generateStatisticsReport() {
     // Grouping
     const grouped = {};
     filteredHarvests.forEach(h => {
-      const estate = h.vsl_parcels?.vsl_blocks?.estate_name || "Unknown Estate";
+      const estate = h.vsl_parcels?.vsl_blocks?.vsl_estate?.estate_name || "Unknown Estate";
       const blockCode = h.vsl_parcels?.vsl_blocks?.block_code || "Unknown Block";
       
       if (!grouped[estate]) grouped[estate] = {};
@@ -263,7 +265,7 @@ async function generateStatisticsReport() {
         
         // Harvest Records
         grouped[estate][blockCode].forEach(h => {
-          const parcelLabel = h.vsl_parcels?.parcel_label || "Unknown";
+          const parcelLabel = h.vsl_parcels?.parcel_name || "Unknown";
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td style="font-size: 0.75rem; padding: 0.3rem 0.6rem; padding-left: 1.5rem; color:#555;">Parcel: ${parcelLabel}</td>

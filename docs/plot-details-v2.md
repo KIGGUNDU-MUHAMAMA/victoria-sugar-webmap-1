@@ -138,3 +138,14 @@ For each activity in `activities.md`: which properties sync to the plot record (
 | 18 | Trash Collection | Purpose → Residue management state | Team size, Method, Number of machines, Disposal method, Quantity collected, Transport vehicle, Cost, Challenges, Comments, Completion |
 
 Fields repeated as "activity-only" across nearly every row (Team size, Method, Number of machines, Fuel used, Hours worked, Operator name, Challenges, Comments, Cost, Completion) match the "Candidate global properties" list already called out at the bottom of `activities.md` — confirms those belong on the shared activity/task component, not the plot record.
+
+## Implementation notes (v3, as actually live in Supabase)
+
+- Table: `vsl_parcels`. **Plot code** → `parcel_code` (independently auto-numbered); **Plot name** → `parcel_name` (from the imported description). `parcel_no`/`parcel_label` no longer exist.
+- **Estate name** comes via `vsl_blocks.estate_id → vsl_estate`, not a stored column on the parcel or block.
+- **Current Activity** → `parcels.current_activity_name`/`current_activity_id`, trigger-synced from `vsl_activities` on every insert/update/delete.
+- Every `← Activity Name` land-linked field in this doc is written back to the plot by the app when that activity is logged, exactly as designed here; the activity-only fields on the right of the Appendix table live in `vsl_activities.activity_properties` (jsonb) — see `activities.md` for the implementation note on that table.
+- **Current Crop Cycle** (ratoon number, planting date, cane variety, season status) is backed by `vsl_parcel_seasons`, an append-only history table auto-populated by a trigger — a new season row is created automatically when planting_date changes to a new value (replant), otherwise the current row is updated in place.
+- **Harvest**: source of truth is `vsl_harvests` (append-only); latest-value fields in this panel are served by the `v_parcel_last_harvest` view.
+- **Alerts**: table `vsl_alerts` (renamed from `vsl_flags`) with `severity`/`alert_type`/`alert_name`/`source`.
+- `agronomy_notes`/`agronomy_data` were dropped from `vsl_parcels` — no properties here map to them.

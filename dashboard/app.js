@@ -664,8 +664,8 @@ function renderEstatesPage(el) {
 
     const attrs = [
       ['Plot ID',             p.id],
-      ['Plot Code',           p.parcelLabel || p.id],
-      ['Parcel No.',          p.parcelNo ?? '—'],
+      ['Plot Name',           p.parcelName || p.id],
+      ['Current Activity',    p.currentActivity || '—'],
       ['Block',               p.block],
       ['Estate',               p.estate],
       ['Area (ha)',           fmtHa(p.areaHa)],
@@ -687,7 +687,6 @@ function renderEstatesPage(el) {
       ['Brix Reading',        p.yield ? (ph.brix || '—') + '%' + (DATA.isLive ? tag : '') : '—'],
       ['Sucrose (%)',         p.yield ? (ph.sucrose || '—') + '%' + (DATA.isLive ? tag : '') : '—'],
       ['Cultivation Notes',   p.cultivationNotes || '—'],
-      ['Agronomy Notes',      p.agronomyNotes || '—'],
       ['Date Created',        p.createdAt ? p.createdAt.replace('T',' ').slice(0,16) : '—'],
       ['Last Updated',        p.updatedAt ? p.updatedAt.replace('T',' ').slice(0,16) : '—'],
       ['Record ID (UUID)',    p._uuid || '—'],
@@ -828,11 +827,11 @@ function renderEstatesPage(el) {
       <div class="modal-title">Add New Estate</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Estate Name</label><input class="form-input" id="ae-name" placeholder="e.g. Buyala"></div>
-        <div class="form-group"><label class="form-label">Manager Name</label><input class="form-input" id="ae-manager" placeholder="e.g. Musa Kaalo"></div>
+        <div class="form-group"><label class="form-label">Owner Name</label><input class="form-input" id="ae-manager" placeholder="e.g. Musa Kaalo"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Manager Phone</label><input class="form-input" id="ae-phone" placeholder="07XXXXXXXX"></div>
-        <div class="form-group"><label class="form-label">Location</label><input class="form-input" id="ae-location" placeholder="e.g. Kalere, Wakiso"></div>
+        <div class="form-group"><label class="form-label">Contact Phone</label><input class="form-input" id="ae-phone" placeholder="07XXXXXXXX"></div>
+        <div class="form-group"><label class="form-label">Address</label><input class="form-input" id="ae-location" placeholder="e.g. Kalere, Wakiso"></div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -849,7 +848,7 @@ function renderEstatesPage(el) {
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_estate').insert([{
-        estate_name: name, nanager_name: manager || null, manager_phone: phone || null, location: location || null,
+        estate_name: name, owner_name: manager || null, owner_contact_phone: phone || null, address: location || null,
       }]);
       if (error) throw error;
       closeModal();
@@ -869,11 +868,11 @@ function renderEstatesPage(el) {
       <div class="modal-title">Edit Estate — ${e.name}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Estate Name</label><input class="form-input" id="ee-name" value="${e.name}"></div>
-        <div class="form-group"><label class="form-label">Manager Name</label><input class="form-input" id="ee-manager" value="${e.manager||''}"></div>
+        <div class="form-group"><label class="form-label">Owner Name</label><input class="form-input" id="ee-manager" value="${e.manager||''}"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Manager Phone</label><input class="form-input" id="ee-phone" value="${e.managerPhone||''}"></div>
-        <div class="form-group"><label class="form-label">Location</label><input class="form-input" id="ee-location" value="${e.location||''}"></div>
+        <div class="form-group"><label class="form-label">Contact Phone</label><input class="form-input" id="ee-phone" value="${e.managerPhone||''}"></div>
+        <div class="form-group"><label class="form-label">Address</label><input class="form-input" id="ee-location" value="${e.location||''}"></div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -889,7 +888,7 @@ function renderEstatesPage(el) {
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_estate').update({
-        estate_name: name, nanager_name: manager || null, manager_phone: phone || null, location: location || null,
+        estate_name: name, owner_name: manager || null, owner_contact_phone: phone || null, address: location || null,
       }).eq('id', estateDbId);
       if (error) throw error;
       closeModal();
@@ -937,7 +936,7 @@ function renderEstatesPage(el) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Block Code</label><input class="form-input" id="ab-code" placeholder="e.g. BLOCK21"></div>
         <div class="form-group"><label class="form-label">Estate</label>
-          <select class="form-input" id="ab-estate">${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}</select></div>
+          <select class="form-input" id="ab-estate">${DATA.estates.map(e=>`<option value="${e._id}">${e.name}</option>`).join('')}</select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Expected Area (acres)</label><input class="form-input" id="ab-area" type="number" placeholder="0.00"></div>
@@ -952,16 +951,15 @@ function renderEstatesPage(el) {
 
   window.submitAddBlock = async function() {
     const code = document.getElementById('ab-code').value.trim();
-    const estate = document.getElementById('ab-estate').value;
+    const estateId = document.getElementById('ab-estate').value;
     const area = document.getElementById('ab-area').value;
     const status = document.getElementById('ab-status').value;
     if (!code) { showToast('Block code is required','red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_blocks').insert([{
-        block_code: code, block_name: code, estate_name: estate,
+        block_code: code, block_name: code, estate_id: estateId || null,
         expected_area_acres: area || null, cultivation_status: status,
-        geometry_status: 'pending',
       }]);
       if (error) throw error;
       closeModal();
@@ -1071,14 +1069,13 @@ function renderEstatesPage(el) {
     const ratoon = document.getElementById('ap-ratoon').value;
     const planted = document.getElementById('ap-planted').value;
     if (!code) { showToast('Parcel code is required','red'); return; }
-    const parentBlock = DATA.blocks.find(b => b._uuid === blockId);
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_parcels').insert([{
-        block_id: blockId, parcel_code: code, parcel_label: code,
+        block_id: blockId, parcel_code: code, parcel_name: code,
         expected_area_acres: area || null, ratoon_number: ratoon || 0,
-        planting_date: planted || null, estate_name: parentBlock ? parentBlock.estate : null,
-        cultivation_status: 'not_in_cane', geometry_status: 'pending',
+        planting_date: planted || null,
+        cultivation_status: 'not_in_cane',
       }]);
       if (error) throw error;
       closeModal();
@@ -1129,9 +1126,17 @@ function renderEstatesPage(el) {
       const { error } = await client.from('vsl_parcels').update({
         cultivation_status: status, ratoon_number: ratoon || 0,
         planting_date: planted || null, expected_harvest_date: harvest || null,
-        harvest_tonnes: yieldT || null,
       }).eq('id', parcelDbId);
       if (error) throw error;
+      // Harvest tonnage now lives in the vsl_harvests history table, not a flat parcel column
+      if (yieldT) {
+        const { error: hErr } = await client.from('vsl_harvests').insert([{
+          parcel_id: parcelDbId,
+          harvest_date: harvest || new Date().toISOString().slice(0, 10),
+          gross_weight_tonnes: yieldT,
+        }]);
+        if (hErr) console.error('Failed to record harvest:', hErr);
+      }
       closeModal();
       showToast('Parcel updated successfully');
       await retryLiveDataLoad();
@@ -1227,7 +1232,7 @@ function renderProduction(el) {
 
   <div class="card">
     <div class="card-header"><div class="card-title">Harvest Log</div>
-      <div style="font-size:11px;color:var(--gray-500)">Sourced from vsl_parcels.harvest_tonnes</div></div>
+      <div style="font-size:11px;color:var(--gray-500)">Sourced from vsl_harvests (latest per parcel)</div></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Parcel</th><th>Block</th><th>Estate</th><th>Last Harvest Date</th>

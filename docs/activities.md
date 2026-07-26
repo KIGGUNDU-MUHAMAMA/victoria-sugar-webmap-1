@@ -4,6 +4,14 @@ Source: Appendix A of `VSL_System_Schema_and_Features_v4.md` (18 finalized `plot
 
 Every activity shares four properties by default — Team size, Completion, Challenges, Comments — plus Completion always works the same way: a dropdown for unit (**Acres** / **%**) and a numeric input for the value. These are repeated per activity below so each one reads standalone; delete the ones you don't want per activity.
 
+## Implementation notes (v3, as actually live in Supabase)
+
+- The canonical activity table is `vsl_activities`, not `plot_tasks`. The 18 values below live in a single column, **`activity_name`** (text, CHECK-constrained to exactly these 18 Title-Case strings) — there is no separate `activity_type` column; the two were merged per your instruction.
+- The shared fields (Team size → `team_size`, Completion → `completion_unit` + `completion_value`, Challenges → `challenges`, Comments → `comments`) are real typed columns on `vsl_activities`, along with `status`, `method`, `number_of_machines`, `due_date`, `completed_date`, `estimated_cost`, `actual_cost`, `currency`, `task_description`.
+- Every other activity-specific property listed per activity below (plough type, machine type, vegetation density, chemical type, etc.) is stored in one flexible column: **`activity_properties`** (jsonb), keyed by the property name — not as ~150 individual sparse columns.
+- `assigned_to` is now a `uuid` FK to `vsl_profiles`; the old free-text assignee value is preserved separately as `assigned_to_legacy`.
+- Logging an activity also updates `vsl_parcels.current_activity_id` / `current_activity_name` (trigger-maintained) and, for land-linked properties, syncs into the plot record per the map in `plot-details-v2.md`.
+
 ---
 
 ## 1. Bush Clearing

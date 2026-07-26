@@ -82,12 +82,14 @@ function titleCase(str) {
 async function loadLiveData() {
   const client = getSbClient();
 
-  const [estRes, blkRes, parRes, profRes, recRes] = await Promise.all([
+  const [estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes] = await Promise.all([
     client.from('vsl_estate').select('*'),
     client.from('vsl_blocks').select('*'),
     client.from('vsl_parcels').select('*'),
     client.from('vsl_profiles').select('*'),
     client.from('vsl_report_recipients').select('*'),
+    client.from('v_block_last_harvest').select('block_id, harvest_tonnes, last_harvest_date'),
+    client.from('v_parcel_last_harvest').select('parcel_id, harvest_tonnes, last_harvest_date'),
   ]);
 
   if (estRes.error) console.error('Supabase estate fetch error:', estRes.error);
@@ -95,12 +97,23 @@ async function loadLiveData() {
   if (parRes.error) console.error('Supabase parcels fetch error:', parRes.error);
   if (profRes.error) console.error('Supabase profiles fetch error:', profRes.error);
   if (recRes.error) console.error('Supabase report_recipients fetch error:', recRes.error);
+  if (blkHarvestRes.error) console.error('Supabase block harvest fetch error:', blkHarvestRes.error);
+  if (parHarvestRes.error) console.error('Supabase parcel harvest fetch error:', parHarvestRes.error);
 
   const rawEstates = estRes.data || [];
   const rawBlocks  = blkRes.data || [];
   const rawParcels = parRes.data || [];
   const rawProfiles = profRes.data || [];
   const rawRecipients = recRes.data || [];
+
+  // Estate id → estate_name lookup (estate_name was dropped from vsl_blocks/vsl_parcels; both
+  // now reference vsl_estate via estate_id / block_id → block.estate_id).
+  const estateNameById = new Map(rawEstates.map(e => [e.id, e.estate_name]));
+
+  // Latest-harvest lookups (harvest_tonnes/last_harvest_date were dropped as flat columns —
+  // they now live in the vsl_harvests history table, surfaced via these views).
+  const blockHarvestById = new Map((blkHarvestRes.data || []).map(h => [h.block_id, h]));
+  const parcelHarvestById = new Map((parHarvestRes.data || []).map(h => [h.parcel_id, h]));
 
   // ── BLOCKS reshaped first (estates roll up from blocks) ──
   const blocks = rawBlocks.map(b => {
@@ -111,17 +124,19 @@ async function loadLiveData() {
       .reduce((s, p) => s + (parseFloat(p.expected_area_acres) || 0), 0);
     const plantedHa = acresToHa(plantedAcres) || (areaHa * 0.0); // 0 if nothing planted yet
     const seed = seedFromString(b.id);
+    const harvest = blockHarvestById.get(b.id);
+    const harvestTonnes = harvest?.harvest_tonnes ?? null;
     return {
       id: b.block_code || b.id,
       _uuid: b.id,
-      estate: b.estate_name || 'Unassigned',
+      estate: estateNameById.get(b.estate_id) || 'Unassigned',
       plots: parcelsInBlock.length,
       areaHa: Number(areaHa.toFixed(2)),
       plantedHa: Number(plantedHa.toFixed(2)),
       status: b.cultivation_status === 'not_in_cane' ? 'watch'
             : b.cultivation_status === 'replant_renovation' ? 'alert'
             : 'active',
-      avgYield: b.harvest_tonnes && areaHa ? Number((b.harvest_tonnes / areaHa).toFixed(2)) : Number((6.5 + (seed % 30) / 10).toFixed(1)), // placeholder if no harvest yet
+      avgYield: harvestTonnes && areaHa ? Number((harvestTonnes / areaHa).toFixed(2)) : Number((6.5 + (seed % 30) / 10).toFixed(1)), // placeholder if no harvest yet
       season: '2024-B',
       managerName: b.manager_name || '—',
       managerPhone: b.manager_phone || '—',
@@ -131,8 +146,8 @@ async function loadLiveData() {
       ownership: b.ownership || 'Company-owned',
       geometryStatus: b.geometry_status || 'pending',
       cultivationStatus: b.cultivation_status || 'not_in_cane',
-      lastHarvestDate: b.last_harvest_date,
-      harvestTonnes: b.harvest_tonnes,
+      lastHarvestDate: harvest?.last_harvest_date ?? null,
+      harvestTonnes,
       cultivationNotes: b.cultivation_notes,
       createdAt: b.created_at,
       updatedAt: b.updated_at,
@@ -144,12 +159,13 @@ async function loadLiveData() {
     const seed = seedFromString(p.id);
     const parentBlock = rawBlocks.find(b => b.id === p.block_id);
     const areaHa = acresToHa(p.expected_area_acres);
+    const harvest = parcelHarvestById.get(p.id);
     return {
-      id: p.parcel_code || p.parcel_label || `P-${p.parcel_no}`,
+      id: p.parcel_code || p.parcel_name || p.id,
       _uuid: p.id,
       block: parentBlock ? (parentBlock.block_code || parentBlock.id) : '—',
       _blockUuid: p.block_id,
-      estate: p.estate_name || (parentBlock ? parentBlock.estate_name : 'Unassigned'),
+      estate: parentBlock ? (estateNameById.get(parentBlock.estate_id) || 'Unassigned') : 'Unassigned',
       areaHa: Number(areaHa.toFixed(2)),
       variety: pickFromSeed(CANE_VARIETIES, seed), // placeholder — not yet captured per-parcel
       stage: stageFromCultivationStatus(p.cultivation_status),
@@ -157,14 +173,13 @@ async function loadLiveData() {
       health: healthFromCultivationStatus(p.cultivation_status),
       planted: p.planting_date,
       expectedHarvest: p.expected_harvest_date,
-      yield: p.harvest_tonnes,
+      yield: harvest?.harvest_tonnes ?? null,
       cultivationStatus: p.cultivation_status || 'not_in_cane',
       cultivationNotes: p.cultivation_notes,
-      agronomyNotes: p.agronomy_notes,
-      lastHarvestDate: p.last_harvest_date,
+      lastHarvestDate: harvest?.last_harvest_date ?? null,
       geometryStatus: p.geometry_status || 'pending',
-      parcelNo: p.parcel_no,
-      parcelLabel: p.parcel_label,
+      parcelName: p.parcel_name,
+      currentActivity: p.current_activity_name || null,
       createdAt: p.created_at,
       updatedAt: p.updated_at,
       // Placeholder agronomy fields (clearly not yet in DB)
@@ -191,16 +206,16 @@ async function loadLiveData() {
       id: 'E' + String(e.id).padStart(3, '0'),
       _id: e.id,
       name: e.estate_name,
-      district: (e.location || '').split(',').pop().trim() || '—',
-      location: e.location || '—',
+      district: e.district || (e.address || '').split(',').pop().trim() || '—',
+      location: e.address || '—',
       blocks: estBlocks.length,
       plots: totalPlots,
       areaHa: Number(totalAreaHa.toFixed(2)),
       plantedHa: Number(plantedHa.toFixed(2)),
       status: 'active',
       health: alertBlocks > 0 ? 'alert' : watchBlocks > estBlocks.length / 2 ? 'watch' : 'good',
-      manager: e.nanager_name || '—', // NB: source column is misspelled "nanager_name" in the DB
-      managerPhone: e.manager_phone || '—',
+      manager: e.owner_name || '—',
+      managerPhone: e.owner_contact_phone || '—',
       createdAt: e.created_at,
     };
   });
@@ -287,7 +302,7 @@ async function loadLiveData() {
     users,
     emailSubscribers,
     alerts: buildAlertsFromLiveData(estates, blocks, plots),
-    recentActivity: buildRecentActivityFromLiveData(rawParcels, rawBlocks),
+    recentActivity: buildRecentActivityFromLiveData(rawParcels, rawBlocks, estateNameById),
   };
 }
 
@@ -344,19 +359,21 @@ function buildAlertsFromLiveData(estates, blocks, plots) {
   return alerts;
 }
 
-function buildRecentActivityFromLiveData(rawParcels, rawBlocks) {
+function buildRecentActivityFromLiveData(rawParcels, rawBlocks, estateNameById) {
   const items = [];
   const recentParcels = [...rawParcels]
     .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
     .slice(0, 6);
 
   recentParcels.forEach(p => {
+    const parentBlock = rawBlocks.find(b => b.id === p.block_id);
+    const estateName = parentBlock ? estateNameById.get(parentBlock.estate_id) : null;
     items.push({
       type: 'update',
       icon: p.cultivation_status === 'not_in_cane' ? '🪴' : '🌾',
       color: p.cultivation_status === 'replant_renovation' ? 'amber' : 'green',
-      text: `Parcel ${p.parcel_code || p.parcel_label} updated — status: ${titleCase(p.cultivation_status)}`,
-      meta: `${p.estate_name || ''} · ${new Date(p.updated_at).toLocaleString()}`,
+      text: `Parcel ${p.parcel_code || p.parcel_name} updated — status: ${titleCase(p.cultivation_status)}`,
+      meta: `${estateName || ''} · ${new Date(p.updated_at).toLocaleString()}`,
     });
   });
   return items;

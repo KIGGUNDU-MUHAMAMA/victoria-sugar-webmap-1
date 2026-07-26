@@ -105,16 +105,16 @@ const INFO_FIELD_LABELS = {
   block_code: "Block code",
   block_name: "Block name",
   estate_name: "Estate",
-  parcel_no: "Plot number",
   parcel_code: "Plot code",
-  parcel_label: "Plot label",
+  parcel_name: "Plot name",
   expected_area_acres: "Expected area",
   geometry_status: "Geometry status",
   cultivation_status: "Cultivation status",
   harvest_tonnes: "Harvest (tonnes cane)",
   last_harvest_date: "Last harvest date",
   cultivation_notes: "Notes",
-  cultivation_updated_at: "Status last updated"
+  cultivation_updated_at: "Status last updated",
+  current_activity_name: "Current activity"
 };
 
 const INFO_BLOCK_FIELD_ORDER = [
@@ -125,7 +125,7 @@ const INFO_BLOCK_FIELD_ORDER = [
 ];
 
 const INFO_PARCEL_FIELD_ORDER = [
-  "parcel_label",
+  "parcel_name",
   "block_code",
   "expected_area_acres",
   "cultivation_status"
@@ -211,17 +211,8 @@ function buildAdvancedModifyHtml(layerType, props, featureId, disableStr) {
           </select>
         </div>
       </div>
-      <div style="margin-bottom:8px; display:flex; gap:8px;">
-        <div style="flex:1;">
-          <label style="display:block;margin-bottom:4px;font-weight:600;">Manager</label>
-          <input type="text" class="popup-modify-mname" value="${escapeHtml(props.manager_name || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-        </div>
-        <div style="flex:1;">
-          <label style="display:block;margin-bottom:4px;font-weight:600;">Phone</label>
-          <input type="text" class="popup-modify-mphone" value="${escapeHtml(props.manager_phone || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-        </div>
-      </div>
       <hr style="margin:12px 0; border:none; border-top:1px solid var(--border);">
+      <p style="font-size:0.75rem;color:var(--gray-500);margin:0 0 8px;">Manager assignment now lives on the Estate/Block manager list, not on this record — see vsl_estate_managers.</p>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${featureId}" style="flex:1;" ${disableStr}>Save changes</button>
         <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${featureId}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;flex:1;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
@@ -230,11 +221,10 @@ function buildAdvancedModifyHtml(layerType, props, featureId, disableStr) {
   }
 
   // PARCELS
-  const ad = props.agronomy_data || {};
   return `
     <div style="margin-bottom:8px;">
-      <label style="display:block;margin-bottom:4px;font-weight:600;">Plot label</label>
-      <input type="text" class="popup-modify-label" value="${escapeHtml(props.parcel_label || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. A1" ${disableStr}>
+      <label style="display:block;margin-bottom:4px;font-weight:600;">Plot name</label>
+      <input type="text" class="popup-modify-label" value="${escapeHtml(props.parcel_name || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. A1" ${disableStr}>
     </div>
     <div style="margin-bottom:8px; display:flex; gap:8px;">
       <div style="flex:1;">
@@ -274,45 +264,32 @@ function buildAdvancedModifyHtml(layerType, props, featureId, disableStr) {
     </div>
     
     <details style="margin-bottom:8px; border:1px solid var(--border); border-radius:4px; padding:4px;">
-      <summary style="font-weight:600; cursor:pointer;">Inputs & Fertilizer</summary>
-      <div style="margin-top:6px; display:flex; gap:8px;">
-        <input type="text" class="popup-modify-ferttype" value="${escapeHtml(ad.fertilizer_type || '')}" placeholder="Type (e.g. NPK)" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-        <div style="display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; flex:1;">
-          <input type="number" class="popup-modify-fertqty" value="${ad.fertilizer_quantity || ''}" placeholder="Qty" style="width:100%;padding:6px;border:none;" ${disableStr}>
-          <select class="popup-modify-fertunit" style="background:#eef5ec; border:none; border-left:1px solid var(--border); padding:0 4px;" ${disableStr}>
-            <option value="kg" ${ad.fertilizer_unit === 'kg' ? 'selected' : ''}>Kg</option>
-            <option value="l" ${ad.fertilizer_unit === 'l' ? 'selected' : ''}>Liters</option>
-          </select>
-        </div>
-      </div>
-    </details>
-
-    <details style="margin-bottom:8px; border:1px solid var(--border); border-radius:4px; padding:4px;">
-      <summary style="font-weight:600; cursor:pointer;">Activities</summary>
+      <summary style="font-weight:600; cursor:pointer;">Log Activity</summary>
       <div style="margin-top:6px;">
         <select class="popup-modify-activity" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;" ${disableStr}>
-           <option value="">-- Select Activity --</option>
-           <option value="land_prep" ${ad.current_activity === 'land_prep' ? 'selected' : ''}>Land Prep</option>
-           <option value="bush_clearing" ${ad.current_activity === 'bush_clearing' ? 'selected' : ''}>Bush Clearing</option>
-           <option value="ghasiya_collection" ${ad.current_activity === 'ghasiya_collection' ? 'selected' : ''}>Ghasiya Collection</option>
-           <option value="repeating" ${ad.current_activity === 'repeating' ? 'selected' : ''}>Repeating</option>
-           <option value="first_ploughing" ${ad.current_activity === 'first_ploughing' ? 'selected' : ''}>First Ploughing</option>
-           <option value="second_ploughing" ${ad.current_activity === 'second_ploughing' ? 'selected' : ''}>Second Ploughing</option>
-           <option value="harroe" ${ad.current_activity === 'harroe' ? 'selected' : ''}>Harroe</option>
-           <option value="ridging" ${ad.current_activity === 'ridging' ? 'selected' : ''}>Ridging</option>
-           <option value="planting" ${ad.current_activity === 'planting' ? 'selected' : ''}>Planting</option>
-           <option value="medicine" ${ad.current_activity === 'medicine' ? 'selected' : ''}>Medicine</option>
-           <option value="weeding" ${ad.current_activity === 'weeding' ? 'selected' : ''}>Weeding</option>
-           <option value="spraying" ${ad.current_activity === 'spraying' ? 'selected' : ''}>Spraying</option>
-           <option value="irrigation" ${ad.current_activity === 'irrigation' ? 'selected' : ''}>Irrigation</option>
-           <option value="cultivating" ${ad.current_activity === 'cultivating' ? 'selected' : ''}>Cultivating</option>
-           <option value="harvesting" ${ad.current_activity === 'harvesting' ? 'selected' : ''}>Harvesting</option>
-           <option value="loading" ${ad.current_activity === 'loading' ? 'selected' : ''}>Loading</option>
-           <option value="trans_line" ${ad.current_activity === 'trans_line' ? 'selected' : ''}>Trans Line</option>
+           <option value="" ${!props.current_activity_name ? 'selected' : ''}>-- Select Activity --</option>
+           <option value="Bush Clearing" ${props.current_activity_name === 'Bush Clearing' ? 'selected' : ''}>Bush Clearing</option>
+           <option value="Ploughing" ${props.current_activity_name === 'Ploughing' ? 'selected' : ''}>Ploughing</option>
+           <option value="Harrow" ${props.current_activity_name === 'Harrow' ? 'selected' : ''}>Harrow</option>
+           <option value="Ripping" ${props.current_activity_name === 'Ripping' ? 'selected' : ''}>Ripping</option>
+           <option value="Ridging" ${props.current_activity_name === 'Ridging' ? 'selected' : ''}>Ridging</option>
+           <option value="Furrowing" ${props.current_activity_name === 'Furrowing' ? 'selected' : ''}>Furrowing</option>
+           <option value="Lime Application" ${props.current_activity_name === 'Lime Application' ? 'selected' : ''}>Lime Application</option>
+           <option value="Planting" ${props.current_activity_name === 'Planting' ? 'selected' : ''}>Planting</option>
+           <option value="Manuring" ${props.current_activity_name === 'Manuring' ? 'selected' : ''}>Manuring</option>
+           <option value="Fertilization" ${props.current_activity_name === 'Fertilization' ? 'selected' : ''}>Fertilization</option>
+           <option value="Weeding" ${props.current_activity_name === 'Weeding' ? 'selected' : ''}>Weeding</option>
+           <option value="Cultivator" ${props.current_activity_name === 'Cultivator' ? 'selected' : ''}>Cultivator</option>
+           <option value="Spraying" ${props.current_activity_name === 'Spraying' ? 'selected' : ''}>Spraying</option>
+           <option value="Irrigation" ${props.current_activity_name === 'Irrigation' ? 'selected' : ''}>Irrigation</option>
+           <option value="Harvesting" ${props.current_activity_name === 'Harvesting' ? 'selected' : ''}>Harvesting</option>
+           <option value="Loading" ${props.current_activity_name === 'Loading' ? 'selected' : ''}>Loading</option>
+           <option value="Trash Lining" ${props.current_activity_name === 'Trash Lining' ? 'selected' : ''}>Trash Lining</option>
+           <option value="Trash Collection" ${props.current_activity_name === 'Trash Collection' ? 'selected' : ''}>Trash Collection</option>
         </select>
         <div style="display:flex; gap:8px; align-items:center;">
-          <input type="text" class="popup-modify-assigned" value="${escapeHtml(ad.assigned_to || '')}" placeholder="Assigned To" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-          <input type="number" class="popup-modify-progress" value="${ad.activity_status || ''}" placeholder="%" style="width:60px;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+          <input type="text" class="popup-modify-assigned" value="" placeholder="Assigned To" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
+          <input type="number" class="popup-modify-progress" value="" placeholder="%" style="width:60px;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
         </div>
       </div>
     </details>
@@ -479,7 +456,7 @@ const parcelsLayer = new ol.layer.Vector({
 
     let textStyle = null;
     if (hi || resolution <= 12) {
-      const pLabel = feature.get("parcel_label") || feature.get("parcel_no");
+      const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
       const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
       const expArea = feature.get("expected_area_acres");
       const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
@@ -1015,13 +992,13 @@ function openEditDetailsModal() {
   }
 
   if (nameLabel) {
-    nameLabel.textContent = lt === "BLOCKS" ? "Block Name" : "Parcel Label";
+    nameLabel.textContent = lt === "BLOCKS" ? "Block Name" : "Parcel Name";
   }
 
   if (features.length === 1) {
     const f = features[0];
     if (nameInput) {
-      nameInput.value = String(f.get(lt === "BLOCKS" ? "block_name" : "parcel_label") ?? "");
+      nameInput.value = String(f.get(lt === "BLOCKS" ? "block_name" : "parcel_name") ?? "");
       nameInput.disabled = false;
       nameInput.readOnly = false;
     }
@@ -1124,10 +1101,10 @@ async function saveEditDetailsForm(event) {
 
   if (features.length === 1 && newName !== "") {
     const f = features[0];
-    const oldName = f.get(lt === "BLOCKS" ? "block_name" : "parcel_label") ?? "";
+    const oldName = f.get(lt === "BLOCKS" ? "block_name" : "parcel_name") ?? "";
     if (newName !== oldName) {
       const tableName = lt === "BLOCKS" ? "vsl_blocks" : "vsl_parcels";
-      const updatePayload = lt === "BLOCKS" ? { block_name: newName } : { parcel_label: newName };
+      const updatePayload = lt === "BLOCKS" ? { block_name: newName } : { parcel_name: newName };
       const { error } = await supabase
         .from(tableName)
         .update(updatePayload)
@@ -1468,6 +1445,9 @@ function setupInfoPopup() {
       
       let updateData = {};
       
+      let harvestInsertError = null;
+      let activityInsertError = null;
+
       if (!isParcel) {
         // BLOCKS
         updateData = {
@@ -1477,8 +1457,6 @@ function setupInfoPopup() {
           soil_ph: parseFloat(inner.querySelector(".popup-modify-ph")?.value) || null,
           irrigation_type: inner.querySelector(".popup-modify-irrigation")?.value || null,
           ownership: inner.querySelector(".popup-modify-ownership")?.value || null,
-          manager_name: inner.querySelector(".popup-modify-mname")?.value || null,
-          manager_phone: inner.querySelector(".popup-modify-mphone")?.value || null,
           updated_at: new Date().toISOString()
         };
       } else {
@@ -1486,54 +1464,51 @@ function setupInfoPopup() {
         const rawTonnes = parseFloat(inner.querySelector(".popup-modify-tonnes")?.value) || null;
         const harvestUnit = inner.querySelector(".popup-modify-unit")?.value || "tonnes";
         const tonnesCalc = (rawTonnes && harvestUnit === "kg") ? (rawTonnes / 1000) : rawTonnes;
-        
-        const agronomy_data = {
-          fertilizer_type: inner.querySelector(".popup-modify-ferttype")?.value || null,
-          fertilizer_quantity: parseFloat(inner.querySelector(".popup-modify-fertqty")?.value) || null,
-          fertilizer_unit: inner.querySelector(".popup-modify-fertunit")?.value || "kg",
-          current_activity: inner.querySelector(".popup-modify-activity")?.value || null,
-          assigned_to: inner.querySelector(".popup-modify-assigned")?.value || null,
-          activity_status: parseFloat(inner.querySelector(".popup-modify-progress")?.value) || null,
-        };
+        const lastHarvestDate = inner.querySelector(".popup-modify-hdate")?.value || null;
+        const activityName = inner.querySelector(".popup-modify-activity")?.value || null;
+        const assignedToText = inner.querySelector(".popup-modify-assigned")?.value || null;
+        const activityProgress = parseFloat(inner.querySelector(".popup-modify-progress")?.value) || null;
 
         updateData = {
-          parcel_label: inner.querySelector(".popup-modify-label")?.value || null,
+          parcel_name: inner.querySelector(".popup-modify-label")?.value || null,
           planting_date: inner.querySelector(".popup-modify-pdate")?.value || null,
           ratoon_number: parseInt(inner.querySelector(".popup-modify-ratoon")?.value) || 0,
           cultivation_status: inner.querySelector(".popup-modify-status")?.value || "not_in_cane",
-          last_harvest_date: inner.querySelector(".popup-modify-hdate")?.value || null,
-          harvest_tonnes: tonnesCalc,
           cultivation_notes: inner.querySelector(".popup-modify-notes")?.value || null,
-          agronomy_data: agronomy_data,
           cultivation_updated_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
-        
-        // Log to history tables (Harvests & Activities) async in background if there's new data
-        if (tonnesCalc > 0 && updateData.last_harvest_date) {
-           supabase.from('vsl_harvests').insert({
-             parcel_id: featureId,
-             harvest_date: updateData.last_harvest_date,
-             gross_weight_tonnes: tonnesCalc,
-             ratoon_at_harvest: updateData.ratoon_number
-           }).then();
+
+        // Harvests and activities are history tables now (no flat harvest_tonnes/
+        // last_harvest_date columns left on vsl_parcels to write into).
+        if (tonnesCalc > 0 && lastHarvestDate) {
+          const { error } = await supabase.from('vsl_harvests').insert({
+            parcel_id: featureId,
+            harvest_date: lastHarvestDate,
+            gross_weight_tonnes: tonnesCalc,
+            ratoon_at_harvest: updateData.ratoon_number
+          });
+          harvestInsertError = error;
         }
-        if (agronomy_data.current_activity) {
-           supabase.from('vsl_activities').insert({
-             parcel_id: featureId,
-             activity_type: agronomy_data.current_activity,
-             status_percent: agronomy_data.activity_status || 0,
-             assigned_to: agronomy_data.assigned_to,
-             activity_date: new Date().toISOString().split('T')[0]
-           }).then();
+        if (activityName) {
+          const { error } = await supabase.from('vsl_activities').insert({
+            parcel_id: featureId,
+            activity_name: activityName,
+            completion_unit: 'percent',
+            completion_value: activityProgress || 0,
+            status: (activityProgress || 0) >= 100 ? 'completed' : (activityProgress || 0) > 0 ? 'in_progress' : 'planned',
+            assigned_to_legacy: assignedToText,
+            activity_date: new Date().toISOString().split('T')[0]
+          });
+          activityInsertError = error;
         }
       }
-      
+
       const tableName = isParcel ? "vsl_parcels" : "vsl_blocks";
       const { error } = await supabase.from(tableName).update(updateData).eq("id", featureId);
-      
-      if (error) {
-        alert("Failed to modify feature: " + error.message);
+
+      if (error || harvestInsertError || activityInsertError) {
+        alert("Failed to modify feature: " + (error || harvestInsertError || activityInsertError).message);
       } else {
         // Quick visual feedback on button
         const oldText = btn.innerHTML;
@@ -2059,16 +2034,9 @@ async function runLocateParcelFromPopover() {
     plotStr = noInput?.value?.trim() ?? "";
   }
 
-  let parcelNo = null;
+  let parcelCode = null;
   if (plotStr !== "") {
-    const parcelNoRaw = parseNum(plotStr);
-    parcelNo = parcelNoRaw != null ? Math.trunc(parcelNoRaw) : null;
-    if (parcelNo == null || parcelNo < 1 || !Number.isFinite(parcelNo)) {
-      setParcelSearchPopoverError(
-        "Enter a valid plot number (whole number ≥ 1), or leave plot empty to search the block only."
-      );
-      return;
-    }
+    parcelCode = plotStr;
   }
 
   setParcelSearchPopoverError("");
@@ -2082,7 +2050,7 @@ async function runLocateParcelFromPopover() {
 
   const { data, error } = await supabase.rpc("vsl_locate_parcel", {
     p_block_query: blockQ,
-    p_parcel_no: parcelNo
+    p_parcel_code: parcelCode
   });
 
   if (error) {
@@ -2142,7 +2110,7 @@ async function runLocateParcelFromPopover() {
       if (mode === "parcel" && data.parcel) {
         setStatus(
           statusEl,
-          `Block ${bc}, plot ${data.parcel.parcel_no} — highlighted on the map.`
+          `Block ${bc}, plot ${data.parcel.parcel_code} — highlighted on the map.`
         );
       } else {
         setStatus(statusEl, `Block ${bc} — zoomed to block boundary.`);
@@ -2195,16 +2163,15 @@ function setupParcelSearchPopover() {
   async function loadSearchEstates() {
     if (!estateSelect) return;
     try {
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=estate_name&estate_name=not.is.null`;
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_estate?select=id,estate_name&order=estate_name.asc`;
       const res = await fetch(url, {
         headers: { "apikey": cfg.SUPABASE_ANON_KEY, "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`, "Accept": "application/json" }
       });
       if (!res.ok) return;
       const data = await res.json();
-      const names = [...new Set(data.map(d => d.estate_name).filter(Boolean))].sort((a,b) => a.localeCompare(b));
       estateSelect.innerHTML = '<option value="">— Select Estate —</option>';
-      names.forEach(n => {
-        const o = document.createElement("option"); o.value = n; o.textContent = n;
+      data.forEach(e => {
+        const o = document.createElement("option"); o.value = e.id; o.textContent = e.estate_name;
         estateSelect.appendChild(o);
       });
     } catch(e) { console.warn("[VSL Search] estates:", e); }
@@ -2218,7 +2185,7 @@ function setupParcelSearchPopover() {
     parcelSelect.disabled = true;
     if (!estate) { blockSelect.innerHTML = '<option value="">— Select Estate first —</option>'; return; }
     try {
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=id,block_code,block_name&estate_name=eq.${encodeURIComponent(estate)}`;
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=id,block_code,block_name&estate_id=eq.${encodeURIComponent(estate)}`;
       const res = await fetch(url, {
         headers: { "apikey": cfg.SUPABASE_ANON_KEY, "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`, "Accept": "application/json" }
       });
@@ -2243,9 +2210,7 @@ function setupParcelSearchPopover() {
     parcelSelect.disabled = true;
     if (!blockId) { parcelSelect.innerHTML = '<option value="">— Select Block first —</option>'; return; }
     try {
-      let url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_parcels?select=id,parcel_no,parcel_label&block_id=eq.${encodeURIComponent(blockId)}`;
-      if (estate) url += `&estate_name=eq.${encodeURIComponent(estate)}`;
-      url += "&order=parcel_no.asc";
+      let url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_parcels?select=id,parcel_code,parcel_name&block_id=eq.${encodeURIComponent(blockId)}`;
       const res = await fetch(url, {
         headers: { "apikey": cfg.SUPABASE_ANON_KEY, "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`, "Accept": "application/json" }
       });
@@ -2254,11 +2219,12 @@ function setupParcelSearchPopover() {
         throw new Error(`fetch failed: ${res.status} ${res.statusText} - ${errText}`);
       }
       const data = await res.json();
+      data.sort((a,b) => { const na=Number(a.parcel_code), nb=Number(b.parcel_code); return Number.isFinite(na)&&Number.isFinite(nb)?na-nb:String(a.parcel_code).localeCompare(String(b.parcel_code),undefined,{numeric:true}); });
       parcelSelect.innerHTML = '<option value="">— All parcels in block —</option>';
       data.forEach(p => {
         const o = document.createElement("option");
-        o.value = p.parcel_no;
-        o.textContent = p.parcel_label ? `Plot ${p.parcel_no} – ${p.parcel_label}` : `Plot ${p.parcel_no}`;
+        o.value = p.parcel_code;
+        o.textContent = p.parcel_name ? `Plot ${p.parcel_code} – ${p.parcel_name}` : `Plot ${p.parcel_code}`;
         parcelSelect.appendChild(o);
       });
       parcelSelect.disabled = false;
@@ -2375,15 +2341,15 @@ function drawGeometry(layerType) {
     const feature = evt.feature;
     editSource.clear(true);
     let blockCode = "";
-    let parcelNoOverride = null;
+    let parcelCodeOverride = null;
     if (layerType === "BLOCKS") {
       blockCode = drawBlockCodeInput?.value?.trim() ?? "";
     } else {
       blockCode = drawParcelBlockInput?.value?.trim() ?? "";
       const o = drawParcelNoOverride?.value?.trim() ?? "";
-      parcelNoOverride = o === "" ? null : parseInt(o, 10);
+      parcelCodeOverride = o === "" ? null : o;
     }
-    await saveGeometry(feature, layerType, { blockCode, parcelNoOverride });
+    await saveGeometry(feature, layerType, { blockCode, parcelCodeOverride });
   });
   activeInteraction = draw;
   map.addInteraction(draw);
@@ -2398,7 +2364,7 @@ function drawGeometry(layerType) {
 }
 
 async function saveGeometry(feature, layerType, opts = {}) {
-  const { blockCode: blockCodeRaw, parcelNoOverride } = opts;
+  const { blockCode: blockCodeRaw, parcelCodeOverride } = opts;
   const blockCode = String(blockCodeRaw ?? "").trim();
   if (!blockCode) {
     setDrawToolsFeedback("Block code is missing.", true);
@@ -2411,20 +2377,15 @@ async function saveGeometry(feature, layerType, opts = {}) {
     dataProjection: "EPSG:4326"
   });
 
-  let parcelNo = null;
+  let parcelCode = null;
   if (layerType === "PARCELS") {
-    parcelNo = parcelNoOverride;
-    if (parcelNo != null && (!Number.isInteger(parcelNo) || parcelNo < 1)) {
-      setDrawToolsFeedback("Parcel number must be a positive whole number.", true);
-      setStatus(statusEl, "Invalid parcel number.", true);
-      return;
-    }
+    parcelCode = parcelCodeOverride;
   }
 
   const { data: savedId, error } = await supabase.rpc("vsl_upsert_geometry", {
     p_layer_type: layerType,
     p_block_code: blockCode,
-    p_parcel_no: parcelNo,
+    p_parcel_code: parcelCode,
     p_geojson: geojson.geometry,
     p_user_id: currentUser.id
   });
@@ -2434,14 +2395,14 @@ async function saveGeometry(feature, layerType, opts = {}) {
     return;
   }
   await loadLayersFromDb();
-  if (layerType === "PARCELS" && parcelNo == null && savedId) {
+  if (layerType === "PARCELS" && parcelCode == null && savedId) {
     const { data: row } = await supabase
       .from("vsl_parcels")
-      .select("parcel_no")
+      .select("parcel_code")
       .eq("id", savedId)
       .maybeSingle();
-    if (row?.parcel_no != null) {
-      const msg = `Parcel saved as plot ${row.parcel_no} in block ${blockCode}.`;
+    if (row?.parcel_code != null) {
+      const msg = `Parcel saved as plot ${row.parcel_code} in block ${blockCode}.`;
       setDrawToolsFeedback(msg, false);
       setStatus(statusEl, msg);
     } else {
@@ -2450,7 +2411,7 @@ async function saveGeometry(feature, layerType, opts = {}) {
       setStatus(statusEl, msg);
     }
   } else if (layerType === "PARCELS") {
-    const msg = `Parcel ${parcelNo} saved in block ${blockCode}.`;
+    const msg = `Parcel ${parcelCode} saved in block ${blockCode}.`;
     setDrawToolsFeedback(msg, false);
     setStatus(statusEl, msg);
   } else {

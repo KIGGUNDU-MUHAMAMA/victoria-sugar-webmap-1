@@ -207,3 +207,14 @@ Threaded comments at estate level — author, text, type (observation/issue/reco
 ---
 
 Note: same drill-down convention as `block-details.md` — every rollup table here (Status, Ratoon Number, Activities, Alerts, Blocks, Harvests, Planting, Top 5 Cane Varieties) is a query-time view over `plots`/`plot_tasks`/`plot_harvest` joined up through `blocks.estate_id`, matching the `v_estate_rollup` recommendation in the schema doc's Part 3.11 (Analytics Views) — kept fast to read but never manually written, so it can't drift from the underlying plot data.
+
+## Implementation notes (v3, as actually live in Supabase)
+
+Table name mapping: `estates` → `vsl_estate`; `plots` → `vsl_parcels`; `plot_tasks`/activities → `vsl_activities`; plot alerts → `vsl_alerts`; `plot_seasons` → `vsl_parcel_seasons`; `plot_harvest` → `vsl_harvests`; `estate_infrastructure`/`estate_documents`/estate media/comments → the shared polymorphic tables `vsl_infrastructure`/`vsl_documents`/`vsl_media`/`vsl_comments`, filtered by `entity_type = 'estate'`.
+
+- `vsl_estate` live columns match this doc closely: `estate_code`, `registration_number`, `country`, `region`, `district`, `address` (single free-text field — there are no separate sub-county/parish/village columns live), `geom`/`gps_centroid` (→ generated `location_link`), `elevation_min_m`/`elevation_max_m`, `average_rainfall_mm`, `primary_soil_type`, `water_sources`, `established_date`, `ownership_type`, `owner_name`, `owner_contact_phone`, `owner_contact_email`, `status`, `notes`.
+- **Estate manager**: not a flat column on `vsl_estate` — use the new `vsl_estate_managers` junction table (`estate_id` set, `block_id` null), which links a `vsl_profiles` user with a role, active flag, and assigned-from/to dates. This also serves the **Manager & Access** group's user-access-list idea more directly than a single name/contact pair would.
+- `vsl_blocks.estate_id` (bigint FK) is what every block/plot rollup in this panel actually joins through — blocks no longer carry a free-text `estate_name`.
+- Activities table: rows correspond to `vsl_activities.activity_name` (single canonical column, 18 CHECK-constrained values — no separate `activity_type`).
+- **Climate & Remote Sensing** and **Projects & Investment** groups have no backing tables live yet (`weather_station_readings`, `satellite_imagery_index`, `projects`, `project_milestones`, `investment_register` were not part of the v3 migration) — still aspirational, unchanged from before.
+- The old `nanager_name`/`manager_phone`/`location` columns that used to exist on `vsl_estate` were dropped in favor of the fields above.

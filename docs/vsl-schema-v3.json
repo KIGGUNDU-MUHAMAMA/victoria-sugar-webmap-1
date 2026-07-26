@@ -1,0 +1,3086 @@
+{
+  "schema_version": "v3",
+  "source": "Live introspection of Supabase project knhgliyghacvkeeptsfl (victoriasugar) on 2026-07-26, after migrations v3_m1 through v3_m8",
+  "tables": [
+    {
+      "name": "vsl_profiles",
+      "description": "App user profile, 1:1 with auth.users. role is ADMIN / SURVEYOR / MANAGMENT (sic - typo pre-existing in live check constraint).",
+      "row_count_at_export": 6,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "role = ANY (ARRAY['ADMIN'::text, 'SURVEYOR'::text, 'MANAGMENT'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_profiles_id_fkey",
+          "column": "id",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_blocks",
+      "description": "A block groups parcels within an estate. estate_name (free text) replaced by estate_id FK in v3. geometry_status is now a generated column.",
+      "row_count_at_export": 28,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "block_code",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "block_name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "expected_area_acres",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "geom",
+          "type": "geometry",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "updated_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_status",
+          "type": "text",
+          "nullable": false,
+          "default": "'not_in_cane'::text",
+          "generated": false,
+          "identity": false,
+          "check": "cultivation_status = ANY (ARRAY['not_in_cane'::text, 'prepared'::text, 'planted'::text, 'standing'::text, 'harvested'::text, 'replant_renovation'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_notes",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_updated_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "location_address",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "soil_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "irrigation_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "(irrigation_type = ANY (ARRAY['drip'::text, 'furrow'::text, 'overhead'::text, 'rainfed'::text, ''::text])) OR irrigation_type IS NULL",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "soil_ph",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "manager_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "manager_phone",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "ownership",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "(ownership = ANY (ARRAY['bought'::text, 'rented'::text, ''::text])) OR ownership IS NULL",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "estate_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "geometry_status",
+          "type": "text",
+          "nullable": true,
+          "default": "\nCASE\n    WHEN (geom IS NOT NULL) THEN 'captured'::text\n    ELSE 'pending'::text\nEND",
+          "generated": true,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_blocks_estate_id_fkey",
+          "column": "estate_id",
+          "ref_table": "public.vsl_estate",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_blocks_cultivation_updated_by_fkey",
+          "column": "cultivation_updated_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_blocks_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_blocks_updated_by_fkey",
+          "column": "updated_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_parcels",
+      "description": "The core land unit (\"plot\"). v3: parcel_label -> parcel_name; parcel_no dropped, parcel_code is now independently auto-numbered (not derived); agronomy_notes/agronomy_data/harvest_tonnes/last_harvest_date/estate_name dropped; current_activity_id/current_activity_name and current_season_id added as trigger-maintained read caches.",
+      "row_count_at_export": 719,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "block_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "parcel_code",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "parcel_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "expected_area_acres",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "geom",
+          "type": "geometry",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "updated_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_status",
+          "type": "text",
+          "nullable": false,
+          "default": "'not_in_cane'::text",
+          "generated": false,
+          "identity": false,
+          "check": "cultivation_status = ANY (ARRAY['not_in_cane'::text, 'prepared'::text, 'planted'::text, 'standing'::text, 'harvested'::text, 'replant_renovation'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_notes",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cultivation_updated_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "ratoon_number",
+          "type": "integer",
+          "nullable": true,
+          "default": "0",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "planting_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "expected_harvest_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "geometry_status",
+          "type": "text",
+          "nullable": true,
+          "default": "\nCASE\n    WHEN (geom IS NOT NULL) THEN 'captured'::text\n    ELSE 'pending'::text\nEND",
+          "generated": true,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "current_activity_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "current_activity_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "current_season_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_parcels_block_id_fkey",
+          "column": "block_id",
+          "ref_table": "public.vsl_blocks",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcels_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcels_updated_by_fkey",
+          "column": "updated_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcels_cultivation_updated_by_fkey",
+          "column": "cultivation_updated_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcels_current_activity_id_fkey",
+          "column": "current_activity_id",
+          "ref_table": "public.vsl_activities",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcels_current_season_id_fkey",
+          "column": "current_season_id",
+          "ref_table": "public.vsl_parcel_seasons",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_alerts",
+      "description": "Renamed from vsl_flags in v3. Unifies the old \"warning flag\" and \"alert\" concepts into one table with a severity field (information/warning/critical).",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "layer_type",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "layer_type = ANY (ARRAY['ESTATE'::text, 'BLOCKS'::text, 'PARCELS'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "target_id",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'open'::text",
+          "generated": false,
+          "identity": false,
+          "check": "status = ANY (ARRAY['open'::text, 'investigating'::text, 'resolved'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "resolved_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "resolved_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "nullable": false,
+          "default": "'information'::text",
+          "generated": false,
+          "identity": false,
+          "check": "severity = ANY (ARRAY['information'::text, 'warning'::text, 'critical'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "alert_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "alert_type = ANY (ARRAY['pest'::text, 'disease'::text, 'general'::text, 'other'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "alert_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "source = ANY (ARRAY['scouting'::text, 'satellite'::text, 'manual'::text])",
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_flags_resolved_by_fkey",
+          "column": "resolved_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_flags_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_import_batches",
+      "description": "One row per CSV/GPX survey import run.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": "nextval('vsl_import_batches_id_seq'::regclass)",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "source_file_name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "row_count",
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'processing'::text",
+          "generated": false,
+          "identity": false,
+          "check": "status = ANY (ARRAY['processing'::text, 'completed'::text, 'failed'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "imported_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_import_batches_imported_by_fkey",
+          "column": "imported_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_import_rows",
+      "description": "One row per raw imported record within an import batch, for audit/replay.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": "nextval('vsl_import_rows_id_seq'::regclass)",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "batch_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "row_number",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "raw_payload",
+          "type": "jsonb",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'queued'::text",
+          "generated": false,
+          "identity": false,
+          "check": "status = ANY (ARRAY['queued'::text, 'imported'::text, 'failed'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_import_rows_batch_id_fkey",
+          "column": "batch_id",
+          "ref_table": "public.vsl_import_batches",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_drone_images",
+      "description": "Uploaded drone/orthomosaic image references (URL + name).",
+      "row_count_at_export": 2,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": true,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "uploaded_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "vsl_harvests",
+      "description": "Append-only harvest history per parcel. Source of truth for harvest_tonnes/last_harvest_date, now surfaced via v_parcel_last_harvest / v_block_last_harvest views instead of flat columns.",
+      "row_count_at_export": 1,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "parcel_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "harvest_date",
+          "type": "date",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "gross_weight_tonnes",
+          "type": "numeric",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "ratoon_at_harvest",
+          "type": "integer",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_harvests_parcel_id_fkey",
+          "column": "parcel_id",
+          "ref_table": "public.vsl_parcels",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_harvests_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_activities",
+      "description": "v3 overhaul: activity_type + activity_name merged into a single activity_name column (18 canonical values). Added block_id/estate_id (denormalized for fast rollups), status/completion tracking, cost tracking, and activity_properties (jsonb) for type-specific fields (replaces ~150 sparse typed columns). Old free-text assigned_to preserved as assigned_to_legacy; new assigned_to is a uuid FK to vsl_profiles.",
+      "row_count_at_export": 1,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "parcel_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "activity_name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "activity_name = ANY (ARRAY['Bush Clearing'::text, 'Ploughing'::text, 'Harrow'::text, 'Ripping'::text, 'Ridging'::text, 'Furrowing'::text, 'Lime Application'::text, 'Planting'::text, 'Manuring'::text, 'Fertilization'::text, 'Weeding'::text, 'Cultivator'::text, 'Spraying'::text, 'Irrigation'::text, 'Harvesting'::text, 'Loading'::text, 'Trash Lining'::text, 'Trash Collection'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "assigned_to_legacy",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "activity_date",
+          "type": "date",
+          "nullable": true,
+          "default": "CURRENT_DATE",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "block_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "estate_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "plot_season_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "task_description",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true,
+          "default": "'planned'::text",
+          "generated": false,
+          "identity": false,
+          "check": "status = ANY (ARRAY['planned'::text, 'in_progress'::text, 'completed'::text, 'cancelled'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "completion_unit",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "completion_unit = ANY (ARRAY['acres'::text, 'percent'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "completion_value",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "team_size",
+          "type": "integer",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "method",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "number_of_machines",
+          "type": "integer",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "completed_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "estimated_cost",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "actual_cost",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "currency",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "challenges",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "comments",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "activity_properties",
+          "type": "jsonb",
+          "nullable": true,
+          "default": "'{}'::jsonb",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "assigned_to",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_activities_plot_season_id_fkey",
+          "column": "plot_season_id",
+          "ref_table": "public.vsl_parcel_seasons",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_activities_parcel_id_fkey",
+          "column": "parcel_id",
+          "ref_table": "public.vsl_parcels",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_activities_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_activities_block_id_fkey",
+          "column": "block_id",
+          "ref_table": "public.vsl_blocks",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_activities_estate_id_fkey",
+          "column": "estate_id",
+          "ref_table": "public.vsl_estate",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_activities_assigned_to_fkey",
+          "column": "assigned_to",
+          "ref_table": "public.vsl_profiles",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_report_recipients",
+      "description": "Email recipients for the scheduled agronomy PDF report.",
+      "row_count_at_export": 1,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": true,
+          "enum_values": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "freq",
+          "type": "USER-DEFINED",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": [
+            "Weekly",
+            "Monthly"
+          ]
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_report_recipients_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_estate",
+      "description": "Top-level estate record. Address/geo/ownership fields added in v3; manager assignment now lives in vsl_estate_managers (not flat columns).",
+      "row_count_at_export": 4,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": true,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "estate_name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "estate_code",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "registration_number",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "country",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "region",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "district",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "geom",
+          "type": "geometry",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "gps_centroid",
+          "type": "geometry",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "elevation_min_m",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "elevation_max_m",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "average_rainfall_mm",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "primary_soil_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "water_sources",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "established_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "ownership_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "owner_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "owner_contact_phone",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "owner_contact_email",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true,
+          "default": "'active'::text",
+          "generated": false,
+          "identity": false,
+          "check": "status = ANY (ARRAY['active'::text, 'inactive'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "updated_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "location_link",
+          "type": "text",
+          "nullable": true,
+          "default": "\nCASE\n    WHEN (gps_centroid IS NOT NULL) THEN ((('https://maps.google.com/?q='::text || (st_y(gps_centroid))::text) || ','::text) || (st_x(gps_centroid))::text)\n    ELSE NULL::text\nEND",
+          "generated": true,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_estate_updated_by_fkey",
+          "column": "updated_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_estate_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_estate_managers",
+      "description": "NEW in v3. Junction table linking a vsl_profiles user to an estate and/or a specific block as a manager/agronomist/supervisor.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "estate_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "block_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "nullable": false,
+          "default": "'manager'::text",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "assigned_from",
+          "type": "date",
+          "nullable": true,
+          "default": "CURRENT_DATE",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "assigned_to",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_estate_managers_block_id_fkey",
+          "column": "block_id",
+          "ref_table": "public.vsl_blocks",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_estate_managers_estate_id_fkey",
+          "column": "estate_id",
+          "ref_table": "public.vsl_estate",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_estate_managers_user_id_fkey",
+          "column": "user_id",
+          "ref_table": "public.vsl_profiles",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_estate_managers_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_parcel_seasons",
+      "description": "NEW in v3. Append-only planting/season history per parcel (one row per crop cycle). Auto-populated by a trigger on vsl_parcels (no app changes required to start capturing history).",
+      "row_count_at_export": 16,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "parcel_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "season_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "cane_variety",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "ratoon_number",
+          "type": "integer",
+          "nullable": true,
+          "default": "0",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "planting_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "expected_harvest_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "actual_harvest_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "growth_stage",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "target_yield_tonnes",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "actual_yield_tonnes",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "yield_per_hectare",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "season_status",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "season_status = ANY (ARRAY['planned'::text, 'planted'::text, 'growing'::text, 'harvested'::text, 'failed'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "failure_reason",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_parcel_seasons_parcel_id_fkey",
+          "column": "parcel_id",
+          "ref_table": "public.vsl_parcels",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcel_seasons_created_by_fkey",
+          "column": "created_by",
+          "ref_table": "auth.users",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_parcel_soil_tests",
+      "description": "NEW in v3. Lab/field soil sample history per parcel (optionally tied to a season).",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "parcel_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "plot_season_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "soil_ph",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "nitrogen",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "phosphorus",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "potassium",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "organic_matter_pct",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "texture",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "sample_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "sampled_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "lab_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "results_url",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_parcel_soil_tests_parcel_id_fkey",
+          "column": "parcel_id",
+          "ref_table": "public.vsl_parcels",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcel_soil_tests_plot_season_id_fkey",
+          "column": "plot_season_id",
+          "ref_table": "public.vsl_parcel_seasons",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcel_soil_tests_sampled_by_fkey",
+          "column": "sampled_by",
+          "ref_table": "public.vsl_profiles",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_parcel_land_state_log",
+      "description": "NEW in v3. Generic audit trail of land-state field changes on a parcel, optionally attributed to the activity that caused the change.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": "nextval('vsl_parcel_land_state_log_id_seq'::regclass)",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "parcel_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "source_activity_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "field_name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "old_value",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "new_value",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "recorded_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_parcel_land_state_log_parcel_id_fkey",
+          "column": "parcel_id",
+          "ref_table": "public.vsl_parcels",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_parcel_land_state_log_source_activity_id_fkey",
+          "column": "source_activity_id",
+          "ref_table": "public.vsl_activities",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_media",
+      "description": "NEW in v3. Polymorphic photo/video attachments for estate/block/parcel via entity_type + entity_id.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "entity_type = ANY (ARRAY['estate'::text, 'block'::text, 'parcel'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "scout_activity_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "media_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "media_type = ANY (ARRAY['photo'::text, 'video'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "file_url",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "caption",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "gps_lat",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "gps_lng",
+          "type": "numeric",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "captured_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "captured_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_media_captured_by_fkey",
+          "column": "captured_by",
+          "ref_table": "public.vsl_profiles",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_media_scout_activity_id_fkey",
+          "column": "scout_activity_id",
+          "ref_table": "public.vsl_activities",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_documents",
+      "description": "NEW in v3. Polymorphic document attachments for estate/block/parcel.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "entity_type = ANY (ARRAY['estate'::text, 'block'::text, 'parcel'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "doc_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "document_title",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "file_url",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "uploaded_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "upload_date",
+          "type": "date",
+          "nullable": true,
+          "default": "CURRENT_DATE",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_documents_uploaded_by_fkey",
+          "column": "uploaded_by",
+          "ref_table": "public.vsl_profiles",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_comments",
+      "description": "NEW in v3. Polymorphic threaded comments/observations for estate/block/parcel.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "entity_type = ANY (ARRAY['estate'::text, 'block'::text, 'parcel'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "comment_text",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "comment_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "comment_type = ANY (ARRAY['observation'::text, 'issue'::text, 'recommendation'::text, 'approval'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "is_resolved",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "resolved_by",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "resolved_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "vsl_comments_user_id_fkey",
+          "column": "user_id",
+          "ref_table": "public.vsl_profiles",
+          "ref_column": "id"
+        },
+        {
+          "name": "vsl_comments_resolved_by_fkey",
+          "column": "resolved_by",
+          "ref_table": "public.vsl_profiles",
+          "ref_column": "id"
+        }
+      ]
+    },
+    {
+      "name": "vsl_infrastructure",
+      "description": "NEW in v3. Physical infrastructure (roads, canals, stores, etc.) tied to an estate or block, with optional geometry.",
+      "row_count_at_export": 0,
+      "rls_enabled": true,
+      "primary_key": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": "entity_type = ANY (ARRAY['estate'::text, 'block'::text])",
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "infra_type",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "infra_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "geom",
+          "type": "geometry",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "condition",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "construction_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "last_maintained",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "generated": false,
+          "identity": false,
+          "check": null,
+          "unique": false,
+          "enum_values": null
+        }
+      ],
+      "foreign_keys": []
+    }
+  ],
+  "views": [
+    {
+      "name": "v_block_last_harvest",
+      "description": "Harvest rollup per block (sum of tonnes, max date across all parcels in the block), joined through vsl_parcels. Added in v3 for the same reason as v_parcel_last_harvest.",
+      "definition": "SELECT p.block_id,\n    max(h.harvest_date) AS last_harvest_date,\n    sum(h.gross_weight_tonnes) AS harvest_tonnes\n   FROM (vsl_harvests h\n     JOIN vsl_parcels p ON ((p.id = h.parcel_id)))\n  GROUP BY p.block_id;"
+    },
+    {
+      "name": "v_parcel_last_harvest",
+      "description": "Latest harvest per parcel (DISTINCT ON). Added in v3 so the app can keep reading harvest_tonnes/last_harvest_date after those flat columns were dropped from vsl_parcels.",
+      "definition": "SELECT DISTINCT ON (parcel_id) parcel_id,\n    harvest_date AS last_harvest_date,\n    gross_weight_tonnes AS harvest_tonnes\n   FROM vsl_harvests\n  ORDER BY parcel_id, harvest_date DESC, created_at DESC;"
+    },
+    {
+      "name": "vsl_block_stats",
+      "description": "Pre-existing block-level rollup view (plot counts/areas by cultivation status + centroid). Unaffected by v3 except that its parcel join still works against the renamed columns.",
+      "definition": "SELECT b.id AS block_id,\n    count(p.id) AS total_plots,\n    COALESCE(sum(p.expected_area_acres), (0)::numeric) AS total_parcel_area_acres,\n    COALESCE(sum(p.expected_area_acres) FILTER (WHERE (p.cultivation_status = 'harvested'::text)), (0)::numeric) AS harvested_plots_area_acres,\n    COALESCE(sum(p.expected_area_acres) FILTER (WHERE ((p.cultivation_status = 'standing'::text) OR (p.cultivation_status = 'planted'::text) OR (p.cultivation_status = 'prepared'::text) OR (p.cultivation_status = 'replant_renovation'::text))), (0)::numeric) AS cultivated_plots_area_acres,\n    count(p.id) FILTER (WHERE (p.cultivation_status = 'not_in_cane'::text)) AS idle_plots_count,\n        CASE\n            WHEN (b.geom IS NOT NULL) THEN st_y(st_centroid(b.geom))\n            ELSE NULL::double precision\n        END AS centroid_lat,\n        CASE\n            WHEN (b.geom IS NOT NULL) THEN st_x(st_centroid(b.geom))\n            ELSE NULL::double precision\n        END AS centroid_lon\n   FROM (vsl_blocks b\n     LEFT JOIN vsl_parcels p ON ((p.block_id = b.id)))\n  GROUP BY b.id, b.geom;"
+    }
+  ]
+}

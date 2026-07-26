@@ -260,7 +260,7 @@ export function initCoordExtractDrawer({
 
         const props = item.feature.getProperties();
         const blockCode = props.block_code ?? "";
-        const parcelCode = item.layerType === "PARCELS" ? (props.parcel_code ?? props.parcel_no ?? "") : "";
+        const parcelCode = item.layerType === "PARCELS" ? (props.parcel_code ?? "") : "";
 
         const rows = buildCsvRows(rings3857, p4, crs, blockCode, parcelCode, item.layerType);
         allRows.push(...rows);

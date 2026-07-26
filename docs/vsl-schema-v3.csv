@@ -1,0 +1,252 @@
+table,column,type,nullable,default,generated,check_constraint,is_primary_key,foreign_key_ref
+vsl_profiles,id,uuid,NO,,NO,,YES,auth.users.id
+vsl_profiles,email,text,NO,,NO,,NO,
+vsl_profiles,role,text,NO,,NO,"role = ANY (ARRAY['ADMIN'::text, 'SURVEYOR'::text, 'MANAGMENT'::text])",NO,
+vsl_profiles,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_profiles,updated_at,timestamptz,NO,now(),NO,,NO,
+vsl_blocks,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_blocks,block_code,text,NO,,NO,,NO,
+vsl_blocks,block_name,text,NO,,NO,,NO,
+vsl_blocks,expected_area_acres,numeric,YES,,NO,,NO,
+vsl_blocks,geom,geometry,YES,,NO,,NO,
+vsl_blocks,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_blocks,updated_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_blocks,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_blocks,updated_at,timestamptz,NO,now(),NO,,NO,
+vsl_blocks,cultivation_status,text,NO,'not_in_cane'::text,NO,"cultivation_status = ANY (ARRAY['not_in_cane'::text, 'prepared'::text, 'planted'::text, 'standing'::text, 'harvested'::text, 'replant_renovation'::text])",NO,
+vsl_blocks,cultivation_notes,text,YES,,NO,,NO,
+vsl_blocks,cultivation_updated_at,timestamptz,YES,,NO,,NO,
+vsl_blocks,cultivation_updated_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_blocks,location_address,text,YES,,NO,,NO,
+vsl_blocks,soil_type,text,YES,,NO,,NO,
+vsl_blocks,irrigation_type,text,YES,,NO,"(irrigation_type = ANY (ARRAY['drip'::text, 'furrow'::text, 'overhead'::text, 'rainfed'::text, ''::text])) OR irrigation_type IS NULL",NO,
+vsl_blocks,soil_ph,numeric,YES,,NO,,NO,
+vsl_blocks,manager_name,text,YES,,NO,,NO,
+vsl_blocks,manager_phone,text,YES,,NO,,NO,
+vsl_blocks,ownership,text,YES,,NO,"(ownership = ANY (ARRAY['bought'::text, 'rented'::text, ''::text])) OR ownership IS NULL",NO,
+vsl_blocks,estate_id,bigint,YES,,NO,,NO,public.vsl_estate.id
+vsl_blocks,geometry_status,text,YES,"
+CASE
+    WHEN (geom IS NOT NULL) THEN 'captured'::text
+    ELSE 'pending'::text
+END",YES,,NO,
+vsl_parcels,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_parcels,block_id,uuid,NO,,NO,,NO,public.vsl_blocks.id
+vsl_parcels,parcel_code,text,NO,,NO,,NO,
+vsl_parcels,parcel_name,text,YES,,NO,,NO,
+vsl_parcels,expected_area_acres,numeric,YES,,NO,,NO,
+vsl_parcels,geom,geometry,YES,,NO,,NO,
+vsl_parcels,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_parcels,updated_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_parcels,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_parcels,updated_at,timestamptz,NO,now(),NO,,NO,
+vsl_parcels,cultivation_status,text,NO,'not_in_cane'::text,NO,"cultivation_status = ANY (ARRAY['not_in_cane'::text, 'prepared'::text, 'planted'::text, 'standing'::text, 'harvested'::text, 'replant_renovation'::text])",NO,
+vsl_parcels,cultivation_notes,text,YES,,NO,,NO,
+vsl_parcels,cultivation_updated_at,timestamptz,YES,,NO,,NO,
+vsl_parcels,cultivation_updated_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_parcels,ratoon_number,integer,YES,0,NO,,NO,
+vsl_parcels,planting_date,date,YES,,NO,,NO,
+vsl_parcels,expected_harvest_date,date,YES,,NO,,NO,
+vsl_parcels,geometry_status,text,YES,"
+CASE
+    WHEN (geom IS NOT NULL) THEN 'captured'::text
+    ELSE 'pending'::text
+END",YES,,NO,
+vsl_parcels,current_activity_id,uuid,YES,,NO,,NO,public.vsl_activities.id
+vsl_parcels,current_activity_name,text,YES,,NO,,NO,
+vsl_parcels,current_season_id,uuid,YES,,NO,,NO,public.vsl_parcel_seasons.id
+vsl_alerts,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_alerts,layer_type,text,NO,,NO,"layer_type = ANY (ARRAY['ESTATE'::text, 'BLOCKS'::text, 'PARCELS'::text])",NO,
+vsl_alerts,target_id,text,NO,,NO,,NO,
+vsl_alerts,note,text,NO,,NO,,NO,
+vsl_alerts,status,text,NO,'open'::text,NO,"status = ANY (ARRAY['open'::text, 'investigating'::text, 'resolved'::text])",NO,
+vsl_alerts,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_alerts,resolved_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_alerts,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_alerts,resolved_at,timestamptz,YES,,NO,,NO,
+vsl_alerts,severity,text,NO,'information'::text,NO,"severity = ANY (ARRAY['information'::text, 'warning'::text, 'critical'::text])",NO,
+vsl_alerts,alert_type,text,YES,,NO,"alert_type = ANY (ARRAY['pest'::text, 'disease'::text, 'general'::text, 'other'::text])",NO,
+vsl_alerts,alert_name,text,YES,,NO,,NO,
+vsl_alerts,source,text,YES,,NO,"source = ANY (ARRAY['scouting'::text, 'satellite'::text, 'manual'::text])",NO,
+vsl_import_batches,id,bigint,NO,nextval('vsl_import_batches_id_seq'::regclass),NO,,YES,
+vsl_import_batches,source_file_name,text,NO,,NO,,NO,
+vsl_import_batches,row_count,integer,NO,0,NO,,NO,
+vsl_import_batches,status,text,NO,'processing'::text,NO,"status = ANY (ARRAY['processing'::text, 'completed'::text, 'failed'::text])",NO,
+vsl_import_batches,imported_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_import_batches,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_import_batches,completed_at,timestamptz,YES,,NO,,NO,
+vsl_import_rows,id,bigint,NO,nextval('vsl_import_rows_id_seq'::regclass),NO,,YES,
+vsl_import_rows,batch_id,bigint,NO,,NO,,NO,public.vsl_import_batches.id
+vsl_import_rows,row_number,integer,NO,,NO,,NO,
+vsl_import_rows,raw_payload,jsonb,NO,,NO,,NO,
+vsl_import_rows,status,text,NO,'queued'::text,NO,"status = ANY (ARRAY['queued'::text, 'imported'::text, 'failed'::text])",NO,
+vsl_import_rows,error_message,text,YES,,NO,,NO,
+vsl_import_rows,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_drone_images,id,bigint,NO,,NO,,YES,
+vsl_drone_images,url,text,NO,,NO,,NO,
+vsl_drone_images,name,text,NO,,NO,,NO,
+vsl_drone_images,uploaded_at,timestamptz,YES,now(),NO,,NO,
+vsl_harvests,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_harvests,parcel_id,uuid,NO,,NO,,NO,public.vsl_parcels.id
+vsl_harvests,harvest_date,date,NO,,NO,,NO,
+vsl_harvests,gross_weight_tonnes,numeric,NO,,NO,,NO,
+vsl_harvests,ratoon_at_harvest,integer,YES,,NO,,NO,
+vsl_harvests,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_harvests,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_activities,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_activities,parcel_id,uuid,NO,,NO,,NO,public.vsl_parcels.id
+vsl_activities,activity_name,text,NO,,NO,"activity_name = ANY (ARRAY['Bush Clearing'::text, 'Ploughing'::text, 'Harrow'::text, 'Ripping'::text, 'Ridging'::text, 'Furrowing'::text, 'Lime Application'::text, 'Planting'::text, 'Manuring'::text, 'Fertilization'::text, 'Weeding'::text, 'Cultivator'::text, 'Spraying'::text, 'Irrigation'::text, 'Harvesting'::text, 'Loading'::text, 'Trash Lining'::text, 'Trash Collection'::text])",NO,
+vsl_activities,assigned_to_legacy,text,YES,,NO,,NO,
+vsl_activities,activity_date,date,YES,CURRENT_DATE,NO,,NO,
+vsl_activities,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_activities,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_activities,block_id,uuid,YES,,NO,,NO,public.vsl_blocks.id
+vsl_activities,estate_id,bigint,YES,,NO,,NO,public.vsl_estate.id
+vsl_activities,plot_season_id,uuid,YES,,NO,,NO,public.vsl_parcel_seasons.id
+vsl_activities,task_description,text,YES,,NO,,NO,
+vsl_activities,status,text,YES,'planned'::text,NO,"status = ANY (ARRAY['planned'::text, 'in_progress'::text, 'completed'::text, 'cancelled'::text])",NO,
+vsl_activities,completion_unit,text,YES,,NO,"completion_unit = ANY (ARRAY['acres'::text, 'percent'::text])",NO,
+vsl_activities,completion_value,numeric,YES,,NO,,NO,
+vsl_activities,team_size,integer,YES,,NO,,NO,
+vsl_activities,method,text,YES,,NO,,NO,
+vsl_activities,number_of_machines,integer,YES,,NO,,NO,
+vsl_activities,due_date,date,YES,,NO,,NO,
+vsl_activities,completed_date,date,YES,,NO,,NO,
+vsl_activities,estimated_cost,numeric,YES,,NO,,NO,
+vsl_activities,actual_cost,numeric,YES,,NO,,NO,
+vsl_activities,currency,text,YES,,NO,,NO,
+vsl_activities,challenges,text,YES,,NO,,NO,
+vsl_activities,comments,text,YES,,NO,,NO,
+vsl_activities,activity_properties,jsonb,YES,'{}'::jsonb,NO,,NO,
+vsl_activities,assigned_to,uuid,YES,,NO,,NO,public.vsl_profiles.id
+vsl_report_recipients,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_report_recipients,email,text,NO,,NO,,NO,
+vsl_report_recipients,name,text,YES,,NO,,NO,
+vsl_report_recipients,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_report_recipients,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_report_recipients,freq,USER-DEFINED,YES,,NO,,NO,
+vsl_estate,id,bigint,NO,,NO,,YES,
+vsl_estate,estate_name,text,NO,,NO,,NO,
+vsl_estate,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_estate,estate_code,text,YES,,NO,,NO,
+vsl_estate,registration_number,text,YES,,NO,,NO,
+vsl_estate,country,text,YES,,NO,,NO,
+vsl_estate,region,text,YES,,NO,,NO,
+vsl_estate,district,text,YES,,NO,,NO,
+vsl_estate,address,text,YES,,NO,,NO,
+vsl_estate,geom,geometry,YES,,NO,,NO,
+vsl_estate,gps_centroid,geometry,YES,,NO,,NO,
+vsl_estate,elevation_min_m,numeric,YES,,NO,,NO,
+vsl_estate,elevation_max_m,numeric,YES,,NO,,NO,
+vsl_estate,average_rainfall_mm,numeric,YES,,NO,,NO,
+vsl_estate,primary_soil_type,text,YES,,NO,,NO,
+vsl_estate,water_sources,text,YES,,NO,,NO,
+vsl_estate,established_date,date,YES,,NO,,NO,
+vsl_estate,ownership_type,text,YES,,NO,,NO,
+vsl_estate,owner_name,text,YES,,NO,,NO,
+vsl_estate,owner_contact_phone,text,YES,,NO,,NO,
+vsl_estate,owner_contact_email,text,YES,,NO,,NO,
+vsl_estate,status,text,YES,'active'::text,NO,"status = ANY (ARRAY['active'::text, 'inactive'::text])",NO,
+vsl_estate,notes,text,YES,,NO,,NO,
+vsl_estate,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_estate,updated_at,timestamptz,YES,now(),NO,,NO,
+vsl_estate,updated_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_estate,location_link,text,YES,"
+CASE
+    WHEN (gps_centroid IS NOT NULL) THEN ((('https://maps.google.com/?q='::text || (st_y(gps_centroid))::text) || ','::text) || (st_x(gps_centroid))::text)
+    ELSE NULL::text
+END",YES,,NO,
+vsl_estate_managers,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_estate_managers,user_id,uuid,NO,,NO,,NO,public.vsl_profiles.id
+vsl_estate_managers,estate_id,bigint,YES,,NO,,NO,public.vsl_estate.id
+vsl_estate_managers,block_id,uuid,YES,,NO,,NO,public.vsl_blocks.id
+vsl_estate_managers,role,text,NO,'manager'::text,NO,,NO,
+vsl_estate_managers,assigned_from,date,YES,CURRENT_DATE,NO,,NO,
+vsl_estate_managers,assigned_to,date,YES,,NO,,NO,
+vsl_estate_managers,is_active,boolean,NO,true,NO,,NO,
+vsl_estate_managers,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_estate_managers,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_parcel_seasons,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_parcel_seasons,parcel_id,uuid,NO,,NO,,NO,public.vsl_parcels.id
+vsl_parcel_seasons,season_name,text,YES,,NO,,NO,
+vsl_parcel_seasons,cane_variety,text,YES,,NO,,NO,
+vsl_parcel_seasons,ratoon_number,integer,YES,0,NO,,NO,
+vsl_parcel_seasons,planting_date,date,YES,,NO,,NO,
+vsl_parcel_seasons,expected_harvest_date,date,YES,,NO,,NO,
+vsl_parcel_seasons,actual_harvest_date,date,YES,,NO,,NO,
+vsl_parcel_seasons,growth_stage,text,YES,,NO,,NO,
+vsl_parcel_seasons,target_yield_tonnes,numeric,YES,,NO,,NO,
+vsl_parcel_seasons,actual_yield_tonnes,numeric,YES,,NO,,NO,
+vsl_parcel_seasons,yield_per_hectare,numeric,YES,,NO,,NO,
+vsl_parcel_seasons,season_status,text,YES,,NO,"season_status = ANY (ARRAY['planned'::text, 'planted'::text, 'growing'::text, 'harvested'::text, 'failed'::text])",NO,
+vsl_parcel_seasons,failure_reason,text,YES,,NO,,NO,
+vsl_parcel_seasons,notes,text,YES,,NO,,NO,
+vsl_parcel_seasons,created_by,uuid,YES,,NO,,NO,auth.users.id
+vsl_parcel_seasons,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_parcel_soil_tests,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_parcel_soil_tests,parcel_id,uuid,NO,,NO,,NO,public.vsl_parcels.id
+vsl_parcel_soil_tests,plot_season_id,uuid,YES,,NO,,NO,public.vsl_parcel_seasons.id
+vsl_parcel_soil_tests,soil_ph,numeric,YES,,NO,,NO,
+vsl_parcel_soil_tests,nitrogen,numeric,YES,,NO,,NO,
+vsl_parcel_soil_tests,phosphorus,numeric,YES,,NO,,NO,
+vsl_parcel_soil_tests,potassium,numeric,YES,,NO,,NO,
+vsl_parcel_soil_tests,organic_matter_pct,numeric,YES,,NO,,NO,
+vsl_parcel_soil_tests,texture,text,YES,,NO,,NO,
+vsl_parcel_soil_tests,sample_date,date,YES,,NO,,NO,
+vsl_parcel_soil_tests,sampled_by,uuid,YES,,NO,,NO,public.vsl_profiles.id
+vsl_parcel_soil_tests,lab_name,text,YES,,NO,,NO,
+vsl_parcel_soil_tests,results_url,text,YES,,NO,,NO,
+vsl_parcel_soil_tests,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_parcel_land_state_log,id,bigint,NO,nextval('vsl_parcel_land_state_log_id_seq'::regclass),NO,,YES,
+vsl_parcel_land_state_log,parcel_id,uuid,NO,,NO,,NO,public.vsl_parcels.id
+vsl_parcel_land_state_log,source_activity_id,uuid,YES,,NO,,NO,public.vsl_activities.id
+vsl_parcel_land_state_log,field_name,text,NO,,NO,,NO,
+vsl_parcel_land_state_log,old_value,text,YES,,NO,,NO,
+vsl_parcel_land_state_log,new_value,text,YES,,NO,,NO,
+vsl_parcel_land_state_log,recorded_at,timestamptz,NO,now(),NO,,NO,
+vsl_media,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_media,entity_type,text,NO,,NO,"entity_type = ANY (ARRAY['estate'::text, 'block'::text, 'parcel'::text])",NO,
+vsl_media,entity_id,text,NO,,NO,,NO,
+vsl_media,scout_activity_id,uuid,YES,,NO,,NO,public.vsl_activities.id
+vsl_media,media_type,text,YES,,NO,"media_type = ANY (ARRAY['photo'::text, 'video'::text])",NO,
+vsl_media,file_url,text,NO,,NO,,NO,
+vsl_media,caption,text,YES,,NO,,NO,
+vsl_media,gps_lat,numeric,YES,,NO,,NO,
+vsl_media,gps_lng,numeric,YES,,NO,,NO,
+vsl_media,captured_by,uuid,YES,,NO,,NO,public.vsl_profiles.id
+vsl_media,captured_at,timestamptz,NO,now(),NO,,NO,
+vsl_documents,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_documents,entity_type,text,NO,,NO,"entity_type = ANY (ARRAY['estate'::text, 'block'::text, 'parcel'::text])",NO,
+vsl_documents,entity_id,text,NO,,NO,,NO,
+vsl_documents,doc_type,text,YES,,NO,,NO,
+vsl_documents,document_title,text,NO,,NO,,NO,
+vsl_documents,file_url,text,NO,,NO,,NO,
+vsl_documents,uploaded_by,uuid,YES,,NO,,NO,public.vsl_profiles.id
+vsl_documents,upload_date,date,YES,CURRENT_DATE,NO,,NO,
+vsl_documents,description,text,YES,,NO,,NO,
+vsl_comments,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_comments,entity_type,text,NO,,NO,"entity_type = ANY (ARRAY['estate'::text, 'block'::text, 'parcel'::text])",NO,
+vsl_comments,entity_id,text,NO,,NO,,NO,
+vsl_comments,user_id,uuid,NO,,NO,,NO,public.vsl_profiles.id
+vsl_comments,comment_text,text,NO,,NO,,NO,
+vsl_comments,comment_type,text,YES,,NO,"comment_type = ANY (ARRAY['observation'::text, 'issue'::text, 'recommendation'::text, 'approval'::text])",NO,
+vsl_comments,is_resolved,boolean,NO,false,NO,,NO,
+vsl_comments,resolved_by,uuid,YES,,NO,,NO,public.vsl_profiles.id
+vsl_comments,resolved_at,timestamptz,YES,,NO,,NO,
+vsl_comments,created_at,timestamptz,NO,now(),NO,,NO,
+vsl_infrastructure,id,uuid,NO,gen_random_uuid(),NO,,YES,
+vsl_infrastructure,entity_type,text,NO,,NO,"entity_type = ANY (ARRAY['estate'::text, 'block'::text])",NO,
+vsl_infrastructure,entity_id,text,NO,,NO,,NO,
+vsl_infrastructure,infra_type,text,YES,,NO,,NO,
+vsl_infrastructure,infra_name,text,YES,,NO,,NO,
+vsl_infrastructure,geom,geometry,YES,,NO,,NO,
+vsl_infrastructure,condition,text,YES,,NO,,NO,
+vsl_infrastructure,construction_date,date,YES,,NO,,NO,
+vsl_infrastructure,last_maintained,date,YES,,NO,,NO,
+vsl_infrastructure,notes,text,YES,,NO,,NO,
+
+VIEWS
+view_name,description
+v_block_last_harvest,"Harvest rollup per block (sum of tonnes, max date across all parcels in the block), joined through vsl_parcels. Added in v3 for the same reason as v_parcel_last_harvest."
+v_parcel_last_harvest,Latest harvest per parcel (DISTINCT ON). Added in v3 so the app can keep reading harvest_tonnes/last_harvest_date after those flat columns were dropped from vsl_parcels.
+vsl_block_stats,Pre-existing block-level rollup view (plot counts/areas by cultivation status + centroid). Unaffected by v3 except that its parcel join still works against the renamed columns.

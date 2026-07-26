@@ -117,7 +117,7 @@ function buildKML(features, proj4, targetCrs) {
     const geom  = feature.getGeometry();
     if (!geom) return "";
     const props = feature.getProperties();
-    const name  = props.parcel_code ?? props.block_code ?? props.parcel_no ?? feature.getId() ?? "Feature";
+    const name  = props.parcel_code ?? props.block_code ?? feature.getId() ?? "Feature";
     // Always output in geographic for valid KML
     const rings = extractRings(proj4, geom, "EPSG:4326");
 
@@ -156,7 +156,7 @@ function buildCSV(features, proj4, targetCrs) {
     const geom = feature.getGeometry();
     if (!geom) continue;
     const props = feature.getProperties();
-    const id    = props.parcel_code ?? props.block_code ?? props.parcel_no ?? feature.getId() ?? "";
+    const id    = props.parcel_code ?? props.block_code ?? feature.getId() ?? "";
     const rings = extractRings(proj4, geom, targetCrs);
     for (const ring of rings) {
       ring.forEach(([e, n], i) => {

@@ -393,12 +393,13 @@ export function initFarmReports(opts) {
   async function loadBlockList() {
     const { data, error } = await supabase
       .from("vsl_blocks")
-      .select("id, block_code, block_name, estate_name, expected_area_acres, geometry_status, cultivation_status")
+      .select("id, block_code, block_name, estate_id, vsl_estate(estate_name), expected_area_acres, geometry_status, cultivation_status")
       .order("block_code", { ascending: true });
     if (error) {
       if (setStatus) setStatus(statusEl, `Report blocks: ${error.message}`, true);
       return;
     }
+    (data || []).forEach((b) => { b.estate_name = b.vsl_estate?.estate_name || null; });
     blockRows = data || [];
     renderBlockOptions();
   }
@@ -828,19 +829,40 @@ export function initFarmReports(opts) {
       const { data: blockData, error: e1 } = await supabase
         .from("vsl_blocks")
         .select(
-          "id, block_code, block_name, estate_name, expected_area_acres, geometry_status, cultivation_status, harvest_tonnes, last_harvest_date, cultivation_updated_at"
+          "id, block_code, block_name, estate_id, vsl_estate(estate_name), expected_area_acres, geometry_status, cultivation_status, cultivation_updated_at"
         )
         .eq("id", bid)
         .single();
       if (e1) throw e1;
       const bl = blockData;
       if (!bl) throw new Error("Block not found");
+      bl.estate_name = bl.vsl_estate?.estate_name || null;
+      // harvest_tonnes/last_harvest_date no longer live on vsl_blocks -- rolled up from vsl_harvests
+      const { data: blockHarvest } = await supabase
+        .from("v_block_last_harvest")
+        .select("harvest_tonnes, last_harvest_date")
+        .eq("block_id", bid)
+        .maybeSingle();
+      bl.harvest_tonnes = blockHarvest?.harvest_tonnes ?? null;
+      bl.last_harvest_date = blockHarvest?.last_harvest_date ?? null;
+
       const { data: parcelData, error: e2 } = await supabase
         .from("vsl_parcels")
-        .select("block_id, parcel_no, expected_area_acres, cultivation_status, harvest_tonnes, last_harvest_date, geometry_status")
+        .select("id, block_id, parcel_code, expected_area_acres, cultivation_status, geometry_status")
         .eq("block_id", bid);
       if (e2) throw e2;
       const parcels = parcelData || [];
+      // Same for parcels -- merge in each parcel's latest harvest from the history view
+      const { data: parcelHarvests } = await supabase
+        .from("v_parcel_last_harvest")
+        .select("parcel_id, harvest_tonnes, last_harvest_date")
+        .in("parcel_id", parcels.map((p) => p.id));
+      const harvestByParcel = new Map((parcelHarvests || []).map((h) => [h.parcel_id, h]));
+      parcels.forEach((p) => {
+        const h = harvestByParcel.get(p.id);
+        p.harvest_tonnes = h?.harvest_tonnes ?? null;
+        p.last_harvest_date = h?.last_harvest_date ?? null;
+      });
 
       if (!lastStats || !lastStats.ndvi_intervals) {
         await runStats();
@@ -1176,7 +1198,7 @@ export function initFarmReports(opts) {
       y0 += 6;
       const bParcels = parcels
         .slice()
-        .sort((a, b) => (Number(a.parcel_no) || 0) - (Number(b.parcel_no) || 0));
+        .sort((a, b) => (Number(a.parcel_code) || 0) - (Number(b.parcel_code) || 0));
       doc.autoTable({
         startY: y0,
         head: [["Plot", "Area (ac)", "Cultivation", "Harvest (t)", "Last harvest"]].map((row) =>
@@ -1185,7 +1207,7 @@ export function initFarmReports(opts) {
         body: bParcels.length
           ? bParcels.map((p) =>
               [
-                String(p.parcel_no),
+                String(p.parcel_code),
                 fmtNum(p.expected_area_acres, 2),
                 CULTIVATION_LABELS[p.cultivation_status] || p.cultivation_status,
                 p.harvest_tonnes != null ? fmtNum(p.harvest_tonnes, 2) : "-",

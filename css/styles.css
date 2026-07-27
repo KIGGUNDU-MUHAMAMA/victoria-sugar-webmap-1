@@ -4845,3 +4845,118 @@ select.search-panel__input {
 .parcel-action-toolbar__btn--info {
   background: linear-gradient(145deg, #1976d2, #0d47a1);
 }
+
+/* =============================================================
+   Log Activity / Log Alert modals — the .popWinTabs bar (normally
+   tab buttons) instead holds a single select for activity name /
+   alert severity. Shares .vsl-modal-overlay/.vsl-modal-card/
+   .popWinMain/.popWinBody with edit-details-modal.html.
+   ============================================================= */
+.popWinTabs__select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 0.85rem;
+  cursor: pointer;
+}
+.popWinTabs__select:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: -2px;
+}
+.popWinTabs__select option {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.vsl-modal-card--wide {
+  max-width: 640px;
+}
+
+.vsl-prop-table {
+  margin-bottom: 0.65rem;
+}
+.vsl-prop-table:last-child {
+  margin-bottom: 0;
+}
+.vsl-prop-table th {
+  width: 46%;
+}
+.vsl-prop-table td {
+  background: #ffffff;
+}
+.vsl-prop-table input,
+.vsl-prop-table select,
+.vsl-prop-table textarea {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.82rem;
+  background: #fff;
+  color: var(--text);
+}
+.vsl-prop-table textarea {
+  resize: vertical;
+  min-height: 2.2em;
+}
+
+/* =============================================================
+   Feature info panel — grouped, collapsible read-only sections.
+   Native <details>/<summary> for built-in keyboard/AT support;
+   the chevron rotates between > (closed) and v (open).
+   ============================================================= */
+.info-group {
+  border: 1px solid #c8d6c4;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  background: #fff;
+}
+.info-group:last-child {
+  margin-bottom: 0;
+}
+.info-group__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  background: #eef5ec;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--primary-2);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.info-group__summary::-webkit-details-marker {
+  display: none;
+}
+.info-group__chevron {
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-right: 2px solid var(--primary-2);
+  border-bottom: 2px solid var(--primary-2);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  margin-right: 0.1rem;
+}
+.info-group[open] > .info-group__summary .info-group__chevron {
+  transform: rotate(45deg);
+}
+.info-group__title {
+  flex: 1 1 auto;
+}
+.info-group__body {
+  padding: 0.6rem 0.7rem 0.7rem;
+}
+.info-group__body .map-popup__table {
+  margin-bottom: 0.5rem;
+}
+.info-group__body .map-popup__table:last-child {
+  margin-bottom: 0;
+}

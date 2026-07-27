@@ -30,6 +30,8 @@ const WINDOW_FRAGMENTS = [
   { parent: "body", url: "./windows/print-composer-modal.html" },
   { parent: "body", url: "./windows/unified-action-menu.html" },
   { parent: "body", url: "./windows/edit-details-modal.html" },
+  { parent: "body", url: "./windows/log-activity-modal.html" },
+  { parent: "body", url: "./windows/log-alert-modal.html" },
 ];
 
 async function loadWindowFragments() {

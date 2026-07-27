@@ -1,9 +1,3 @@
-    <!-- Read-only, grouped/collapsible feature detail view. Opened only via the
-         map selection toolbar's "info" button (see js/map-app.js
-         openFeatureInfoPanel) — no longer auto-opens on plain feature click,
-         and has no edit/modify controls (use the Modify top-toolbar button for
-         that). Previous tabbed Info/Modify version preserved for reference at
-         windows/old_feature-info-panel.html. -->
     <section id="featureInfoPanel" class="popWinMain feature-info-panel" hidden role="region" aria-label="Selected map feature">
       <header class="popWinHead">
         <div class="popWinHead__inner">
@@ -14,6 +8,15 @@
           <i class="fas fa-times" aria-hidden="true"></i>
         </button>
       </header>
+
+      <div class="popWinTabs" role="tablist">
+        <button type="button" class="search-tab" id="featureInfoTabInfo" role="tab" aria-selected="true" aria-controls="popupTabInfo" data-tab="info">
+          <i class="fas fa-info-circle" aria-hidden="true"></i> Info
+        </button>
+        <button type="button" class="search-tab" id="featureInfoTabModify" role="tab" aria-selected="false" aria-controls="popupTabMore" data-tab="modify">
+          <i class="fas fa-pen-to-square" aria-hidden="true"></i> Modify
+        </button>
+      </div>
 
       <div id="featureInfoPanelInner" class="popWinBody"></div>
     </section>

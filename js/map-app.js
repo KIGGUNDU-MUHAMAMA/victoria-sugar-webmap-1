@@ -86,6 +86,11 @@ function cultivationKeyFromFeature(feature) {
   return s && CULTIVATION_PALETTE[s] ? s : "not_in_cane";
 }
 
+/** Parcel label zoom staging: name-only until zoomed in past PARCEL_FULL_DETAIL_RES,
+ *  then full "name\narea" label + ratoon/alert badges together. */
+const PARCEL_FULL_DETAIL_RES = 12;
+const PARCEL_NAME_ONLY_RES = 20;
+
 /** Ratoon-number badge fill — matches the green already used for parcel area/label text. */
 const RATOON_BADGE_COLOR = "#2e7d32";
 
@@ -196,35 +201,8 @@ const CULTIVATION_STATUS_LABELS = {
   replant_renovation: "Replant / renovation"
 };
 
-const INFO_FIELD_LABELS = {
-  block_code: "Block code",
-  block_name: "Block name",
-  estate_name: "Estate",
-  parcel_code: "Plot code",
-  parcel_name: "Plot name",
-  expected_area_acres: "Expected area",
-  geometry_status: "Geometry status",
-  cultivation_status: "Cultivation status",
-  harvest_tonnes: "Harvest (tonnes cane)",
-  last_harvest_date: "Last harvest date",
-  cultivation_notes: "Notes",
-  cultivation_updated_at: "Status last updated",
-  current_activity_name: "Current activity"
-};
-
-const INFO_BLOCK_FIELD_ORDER = [
-  "estate_name",
-  "block_name",
-  "cultivation_status",
-  "cultivation_updated_at"
-];
-
-const INFO_PARCEL_FIELD_ORDER = [
-  "parcel_name",
-  "block_code",
-  "expected_area_acres",
-  "cultivation_status"
-];
+/** vsl_alerts.severity -> display label, shared by badges, the info panel, and the log-alert modal. */
+const SEVERITY_LABELS = { critical: "Critical", warning: "Warning", information: "Information" };
 
 let infoHelpPopoverOpen = false;
 let infoHelpOutsideHandler = null;
@@ -247,203 +225,588 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function formatInfoFieldValue(key, val) {
-  if (val == null || val === "") return "—";
-  if (key === "expected_area_acres" && Number.isFinite(Number(val))) {
-    return `${Number(val).toFixed(2)} ac`;
+// Badge/icon text shown in the panel's static popWinHead.
+const FEATURE_INFO_BADGE = { PARCELS: "Parcel", BLOCKS: "Block" };
+
+// ---------------------------------------------------------------------------
+// Log Activity — the 18 vsl_activities.activity_name values, the fields that
+// are real shared columns on every row (LOG_ACTIVITY_COMMON_FIELDS), and the
+// extra per-activity properties that get stored in activity_properties jsonb
+// (ACTIVITY_PROPERTY_DEFS). See docs/activities.md for the source list.
+// ---------------------------------------------------------------------------
+const ACTIVITY_NAMES = [
+  "Bush Clearing", "Ploughing", "Harrow", "Ripping", "Ridging", "Furrowing",
+  "Lime Application", "Planting", "Manuring", "Fertilization", "Weeding",
+  "Cultivator", "Spraying", "Irrigation", "Harvesting", "Loading",
+  "Trash Lining", "Trash Collection"
+];
+
+const LOG_ACTIVITY_COMMON_FIELDS = [
+  { key: "task_description", label: "Task description / notes", type: "textarea" },
+  { key: "status", label: "Status", type: "select", options: ["planned", "in_progress", "completed", "cancelled"], optionLabels: ["Planned", "In progress", "Completed", "Cancelled"], default: "planned" },
+  { key: "method", label: "Method", type: "text" },
+  { key: "team_size", label: "Team size", type: "number" },
+  { key: "number_of_machines", label: "Number of machines", type: "number" },
+  { key: "completion_unit", label: "Completion unit", type: "select", options: ["acres", "percent"], optionLabels: ["Acres", "%"] },
+  { key: "completion_value", label: "Completion value", type: "number" },
+  { key: "due_date", label: "Due date", type: "date" },
+  { key: "completed_date", label: "Completed date", type: "date" },
+  { key: "estimated_cost", label: "Estimated cost", type: "number" },
+  { key: "actual_cost", label: "Actual cost", type: "number" },
+  { key: "currency", label: "Currency", type: "text", default: "UGX" },
+  { key: "challenges", label: "Challenges", type: "textarea" },
+  { key: "comments", label: "Comments", type: "textarea" }
+];
+
+const ACTIVITY_PROPERTY_DEFS = {
+  "Bush Clearing": [
+    { key: "vegetation_density", label: "Vegetation density", type: "select", options: ["Light", "Medium", "Heavy"] },
+    { key: "clearing_depth", label: "Clearing depth", type: "select", options: ["Surface clearing only", "Includes stump & root removal"] },
+    { key: "disposal_method", label: "Disposal method", type: "select", options: ["Burning", "Piling", "Mulching in place", "Hauled away"] },
+    { key: "land_type", label: "Land type", type: "select", options: ["New land", "Fallow reclamation"] },
+    { key: "machine_type", label: "Machine type", type: "text" },
+    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
+    { key: "hours_worked", label: "Hours worked", type: "number" },
+    { key: "safety_incidents", label: "Safety incidents (Y/N + note)", type: "text" }
+  ],
+  "Ploughing": [
+    { key: "plough_type", label: "Plough type", type: "select", options: ["First", "Second", "Third"] },
+    { key: "implement_used", label: "Implement used", type: "select", options: ["Disc plough", "Moldboard plough", "Chisel plough"] },
+    { key: "plough_depth_cm", label: "Plough depth (cm)", type: "number" },
+    { key: "tractor_horsepower", label: "Tractor horsepower", type: "number" },
+    { key: "soil_moisture_condition", label: "Soil moisture condition", type: "select", options: ["Dry", "Moist", "Wet"] },
+    { key: "number_of_passes", label: "Number of passes", type: "number" },
+    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
+    { key: "hours_worked", label: "Hours worked", type: "number" },
+    { key: "operator_name", label: "Operator name", type: "text" }
+  ],
+  "Harrow": [
+    { key: "type", label: "Type", type: "select", options: ["Disc harrow", "Spike-tooth harrow", "Tine harrow", "Rotary harrow"] },
+    { key: "harrow_depth_cm", label: "Harrow depth (cm)", type: "number" },
+    { key: "number_of_passes", label: "Number of passes", type: "number" },
+    { key: "clod_size_before_after", label: "Clod size before → after", type: "text" },
+    { key: "soil_moisture_condition", label: "Soil moisture condition", type: "text" },
+    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
+    { key: "hours_worked", label: "Hours worked", type: "number" },
+    { key: "operator_name", label: "Operator name", type: "text" }
+  ],
+  "Ripping": [
+    { key: "ripping_depth_cm", label: "Ripping depth (cm)", type: "number" },
+    { key: "rip_line_spacing_m", label: "Rip line spacing (m)", type: "number" },
+    { key: "number_of_tynes", label: "Number of tynes/shanks", type: "number" },
+    { key: "soil_compaction_before", label: "Soil compaction level (before)", type: "text" },
+    { key: "tractor_horsepower", label: "Tractor horsepower", type: "number" },
+    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
+    { key: "hours_worked", label: "Hours worked", type: "number" },
+    { key: "operator_name", label: "Operator name", type: "text" }
+  ],
+  "Ridging": [
+    { key: "spacing_m", label: "Spacing (m)", type: "number" },
+    { key: "ridge_height_cm", label: "Ridge height (cm)", type: "number" },
+    { key: "ridge_width_cm", label: "Ridge width (cm)", type: "number" },
+    { key: "row_orientation", label: "Row orientation/direction", type: "text" },
+    { key: "number_of_ridges", label: "Number of ridges formed", type: "number" },
+    { key: "implement_used", label: "Implement used (ridger)", type: "text" },
+    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
+    { key: "hours_worked", label: "Hours worked", type: "number" },
+    { key: "operator_name", label: "Operator name", type: "text" }
+  ],
+  "Furrowing": [
+    { key: "furrow_depth_cm", label: "Furrow depth (cm)", type: "number" },
+    { key: "furrow_spacing_m", label: "Furrow spacing (m)", type: "number" },
+    { key: "number_of_furrows", label: "Number of furrows opened", type: "number" },
+    { key: "total_furrow_length_m", label: "Total furrow length (m)", type: "number" },
+    { key: "implement_used", label: "Implement used", type: "text" },
+    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
+    { key: "hours_worked", label: "Hours worked", type: "number" },
+    { key: "operator_name", label: "Operator name", type: "text" }
+  ],
+  "Lime Application": [
+    { key: "lime_quantity_kg", label: "Lime quantity (kg)", type: "number" },
+    { key: "lime_type", label: "Lime type/name", type: "text" },
+    { key: "application_method", label: "Application method", type: "select", options: ["Manual broadcast", "Mechanical spreader"] },
+    { key: "application_rate", label: "Application rate (kg/acre or kg/ha)", type: "text" },
+    { key: "soil_ph_before", label: "Soil pH before application", type: "number" },
+    { key: "target_soil_ph", label: "Target soil pH", type: "number" },
+    { key: "incorporation_method", label: "Incorporation method", type: "select", options: ["Ploughed in", "Harrowed in", "Left on surface"] },
+    { key: "supplier", label: "Supplier", type: "text" },
+    { key: "cost_of_lime", label: "Cost of lime", type: "number" }
+  ],
+  "Planting": [
+    { key: "number_of_setts", label: "Number of setts", type: "number" },
+    { key: "cane_variety", label: "Cane variety", type: "text" },
+    { key: "sett_source", label: "Sett source", type: "select", options: ["Own nursery", "Purchased", "Certified seed cane"] },
+    { key: "row_spacing_m", label: "Row/sett spacing (m)", type: "number" },
+    { key: "planting_depth_cm", label: "Planting depth (cm)", type: "number" },
+    { key: "seed_rate", label: "Seed rate (setts/acre or tonnes/ha)", type: "text" },
+    { key: "ratoon_number", label: "Ratoon number (0 = plant crop)", type: "number" },
+    { key: "basal_fertilizer_applied", label: "Basal fertilizer applied", type: "select", options: ["Yes", "No"] },
+    { key: "cost_of_setts", label: "Cost of setts", type: "number" },
+    { key: "expected_germination_date", label: "Expected germination date", type: "date" },
+    { key: "weather_condition", label: "Weather condition", type: "text" }
+  ],
+  "Manuring": [
+    { key: "manure_type", label: "Manure type", type: "select", options: ["Farmyard manure", "Compost", "Poultry manure", "Green manure"] },
+    { key: "quantity", label: "Quantity", type: "text" },
+    { key: "application_rate", label: "Application rate (kg or tonnes/acre)", type: "text" },
+    { key: "manure_source", label: "Manure source", type: "text" },
+    { key: "incorporation_method", label: "Incorporation method", type: "text" },
+    { key: "cost", label: "Cost", type: "number" },
+    { key: "supplier", label: "Supplier", type: "text" }
+  ],
+  "Fertilization": [
+    { key: "fertilizer_name", label: "Fertilizer name", type: "text" },
+    { key: "quantity", label: "Quantity", type: "text" },
+    { key: "application_type", label: "Application type", type: "select", options: ["Basal", "Top dressing", "Foliar"] },
+    { key: "application_rate", label: "Application rate (kg/acre)", type: "text" },
+    { key: "npk_ratio", label: "NPK ratio", type: "text" },
+    { key: "timing", label: "Timing relative to planting/growth stage", type: "text" },
+    { key: "incorporation_method", label: "Incorporation method", type: "text" },
+    { key: "cost", label: "Cost", type: "number" },
+    { key: "supplier", label: "Supplier", type: "text" },
+    { key: "weather_condition", label: "Weather condition", type: "text" }
+  ],
+  "Weeding": [
+    { key: "weeding_round", label: "Weeding round", type: "select", options: ["1st", "2nd", "3rd+"] },
+    { key: "weed_pressure", label: "Weed pressure", type: "select", options: ["Light", "Medium", "Heavy"] },
+    { key: "dominant_weed_type", label: "Dominant weed type", type: "text" },
+    { key: "tools_used", label: "Tools used", type: "text" },
+    { key: "labor_productivity", label: "Labor productivity (acres/person/day)", type: "text" },
+    { key: "cost", label: "Cost", type: "number" }
+  ],
+  "Cultivator": [
+    { key: "cultivation_depth_cm", label: "Cultivation depth (cm)", type: "number" },
+    { key: "row_spacing_m", label: "Row spacing (m)", type: "number" },
+    { key: "implement_type", label: "Implement type", type: "text" },
+    { key: "number_of_passes", label: "Number of passes", type: "number" },
+    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
+    { key: "hours_worked", label: "Hours worked", type: "number" },
+    { key: "operator_name", label: "Operator name", type: "text" }
+  ],
+  "Spraying": [
+    { key: "medicine_name", label: "Medicine name (chemical/product)", type: "text" },
+    { key: "quantity", label: "Quantity", type: "text" },
+    { key: "chemical_type", label: "Chemical type", type: "select", options: ["Herbicide", "Pesticide", "Fungicide"] },
+    { key: "active_ingredient", label: "Active ingredient", type: "text" },
+    { key: "target_pest", label: "Target pest/disease/weed", type: "text" },
+    { key: "dilution_rate", label: "Dilution rate", type: "text" },
+    { key: "water_volume_litres", label: "Water volume used (litres)", type: "number" },
+    { key: "application_equipment", label: "Application equipment", type: "select", options: ["Knapsack sprayer", "Boom sprayer", "Drone", "Tractor-mounted"] },
+    { key: "weather_condition", label: "Weather condition", type: "text" },
+    { key: "ppe_used", label: "PPE used", type: "select", options: ["Yes", "No"] },
+    { key: "withholding_period_days", label: "Pre-harvest/withholding period (days)", type: "number" },
+    { key: "supplier", label: "Supplier", type: "text" },
+    { key: "batch_expiry_date", label: "Batch/expiry date", type: "date" },
+    { key: "cost", label: "Cost", type: "number" }
+  ],
+  "Irrigation": [
+    { key: "litres_pumped", label: "Litres pumped", type: "number" },
+    { key: "water_source", label: "Water source", type: "text" },
+    { key: "duration_hours", label: "Duration (hours)", type: "number" },
+    { key: "pump_type_fuel", label: "Pump type/fuel used", type: "text" },
+    { key: "flow_rate", label: "Flow rate", type: "text" },
+    { key: "soil_moisture_before_after", label: "Soil moisture before/after", type: "text" },
+    { key: "cost", label: "Cost (fuel/electricity)", type: "number" },
+    { key: "operator_name", label: "Operator name", type: "text" }
+  ],
+  "Harvesting": [
+    { key: "yield_tonnes", label: "Yield (tonnes)", type: "number" },
+    { key: "cutting_method", label: "Cutting method", type: "select", options: ["Manual", "Mechanical harvester"] },
+    { key: "cane_variety", label: "Cane variety", type: "text" },
+    { key: "ratoon_number", label: "Ratoon number", type: "number" },
+    { key: "brix_reading", label: "Brix reading", type: "number" },
+    { key: "burnt_or_green_cane", label: "Burnt / Green cane", type: "select", options: ["Burnt cane", "Green cane"] },
+    { key: "cutting_crew_name", label: "Cutting crew name", type: "text" },
+    { key: "gross_weight_tonnes", label: "Gross weight (tonnes)", type: "number" },
+    { key: "net_weight_tonnes", label: "Net weight (tonnes)", type: "number" },
+    { key: "transport_vehicle", label: "Transport vehicle", type: "text" },
+    { key: "mill_destination", label: "Mill destination", type: "text" },
+    { key: "delivery_ticket_number", label: "Delivery ticket number", type: "text" },
+    { key: "weather_condition", label: "Weather condition", type: "text" }
+  ],
+  "Loading": [
+    { key: "loading_equipment", label: "Loading equipment", type: "select", options: ["Grab loader", "Crane", "Manual"] },
+    { key: "number_of_trucks", label: "Number of trucks/trailers loaded", type: "number" },
+    { key: "truck_registration_number", label: "Truck registration number", type: "text" },
+    { key: "transport_company_driver", label: "Transport company/driver", type: "text" },
+    { key: "load_weight_tonnes", label: "Load weight (tonnes)", type: "number" },
+    { key: "waiting_time", label: "Waiting time", type: "text" },
+    { key: "destination_mill", label: "Destination (mill name)", type: "text" },
+    { key: "cost", label: "Cost", type: "number" }
+  ],
+  "Trash Lining": [
+    { key: "row_spacing_for_trash_lines", label: "Row spacing for trash lines", type: "text" },
+    { key: "trash_quantity_coverage", label: "Trash quantity/coverage", type: "text" },
+    { key: "purpose", label: "Purpose", type: "select", options: ["Moisture retention", "Weed suppression", "Nutrient recycling"] }
+  ],
+  "Trash Collection": [
+    { key: "disposal_method", label: "Disposal method", type: "select", options: ["Burning", "Composting", "Baling", "Hauled away", "Mulching"] },
+    { key: "quantity_collected", label: "Quantity collected (tonnes/bales)", type: "text" },
+    { key: "purpose", label: "Purpose", type: "select", options: ["Land prep for next season", "Sale", "Biomass use"] },
+    { key: "transport_vehicle", label: "Transport vehicle (if removed)", type: "text" },
+    { key: "cost", label: "Cost", type: "number" }
+  ]
+};
+
+/** Renders one <tr><th>label</th><td><input/></td></tr> row for a field def
+ *  ({key, label, type: text|number|date|select|textarea, options?, optionLabels?, default?}).
+ *  Shared by the Log Activity and Log Alert modals. */
+function buildPropFieldRow(def) {
+  const fieldId = `propField_${def.key}_${Math.random().toString(36).slice(2, 8)}`;
+  let control;
+  if (def.type === "select") {
+    const opts = (def.options || []).map((val, i) => {
+      const optLabel = def.optionLabels ? def.optionLabels[i] : val;
+      const selected = def.default === val ? " selected" : "";
+      return `<option value="${escapeHtml(val)}"${selected}>${escapeHtml(optLabel)}</option>`;
+    }).join("");
+    control = `<select id="${fieldId}" class="vsl-prop-input" data-key="${escapeHtml(def.key)}"><option value="">—</option>${opts}</select>`;
+  } else if (def.type === "textarea") {
+    control = `<textarea id="${fieldId}" class="vsl-prop-input" data-key="${escapeHtml(def.key)}" rows="2">${escapeHtml(def.default || "")}</textarea>`;
+  } else {
+    control = `<input id="${fieldId}" class="vsl-prop-input" data-key="${escapeHtml(def.key)}" type="${def.type}" value="${escapeHtml(def.default || "")}">`;
   }
-  if (key === "harvest_tonnes" && Number.isFinite(Number(val))) {
-    return `${Number(val).toLocaleString(undefined, { maximumFractionDigits: 3 })} t`;
-  }
-  if (key === "cultivation_status") {
-    return CULTIVATION_STATUS_LABELS[String(val)] || escapeHtml(val);
-  }
-  if (key === "last_harvest_date" || key === "cultivation_updated_at") {
-    const t = String(val);
-    return escapeHtml(t.length > 16 ? t.slice(0, 16) : t);
-  }
+  return `<tr><th><label for="${fieldId}">${escapeHtml(def.label)}</label></th><td>${control}</td></tr>`;
+}
+
+// ---------------------------------------------------------------------------
+// Feature info panel — read-only, grouped/collapsible view (see docs/
+// plot-details.md, block-details.md, activities.md for the field groupings).
+// Opened only via the map selection toolbar's info button (openFeatureInfoPanel).
+// ---------------------------------------------------------------------------
+
+/** Escaped placeholder-aware value formatter — shows "—" for null/blank so
+ *  fields never just silently disappear (0 still prints as "0"). */
+function fmt(val, opts = {}) {
+  if (val == null || val === "") return opts.fallback ?? "—";
   return escapeHtml(val);
 }
 
-function buildAdvancedModifyHtml(layerType, props, featureId, disableStr) {
-  if (layerType === "BLOCKS") {
-    return `
-      <div style="margin-bottom:8px;">
-        <label style="display:block;margin-bottom:4px;font-weight:600;">Block Name</label>
-        <input type="text" class="popup-modify-bname" value="${escapeHtml(props.block_name || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-      </div>
-      <div style="margin-bottom:8px;">
-        <label style="display:block;margin-bottom:4px;font-weight:600;">Location / Address</label>
-        <input type="text" class="popup-modify-loc" value="${escapeHtml(props.location_address || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-      </div>
-      <div style="margin-bottom:8px; display:flex; gap:8px;">
-        <div style="flex:1;">
-          <label style="display:block;margin-bottom:4px;font-weight:600;">Soil Type</label>
-          <input type="text" class="popup-modify-soil" value="${escapeHtml(props.soil_type || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-        </div>
-        <div style="flex:1;">
-          <label style="display:block;margin-bottom:4px;font-weight:600;">Soil pH</label>
-          <input type="number" step="0.1" class="popup-modify-ph" value="${props.soil_ph || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-        </div>
-      </div>
-      <div style="margin-bottom:8px; display:flex; gap:8px;">
-        <div style="flex:1;">
-          <label style="display:block;margin-bottom:4px;font-weight:600;">Irrigation</label>
-          <select class="popup-modify-irrigation" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-             <option value="" ${!props.irrigation_type ? 'selected' : ''}>-- Select --</option>
-             <option value="drip" ${props.irrigation_type === 'drip' ? 'selected' : ''}>Drip</option>
-             <option value="furrow" ${props.irrigation_type === 'furrow' ? 'selected' : ''}>Furrow</option>
-             <option value="overhead" ${props.irrigation_type === 'overhead' ? 'selected' : ''}>Overhead</option>
-             <option value="rainfed" ${props.irrigation_type === 'rainfed' ? 'selected' : ''}>Rainfed</option>
-          </select>
-        </div>
-        <div style="flex:1;">
-          <label style="display:block;margin-bottom:4px;font-weight:600;">Ownership</label>
-          <select class="popup-modify-ownership" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-             <option value="" ${!props.ownership ? 'selected' : ''}>-- Select --</option>
-             <option value="bought" ${props.ownership === 'bought' ? 'selected' : ''}>Bought</option>
-             <option value="rented" ${props.ownership === 'rented' ? 'selected' : ''}>Rented</option>
-          </select>
-        </div>
-      </div>
-      <hr style="margin:12px 0; border:none; border-top:1px solid var(--border);">
-      <p style="font-size:0.75rem;color:var(--gray-500);margin:0 0 8px;">Manager assignment now lives on the Estate/Block manager list, not on this record — see vsl_estate_managers.</p>
-      <div style="display:flex;gap:8px;">
-        <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${featureId}" style="flex:1;" ${disableStr}>Save changes</button>
-        <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${featureId}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;flex:1;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
-      </div>
-    `;
-  }
-
-  // PARCELS
+function buildCollapsibleGroup(title, innerHtml, { open = false } = {}) {
   return `
-    <div style="margin-bottom:8px;">
-      <label style="display:block;margin-bottom:4px;font-weight:600;">Plot name</label>
-      <input type="text" class="popup-modify-label" value="${escapeHtml(props.parcel_name || '')}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="e.g. A1" ${disableStr}>
-    </div>
-    <div style="margin-bottom:8px; display:flex; gap:8px;">
-      <div style="flex:1;">
-        <label style="display:block;margin-bottom:4px;font-weight:600;">Planting Date</label>
-        <input type="date" class="popup-modify-pdate" value="${props.planting_date || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-      </div>
-      <div style="flex:1;">
-        <label style="display:block;margin-bottom:4px;font-weight:600;">Ratoon #</label>
-        <input type="number" min="0" class="popup-modify-ratoon" value="${props.ratoon_number || 0}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-      </div>
-    </div>
-    <div style="margin-bottom:8px;">
-      <label style="display:block;margin-bottom:4px;font-weight:600;">Cultivation status</label>
-      <select class="popup-modify-status" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-         <option value="not_in_cane" ${props.cultivation_status === 'not_in_cane' ? 'selected' : ''}>Not in cane</option>
-         <option value="prepared" ${props.cultivation_status === 'prepared' ? 'selected' : ''}>Prepared</option>
-         <option value="planted" ${props.cultivation_status === 'planted' ? 'selected' : ''}>Planted</option>
-         <option value="standing" ${props.cultivation_status === 'standing' ? 'selected' : ''}>Standing</option>
-         <option value="harvested" ${props.cultivation_status === 'harvested' ? 'selected' : ''}>Harvested</option>
-         <option value="replant_renovation" ${props.cultivation_status === 'replant_renovation' ? 'selected' : ''}>Replant / renovation</option>
-      </select>
-    </div>
-    
-    <div style="margin-bottom:8px; display:flex; gap:8px; background:#f4faf1; padding:8px; border-radius:6px; border:1px solid #c8d6c4;">
-      <div style="flex:1;">
-        <label style="display:block;margin-bottom:4px;font-weight:600;font-size:0.8rem;color:#2d6a3a;">Log Harvest</label>
-        <input type="date" class="popup-modify-hdate" value="${props.last_harvest_date || ''}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;" placeholder="Date" ${disableStr}>
-        
-        <div style="display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden;">
-          <input type="number" step="0.01" class="popup-modify-tonnes" value="${props.harvest_tonnes || ''}" style="width:100%;padding:6px;border:none;" placeholder="Yield" ${disableStr}>
-          <select class="popup-modify-unit" style="background:#eef5ec; border:none; border-left:1px solid var(--border); padding:0 4px;" ${disableStr}>
-            <option value="tonnes">Tonnes</option>
-            <option value="kg">Kg</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    
-    <details style="margin-bottom:8px; border:1px solid var(--border); border-radius:4px; padding:4px;">
-      <summary style="font-weight:600; cursor:pointer;">Log Activity</summary>
-      <div style="margin-top:6px;">
-        <select class="popup-modify-activity" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;" ${disableStr}>
-           <option value="" ${!props.current_activity_name ? 'selected' : ''}>-- Select Activity --</option>
-           <option value="Bush Clearing" ${props.current_activity_name === 'Bush Clearing' ? 'selected' : ''}>Bush Clearing</option>
-           <option value="Ploughing" ${props.current_activity_name === 'Ploughing' ? 'selected' : ''}>Ploughing</option>
-           <option value="Harrow" ${props.current_activity_name === 'Harrow' ? 'selected' : ''}>Harrow</option>
-           <option value="Ripping" ${props.current_activity_name === 'Ripping' ? 'selected' : ''}>Ripping</option>
-           <option value="Ridging" ${props.current_activity_name === 'Ridging' ? 'selected' : ''}>Ridging</option>
-           <option value="Furrowing" ${props.current_activity_name === 'Furrowing' ? 'selected' : ''}>Furrowing</option>
-           <option value="Lime Application" ${props.current_activity_name === 'Lime Application' ? 'selected' : ''}>Lime Application</option>
-           <option value="Planting" ${props.current_activity_name === 'Planting' ? 'selected' : ''}>Planting</option>
-           <option value="Manuring" ${props.current_activity_name === 'Manuring' ? 'selected' : ''}>Manuring</option>
-           <option value="Fertilization" ${props.current_activity_name === 'Fertilization' ? 'selected' : ''}>Fertilization</option>
-           <option value="Weeding" ${props.current_activity_name === 'Weeding' ? 'selected' : ''}>Weeding</option>
-           <option value="Cultivator" ${props.current_activity_name === 'Cultivator' ? 'selected' : ''}>Cultivator</option>
-           <option value="Spraying" ${props.current_activity_name === 'Spraying' ? 'selected' : ''}>Spraying</option>
-           <option value="Irrigation" ${props.current_activity_name === 'Irrigation' ? 'selected' : ''}>Irrigation</option>
-           <option value="Harvesting" ${props.current_activity_name === 'Harvesting' ? 'selected' : ''}>Harvesting</option>
-           <option value="Loading" ${props.current_activity_name === 'Loading' ? 'selected' : ''}>Loading</option>
-           <option value="Trash Lining" ${props.current_activity_name === 'Trash Lining' ? 'selected' : ''}>Trash Lining</option>
-           <option value="Trash Collection" ${props.current_activity_name === 'Trash Collection' ? 'selected' : ''}>Trash Collection</option>
-        </select>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input type="text" class="popup-modify-assigned" value="" placeholder="Assigned To" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-          <input type="number" class="popup-modify-progress" value="" placeholder="%" style="width:60px;padding:6px;border:1px solid var(--border);border-radius:4px;" ${disableStr}>
-        </div>
-      </div>
-    </details>
-
-    <div style="margin-bottom:12px;">
-      <label style="display:block;margin-bottom:4px;font-weight:600;">General Notes / Issues</label>
-      <textarea rows="2" class="popup-modify-notes" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" placeholder="Disease, theft, general notes…" ${disableStr}>${escapeHtml(props.cultivation_notes || '')}</textarea>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button type="button" class="btn-primary btn-save-feature" data-layer="${layerType}" data-id="${featureId}" style="flex:1;" ${disableStr}>Save changes</button>
-      <button type="button" class="btn-delete-feature" data-layer="${layerType}" data-id="${featureId}" style="background:#dc3545;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;flex:1;" ${disableStr}><i class="fas fa-trash-alt"></i> Delete</button>
-    </div>
-  `;
+    <details class="info-group"${open ? " open" : ""}>
+      <summary class="info-group__summary">
+        <span class="info-group__chevron" aria-hidden="true"></span>
+        <span class="info-group__title">${escapeHtml(title)}</span>
+      </summary>
+      <div class="info-group__body">${innerHtml}</div>
+    </details>`;
 }
 
-// Badge/icon text shown in the panel's static popWinHead — kept alongside
-// the field-order tables so both stay in one place.
-const FEATURE_INFO_BADGE = { PARCELS: "Parcel", BLOCKS: "Block" };
+/** rows: [[label, valueHtml], ...] — valueHtml is trusted (pass through fmt()/escapeHtml() first). */
+function buildKvTable(rows) {
+  const trs = rows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${value}</td></tr>`).join("");
+  return `<table class="map-popup__table"><tbody>${trs}</tbody></table>`;
+}
 
-function buildFeatureInfoPopupHtml(layerType, feature) {
-  const props = feature.getProperties();
-  const order = layerType === "PARCELS" ? INFO_PARCEL_FIELD_ORDER : INFO_BLOCK_FIELD_ORDER;
-  const rows = order
-    .map((key) => {
-      let raw = props[key];
-      if (key === "expected_area_acres") {
-        surveyFeatureAreaAcresText(feature);
-        const computed = feature.get("_computed_utm_area_acres");
-        if (computed) raw = computed;
-      }
-      if (raw == null || raw === "") return null;
-      const label = INFO_FIELD_LABELS[key] || key;
-      const display = formatInfoFieldValue(key, raw);
-      return `<tr><th>${escapeHtml(label)}</th><td>${display}</td></tr>`;
-    })
-    .filter(Boolean)
-    .join("");
-  const body = rows
-    ? `<table class="map-popup__table"><tbody>${rows}</tbody></table>`
-    : `<p class="map-popup__empty">No attributes loaded for this feature. Zoom in or reload layers.</p>`;
+/** rows: [[cellHtml, ...], ...] — cells are trusted (pass through fmt()/escapeHtml() first). */
+function buildListTable(headers, rows, emptyMsg = "No records yet.") {
+  if (!rows.length) return `<p class="map-popup__empty">${escapeHtml(emptyMsg)}</p>`;
+  const thead = `<tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
+  const trs = rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("");
+  return `<table class="map-popup__table"><thead>${thead}</thead><tbody>${trs}</tbody></table>`;
+}
 
-  const canEdit = currentProfile?.role === "ADMIN" || currentProfile?.role === "SURVEYOR";
-  const readOnlyMsg = canEdit ? "" : `<div class="feature-info-readonly-msg">Sign in as Admin or Surveyor to modify.</div>`;
-  const disableStr = canEdit ? "" : "disabled";
+const HISTORY_AUDIT_PLACEHOLDER = `<p class="map-popup__empty">Change history isn't tracked yet for this record.</p>`;
 
-  // popWinHead (icon/title) and popWinTabs are static markup in
-  // windows/feature-info-panel.html — this only rebuilds popWinBody's
-  // content (the Info/Modify tab panes), via setFeatureInfoHeader() /
-  // resetFeatureInfoTabs() in setupInfoPopup() below.
-  return `
-    <div class="map-popup__tab-content" id="popupTabInfo">
-      <div class="map-popup__grid">${body}</div>
-    </div>
-    <div class="map-popup__tab-content" id="popupTabMore" hidden>
-      ${readOnlyMsg}
-      <div class="feature-info-modify-wrap">
-        ${buildAdvancedModifyHtml(layerType, props, feature.getId(), disableStr)}
-      </div>
-    </div>`;
+/** Given the selected feature/layer, resolves which vsl_parcels.id(s) an
+ *  activity/alert should be logged against. A parcel selection is just
+ *  itself; a block selection cascades to every parcel currently in that
+ *  block (see the "applies to the whole block" warning in the log modals). */
+async function resolveSelectionParcelIds(feature, layerType) {
+  if (layerType === "PARCELS") {
+    return { parcelIds: [feature.getId()], blockId: null, isBlockSelection: false };
+  }
+  const blockId = feature.getId();
+  const { data, error } = await supabase.from("vsl_parcels").select("id").eq("block_id", blockId);
+  if (error) throw error;
+  return { parcelIds: (data || []).map((r) => r.id), blockId, isBlockSelection: true };
+}
+
+async function buildParcelInfoHtml(parcelId) {
+  const [parcelRes, alertsRes, seasonsRes, activitiesRes, harvestsRes, soilRes, mediaRes, docsRes, commentsRes] = await Promise.all([
+    supabase.from("vsl_parcels").select("*").eq("id", parcelId).single(),
+    supabase.from("vsl_alerts").select("*").eq("layer_type", "PARCELS").eq("target_id", String(parcelId)).order("created_at", { ascending: false }),
+    supabase.from("vsl_parcel_seasons").select("*").eq("parcel_id", parcelId).order("created_at", { ascending: false }),
+    supabase.from("vsl_activities").select("*").eq("parcel_id", parcelId).order("activity_date", { ascending: false }).limit(15),
+    supabase.from("vsl_harvests").select("*").eq("parcel_id", parcelId).order("harvest_date", { ascending: false }),
+    supabase.from("vsl_parcel_soil_tests").select("*").eq("parcel_id", parcelId).order("sample_date", { ascending: false }),
+    supabase.from("vsl_media").select("*").eq("entity_type", "parcel").eq("entity_id", String(parcelId)).order("captured_at", { ascending: false }),
+    supabase.from("vsl_documents").select("*").eq("entity_type", "parcel").eq("entity_id", String(parcelId)).order("upload_date", { ascending: false }),
+    supabase.from("vsl_comments").select("*").eq("entity_type", "parcel").eq("entity_id", String(parcelId)).order("created_at", { ascending: false })
+  ]);
+
+  const parcel = parcelRes.data;
+  if (!parcel) throw new Error("Plot not found.");
+
+  let blockRow = null;
+  try {
+    const { data } = await supabase.from("vsl_blocks").select("block_code, block_name, vsl_estate(estate_name)").eq("id", parcel.block_id).single();
+    blockRow = data;
+  } catch {}
+
+  const alerts = alertsRes.data || [];
+  const seasons = seasonsRes.data || [];
+  const activities = activitiesRes.data || [];
+  const harvests = harvestsRes.data || [];
+  const soilTests = soilRes.data || [];
+  const media = mediaRes.data || [];
+  const docs = docsRes.data || [];
+  const comments = commentsRes.data || [];
+  const currentSeason = seasons[0] || null;
+
+  const groups = [];
+
+  groups.push(buildCollapsibleGroup("Details", buildKvTable([
+    ["Plot code", fmt(parcel.parcel_code)],
+    ["Plot name", fmt(parcel.parcel_name)],
+    ["Block name", fmt(blockRow?.block_name)],
+    ["Estate name", fmt(blockRow?.vsl_estate?.estate_name)],
+    ["Current activity", fmt(parcel.current_activity_name)],
+    ["Cultivation status", fmt(CULTIVATION_STATUS_LABELS[parcel.cultivation_status] || parcel.cultivation_status)],
+    ["Expected area", parcel.expected_area_acres != null ? `${Number(parcel.expected_area_acres).toFixed(2)} ac` : "—"],
+    ["Geometry status", fmt(parcel.geometry_status)],
+    ["Notes", fmt(parcel.cultivation_notes)],
+    ["Last updated", fmt(parcel.cultivation_updated_at ? String(parcel.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
+  ]), { open: true }));
+
+  groups.push(buildCollapsibleGroup(`Alerts (${alerts.length})`, buildListTable(
+    ["Severity", "Name", "Description", "Status", "Logged"],
+    alerts.map((a) => [
+      fmt(SEVERITY_LABELS[a.severity] || a.severity),
+      fmt(a.alert_name),
+      fmt(a.note),
+      fmt(a.status),
+      fmt(a.created_at ? String(a.created_at).slice(0, 10) : null)
+    ])
+  )));
+
+  groups.push(buildCollapsibleGroup("Current Crop Cycle", currentSeason
+    ? buildKvTable([
+      ["Season name", fmt(currentSeason.season_name)],
+      ["Cane variety", fmt(currentSeason.cane_variety)],
+      ["Ratoon number", fmt(currentSeason.ratoon_number, { fallback: "0" })],
+      ["Growth stage", fmt(currentSeason.growth_stage)],
+      ["Planting date", fmt(currentSeason.planting_date)],
+      ["Expected harvest date", fmt(currentSeason.expected_harvest_date)],
+      ["Actual harvest date", fmt(currentSeason.actual_harvest_date)],
+      ["Season status", fmt(currentSeason.season_status)],
+      ["Target yield (t)", fmt(currentSeason.target_yield_tonnes)],
+      ["Actual yield (t)", fmt(currentSeason.actual_yield_tonnes)],
+      ["Yield per hectare", fmt(currentSeason.yield_per_hectare)]
+    ])
+    : `<p class="map-popup__empty">No crop cycle recorded yet.</p>`));
+
+  groups.push(buildCollapsibleGroup(`Activity History (${activities.length})`,
+    buildKvTable([["Current activity", fmt(parcel.current_activity_name)]]) +
+    buildListTable(["Activity", "Status", "Completion", "Date"], activities.map((a) => [
+      fmt(a.activity_name),
+      fmt(a.status),
+      a.completion_value != null ? `${escapeHtml(a.completion_value)}${a.completion_unit === "percent" ? "%" : " ac"}` : "—",
+      fmt(a.activity_date)
+    ]))));
+
+  groups.push(buildCollapsibleGroup(`Harvest History (${harvests.length})`, buildListTable(
+    ["Date", "Gross weight", "Ratoon at harvest"],
+    harvests.map((h) => [
+      fmt(h.harvest_date),
+      h.gross_weight_tonnes != null ? `${escapeHtml(h.gross_weight_tonnes)} t` : "—",
+      fmt(h.ratoon_at_harvest, { fallback: "0" })
+    ])
+  )));
+
+  groups.push(buildCollapsibleGroup(`Soil & Land (${soilTests.length})`, buildListTable(
+    ["Sampled", "pH", "N", "P", "K", "Organic matter", "Texture", "Lab"],
+    soilTests.map((s) => [
+      fmt(s.sample_date), fmt(s.soil_ph), fmt(s.nitrogen), fmt(s.phosphorus), fmt(s.potassium),
+      s.organic_matter_pct != null ? `${escapeHtml(s.organic_matter_pct)}%` : "—",
+      fmt(s.texture), fmt(s.lab_name)
+    ])
+  )));
+
+  groups.push(buildCollapsibleGroup(`Media (${media.length})`, buildListTable(
+    ["Type", "Caption", "Captured", "File"],
+    media.map((m) => [fmt(m.media_type), fmt(m.caption), fmt(m.captured_at ? String(m.captured_at).slice(0, 10) : null),
+      m.file_url ? `<a href="${escapeHtml(m.file_url)}" target="_blank" rel="noopener">Open</a>` : "—"])
+  )));
+
+  groups.push(buildCollapsibleGroup(`Documents (${docs.length})`, buildListTable(
+    ["Type", "Title", "Uploaded", "File"],
+    docs.map((d) => [fmt(d.doc_type), fmt(d.document_title), fmt(d.upload_date),
+      d.file_url ? `<a href="${escapeHtml(d.file_url)}" target="_blank" rel="noopener">Open</a>` : "—"])
+  )));
+
+  groups.push(buildCollapsibleGroup(`Comments (${comments.length})`, buildListTable(
+    ["Type", "Comment", "Status", "Date"],
+    comments.map((c) => [fmt(c.comment_type), fmt(c.comment_text), c.is_resolved ? "Resolved" : "Open", fmt(c.created_at ? String(c.created_at).slice(0, 10) : null)])
+  )));
+
+  groups.push(buildCollapsibleGroup("History / Audit", HISTORY_AUDIT_PLACEHOLDER));
+
+  return groups.join("");
+}
+
+async function buildBlockInfoHtml(blockId) {
+  const [blockRes, parcelsRes, managersRes, mediaRes, docsRes, commentsRes] = await Promise.all([
+    supabase.from("vsl_blocks").select("*, vsl_estate(estate_name)").eq("id", blockId).single(),
+    supabase.from("vsl_parcels").select("id, parcel_name, cultivation_status, ratoon_number, current_activity_name, expected_area_acres").eq("block_id", blockId),
+    supabase.from("vsl_estate_managers").select("*, vsl_profiles(email)").eq("block_id", blockId).eq("is_active", true),
+    supabase.from("vsl_media").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("captured_at", { ascending: false }),
+    supabase.from("vsl_documents").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("upload_date", { ascending: false }),
+    supabase.from("vsl_comments").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("created_at", { ascending: false })
+  ]);
+
+  const block = blockRes.data;
+  if (!block) throw new Error("Block not found.");
+  const parcels = parcelsRes.data || [];
+  const parcelIds = parcels.map((p) => p.id);
+
+  const [alertsRes, seasonsRes, harvestsRes] = await Promise.all([
+    parcelIds.length
+      ? supabase.from("vsl_alerts").select("severity").eq("layer_type", "PARCELS").eq("status", "open").in("target_id", parcelIds.map(String))
+      : Promise.resolve({ data: [] }),
+    parcelIds.length
+      ? supabase.from("vsl_parcel_seasons").select("parcel_id, cane_variety, created_at").in("parcel_id", parcelIds).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] }),
+    parcelIds.length
+      ? supabase.from("vsl_harvests").select("parcel_id, gross_weight_tonnes, harvest_date").in("parcel_id", parcelIds)
+      : Promise.resolve({ data: [] })
+  ]);
+
+  const totalPlots = parcels.length;
+  const totalArea = parcels.reduce((s, p) => s + (Number(p.expected_area_acres) || 0), 0);
+  const avgPlotSize = totalPlots ? totalArea / totalPlots : 0;
+
+  const statusCounts = {};
+  for (const p of parcels) {
+    const k = p.cultivation_status || "not_in_cane";
+    statusCounts[k] = (statusCounts[k] || 0) + 1;
+  }
+  const statusRows = Object.keys(CULTIVATION_STATUS_LABELS).map((k) => [CULTIVATION_STATUS_LABELS[k], String(statusCounts[k] || 0)]);
+
+  const ratoonCounts = { "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5+": 0 };
+  for (const p of parcels) {
+    const r = Number(p.ratoon_number) || 0;
+    const key = r >= 5 ? "5+" : String(r);
+    ratoonCounts[key] = (ratoonCounts[key] || 0) + 1;
+  }
+  const ratoonRows = Object.entries(ratoonCounts).map(([k, v]) => [k === "0" ? "0 (Plant crop)" : k, String(v)]);
+
+  const activityCounts = {};
+  for (const p of parcels) {
+    const name = p.current_activity_name || "None";
+    activityCounts[name] = (activityCounts[name] || 0) + 1;
+  }
+  const activityRows = Object.entries(activityCounts).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, String(v)]);
+
+  const alertCounts = { critical: 0, warning: 0, information: 0 };
+  for (const a of alertsRes.data || []) {
+    if (alertCounts[a.severity] != null) alertCounts[a.severity] += 1;
+  }
+  const alertRows = [
+    ["Critical", String(alertCounts.critical)],
+    ["Warning", String(alertCounts.warning)],
+    ["Information", String(alertCounts.information)]
+  ];
+
+  const latestSeasonByParcel = new Map();
+  for (const s of seasonsRes.data || []) {
+    if (!latestSeasonByParcel.has(s.parcel_id)) latestSeasonByParcel.set(s.parcel_id, s);
+  }
+  const varietyCounts = {};
+  for (const s of latestSeasonByParcel.values()) {
+    const v = s.cane_variety || "Unspecified";
+    varietyCounts[v] = (varietyCounts[v] || 0) + 1;
+  }
+  const varietyRows = Object.entries(varietyCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([k, v], i) => [String(i + 1), k, String(v)]);
+
+  const harvestList = harvestsRes.data || [];
+  const totalGross = harvestList.reduce((s, h) => s + (Number(h.gross_weight_tonnes) || 0), 0);
+  const plotsHarvested = new Set(harvestList.map((h) => h.parcel_id)).size;
+  const lastHarvestDate = harvestList.reduce((max, h) => (!max || h.harvest_date > max ? h.harvest_date : max), null);
+
+  const managers = managersRes.data || [];
+  const media = mediaRes.data || [];
+  const docs = docsRes.data || [];
+  const comments = commentsRes.data || [];
+
+  const groups = [];
+
+  groups.push(buildCollapsibleGroup("Details", buildKvTable([
+    ["Block code", fmt(block.block_code)],
+    ["Block name", fmt(block.block_name)],
+    ["Estate name", fmt(block.vsl_estate?.estate_name)],
+    ["Number of plots", String(totalPlots)],
+    ["Total area", `${totalArea.toFixed(2)} ac`],
+    ["Average plot size", `${avgPlotSize.toFixed(2)} ac`],
+    ["Dominant soil type", fmt(block.soil_type)],
+    ["Soil pH", fmt(block.soil_ph)],
+    ["Irrigation type", fmt(block.irrigation_type)],
+    ["Manager (flat field)", fmt(block.manager_name)],
+    ["Manager phone", fmt(block.manager_phone)],
+    ["Cultivation status", fmt(CULTIVATION_STATUS_LABELS[block.cultivation_status] || block.cultivation_status)],
+    ["Notes", fmt(block.cultivation_notes)],
+    ["Last updated", fmt(block.cultivation_updated_at ? String(block.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
+  ]), { open: true }));
+
+  groups.push(buildCollapsibleGroup("Status", buildListTable(["Status", "Number of plots"], statusRows)));
+  groups.push(buildCollapsibleGroup("Ratoon Number", buildListTable(["Ratoon number", "Number of plots"], ratoonRows)));
+  groups.push(buildCollapsibleGroup("Activities", buildListTable(["Activity", "Number of plots"], activityRows)));
+  groups.push(buildCollapsibleGroup("Alerts (open)", buildListTable(["Severity", "Number of plots"], alertRows)));
+  groups.push(buildCollapsibleGroup("Harvest Summary", buildKvTable([
+    ["Total harvests logged", String(harvestList.length)],
+    ["Plots harvested", String(plotsHarvested)],
+    ["Total gross weight", `${totalGross.toFixed(2)} t`],
+    ["Last harvest date", fmt(lastHarvestDate)]
+  ])));
+  groups.push(buildCollapsibleGroup("Top 5 Cane Varieties", buildListTable(["Rank", "Variety", "Number of plots"], varietyRows)));
+  groups.push(buildCollapsibleGroup("Manager", managers.length
+    ? buildListTable(["Email", "Role", "Assigned from", "Status"], managers.map((m) => [
+      fmt(m.vsl_profiles?.email), fmt(m.role), fmt(m.assigned_from), m.is_active ? "Active" : "Inactive"
+    ]))
+    : `<p class="map-popup__empty">No active manager assigned via vsl_estate_managers.</p>`));
+  groups.push(buildCollapsibleGroup(`Media (${media.length})`, buildListTable(
+    ["Type", "Caption", "Captured", "File"],
+    media.map((m) => [fmt(m.media_type), fmt(m.caption), fmt(m.captured_at ? String(m.captured_at).slice(0, 10) : null),
+      m.file_url ? `<a href="${escapeHtml(m.file_url)}" target="_blank" rel="noopener">Open</a>` : "—"])
+  )));
+  groups.push(buildCollapsibleGroup(`Documents (${docs.length})`, buildListTable(
+    ["Type", "Title", "Uploaded", "File"],
+    docs.map((d) => [fmt(d.doc_type), fmt(d.document_title), fmt(d.upload_date),
+      d.file_url ? `<a href="${escapeHtml(d.file_url)}" target="_blank" rel="noopener">Open</a>` : "—"])
+  )));
+  groups.push(buildCollapsibleGroup(`Comments (${comments.length})`, buildListTable(
+    ["Type", "Comment", "Status", "Date"],
+    comments.map((c) => [fmt(c.comment_type), fmt(c.comment_text), c.is_resolved ? "Resolved" : "Open", fmt(c.created_at ? String(c.created_at).slice(0, 10) : null)])
+  )));
+  groups.push(buildCollapsibleGroup("History / Audit", HISTORY_AUDIT_PLACEHOLDER));
+
+  return groups.join("");
+}
+
+/** Entry point for the toolbar's info button — fetches fresh data from
+ *  Supabase every time it's opened (does not reuse the bbox-loaded feature
+ *  properties, which are a partial/cached view meant for map styling). */
+async function openFeatureInfoPanel(feature, layerType) {
+  const inner = document.getElementById("featureInfoPanelInner");
+  const panel = document.getElementById("featureInfoPanel");
+  if (!inner || !panel || !feature || !layerType) return;
+
+  setFeatureInfoHeader(layerType);
+  inner.innerHTML = `<p class="map-popup__empty">Loading…</p>`;
+  panel.hidden = false;
+  panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+
+  try {
+    const html = layerType === "BLOCKS"
+      ? await buildBlockInfoHtml(feature.getId())
+      : await buildParcelInfoHtml(feature.getId());
+    inner.innerHTML = html;
+  } catch (err) {
+    console.error("[Victoria] Failed to load feature info:", err);
+    inner.innerHTML = `<p class="map-popup__empty">Failed to load details: ${escapeHtml(err?.message || "unknown error")}</p>`;
+  }
 }
 
 function surveyFeatureAreaAcresText(feature) {
@@ -549,10 +912,16 @@ const parcelsLayer = new ol.layer.Vector({
       })
     }));
 
+    // Two-stage label reveal while zooming in:
+    //  - PARCEL_NAME_ONLY_RES..PARCEL_FULL_DETAIL_RES: name only (compact,
+    //    same visual weight the ratoon badge will later occupy that spot with).
+    //  - <= PARCEL_FULL_DETAIL_RES (or highlighted): full "name\narea" label
+    //    PLUS the ratoon/alert badges — all of the detail appears together.
+    const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
+    const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
+
     let textStyle = null;
-    if (hi || resolution <= 12) {
-      const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
-      const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
+    if (hi || resolution <= PARCEL_FULL_DETAIL_RES) {
       const expArea = feature.get("expected_area_acres");
       const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
       const text = area ? `${label}\n${area}` : label;
@@ -564,6 +933,14 @@ const parcelsLayer = new ol.layer.Vector({
         stroke: new ol.style.Stroke({ color: "#ffffff", width: hi ? 4 : 3 }),
         overflow: true
       });
+    } else if (resolution <= PARCEL_NAME_ONLY_RES) {
+      textStyle = new ol.style.Text({
+        text: label,
+        font: "700 11px Inter, sans-serif",
+        fill: new ol.style.Fill({ color: textColor }),
+        stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+        overflow: true
+      });
     }
 
     styles.push(new ol.style.Style({
@@ -571,7 +948,7 @@ const parcelsLayer = new ol.layer.Vector({
       text: textStyle
     }));
 
-    if (hi || resolution <= 12) {
+    if (hi || resolution <= PARCEL_FULL_DETAIL_RES) {
       styles.push(...buildParcelBadgeStyles(feature, feature.getGeometry()));
     }
 
@@ -1455,6 +1832,298 @@ function setupParcelStatusPanel() {
   modalForm?.addEventListener("submit", (e) => saveEditDetailsForm(e));
 }
 
+// ---------------------------------------------------------------------------
+// Log Activity modal (windows/log-activity-modal.html) — opened from the map
+// selection toolbar's "+" button. Snapshots the feature/layer that was
+// selected when it opened (logActivityState) so a stray click elsewhere
+// can't change targets out from under an open form.
+// ---------------------------------------------------------------------------
+const logActivityState = { feature: null, layerType: null };
+
+function renderLogActivityFields(activityName) {
+  const wrap = document.getElementById("logActivityFieldsWrap");
+  const emptyHint = document.getElementById("logActivityEmptyHint");
+  const commonBody = document.getElementById("logActivityCommonFields");
+  const propsTable = document.getElementById("logActivityPropsTable");
+  const propsBody = document.getElementById("logActivityPropsFields");
+  const saveBtn = document.getElementById("logActivitySaveBtn");
+  if (!wrap || !commonBody || !propsBody) return;
+
+  if (!activityName) {
+    wrap.hidden = true;
+    if (emptyHint) emptyHint.hidden = false;
+    if (saveBtn) saveBtn.disabled = true;
+    return;
+  }
+
+  commonBody.innerHTML = LOG_ACTIVITY_COMMON_FIELDS.map(buildPropFieldRow).join("");
+  const extra = ACTIVITY_PROPERTY_DEFS[activityName] || [];
+  if (extra.length) {
+    propsBody.innerHTML = extra.map(buildPropFieldRow).join("");
+    if (propsTable) propsTable.hidden = false;
+  } else {
+    propsBody.innerHTML = "";
+    if (propsTable) propsTable.hidden = true;
+  }
+
+  wrap.hidden = false;
+  if (emptyHint) emptyHint.hidden = true;
+  if (saveBtn) saveBtn.disabled = false;
+}
+
+function openLogActivityModal(feature, layerType) {
+  const modal = document.getElementById("logActivityModal");
+  const select = document.getElementById("logActivitySelect");
+  const warning = document.getElementById("logActivityBlockWarning");
+  const errorEl = document.getElementById("logActivityError");
+  const titleEl = document.getElementById("logActivityTitle");
+  if (!modal || !feature || !layerType) return;
+
+  logActivityState.feature = feature;
+  logActivityState.layerType = layerType;
+
+  if (select) {
+    select.innerHTML = `<option value="">-- Select Activity --</option>` +
+      ACTIVITY_NAMES.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+    select.value = "";
+  }
+  if (warning) warning.hidden = layerType !== "BLOCKS";
+  if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+  if (titleEl) {
+    const name = layerType === "BLOCKS" ? feature.get("block_name") : feature.get("parcel_name");
+    titleEl.textContent = `Log Activity${name ? ` — ${name}` : ""}`;
+  }
+  renderLogActivityFields("");
+  modal.hidden = false;
+}
+
+function closeLogActivityModal() {
+  const modal = document.getElementById("logActivityModal");
+  if (modal) modal.hidden = true;
+}
+
+async function saveLogActivityForm(event) {
+  event.preventDefault();
+  const errorEl = document.getElementById("logActivityError");
+  const saveBtn = document.getElementById("logActivitySaveBtn");
+  const select = document.getElementById("logActivitySelect");
+  const activityName = select?.value || "";
+  const { feature, layerType } = logActivityState;
+
+  if (!feature || !layerType || !activityName) return;
+
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+    if (errorEl) { errorEl.textContent = "Sign in to log an activity."; errorEl.hidden = false; }
+    return;
+  }
+
+  if (saveBtn) saveBtn.disabled = true;
+  if (errorEl) errorEl.hidden = true;
+
+  try {
+    const { parcelIds, blockId } = await resolveSelectionParcelIds(feature, layerType);
+    if (!parcelIds.length) {
+      throw new Error(layerType === "BLOCKS" ? "This block has no plots to log against." : "Could not resolve the selected plot.");
+    }
+
+    const common = {};
+    document.querySelectorAll("#logActivityCommonFields [data-key]").forEach((el) => {
+      common[el.dataset.key] = (el.value ?? "").trim();
+    });
+    const properties = {};
+    document.querySelectorAll("#logActivityPropsFields [data-key]").forEach((el) => {
+      const v = (el.value ?? "").trim();
+      if (v !== "") properties[el.dataset.key] = v;
+    });
+
+    const numOrNull = (v) => (v === "" || v == null ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+
+    const basePayload = {
+      activity_name: activityName,
+      task_description: common.task_description || null,
+      status: common.status || "planned",
+      method: common.method || null,
+      team_size: numOrNull(common.team_size),
+      number_of_machines: numOrNull(common.number_of_machines),
+      completion_unit: common.completion_unit || null,
+      completion_value: numOrNull(common.completion_value),
+      due_date: common.due_date || null,
+      completed_date: common.completed_date || null,
+      estimated_cost: numOrNull(common.estimated_cost),
+      actual_cost: numOrNull(common.actual_cost),
+      currency: common.currency || null,
+      challenges: common.challenges || null,
+      comments: common.comments || null,
+      activity_properties: properties,
+      activity_date: new Date().toISOString().slice(0, 10),
+      created_by: currentUser.id,
+      block_id: blockId || null
+    };
+
+    const rows = parcelIds.map((parcelId) => ({ ...basePayload, parcel_id: parcelId }));
+    const { error } = await supabase.from("vsl_activities").insert(rows);
+    if (error) throw error;
+
+    setStatus(statusEl, `Logged "${activityName}" on ${rows.length} plot${rows.length === 1 ? "" : "s"}.`);
+    closeLogActivityModal();
+  } catch (err) {
+    if (errorEl) {
+      errorEl.textContent = err?.message || "Failed to log activity.";
+      errorEl.hidden = false;
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+function setupLogActivityModal() {
+  const modal = document.getElementById("logActivityModal");
+  const select = document.getElementById("logActivitySelect");
+  const closeBtn = document.getElementById("logActivityCloseBtn");
+  const cancelBtn = document.getElementById("logActivityCancelBtn");
+  const form = document.getElementById("logActivityForm");
+  if (!modal) return;
+
+  select?.addEventListener("change", () => renderLogActivityFields(select.value));
+  closeBtn?.addEventListener("click", () => closeLogActivityModal());
+  cancelBtn?.addEventListener("click", () => closeLogActivityModal());
+  form?.addEventListener("submit", (e) => saveLogActivityForm(e));
+}
+
+// ---------------------------------------------------------------------------
+// Log Alert modal (windows/log-alert-modal.html) — opened from the map
+// selection toolbar's warning-triangle button.
+// ---------------------------------------------------------------------------
+const logAlertState = { feature: null, layerType: null };
+
+// Every logged alert starts life as status "open" — resolving/investigating
+// is an admin action done later from the dashboard, not something the person
+// logging the alert picks, so there's no status field here.
+const LOG_ALERT_FIELDS = [
+  { key: "alert_name", label: "Alert name", type: "text" },
+  { key: "note", label: "Description", type: "textarea" }
+];
+
+function renderLogAlertFields(severity) {
+  const wrap = document.getElementById("logAlertFieldsWrap");
+  const emptyHint = document.getElementById("logAlertEmptyHint");
+  const body = document.getElementById("logAlertFields");
+  const saveBtn = document.getElementById("logAlertSaveBtn");
+  if (!wrap || !body) return;
+
+  if (!severity) {
+    wrap.hidden = true;
+    if (emptyHint) emptyHint.hidden = false;
+    if (saveBtn) saveBtn.disabled = true;
+    return;
+  }
+
+  body.innerHTML = LOG_ALERT_FIELDS.map(buildPropFieldRow).join("");
+  wrap.hidden = false;
+  if (emptyHint) emptyHint.hidden = true;
+  if (saveBtn) saveBtn.disabled = false;
+}
+
+function openLogAlertModal(feature, layerType) {
+  const modal = document.getElementById("logAlertModal");
+  const select = document.getElementById("logAlertSeveritySelect");
+  const warning = document.getElementById("logAlertBlockWarning");
+  const errorEl = document.getElementById("logAlertError");
+  const titleEl = document.getElementById("logAlertTitle");
+  if (!modal || !feature || !layerType) return;
+
+  logAlertState.feature = feature;
+  logAlertState.layerType = layerType;
+
+  if (select) select.value = "";
+  if (warning) warning.hidden = layerType !== "BLOCKS";
+  if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+  if (titleEl) {
+    const name = layerType === "BLOCKS" ? feature.get("block_name") : feature.get("parcel_name");
+    titleEl.textContent = `Log Alert${name ? ` — ${name}` : ""}`;
+  }
+  renderLogAlertFields("");
+  modal.hidden = false;
+}
+
+function closeLogAlertModal() {
+  const modal = document.getElementById("logAlertModal");
+  if (modal) modal.hidden = true;
+}
+
+async function saveLogAlertForm(event) {
+  event.preventDefault();
+  const errorEl = document.getElementById("logAlertError");
+  const saveBtn = document.getElementById("logAlertSaveBtn");
+  const select = document.getElementById("logAlertSeveritySelect");
+  const severity = select?.value || "";
+  const { feature, layerType } = logAlertState;
+
+  if (!feature || !layerType || !severity) return;
+
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+    if (errorEl) { errorEl.textContent = "Sign in to log an alert."; errorEl.hidden = false; }
+    return;
+  }
+
+  if (saveBtn) saveBtn.disabled = true;
+  if (errorEl) errorEl.hidden = true;
+
+  try {
+    const { parcelIds } = await resolveSelectionParcelIds(feature, layerType);
+    if (!parcelIds.length) {
+      throw new Error(layerType === "BLOCKS" ? "This block has no plots to log against." : "Could not resolve the selected plot.");
+    }
+
+    const fieldsMap = {};
+    document.querySelectorAll("#logAlertFields [data-key]").forEach((el) => {
+      fieldsMap[el.dataset.key] = (el.value ?? "").trim();
+    });
+
+    if (!fieldsMap.note) {
+      throw new Error("Description is required for an alert.");
+    }
+
+    const basePayload = {
+      severity,
+      alert_name: fieldsMap.alert_name || null,
+      note: fieldsMap.note,
+      status: "open",
+      layer_type: "PARCELS",
+      created_by: currentUser.id
+    };
+
+    const rows = parcelIds.map((parcelId) => ({ ...basePayload, target_id: String(parcelId) }));
+    const { error } = await supabase.from("vsl_alerts").insert(rows);
+    if (error) throw error;
+
+    setStatus(statusEl, `Logged ${severity} alert on ${rows.length} plot${rows.length === 1 ? "" : "s"}.`);
+    closeLogAlertModal();
+    refreshParcelAlertBadges();
+  } catch (err) {
+    if (errorEl) {
+      errorEl.textContent = err?.message || "Failed to log alert.";
+      errorEl.hidden = false;
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+function setupLogAlertModal() {
+  const modal = document.getElementById("logAlertModal");
+  const select = document.getElementById("logAlertSeveritySelect");
+  const closeBtn = document.getElementById("logAlertCloseBtn");
+  const cancelBtn = document.getElementById("logAlertCancelBtn");
+  const form = document.getElementById("logAlertForm");
+  if (!modal) return;
+
+  select?.addEventListener("change", () => renderLogAlertFields(select.value));
+  closeBtn?.addEventListener("click", () => closeLogAlertModal());
+  cancelBtn?.addEventListener("click", () => closeLogAlertModal());
+  form?.addEventListener("submit", (e) => saveLogAlertForm(e));
+}
+
 function closeInfoPopup() {
   const inner = document.getElementById("featureInfoPanelInner");
   const panel = document.getElementById("featureInfoPanel");
@@ -1497,18 +2166,17 @@ function setupParcelActionToolbar() {
   });
   map.addOverlay(parcelActionOverlay);
 
-  // Stub handlers — real activity/alert logging and info wiring come later.
   document.getElementById("parcelActionLogActivityBtn")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    setStatus(statusEl, "Log activity — coming soon.", true);
+    if (selectedFeature && selectedLayerType) openLogActivityModal(selectedFeature, selectedLayerType);
   });
   document.getElementById("parcelActionLogAlertBtn")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    setStatus(statusEl, "Log alert — coming soon.", true);
+    if (selectedFeature && selectedLayerType) openLogAlertModal(selectedFeature, selectedLayerType);
   });
   document.getElementById("parcelActionInfoBtn")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    setStatus(statusEl, "Feature info — coming soon.", true);
+    if (selectedFeature && selectedLayerType) openFeatureInfoPanel(selectedFeature, selectedLayerType);
   });
 }
 
@@ -1522,155 +2190,16 @@ function setFeatureInfoHeader(layerType) {
   if (titleEl) titleEl.textContent = FEATURE_INFO_BADGE[layerType] || "Feature";
 }
 
-// popWinTabs is also static, so it doesn't get wiped/rebuilt with the rest
-// of the popup on every click — reset it back to "Info" selected instead.
-function resetFeatureInfoTabs() {
-  const tabInfo = document.getElementById("featureInfoTabInfo");
-  const tabModify = document.getElementById("featureInfoTabModify");
-  const paneInfo = document.getElementById("popupTabInfo");
-  const paneModify = document.getElementById("popupTabMore");
-  tabInfo?.setAttribute("aria-selected", "true");
-  tabModify?.setAttribute("aria-selected", "false");
-  if (paneInfo) paneInfo.hidden = false;
-  if (paneModify) paneModify.hidden = true;
-}
-
 function setupInfoPopup() {
   const inner = document.getElementById("featureInfoPanelInner");
   const panel = document.getElementById("featureInfoPanel");
   const closeBtn = document.getElementById("featureInfoPanelCloseBtn");
-  const tabInfo = document.getElementById("featureInfoTabInfo");
-  const tabModify = document.getElementById("featureInfoTabModify");
   if (!inner || !panel) return;
 
   closeBtn?.addEventListener("click", () => {
     closeInfoPopup();
     selectedFeature = null;
     selectedLayerType = null;
-  });
-
-  tabInfo?.addEventListener("click", () => {
-    tabInfo.setAttribute("aria-selected", "true");
-    tabModify?.setAttribute("aria-selected", "false");
-    const paneInfo = document.getElementById("popupTabInfo");
-    const paneModify = document.getElementById("popupTabMore");
-    if (paneInfo) paneInfo.hidden = false;
-    if (paneModify) paneModify.hidden = true;
-  });
-
-  tabModify?.addEventListener("click", () => {
-    tabModify.setAttribute("aria-selected", "true");
-    tabInfo?.setAttribute("aria-selected", "false");
-    const paneInfo = document.getElementById("popupTabInfo");
-    const paneModify = document.getElementById("popupTabMore");
-    if (paneInfo) paneInfo.hidden = true;
-    if (paneModify) paneModify.hidden = false;
-  });
-
-  inner.addEventListener("click", async (ev) => {
-    if (ev.target.closest(".btn-delete-feature")) {
-      const btn = ev.target.closest(".btn-delete-feature");
-      const layerType = btn.dataset.layer;
-      const featureId = btn.dataset.id;
-      const isParcel = layerType === "PARCELS";
-      if (!confirm(`Are you sure you want to delete this ${isParcel ? "parcel" : "block"}? This action cannot be undone.`)) return;
-
-      const tableName = isParcel ? "vsl_parcels" : "vsl_blocks";
-      const { error } = await supabase.from(tableName).delete().eq("id", featureId);
-
-      if (error) {
-        alert("Failed to delete feature: " + error.message);
-      } else {
-        closeInfoPopup();
-        selectedFeature = null;
-        selectedLayerType = null;
-        loadLayersFromDb();
-      }
-    } else if (ev.target.closest(".btn-save-feature")) {
-      const btn = ev.target.closest(".btn-save-feature");
-      const layerType = btn.dataset.layer;
-      const featureId = btn.dataset.id;
-      const isParcel = layerType === "PARCELS";
-      
-      let updateData = {};
-      
-      let harvestInsertError = null;
-      let activityInsertError = null;
-
-      if (!isParcel) {
-        // BLOCKS
-        updateData = {
-          block_name: inner.querySelector(".popup-modify-bname")?.value || null,
-          location_address: inner.querySelector(".popup-modify-loc")?.value || null,
-          soil_type: inner.querySelector(".popup-modify-soil")?.value || null,
-          soil_ph: parseFloat(inner.querySelector(".popup-modify-ph")?.value) || null,
-          irrigation_type: inner.querySelector(".popup-modify-irrigation")?.value || null,
-          ownership: inner.querySelector(".popup-modify-ownership")?.value || null,
-          updated_at: new Date().toISOString()
-        };
-      } else {
-        // PARCELS
-        const rawTonnes = parseFloat(inner.querySelector(".popup-modify-tonnes")?.value) || null;
-        const harvestUnit = inner.querySelector(".popup-modify-unit")?.value || "tonnes";
-        const tonnesCalc = (rawTonnes && harvestUnit === "kg") ? (rawTonnes / 1000) : rawTonnes;
-        const lastHarvestDate = inner.querySelector(".popup-modify-hdate")?.value || null;
-        const activityName = inner.querySelector(".popup-modify-activity")?.value || null;
-        const assignedToText = inner.querySelector(".popup-modify-assigned")?.value || null;
-        const activityProgress = parseFloat(inner.querySelector(".popup-modify-progress")?.value) || null;
-
-        updateData = {
-          parcel_name: inner.querySelector(".popup-modify-label")?.value || null,
-          planting_date: inner.querySelector(".popup-modify-pdate")?.value || null,
-          ratoon_number: parseInt(inner.querySelector(".popup-modify-ratoon")?.value) || 0,
-          cultivation_status: inner.querySelector(".popup-modify-status")?.value || "not_in_cane",
-          cultivation_notes: inner.querySelector(".popup-modify-notes")?.value || null,
-          cultivation_updated_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        // Harvests and activities are history tables now (no flat harvest_tonnes/
-        // last_harvest_date columns left on vsl_parcels to write into).
-        if (tonnesCalc > 0 && lastHarvestDate) {
-          const { error } = await supabase.from('vsl_harvests').insert({
-            parcel_id: featureId,
-            harvest_date: lastHarvestDate,
-            gross_weight_tonnes: tonnesCalc,
-            ratoon_at_harvest: updateData.ratoon_number
-          });
-          harvestInsertError = error;
-        }
-        if (activityName) {
-          const { error } = await supabase.from('vsl_activities').insert({
-            parcel_id: featureId,
-            activity_name: activityName,
-            completion_unit: 'percent',
-            completion_value: activityProgress || 0,
-            status: (activityProgress || 0) >= 100 ? 'completed' : (activityProgress || 0) > 0 ? 'in_progress' : 'planned',
-            assigned_to_legacy: assignedToText,
-            activity_date: new Date().toISOString().split('T')[0]
-          });
-          activityInsertError = error;
-        }
-      }
-
-      const tableName = isParcel ? "vsl_parcels" : "vsl_blocks";
-      const { error } = await supabase.from(tableName).update(updateData).eq("id", featureId);
-
-      if (error || harvestInsertError || activityInsertError) {
-        alert("Failed to modify feature: " + (error || harvestInsertError || activityInsertError).message);
-      } else {
-        // Quick visual feedback on button
-        const oldText = btn.innerHTML;
-        btn.innerHTML = `<i class="fas fa-check"></i> Saved`;
-        btn.style.background = "#28a745";
-        setTimeout(() => {
-          closeInfoPopup();
-          selectedFeature = null;
-          selectedLayerType = null;
-          loadLayersFromDb();
-        }, 800);
-      }
-    }
   });
 
   document.addEventListener("keydown", (ev) => {
@@ -1682,6 +2211,11 @@ function setupInfoPopup() {
     }
   });
 
+  // Plain map click: select the feature and show the selection toolbar only.
+  // The (now read-only, grouped) info panel opens exclusively via the
+  // toolbar's info button — see openFeatureInfoPanel(), wired in
+  // setupParcelActionToolbar(). Editing lives in the separate Edit Details
+  // modal (top-toolbar "Modify" button), unaffected by this.
   map.on("click", (evt) => {
     if (activeInteraction) return; // do not popup when measuring or drawing
 
@@ -1695,9 +2229,7 @@ function setupInfoPopup() {
 
     selectedFeature = null;
     selectedLayerType = null;
-    inner.innerHTML = "";
-    panel.hidden = true;
-    hideParcelActionToolbar();
+    closeInfoPopup(); // hides the info panel (if open) and the selection toolbar
 
     map.forEachFeatureAtPixel(
       evt.pixel,
@@ -1708,12 +2240,6 @@ function setupInfoPopup() {
 
         selectedFeature = feature;
         selectedLayerType = isBlocks ? "BLOCKS" : "PARCELS";
-
-        setFeatureInfoHeader(selectedLayerType);
-        resetFeatureInfoTabs();
-        inner.innerHTML = buildFeatureInfoPopupHtml(selectedLayerType, feature);
-        panel.hidden = false;
-        panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
         showParcelActionToolbar(feature);
         return true;
       },
@@ -2034,6 +2560,70 @@ async function loadLayersFromDb() {
   if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
     console.debug(`[Victoria map] vsl_get_features_bbox: ${n} feature(s) drawn, ${rowCount} row(s) from API`);
   }
+
+  await refreshParcelAlertBadges();
+}
+
+/**
+ * Populates the "_alert_severity"/"_alert_count" feature properties that
+ * buildParcelBadgeStyles() reads for the alert badge — only unresolved
+ * (open/investigating) vsl_alerts rows count, so a plot with no active
+ * alerts (or only resolved ones) simply gets no badge. Severity shown is
+ * the highest-ranked one present (critical > warning > information).
+ * Called after every bbox reload and right after logging a new alert.
+ */
+async function refreshParcelAlertBadges() {
+  const features = parcelsSource.getFeatures();
+  if (!features.length) return;
+
+  const idByKey = new Map();
+  for (const f of features) {
+    const id = f.getId();
+    if (id != null) idByKey.set(String(id), f);
+  }
+  const ids = Array.from(idByKey.keys());
+  if (!ids.length) return;
+
+  const { data, error } = await supabase
+    .from("vsl_alerts")
+    .select("target_id, severity, status")
+    .eq("layer_type", "PARCELS")
+    .neq("status", "resolved")
+    .in("target_id", ids);
+
+  if (error) {
+    console.error("[Victoria] Failed to load parcel alert badges:", error.message);
+    return;
+  }
+
+  const SEVERITY_RANK = { critical: 3, warning: 2, information: 1 };
+  const summary = new Map(); // target_id -> { count, severity, rank }
+  for (const row of data || []) {
+    const key = String(row.target_id);
+    const rank = SEVERITY_RANK[row.severity] || 0;
+    const existing = summary.get(key);
+    if (!existing) {
+      summary.set(key, { count: 1, severity: row.severity, rank });
+    } else {
+      existing.count += 1;
+      if (rank > existing.rank) {
+        existing.severity = row.severity;
+        existing.rank = rank;
+      }
+    }
+  }
+
+  for (const [key, feature] of idByKey) {
+    const s = summary.get(key);
+    if (s) {
+      feature.set("_alert_severity", s.severity, true);
+      feature.set("_alert_count", s.count, true);
+    } else {
+      feature.unset("_alert_severity", true);
+      feature.unset("_alert_count", true);
+    }
+  }
+  parcelsLayer.changed();
 }
 
 function clearSearchHighlight() {
@@ -3344,6 +3934,8 @@ async function initMap() {
 
   setupInfoPopup();
   setupParcelActionToolbar();
+  setupLogActivityModal();
+  setupLogAlertModal();
   bindEvents();
   startBackgroundLocationTracking();
   initPrintComposer({

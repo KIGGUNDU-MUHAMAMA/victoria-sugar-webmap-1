@@ -1,0 +1,51 @@
+<!-- Log Activity modal — opened from the map selection toolbar's "+" button
+     (see js/map-app.js openLogActivityModal / setupLogActivityModal). The
+     dropdown that would normally sit in .popWinTabs holds the activity-name
+     picker instead of tabs; the body renders a shared field table plus a
+     per-activity property table (see ACTIVITY_PROPERTY_DEFS in map-app.js). -->
+<div id="logActivityModal" class="vsl-modal-overlay" hidden>
+  <div class="vsl-modal-card vsl-modal-card--wide popWinMain">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-plus" aria-hidden="true"></i></span>
+        <h2 id="logActivityTitle" class="popWinTitle">Log Activity</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="logActivityCloseBtn" aria-label="Close log activity">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinTabs">
+      <select id="logActivitySelect" class="popWinTabs__select" aria-label="Select activity">
+        <option value="">-- Select Activity --</option>
+      </select>
+    </div>
+
+    <form id="logActivityForm" novalidate class="popWin-formShell">
+      <div class="popWinBody vsl-modal-form">
+        <p id="logActivityBlockWarning" class="feature-info-readonly-msg" hidden>
+          <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+          This selection is a block — logging here will apply this activity to every plot in the block.
+        </p>
+
+        <p id="logActivityEmptyHint" class="map-popup__empty">Select an activity above to log its details.</p>
+
+        <div id="logActivityFieldsWrap" hidden>
+          <table class="map-popup__table vsl-prop-table">
+            <tbody id="logActivityCommonFields"></tbody>
+          </table>
+          <table class="map-popup__table vsl-prop-table" id="logActivityPropsTable" hidden>
+            <tbody id="logActivityPropsFields"></tbody>
+          </table>
+        </div>
+
+        <p id="logActivityError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+
+      <div class="popWinActionBtns">
+        <button type="button" id="logActivityCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="submit" id="logActivitySaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>Log Activity</button>
+      </div>
+    </form>
+  </div>
+</div>

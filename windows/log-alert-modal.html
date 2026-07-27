@@ -1,0 +1,50 @@
+<!-- Log Alert modal — opened from the map selection toolbar's warning-triangle
+     button (see js/map-app.js openLogAlertModal / setupLogAlertModal). The
+     dropdown that would normally sit in .popWinTabs holds the severity
+     picker instead of tabs. -->
+<div id="logAlertModal" class="vsl-modal-overlay" hidden>
+  <div class="vsl-modal-card popWinMain">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i></span>
+        <h2 id="logAlertTitle" class="popWinTitle">Log Alert</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="logAlertCloseBtn" aria-label="Close log alert">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinTabs">
+      <select id="logAlertSeveritySelect" class="popWinTabs__select" aria-label="Select alert severity">
+        <option value="">-- Select Severity --</option>
+        <option value="information">Information</option>
+        <option value="warning">Warning</option>
+        <option value="critical">Critical</option>
+      </select>
+    </div>
+
+    <form id="logAlertForm" novalidate class="popWin-formShell">
+      <div class="popWinBody vsl-modal-form">
+        <p id="logAlertBlockWarning" class="feature-info-readonly-msg" hidden>
+          <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+          This selection is a block — logging here will apply this alert to every plot in the block.
+        </p>
+
+        <p id="logAlertEmptyHint" class="map-popup__empty">Select a severity above to log the alert details.</p>
+
+        <div id="logAlertFieldsWrap" hidden>
+          <table class="map-popup__table vsl-prop-table">
+            <tbody id="logAlertFields"></tbody>
+          </table>
+        </div>
+
+        <p id="logAlertError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+
+      <div class="popWinActionBtns">
+        <button type="button" id="logAlertCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="submit" id="logAlertSaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>Log Alert</button>
+      </div>
+    </form>
+  </div>
+</div>

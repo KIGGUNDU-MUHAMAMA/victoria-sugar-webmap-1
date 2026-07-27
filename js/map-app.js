@@ -822,13 +822,12 @@ async function buildBlockInfoHtml(blockId) {
  *  properties, which are a partial/cached view meant for map styling). */
 async function openFeatureInfoPanel(feature, layerType) {
   const inner = document.getElementById("featureInfoPanelInner");
-  const panel = document.getElementById("featureInfoPanel");
-  if (!inner || !panel || !feature || !layerType) return;
+  const overlay = document.getElementById("featureInfoOverlay");
+  if (!inner || !overlay || !feature || !layerType) return;
 
   setFeatureInfoHeader(layerType);
   inner.innerHTML = `<p class="map-popup__empty">Loading…</p>`;
-  panel.hidden = false;
-  panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  overlay.hidden = false;
 
   try {
     const html = layerType === "BLOCKS"
@@ -2189,9 +2188,9 @@ function setupLogAlertModal() {
 
 function closeInfoPopup() {
   const inner = document.getElementById("featureInfoPanelInner");
-  const panel = document.getElementById("featureInfoPanel");
+  const overlay = document.getElementById("featureInfoOverlay");
   if (inner) inner.innerHTML = "";
-  if (panel) panel.hidden = true;
+  if (overlay) overlay.hidden = true;
   hideParcelActionToolbar();
 }
 
@@ -2255,9 +2254,9 @@ function setFeatureInfoHeader(layerType) {
 
 function setupInfoPopup() {
   const inner = document.getElementById("featureInfoPanelInner");
-  const panel = document.getElementById("featureInfoPanel");
+  const overlay = document.getElementById("featureInfoOverlay");
   const closeBtn = document.getElementById("featureInfoPanelCloseBtn");
-  if (!inner || !panel) return;
+  if (!inner || !overlay) return;
 
   closeBtn?.addEventListener("click", () => {
     closeInfoPopup();
@@ -2267,7 +2266,7 @@ function setupInfoPopup() {
 
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
-    if (!panel.hidden) {
+    if (!overlay.hidden) {
       closeInfoPopup();
       selectedFeature = null;
       selectedLayerType = null;

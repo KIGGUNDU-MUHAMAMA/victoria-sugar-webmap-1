@@ -3,17 +3,27 @@
          openFeatureInfoPanel) — no longer auto-opens on plain feature click,
          and has no edit/modify controls (use the Modify top-toolbar button for
          that). Previous tabbed Info/Modify version preserved for reference at
-         windows/old_feature-info-panel.html. -->
-    <section id="featureInfoPanel" class="popWinMain feature-info-panel" hidden role="region" aria-label="Selected map feature">
-      <header class="popWinHead">
-        <div class="popWinHead__inner">
-          <span class="popWinIcon" id="featureInfoPanelIcon"><i class="fas fa-map" aria-hidden="true"></i></span>
-          <h2 class="popWinTitle" id="featureInfoPanelTitle">Parcel</h2>
-        </div>
-        <button type="button" class="popWinCloseBtn" id="featureInfoPanelCloseBtn" aria-label="Close details">
-          <i class="fas fa-times" aria-hidden="true"></i>
-        </button>
-      </header>
+         windows/old_feature-info-panel.html.
 
-      <div id="featureInfoPanelInner" class="popWinBody"></div>
-    </section>
+         Built as a centered vsl-modal-overlay (same pattern as
+         edit-details-modal.html / log-activity-modal.html) rather than docked
+         in .map-left-stack, so it isn't caught by the phone-width rule that
+         hides .map-left-stack contents while other panels are active, and so
+         it gets the same "full modal" mobile treatment as the Log Activity
+         window. Toggle visibility on #featureInfoOverlay (the wrapper), not
+         on #featureInfoPanel itself. -->
+    <div id="featureInfoOverlay" class="vsl-modal-overlay" hidden>
+      <section id="featureInfoPanel" class="vsl-modal-card vsl-modal-card--wide popWinMain feature-info-panel" role="region" aria-label="Selected map feature">
+        <header class="popWinHead">
+          <div class="popWinHead__inner">
+            <span class="popWinIcon" id="featureInfoPanelIcon"><i class="fas fa-map" aria-hidden="true"></i></span>
+            <h2 class="popWinTitle" id="featureInfoPanelTitle">Parcel</h2>
+          </div>
+          <button type="button" class="popWinCloseBtn" id="featureInfoPanelCloseBtn" aria-label="Close details">
+            <i class="fas fa-times" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <div id="featureInfoPanelInner" class="popWinBody"></div>
+      </section>
+    </div>

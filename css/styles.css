@@ -2829,8 +2829,9 @@ select.search-panel__input {
   /* Shared "docks in the left/right map stack, becomes a bottom sheet on
      phones" hook — applied alongside .popWinMain on search-panel.html,
      measure-panel.html and parcel-status-panel.html's root elements. Not
-     used by edit-details-modal (stays a centered dialog) or
-     feature-info-panel (has its own, lighter mobile handling below). */
+     used by edit-details-modal, log-activity-modal, log-alert-modal, or
+     feature-info-panel — those are all centered vsl-modal-overlay dialogs
+     instead, which already behave reasonably on phones without this. */
   .popWin-mobileDock {
     width: 100%;
     max-height: 60vh;
@@ -2868,10 +2869,12 @@ select.search-panel__input {
     min-height: 48px; /* bigger tap targets */
   }
 
-  /* Feature info panel and infoHelp also sit in left stack — push them down */
-  .webmap-app .map-left-stack > .feature-info-panel,
+  /* infoHelp still sits in the left stack — hide it on small phones when
+     search is active. (feature-info-panel used to be hidden by this same
+     rule, but it's a body-level modal now, not a map-left-stack child, so
+     it's unaffected and shows normally on phones — see feature-info-panel.html.) */
   .webmap-app .map-left-stack > .info-help-popover {
-    display: none; /* on small phones these are hidden when search is active */
+    display: none;
   }
 
   /* Toast hides itself on mobile via its own media query in toast/toast.css. */
@@ -4873,6 +4876,26 @@ select.search-panel__input {
 
 .vsl-modal-card--wide {
   max-width: 640px;
+}
+
+/* feature-info-panel's grouped/collapsible content can run much taller than
+   the other vsl-modal-overlay dialogs — .popWinMain's own `max-height: 100%`
+   doesn't resolve to anything useful here since .vsl-modal-overlay centers
+   its child at auto height (align-items: center) rather than stretching it,
+   so this needs an explicit cap. Once capped, .popWinBody's own
+   overflow-y: auto (see the POPUP WINDOW TEMPLATE section) takes over for
+   internal scrolling — the header/close button stay put. */
+#featureInfoPanel.popWinMain {
+  max-height: min(82vh, 82dvh, 720px);
+}
+
+@media (max-width: 480px) {
+  #featureInfoPanel.popWinMain {
+    max-height: min(88vh, 88dvh);
+    width: 100%;
+    max-width: 100%;
+    margin: 0 12px;
+  }
 }
 
 .vsl-prop-table {

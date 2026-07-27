@@ -20,7 +20,6 @@ const WINDOW_FRAGMENTS = [
   { parent: "mapLeftStack", url: "./windows/sentinel-minimal-control.html" },
   { parent: "mapLeftStack", url: "./windows/sentinel-analytics-panel.html" },
   { parent: "mapLeftStack", url: "./windows/search-panel.html" },
-  { parent: "mapLeftStack", url: "./windows/feature-info-panel.html" },
   { parent: "mapLeftStack", url: "./windows/info-help-popover.html" },
 
   // Right-hand tool stack.
@@ -32,6 +31,9 @@ const WINDOW_FRAGMENTS = [
   { parent: "body", url: "./windows/edit-details-modal.html" },
   { parent: "body", url: "./windows/log-activity-modal.html" },
   { parent: "body", url: "./windows/log-alert-modal.html" },
+  // Moved out of mapLeftStack (see comment in the file) so the phone-width
+  // rule that hides .map-left-stack contents can't swallow it.
+  { parent: "body", url: "./windows/feature-info-panel.html" },
 ];
 
 async function loadWindowFragments() {

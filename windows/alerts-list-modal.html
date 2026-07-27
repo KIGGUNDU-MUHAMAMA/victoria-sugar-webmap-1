@@ -1,0 +1,22 @@
+<!-- Alerts List — opened by clicking a plot's "Alerts(n)" chip directly on
+     the map (see isClickOnAlertsChip / openAlertsListModal in
+     js/map-app.js). Shows just that one plot's alerts (Name/Status/Severity,
+     same table as the info panel's Alerts group); the Name column links
+     into the same alert record-detail drill-down used everywhere else
+     (windows/record-detail-modal.html). Pure read-only view — no tabs, no
+     footer actions. -->
+<div id="alertsListOverlay" class="vsl-modal-overlay" hidden>
+  <section id="alertsListPanel" class="vsl-modal-card vsl-modal-card--wide popWinMain" role="region" aria-label="Plot alerts">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle" id="alertsListTitle">Alerts</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="alertsListCloseBtn" aria-label="Close alerts list">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div id="alertsListInner" class="popWinBody"></div>
+  </section>
+</div>

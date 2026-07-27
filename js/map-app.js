@@ -103,6 +103,71 @@ const ALERT_SEVERITY_COLORS = {
   information: "#1976d2"
 };
 
+/** Vertical pixel offset (screen convention: positive = down) from the
+ *  label anchor point (labelIp) to the center of the Alerts(n) line, given
+ *  how many lines the name/area/ratoon block above it has. The block is
+ *  vertically CENTERED on that anchor (not top-aligned to it), so this has
+ *  to clear half the block's height plus half this line's own height, not a
+ *  full lineCount worth of line-heights (that overshoots by ~half a line).
+ *  Shared by both the actual render (parcels layer style function) and the
+ *  click hit-test (isClickOnAlertsLine) so they can never drift apart. */
+function computeAlertChipOffsetY(lineCount, fontPx) {
+  const lineHeightPx = fontPx * LABEL_LINE_HEIGHT;
+  const gapPx = 2;
+  return ((lineCount + 1) / 2) * lineHeightPx + gapPx;
+}
+
+/** Offscreen 2D context reused for text-measurement (hit-test sizing only —
+ *  the Alerts(n) line is plain text on the map, not a drawn chip) and never
+ *  attached to the page. */
+let _measureTextCtx = null;
+function getMeasureTextCtx() {
+  if (!_measureTextCtx) {
+    _measureTextCtx = document.createElement("canvas").getContext("2d");
+  }
+  return _measureTextCtx;
+}
+
+/** Hit-tests a map click (pixel space) against the rendered Alerts(n) text
+ *  line for a given feature — used so clicking directly on it opens the
+ *  Alerts List modal. Mirrors the exact placement math the parcels layer's
+ *  style function uses (computeAlertChipOffsetY) so the clickable area
+ *  always matches what's actually drawn, using measureText for an estimated
+ *  width since there's no drawn chip to measure directly. Depends on the
+ *  page-level `map` (ol.Map instance, defined further down this file) —
+ *  fine since this is only ever called from click handlers wired up after
+ *  the map exists. */
+function isClickOnAlertsLine(feature, pixel) {
+  const alertSeverity = feature.get("_alert_severity");
+  const alertCount = feature.get("_alert_count");
+  if (!alertSeverity || !alertCount) return false;
+
+  const ip = getFeatureInteriorPoint(feature.getGeometry());
+  if (!ip) return false;
+  const anchorPx = map.getPixelFromCoordinate(ip.getCoordinates());
+  if (!anchorPx) return false;
+
+  const ratoonVal = feature.get("ratoon_number");
+  const hasRatoon = ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
+  const lineCount = 2 + (hasRatoon ? 1 : 0); // name+area assumed present, matching the render
+  const fontPx = 11; // non-highlighted size — a plain click target isn't necessarily "hi"
+  const offsetY = computeAlertChipOffsetY(lineCount, fontPx);
+
+  const text = `Alerts(${alertCount})`;
+  const ctx = getMeasureTextCtx();
+  ctx.font = `800 ${fontPx}px Inter, sans-serif`;
+  const textWidth = ctx.measureText(text).width;
+  const chip = { width: textWidth + 12, height: fontPx + 8 }; // rough box around the text, plus hit-test padding
+
+  const cx = anchorPx[0];
+  const cy = anchorPx[1] + offsetY;
+  const hitPadPx = 6; // a little extra forgiveness beyond the chip's own edges
+  const halfW = chip.width / 2 + hitPadPx;
+  const halfH = chip.height / 2 + hitPadPx;
+  const [px, py] = pixel;
+  return px >= cx - halfW && px <= cx + halfW && py >= cy - halfH && py <= cy + halfH;
+}
+
 /** Interior anchor point for label/text-line placement — handles Polygon and MultiPolygon. */
 function getFeatureInteriorPoint(geometry) {
   if (!geometry) return null;
@@ -450,6 +515,33 @@ function buildListTable(headers, rows, emptyMsg = "No records yet.", colWidths =
 
 const THREE_COL_WIDTHS = [40, 30, 30];
 
+/** Builds the Name/Status/Severity alerts table — shared by the parcel info
+ *  panel's "Alerts" group and the standalone Alerts List modal (opened by
+ *  clicking a plot's Alerts(n) chip on the map) so the two always look and
+ *  behave identically. Name links to the alert record-detail drill-down;
+ *  Severity is filled with its color only while the alert is unresolved
+ *  (open/investigating) so an urgent one stands out at a glance. */
+function buildAlertsListTableHtml(alerts, emptyMsg = "No alerts yet.") {
+  return buildListTable(
+    ["Name", "Status", "Severity"],
+    alerts.map((a, i) => {
+      const unresolved = a.status === "open" || a.status === "investigating";
+      const sevLabel = fmt(SEVERITY_LABELS[a.severity] || a.severity);
+      const sevColor = ALERT_SEVERITY_COLORS[a.severity] || ALERT_SEVERITY_COLORS.information;
+      const sevCell = unresolved
+        ? `<span class="vsl-severity-chip" style="background:${sevColor}">${sevLabel}</span>`
+        : sevLabel;
+      return [
+        buildRecordLink("alert", i, fmt(a.alert_name)),
+        fmt(a.status),
+        sevCell
+      ];
+    }),
+    emptyMsg,
+    THREE_COL_WIDTHS
+  );
+}
+
 const HISTORY_AUDIT_PLACEHOLDER = `<p class="map-popup__empty">Change history isn't tracked yet for this record.</p>`;
 
 // ---------------------------------------------------------------------------
@@ -560,10 +652,30 @@ function closeRecordDetailModal() {
 /** Delegated click listener lives on #featureInfoPanelInner (the info
  *  panel's body, which is fully re-rendered via innerHTML on every open) so
  *  it keeps working across re-renders without needing to be re-wired. */
+/** Delegated click wiring for a container full of buildRecordLink() anchors —
+ *  shared by the info panel's #featureInfoPanelInner (backed by
+ *  infoPanelRecords, five record kinds) and the standalone Alerts List
+ *  modal's #alertsListInner (backed by alertsListRecords, alert kind only).
+ *  `getRecordsForKind(kind)` returns the array to index into for a given
+ *  link's data-record-kind. Safe to call on a container that's fully
+ *  replaced via innerHTML on every open — it's one listener on the
+ *  container itself, not on the individual links. */
+function wireRecordLinkClicks(container, getRecordsForKind) {
+  container?.addEventListener("click", (ev) => {
+    const link = ev.target.closest("a[data-record-kind]");
+    if (!link) return;
+    ev.preventDefault();
+    const kind = link.dataset.recordKind;
+    const index = Number(link.dataset.recordIndex);
+    const list = getRecordsForKind(kind) || [];
+    const record = list[index];
+    if (record) openRecordDetailModal(kind, record);
+  });
+}
+
 function setupRecordDetailModal() {
   const overlay = document.getElementById("recordDetailOverlay");
   const closeBtn = document.getElementById("recordDetailCloseBtn");
-  const panelInner = document.getElementById("featureInfoPanelInner");
   if (!overlay) return;
 
   closeBtn?.addEventListener("click", () => closeRecordDetailModal());
@@ -571,16 +683,72 @@ function setupRecordDetailModal() {
     if (ev.key === "Escape" && !overlay.hidden) closeRecordDetailModal();
   });
 
-  panelInner?.addEventListener("click", (ev) => {
-    const link = ev.target.closest("a[data-record-kind]");
-    if (!link) return;
-    ev.preventDefault();
-    const kind = link.dataset.recordKind;
-    const index = Number(link.dataset.recordIndex);
-    const list = infoPanelRecords[RECORD_LIST_KEY[kind]] || [];
-    const record = list[index];
-    if (record) openRecordDetailModal(kind, record);
+  wireRecordLinkClicks(
+    document.getElementById("featureInfoPanelInner"),
+    (kind) => infoPanelRecords[RECORD_LIST_KEY[kind]]
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Alerts List modal (windows/alerts-list-modal.html) — opened by clicking a
+// plot's "Alerts(n)" text line directly on the map (see isClickOnAlertsLine
+// in the map click handler). Shows just that one plot's alerts (same
+// Name/Status/Severity table as the info panel's Alerts group, via
+// buildAlertsListTableHtml), with Name still linking into the same
+// record-detail drill-down used everywhere else.
+// ---------------------------------------------------------------------------
+let alertsListRecords = [];
+
+async function openAlertsListModal(parcelId, parcelLabel) {
+  const overlay = document.getElementById("alertsListOverlay");
+  const inner = document.getElementById("alertsListInner");
+  const titleEl = document.getElementById("alertsListTitle");
+  if (!overlay || !inner || parcelId == null) return;
+
+  if (titleEl) titleEl.textContent = `Alerts${parcelLabel ? ` — ${parcelLabel}` : ""}`;
+  inner.innerHTML = `<p class="map-popup__empty">Loading…</p>`;
+  overlay.hidden = false;
+
+  try {
+    const { data, error } = await supabase
+      .from("vsl_alerts")
+      .select("*")
+      .eq("layer_type", "PARCELS")
+      .eq("target_id", String(parcelId))
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    alertsListRecords = data || [];
+    inner.innerHTML = buildAlertsListTableHtml(alertsListRecords);
+  } catch (err) {
+    console.error("[Victoria] Failed to load alerts list:", err);
+    alertsListRecords = [];
+    inner.innerHTML = `<p class="map-popup__empty">Failed to load alerts: ${escapeHtml(err?.message || "unknown error")}</p>`;
+  }
+}
+
+function closeAlertsListModal() {
+  const overlay = document.getElementById("alertsListOverlay");
+  const inner = document.getElementById("alertsListInner");
+  if (inner) inner.innerHTML = "";
+  if (overlay) overlay.hidden = true;
+  alertsListRecords = [];
+}
+
+function setupAlertsListModal() {
+  const overlay = document.getElementById("alertsListOverlay");
+  const closeBtn = document.getElementById("alertsListCloseBtn");
+  if (!overlay) return;
+
+  closeBtn?.addEventListener("click", () => closeAlertsListModal());
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !overlay.hidden) closeAlertsListModal();
   });
+
+  wireRecordLinkClicks(
+    document.getElementById("alertsListInner"),
+    () => alertsListRecords
+  );
 }
 
 /** Given the selected feature/layer, resolves which vsl_parcels.id(s) an
@@ -737,24 +905,7 @@ async function buildParcelInfoHtml(parcelId) {
   // on the Name cell) rather than crowding the summary row. Severity is
   // filled with its color whenever the alert is still unresolved (open or
   // investigating) so an urgent one stands out at a glance.
-  groups.push(buildCollapsibleGroup(`Alerts (${alerts.length})`, buildListTable(
-    ["Name", "Status", "Severity"],
-    alerts.map((a, i) => {
-      const unresolved = a.status === "open" || a.status === "investigating";
-      const sevLabel = fmt(SEVERITY_LABELS[a.severity] || a.severity);
-      const sevColor = ALERT_SEVERITY_COLORS[a.severity] || ALERT_SEVERITY_COLORS.information;
-      const sevCell = unresolved
-        ? `<span class="vsl-severity-chip" style="background:${sevColor}">${sevLabel}</span>`
-        : sevLabel;
-      return [
-        buildRecordLink("alert", i, fmt(a.alert_name)),
-        fmt(a.status),
-        sevCell
-      ];
-    }),
-    "No alerts yet.",
-    THREE_COL_WIDTHS
-  )));
+  groups.push(buildCollapsibleGroup(`Alerts (${alerts.length})`, buildAlertsListTableHtml(alerts)));
 
   groups.push(buildCollapsibleGroup("Current Crop Cycle", currentSeason
     ? buildKvTable([
@@ -1139,26 +1290,23 @@ const parcelsLayer = new ol.layer.Vector({
 
       // Alerts line — its own Text/Style (not appended into the string
       // above) so it can be colored by severity independently of the
-      // name/area/ratoon block, which is always one solid color.
+      // name/area/ratoon block, which is always one solid color. Stacked
+      // directly beneath that block using the same shared offset math the
+      // click hit-test uses (isClickOnAlertsLine) so the two can never
+      // disagree about where it is. Plain text, not a drawn chip/badge —
+      // that was tried and then deliberately reverted.
       const alertSeverity = feature.get("_alert_severity");
       const alertCount = feature.get("_alert_count");
       if (alertSeverity && alertCount) {
         const alertColor = ALERT_SEVERITY_COLORS[alertSeverity] || ALERT_SEVERITY_COLORS.information;
-        // textStyle above is vertically CENTERED on labelIp (OL's default
-        // for multi-line point text), not top-aligned to it — so the gap to
-        // the next line has to be measured from the middle of that block
-        // (half its height) plus half this line's own height, not from
-        // lineCount full line-heights (which was overshooting by half a
-        // line-height, the "too offset from area" gap that was reported).
-        const gapPx = 2;
-        const alertOffsetY = ((lineCount + 1) / 2) * lineHeightPx + gapPx;
+        const offsetY = computeAlertChipOffsetY(lineCount, fontPx);
         alertLineStyle = new ol.style.Text({
           text: `Alerts(${alertCount})`,
           font: `800 ${fontPx}px Inter, sans-serif`,
           fill: new ol.style.Fill({ color: alertColor }),
           stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
           overflow: true,
-          offsetY: alertOffsetY
+          offsetY
         });
       }
     } else if (resolution <= PARCEL_NAME_ONLY_RES) {
@@ -1177,7 +1325,7 @@ const parcelsLayer = new ol.layer.Vector({
       stroke: new ol.style.Stroke({ color: hi ? "#f9a825" : strokeColor, width: strokeWidth })
     }));
 
-    // Label text (and the alerts line, if any) are their own Style objects,
+    // Label text (and the alerts chip, if any) are their own Style objects,
     // explicitly anchored at labelIp rather than sharing the polygon-stroke
     // Style or falling back to OL's default text-anchor-on-unset-geometry
     // behavior.
@@ -2594,6 +2742,13 @@ function setupInfoPopup() {
         selectedFeature = feature;
         selectedLayerType = isBlocks ? "BLOCKS" : "PARCELS";
         showParcelActionToolbar(feature);
+
+        // Clicking directly on the Alerts(n) line opens the Alerts List
+        // modal for this plot, on top of the normal select-and-show-toolbar
+        // behavior above (blocks don't render this line, so parcels only).
+        if (isParcels && isClickOnAlertsLine(feature, evt.pixel)) {
+          openAlertsListModal(feature.getId(), feature.get("parcel_name"));
+        }
         return true;
       },
       { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 20 }
@@ -4292,6 +4447,7 @@ async function initMap() {
   setupLogActivityModal();
   setupLogAlertModal();
   setupRecordDetailModal();
+  setupAlertsListModal();
   bindEvents();
   startBackgroundLocationTracking();
   initPrintComposer({

@@ -37,6 +37,8 @@ const WINDOW_FRAGMENTS = [
   // Drill-down "full record" view opened from links inside the info panel
   // above — sibling overlay, so it can sit on top of it.
   { parent: "body", url: "./windows/record-detail-modal.html" },
+  // Opened by clicking a plot's "Alerts(n)" chip directly on the map.
+  { parent: "body", url: "./windows/alerts-list-modal.html" },
 ];
 
 async function loadWindowFragments() {

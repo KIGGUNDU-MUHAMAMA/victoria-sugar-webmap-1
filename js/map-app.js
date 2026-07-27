@@ -237,25 +237,31 @@ const FEATURE_INFO_BADGE = { PARCELS: "Parcel", BLOCKS: "Block" };
 const ACTIVITY_NAMES = [
   "Bush Clearing", "Ploughing", "Harrow", "Ripping", "Ridging", "Furrowing",
   "Lime Application", "Planting", "Manuring", "Fertilization", "Weeding",
-  "Cultivator", "Spraying", "Irrigation", "Harvesting", "Loading",
+  "Spraying", "Irrigation", "Harvesting", "Loading",
   "Trash Lining", "Trash Collection"
 ];
 
+// Shared across every activity that logs a weather condition (Planting,
+// Spraying, Harvesting) so the option list only lives in one place.
+const WEATHER_CONDITION_FIELD = {
+  key: "weather_condition",
+  label: "Weather condition",
+  type: "select",
+  options: ["Sunny", "Cloudy", "Overcast", "Rainy", "Windy", "Other"]
+};
+
+// Cost fields (estimated/actual cost, currency, per-activity "cost"/"cost of
+// X" properties) were removed from this form entirely — costs are now
+// admin-only, logged against an activity later from the dashboard into
+// vsl_activity_costs (see that table's migration). Team size/number of
+// machines/progress/comments/challenges are the only fields shown for every
+// activity regardless of which one is picked.
 const LOG_ACTIVITY_COMMON_FIELDS = [
-  { key: "task_description", label: "Task description / notes", type: "textarea" },
-  { key: "status", label: "Status", type: "select", options: ["planned", "in_progress", "completed", "cancelled"], optionLabels: ["Planned", "In progress", "Completed", "Cancelled"], default: "planned" },
-  { key: "method", label: "Method", type: "text" },
   { key: "team_size", label: "Team size", type: "number" },
   { key: "number_of_machines", label: "Number of machines", type: "number" },
-  { key: "completion_unit", label: "Completion unit", type: "select", options: ["acres", "percent"], optionLabels: ["Acres", "%"] },
-  { key: "completion_value", label: "Completion value", type: "number" },
-  { key: "due_date", label: "Due date", type: "date" },
-  { key: "completed_date", label: "Completed date", type: "date" },
-  { key: "estimated_cost", label: "Estimated cost", type: "number" },
-  { key: "actual_cost", label: "Actual cost", type: "number" },
-  { key: "currency", label: "Currency", type: "text", default: "UGX" },
-  { key: "challenges", label: "Challenges", type: "textarea" },
-  { key: "comments", label: "Comments", type: "textarea" }
+  { key: "completion_value", label: "Progress (%)", type: "number" },
+  { key: "comments", label: "Comments", type: "textarea" },
+  { key: "challenges", label: "Challenges", type: "textarea" }
 ];
 
 const ACTIVITY_PROPERTY_DEFS = {
@@ -264,18 +270,15 @@ const ACTIVITY_PROPERTY_DEFS = {
     { key: "clearing_depth", label: "Clearing depth", type: "select", options: ["Surface clearing only", "Includes stump & root removal"] },
     { key: "disposal_method", label: "Disposal method", type: "select", options: ["Burning", "Piling", "Mulching in place", "Hauled away"] },
     { key: "land_type", label: "Land type", type: "select", options: ["New land", "Fallow reclamation"] },
-    { key: "machine_type", label: "Machine type", type: "text" },
+    { key: "machine_type", label: "Machine type", type: "select", options: ["Bulldozer", "Brush cutter", "Tractor + slasher", "Excavator", "Other"] },
     { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
-    { key: "hours_worked", label: "Hours worked", type: "number" },
-    { key: "safety_incidents", label: "Safety incidents (Y/N + note)", type: "text" }
+    { key: "hours_worked", label: "Hours worked", type: "number" }
   ],
   "Ploughing": [
     { key: "plough_type", label: "Plough type", type: "select", options: ["First", "Second", "Third"] },
     { key: "implement_used", label: "Implement used", type: "select", options: ["Disc plough", "Moldboard plough", "Chisel plough"] },
     { key: "plough_depth_cm", label: "Plough depth (cm)", type: "number" },
-    { key: "tractor_horsepower", label: "Tractor horsepower", type: "number" },
     { key: "soil_moisture_condition", label: "Soil moisture condition", type: "select", options: ["Dry", "Moist", "Wet"] },
-    { key: "number_of_passes", label: "Number of passes", type: "number" },
     { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
     { key: "hours_worked", label: "Hours worked", type: "number" },
     { key: "operator_name", label: "Operator name", type: "text" }
@@ -283,9 +286,7 @@ const ACTIVITY_PROPERTY_DEFS = {
   "Harrow": [
     { key: "type", label: "Type", type: "select", options: ["Disc harrow", "Spike-tooth harrow", "Tine harrow", "Rotary harrow"] },
     { key: "harrow_depth_cm", label: "Harrow depth (cm)", type: "number" },
-    { key: "number_of_passes", label: "Number of passes", type: "number" },
-    { key: "clod_size_before_after", label: "Clod size before → after", type: "text" },
-    { key: "soil_moisture_condition", label: "Soil moisture condition", type: "text" },
+    { key: "soil_moisture_condition", label: "Soil moisture condition", type: "select", options: ["Dry", "Moist", "Wet"] },
     { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
     { key: "hours_worked", label: "Hours worked", type: "number" },
     { key: "operator_name", label: "Operator name", type: "text" }
@@ -293,9 +294,6 @@ const ACTIVITY_PROPERTY_DEFS = {
   "Ripping": [
     { key: "ripping_depth_cm", label: "Ripping depth (cm)", type: "number" },
     { key: "rip_line_spacing_m", label: "Rip line spacing (m)", type: "number" },
-    { key: "number_of_tynes", label: "Number of tynes/shanks", type: "number" },
-    { key: "soil_compaction_before", label: "Soil compaction level (before)", type: "text" },
-    { key: "tractor_horsepower", label: "Tractor horsepower", type: "number" },
     { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
     { key: "hours_worked", label: "Hours worked", type: "number" },
     { key: "operator_name", label: "Operator name", type: "text" }
@@ -304,9 +302,6 @@ const ACTIVITY_PROPERTY_DEFS = {
     { key: "spacing_m", label: "Spacing (m)", type: "number" },
     { key: "ridge_height_cm", label: "Ridge height (cm)", type: "number" },
     { key: "ridge_width_cm", label: "Ridge width (cm)", type: "number" },
-    { key: "row_orientation", label: "Row orientation/direction", type: "text" },
-    { key: "number_of_ridges", label: "Number of ridges formed", type: "number" },
-    { key: "implement_used", label: "Implement used (ridger)", type: "text" },
     { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
     { key: "hours_worked", label: "Hours worked", type: "number" },
     { key: "operator_name", label: "Operator name", type: "text" }
@@ -314,8 +309,6 @@ const ACTIVITY_PROPERTY_DEFS = {
   "Furrowing": [
     { key: "furrow_depth_cm", label: "Furrow depth (cm)", type: "number" },
     { key: "furrow_spacing_m", label: "Furrow spacing (m)", type: "number" },
-    { key: "number_of_furrows", label: "Number of furrows opened", type: "number" },
-    { key: "total_furrow_length_m", label: "Total furrow length (m)", type: "number" },
     { key: "implement_used", label: "Implement used", type: "text" },
     { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
     { key: "hours_worked", label: "Hours worked", type: "number" },
@@ -324,127 +317,77 @@ const ACTIVITY_PROPERTY_DEFS = {
   "Lime Application": [
     { key: "lime_quantity_kg", label: "Lime quantity (kg)", type: "number" },
     { key: "lime_type", label: "Lime type/name", type: "text" },
-    { key: "application_method", label: "Application method", type: "select", options: ["Manual broadcast", "Mechanical spreader"] },
-    { key: "application_rate", label: "Application rate (kg/acre or kg/ha)", type: "text" },
     { key: "soil_ph_before", label: "Soil pH before application", type: "number" },
     { key: "target_soil_ph", label: "Target soil pH", type: "number" },
-    { key: "incorporation_method", label: "Incorporation method", type: "select", options: ["Ploughed in", "Harrowed in", "Left on surface"] },
-    { key: "supplier", label: "Supplier", type: "text" },
-    { key: "cost_of_lime", label: "Cost of lime", type: "number" }
+    { key: "incorporation_method", label: "Incorporation method", type: "select", options: ["Ploughed in", "Harrowed in", "Left on surface"] }
   ],
+  // Ratoon number and expected germination date aren't user-entered here —
+  // saving a Planting activity always resets the plot's ratoon number to 0
+  // and computes an expected germination date automatically (see
+  // saveLogActivityForm's Planting write-back).
   "Planting": [
-    { key: "number_of_setts", label: "Number of setts", type: "number" },
     { key: "cane_variety", label: "Cane variety", type: "text" },
-    { key: "sett_source", label: "Sett source", type: "select", options: ["Own nursery", "Purchased", "Certified seed cane"] },
     { key: "row_spacing_m", label: "Row/sett spacing (m)", type: "number" },
     { key: "planting_depth_cm", label: "Planting depth (cm)", type: "number" },
-    { key: "seed_rate", label: "Seed rate (setts/acre or tonnes/ha)", type: "text" },
-    { key: "ratoon_number", label: "Ratoon number (0 = plant crop)", type: "number" },
-    { key: "basal_fertilizer_applied", label: "Basal fertilizer applied", type: "select", options: ["Yes", "No"] },
-    { key: "cost_of_setts", label: "Cost of setts", type: "number" },
-    { key: "expected_germination_date", label: "Expected germination date", type: "date" },
-    { key: "weather_condition", label: "Weather condition", type: "text" }
+    WEATHER_CONDITION_FIELD
   ],
   "Manuring": [
     { key: "manure_type", label: "Manure type", type: "select", options: ["Farmyard manure", "Compost", "Poultry manure", "Green manure"] },
-    { key: "quantity", label: "Quantity", type: "text" },
-    { key: "application_rate", label: "Application rate (kg or tonnes/acre)", type: "text" },
-    { key: "manure_source", label: "Manure source", type: "text" },
-    { key: "incorporation_method", label: "Incorporation method", type: "text" },
-    { key: "cost", label: "Cost", type: "number" },
-    { key: "supplier", label: "Supplier", type: "text" }
+    { key: "quantity", label: "Quantity", type: "text" }
   ],
   "Fertilization": [
     { key: "fertilizer_name", label: "Fertilizer name", type: "text" },
     { key: "quantity", label: "Quantity", type: "text" },
     { key: "application_type", label: "Application type", type: "select", options: ["Basal", "Top dressing", "Foliar"] },
-    { key: "application_rate", label: "Application rate (kg/acre)", type: "text" },
     { key: "npk_ratio", label: "NPK ratio", type: "text" },
-    { key: "timing", label: "Timing relative to planting/growth stage", type: "text" },
-    { key: "incorporation_method", label: "Incorporation method", type: "text" },
-    { key: "cost", label: "Cost", type: "number" },
-    { key: "supplier", label: "Supplier", type: "text" },
     { key: "weather_condition", label: "Weather condition", type: "text" }
   ],
   "Weeding": [
     { key: "weeding_round", label: "Weeding round", type: "select", options: ["1st", "2nd", "3rd+"] },
     { key: "weed_pressure", label: "Weed pressure", type: "select", options: ["Light", "Medium", "Heavy"] },
-    { key: "dominant_weed_type", label: "Dominant weed type", type: "text" },
-    { key: "tools_used", label: "Tools used", type: "text" },
-    { key: "labor_productivity", label: "Labor productivity (acres/person/day)", type: "text" },
-    { key: "cost", label: "Cost", type: "number" }
-  ],
-  "Cultivator": [
-    { key: "cultivation_depth_cm", label: "Cultivation depth (cm)", type: "number" },
-    { key: "row_spacing_m", label: "Row spacing (m)", type: "number" },
-    { key: "implement_type", label: "Implement type", type: "text" },
-    { key: "number_of_passes", label: "Number of passes", type: "number" },
-    { key: "fuel_used_litres", label: "Fuel used (litres)", type: "number" },
-    { key: "hours_worked", label: "Hours worked", type: "number" },
-    { key: "operator_name", label: "Operator name", type: "text" }
+    { key: "tools_used", label: "Tools used", type: "select", options: ["Hoe", "Machete", "Cultivator", "Other"] }
   ],
   "Spraying": [
     { key: "medicine_name", label: "Medicine name (chemical/product)", type: "text" },
     { key: "quantity", label: "Quantity", type: "text" },
     { key: "chemical_type", label: "Chemical type", type: "select", options: ["Herbicide", "Pesticide", "Fungicide"] },
-    { key: "active_ingredient", label: "Active ingredient", type: "text" },
-    { key: "target_pest", label: "Target pest/disease/weed", type: "text" },
-    { key: "dilution_rate", label: "Dilution rate", type: "text" },
     { key: "water_volume_litres", label: "Water volume used (litres)", type: "number" },
     { key: "application_equipment", label: "Application equipment", type: "select", options: ["Knapsack sprayer", "Boom sprayer", "Drone", "Tractor-mounted"] },
-    { key: "weather_condition", label: "Weather condition", type: "text" },
-    { key: "ppe_used", label: "PPE used", type: "select", options: ["Yes", "No"] },
-    { key: "withholding_period_days", label: "Pre-harvest/withholding period (days)", type: "number" },
-    { key: "supplier", label: "Supplier", type: "text" },
-    { key: "batch_expiry_date", label: "Batch/expiry date", type: "date" },
-    { key: "cost", label: "Cost", type: "number" }
+    WEATHER_CONDITION_FIELD
   ],
   "Irrigation": [
     { key: "litres_pumped", label: "Litres pumped", type: "number" },
     { key: "water_source", label: "Water source", type: "text" },
     { key: "duration_hours", label: "Duration (hours)", type: "number" },
-    { key: "pump_type_fuel", label: "Pump type/fuel used", type: "text" },
-    { key: "flow_rate", label: "Flow rate", type: "text" },
-    { key: "soil_moisture_before_after", label: "Soil moisture before/after", type: "text" },
-    { key: "cost", label: "Cost (fuel/electricity)", type: "number" },
+    { key: "fuel_used", label: "Fuel used", type: "text" },
     { key: "operator_name", label: "Operator name", type: "text" }
   ],
+  // Ratoon number counts up and cultivation_status flips to "replant
+  // renovation" automatically on save (see saveLogActivityForm's Harvesting
+  // write-back), and a matching row is added to the plot's harvest history.
   "Harvesting": [
     { key: "yield_tonnes", label: "Yield (tonnes)", type: "number" },
-    { key: "cutting_method", label: "Cutting method", type: "select", options: ["Manual", "Mechanical harvester"] },
-    { key: "cane_variety", label: "Cane variety", type: "text" },
-    { key: "ratoon_number", label: "Ratoon number", type: "number" },
+    { key: "ratoon_number", label: "Ratoon number at harvest", type: "number" },
     { key: "brix_reading", label: "Brix reading", type: "number" },
-    { key: "burnt_or_green_cane", label: "Burnt / Green cane", type: "select", options: ["Burnt cane", "Green cane"] },
-    { key: "cutting_crew_name", label: "Cutting crew name", type: "text" },
     { key: "gross_weight_tonnes", label: "Gross weight (tonnes)", type: "number" },
     { key: "net_weight_tonnes", label: "Net weight (tonnes)", type: "number" },
-    { key: "transport_vehicle", label: "Transport vehicle", type: "text" },
+    { key: "transport_vehicle", label: "Transport vehicle(s)", type: "text" },
     { key: "mill_destination", label: "Mill destination", type: "text" },
-    { key: "delivery_ticket_number", label: "Delivery ticket number", type: "text" },
-    { key: "weather_condition", label: "Weather condition", type: "text" }
+    WEATHER_CONDITION_FIELD
   ],
   "Loading": [
     { key: "loading_equipment", label: "Loading equipment", type: "select", options: ["Grab loader", "Crane", "Manual"] },
     { key: "number_of_trucks", label: "Number of trucks/trailers loaded", type: "number" },
     { key: "truck_registration_number", label: "Truck registration number", type: "text" },
-    { key: "transport_company_driver", label: "Transport company/driver", type: "text" },
-    { key: "load_weight_tonnes", label: "Load weight (tonnes)", type: "number" },
-    { key: "waiting_time", label: "Waiting time", type: "text" },
-    { key: "destination_mill", label: "Destination (mill name)", type: "text" },
-    { key: "cost", label: "Cost", type: "number" }
+    { key: "destination_mill", label: "Destination (mill name)", type: "text" }
   ],
   "Trash Lining": [
-    { key: "row_spacing_for_trash_lines", label: "Row spacing for trash lines", type: "text" },
-    { key: "trash_quantity_coverage", label: "Trash quantity/coverage", type: "text" },
     { key: "purpose", label: "Purpose", type: "select", options: ["Moisture retention", "Weed suppression", "Nutrient recycling"] }
   ],
   "Trash Collection": [
     { key: "disposal_method", label: "Disposal method", type: "select", options: ["Burning", "Composting", "Baling", "Hauled away", "Mulching"] },
-    { key: "quantity_collected", label: "Quantity collected (tonnes/bales)", type: "text" },
     { key: "purpose", label: "Purpose", type: "select", options: ["Land prep for next season", "Sale", "Biomass use"] },
-    { key: "transport_vehicle", label: "Transport vehicle (if removed)", type: "text" },
-    { key: "cost", label: "Cost", type: "number" }
+    { key: "transport_vehicle", label: "Transport vehicle (if removed)", type: "text" }
   ]
 };
 
@@ -523,6 +466,96 @@ async function resolveSelectionParcelIds(feature, layerType) {
   return { parcelIds: (data || []).map((r) => r.id), blockId, isBlockSelection: true };
 }
 
+/** "" and non-numeric input become null (not 0/NaN) — used for every numeric
+ *  field in the Log Activity form and its write-back helpers below. */
+function numOrNull(v) {
+  if (v === "" || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Land-linked write-back for Planting — a plant crop always starts at ratoon
+ * 0, so that's reset on the plot regardless of what (if anything) used to be
+ * there, and the plot flips to cultivation_status "planted". Cane variety
+ * isn't a vsl_parcels column (only vsl_parcel_seasons has it), so once the
+ * update below has let trg_vsl_sync_parcel_season create/refresh the current
+ * season row, it's patched onto that row directly.
+ */
+async function applyPlantingWriteBack(parcelIds, properties) {
+  const today = new Date().toISOString().slice(0, 10);
+  const { error: updateErr } = await supabase
+    .from("vsl_parcels")
+    .update({
+      ratoon_number: 0,
+      planting_date: today,
+      cultivation_status: "planted",
+      cultivation_updated_at: new Date().toISOString()
+    })
+    .in("id", parcelIds);
+  if (updateErr) throw updateErr;
+
+  if (properties.cane_variety) {
+    for (const parcelId of parcelIds) {
+      const { data: seasonRows } = await supabase
+        .from("vsl_parcel_seasons")
+        .select("id")
+        .eq("parcel_id", parcelId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const seasonId = seasonRows?.[0]?.id;
+      if (seasonId) {
+        await supabase.from("vsl_parcel_seasons").update({ cane_variety: properties.cane_variety }).eq("id", seasonId);
+      }
+    }
+  }
+}
+
+/**
+ * Land-linked write-back for Harvesting — registers the harvest in
+ * vsl_harvests (the plot detail panel's Harvest History reads straight from
+ * that table), then bumps each plot's ratoon number and flips
+ * cultivation_status to "replant_renovation" ("Replant / renovation" in the
+ * UI — the closest existing status to "replant / regrow").
+ */
+async function applyHarvestingWriteBack(parcelIds, properties, createdBy) {
+  const today = new Date().toISOString().slice(0, 10);
+  const grossWeight = numOrNull(properties.gross_weight_tonnes)
+    ?? numOrNull(properties.net_weight_tonnes)
+    ?? numOrNull(properties.yield_tonnes);
+  if (grossWeight == null) {
+    throw new Error("Enter a gross weight, net weight, or yield (tonnes) before saving a Harvesting activity.");
+  }
+
+  const { data: parcelsNow, error: fetchErr } = await supabase
+    .from("vsl_parcels")
+    .select("id, ratoon_number")
+    .in("id", parcelIds);
+  if (fetchErr) throw fetchErr;
+
+  const harvestRows = (parcelsNow || []).map((p) => ({
+    parcel_id: p.id,
+    harvest_date: today,
+    gross_weight_tonnes: grossWeight,
+    ratoon_at_harvest: p.ratoon_number ?? 0,
+    created_by: createdBy
+  }));
+  const { error: harvestErr } = await supabase.from("vsl_harvests").insert(harvestRows);
+  if (harvestErr) throw harvestErr;
+
+  for (const p of parcelsNow || []) {
+    const { error: updErr } = await supabase
+      .from("vsl_parcels")
+      .update({
+        ratoon_number: (p.ratoon_number ?? 0) + 1,
+        cultivation_status: "replant_renovation",
+        cultivation_updated_at: new Date().toISOString()
+      })
+      .eq("id", p.id);
+    if (updErr) throw updErr;
+  }
+}
+
 async function buildParcelInfoHtml(parcelId) {
   const [parcelRes, alertsRes, seasonsRes, activitiesRes, harvestsRes, soilRes, mediaRes, docsRes, commentsRes] = await Promise.all([
     supabase.from("vsl_parcels").select("*").eq("id", parcelId).single(),
@@ -599,10 +632,9 @@ async function buildParcelInfoHtml(parcelId) {
 
   groups.push(buildCollapsibleGroup(`Activity History (${activities.length})`,
     buildKvTable([["Current activity", fmt(parcel.current_activity_name)]]) +
-    buildListTable(["Activity", "Status", "Completion", "Date"], activities.map((a) => [
+    buildListTable(["Activity", "Progress", "Date"], activities.map((a) => [
       fmt(a.activity_name),
-      fmt(a.status),
-      a.completion_value != null ? `${escapeHtml(a.completion_value)}${a.completion_unit === "percent" ? "%" : " ac"}` : "—",
+      a.completion_value != null ? `${escapeHtml(a.completion_value)}%` : "—",
       fmt(a.activity_date)
     ]))));
 
@@ -1936,22 +1968,32 @@ async function saveLogActivityForm(event) {
       if (v !== "") properties[el.dataset.key] = v;
     });
 
-    const numOrNull = (v) => (v === "" || v == null ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+    // Planting: ratoon number and germination date are never typed in — the
+    // write-back below always resets ratoon to 0, and germination date is
+    // approximated (sugarcane typically germinates ~30 days after planting)
+    // and stored on the activity row purely for reference.
+    if (activityName === "Planting") {
+      const germDate = new Date();
+      germDate.setDate(germDate.getDate() + 30);
+      properties.expected_germination_date = germDate.toISOString().slice(0, 10);
+    }
+
+    // Harvesting needs a weight to record in vsl_harvests — validate before
+    // the activity row (and the harvest record) gets written at all.
+    if (activityName === "Harvesting") {
+      const grossWeight = numOrNull(properties.gross_weight_tonnes)
+        ?? numOrNull(properties.net_weight_tonnes)
+        ?? numOrNull(properties.yield_tonnes);
+      if (grossWeight == null) {
+        throw new Error("Enter a gross weight, net weight, or yield (tonnes) before saving a Harvesting activity.");
+      }
+    }
 
     const basePayload = {
       activity_name: activityName,
-      task_description: common.task_description || null,
-      status: common.status || "planned",
-      method: common.method || null,
       team_size: numOrNull(common.team_size),
       number_of_machines: numOrNull(common.number_of_machines),
-      completion_unit: common.completion_unit || null,
       completion_value: numOrNull(common.completion_value),
-      due_date: common.due_date || null,
-      completed_date: common.completed_date || null,
-      estimated_cost: numOrNull(common.estimated_cost),
-      actual_cost: numOrNull(common.actual_cost),
-      currency: common.currency || null,
       challenges: common.challenges || null,
       comments: common.comments || null,
       activity_properties: properties,
@@ -1964,8 +2006,29 @@ async function saveLogActivityForm(event) {
     const { error } = await supabase.from("vsl_activities").insert(rows);
     if (error) throw error;
 
+    // Land-linked write-back — keeps the plot record (and, for Harvesting,
+    // the harvest history) in sync with what was just logged. The activity
+    // itself is already saved by this point, so a failure here is reported
+    // but doesn't mean the log entry was lost.
+    try {
+      if (activityName === "Planting") {
+        await applyPlantingWriteBack(parcelIds, properties);
+      } else if (activityName === "Harvesting") {
+        await applyHarvestingWriteBack(parcelIds, properties, currentUser.id);
+      }
+    } catch (writeBackErr) {
+      console.error("[Victoria] Activity logged, but plot write-back failed:", writeBackErr);
+      setStatus(statusEl, `Logged "${activityName}", but updating the plot record failed: ${writeBackErr.message}`, true);
+      closeLogActivityModal();
+      loadLayersFromDb();
+      return;
+    }
+
     setStatus(statusEl, `Logged "${activityName}" on ${rows.length} plot${rows.length === 1 ? "" : "s"}.`);
     closeLogActivityModal();
+    if (activityName === "Planting" || activityName === "Harvesting") {
+      loadLayersFromDb(); // ratoon number/cultivation status changed — refresh map labels & badges
+    }
   } catch (err) {
     if (errorEl) {
       errorEl.textContent = err?.message || "Failed to log activity.";

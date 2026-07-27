@@ -34,6 +34,9 @@ const WINDOW_FRAGMENTS = [
   // Moved out of mapLeftStack (see comment in the file) so the phone-width
   // rule that hides .map-left-stack contents can't swallow it.
   { parent: "body", url: "./windows/feature-info-panel.html" },
+  // Drill-down "full record" view opened from links inside the info panel
+  // above — sibling overlay, so it can sit on top of it.
+  { parent: "body", url: "./windows/record-detail-modal.html" },
 ];
 
 async function loadWindowFragments() {

@@ -2783,11 +2783,26 @@ select.search-panel__input {
   transform: translateY(-2px) scale(1.08);
   box-shadow: 0 6px 16px rgba(0,0,0,0.08);
 }
-/* Rectangular text-label variant used by the Edit Details modal's
-   Cancel/Save actions (instead of the round icon-only button). */
+/* Rectangular text-label variant used by modal footer actions (Save / Log
+   Activity / Log Alert) instead of the round icon-only button. Generous
+   min-width + padding so labels like "Log Activity" always fit on one line
+   with breathing room, instead of the button shrinking to the text and
+   the text wrapping/overlapping. */
 .futuristic-icon-btn--modal-pad {
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
+  padding: 0.7rem 1.75rem;
+  min-width: 168px;
+  border-radius: 9px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  width: auto;
+  height: auto;
+}
+@media (max-width: 480px) {
+  .futuristic-icon-btn--modal-pad {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
 }
 .futuristic-place-row {
   display: flex;
@@ -4642,15 +4657,21 @@ select.search-panel__input {
    this section.
    ============================================================= */
 
+/* "Computer window" chrome: a crisp outer frame, a slightly heavier shadow
+   that reads as a floating panel rather than a flat card, and clear
+   horizontal dividers between the header / tabs / body / footer bands —
+   the same visual grammar as a native OS dialog (title bar, content area,
+   button row), rather than one undifferentiated block. */
 .popWinMain {
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 14px;
   box-shadow:
-    0 4px 24px rgba(12, 40, 28, 0.13),
-    0 0 0 1px rgba(255, 255, 255, 0.7) inset;
+    0 16px 40px rgba(12, 40, 28, 0.22),
+    0 2px 8px rgba(12, 40, 28, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
   overflow: hidden;
   max-height: 100%;
   min-height: 0;
@@ -4671,7 +4692,9 @@ select.search-panel__input {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.75rem 0.85rem 0.6rem;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 
 .popWinHead__inner {
@@ -4722,10 +4745,19 @@ select.search-panel__input {
   background: rgba(255, 255, 255, 0.28);
 }
 
+/* Toolbar-style band (holds the activity/severity picker in place of tabs
+   on some windows) — a soft gradient plus an inset top highlight and a
+   bottom divider read as a distinct "toolbar" strip rather than a flat
+   solid bar, echoing a native window's title/toolbar separation. */
 .popWinTabs {
   display: flex;
   flex-shrink: 0;
-  background: var(--accent);
+  background: var(--accent); /* fallback for browsers without color-mix() */
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff 8%), var(--accent));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 1px 0 rgba(0, 0, 0, 0.16);
+  position: relative;
 }
 .popWinTabs[hidden] {
   display: none;
@@ -4754,11 +4786,17 @@ select.search-panel__input {
   padding: 0.85rem;
 }
 
+/* Footer button row — centered (was flex-end, which crowded buttons off to
+   one side) with a divider separating it from the body, echoing a native
+   dialog's button strip. Buttons themselves are sized in
+   .futuristic-icon-btn--modal-pad below so their label text always fits. */
 .popWinActionBtns {
   display: flex;
-  gap: 8px;
-  padding: 0.65rem 0.85rem;
-  justify-content: flex-end;
+  gap: 12px;
+  padding: 0.75rem 1rem;
+  justify-content: center;
+  border-top: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 .popWinActionBtns[hidden] {
   display: none;
@@ -4797,6 +4835,8 @@ select.search-panel__input {
   display: none !important;
 }
 
+/* Toolbar floats above the plot's label (see showParcelActionToolbar) —
+   this tail points back down at it. */
 .parcel-action-toolbar::after {
   content: "";
   position: absolute;
@@ -4889,8 +4929,42 @@ select.search-panel__input {
   max-height: min(82vh, 82dvh, 720px);
 }
 
+/* Record detail drill-down — same "cap height, let the body scroll"
+   treatment as the info panel above, just a shorter cap since a single
+   record's field list is much shorter than the whole grouped info panel. */
+#recordDetailPanel.popWinMain {
+  max-height: min(75vh, 75dvh, 560px);
+}
+
+/* First-column cells in the info panel's repeating groups (Alerts, Activity
+   History, Harvest History, Media, Comments) that open the record-detail
+   drill-down — styled as an obvious link rather than default table text. */
+.vsl-record-link {
+  color: var(--vsl-primary, #2e7d32);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(46, 125, 50, 0.35);
+  text-underline-offset: 2px;
+}
+.vsl-record-link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Alerts table's Severity cell, filled with color only while the alert is
+   still unresolved (open/investigating) — resolved alerts stay plain text. */
+.vsl-severity-chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+}
+
 @media (max-width: 480px) {
-  #featureInfoPanel.popWinMain {
+  #featureInfoPanel.popWinMain,
+  #recordDetailPanel.popWinMain {
     max-height: min(88vh, 88dvh);
     width: 100%;
     max-width: 100%;
@@ -4906,25 +4980,43 @@ select.search-panel__input {
 }
 .vsl-prop-table th {
   width: 46%;
+  /* Reasonable label padding — was inheriting .map-popup__table's generic
+     0.45rem/0.55rem, which read as oversized next to the zero-padding
+     input cells below. */
+  padding: 0.4rem 0.5rem;
 }
+/* Input cells get NO padding at all — the input/select/textarea fills the
+   cell edge-to-edge with no visible gap between it and the cell border
+   (previously the td kept .map-popup__table's padding while the control
+   inside had its own padding too, doubling up into a visible gap). */
 .vsl-prop-table td {
   background: #ffffff;
+  padding: 0;
 }
 .vsl-prop-table input,
 .vsl-prop-table select,
 .vsl-prop-table textarea {
+  display: block;
   width: 100%;
-  padding: 5px 7px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  height: 100%;
+  min-height: 2.2em;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 0;
   font: inherit;
   font-size: 0.82rem;
   background: #fff;
   color: var(--text);
+  box-sizing: border-box;
+}
+.vsl-prop-table input:focus,
+.vsl-prop-table select:focus,
+.vsl-prop-table textarea:focus {
+  outline: 2px solid var(--vsl-primary, #2e7d32);
+  outline-offset: -2px;
 }
 .vsl-prop-table textarea {
   resize: vertical;
-  min-height: 2.2em;
 }
 
 /* =============================================================

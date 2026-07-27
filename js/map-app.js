@@ -87,21 +87,23 @@ function cultivationKeyFromFeature(feature) {
 }
 
 /** Parcel label zoom staging: name-only until zoomed in past PARCEL_FULL_DETAIL_RES,
- *  then full "name\narea" label + ratoon/alert badges together. */
+ *  then full "name\narea\nR:n" label (+ an "Alerts(n)" line, see below). */
 const PARCEL_FULL_DETAIL_RES = 12;
 const PARCEL_NAME_ONLY_RES = 20;
 
-/** Ratoon-number badge fill — matches the green already used for parcel area/label text. */
-const RATOON_BADGE_COLOR = "#2e7d32";
+/** Multiplier (x font size) used for both the name/area/ratoon block's own
+ *  line spacing AND the Alerts(n) line's offset below it — kept as one
+ *  constant so the two can never drift out of sync with each other. */
+const LABEL_LINE_HEIGHT = 1.25;
 
-/** Alert badge fill by severity (vsl_alerts.severity: information | warning | critical). */
+/** Alert text-line color by severity (vsl_alerts.severity: information | warning | critical). */
 const ALERT_SEVERITY_COLORS = {
   critical: "#d32f2f",
   warning: "#f9a825",
   information: "#1976d2"
 };
 
-/** Interior anchor point for badge/label placement — handles Polygon and MultiPolygon. */
+/** Interior anchor point for label/text-line placement — handles Polygon and MultiPolygon. */
 function getFeatureInteriorPoint(geometry) {
   if (!geometry) return null;
   const type = geometry.getType();
@@ -111,78 +113,6 @@ function getFeatureInteriorPoint(geometry) {
     if (polys.length) return polys[0].getInteriorPoint();
   }
   return null;
-}
-
-/**
- * Ratoon-number + alert-severity badge styles, anchored above the parcel's
- * label point. Ratoon reads directly off the feature (ratoon_number is a
- * real column); alert fields (_alert_severity / _alert_count) are left as
- * no-ops until the alerts-fetch logic populates them on the feature — for
- * now the alert badge simply won't render if they're unset.
- */
-function buildParcelBadgeStyles(feature, geometry) {
-  const ip = getFeatureInteriorPoint(geometry);
-  if (!ip) return [];
-
-  const ratoonVal = feature.get("ratoon_number");
-  const hasRatoon = ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
-
-  const alertSeverity = feature.get("_alert_severity");
-  const alertCount = feature.get("_alert_count");
-  const hasAlert = !!alertSeverity && !!alertCount;
-
-  if (!hasRatoon && !hasAlert) return [];
-
-  const BADGE_RADIUS = 9;
-  const BADGE_UP = 26; // px above the label anchor
-  const BADGE_GAP = 20; // px between the two badges when both are shown
-
-  const styles = [];
-
-  if (hasRatoon) {
-    const dx = hasAlert ? -BADGE_GAP / 2 : 0;
-    styles.push(new ol.style.Style({
-      geometry: ip,
-      zIndex: 6,
-      image: new ol.style.Circle({
-        radius: BADGE_RADIUS,
-        fill: new ol.style.Fill({ color: RATOON_BADGE_COLOR }),
-        stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 }),
-        displacement: [dx, BADGE_UP]
-      }),
-      text: new ol.style.Text({
-        text: String(ratoonVal),
-        font: "800 10px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: "#ffffff" }),
-        offsetX: dx,
-        offsetY: -BADGE_UP
-      })
-    }));
-  }
-
-  if (hasAlert) {
-    const dx = hasRatoon ? BADGE_GAP / 2 : 0;
-    const fillColor = ALERT_SEVERITY_COLORS[alertSeverity] || ALERT_SEVERITY_COLORS.information;
-    styles.push(new ol.style.Style({
-      geometry: ip,
-      zIndex: 6,
-      image: new ol.style.Circle({
-        radius: BADGE_RADIUS,
-        fill: new ol.style.Fill({ color: fillColor }),
-        stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 }),
-        displacement: [dx, BADGE_UP]
-      }),
-      text: new ol.style.Text({
-        text: String(alertCount),
-        font: "800 10px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: "#ffffff" }),
-        offsetX: dx,
-        offsetY: -BADGE_UP
-      })
-    }));
-  }
-
-  return styles;
 }
 
 const parcelStatusState = {
@@ -256,10 +186,22 @@ const WEATHER_CONDITION_FIELD = {
 // vsl_activity_costs (see that table's migration). Team size/number of
 // machines/progress/comments/challenges are the only fields shown for every
 // activity regardless of which one is picked.
+//
+// Progress is an enum (0%, 10%, ... 100%), not free numeric input. When it's
+// anything other than 100%, an extra "Area covered" field appears (see
+// showWhen below) so a partially-done activity can record how much of the
+// plot's area was actually covered so far; that value is capped client-side
+// at the plot's own expected area + 5 (see renderLogActivityFields /
+// saveLogActivityForm) and stored in activity_properties (not a real
+// column) since it isn't part of the fixed vsl_activities schema.
+const PROGRESS_OPTIONS = Array.from({ length: 11 }, (_, i) => String(i * 10));
+const PROGRESS_OPTION_LABELS = PROGRESS_OPTIONS.map((v) => `${v}%`);
+
 const LOG_ACTIVITY_COMMON_FIELDS = [
   { key: "team_size", label: "Team size", type: "number" },
   { key: "number_of_machines", label: "Number of machines", type: "number" },
-  { key: "completion_value", label: "Progress (%)", type: "number" },
+  { key: "completion_value", label: "Progress (%)", type: "select", options: PROGRESS_OPTIONS, optionLabels: PROGRESS_OPTION_LABELS },
+  { key: "area_covered_acres", label: "Area covered (ac)", type: "number", showWhen: { key: "completion_value", notEquals: "100" } },
   { key: "comments", label: "Comments", type: "textarea" },
   { key: "challenges", label: "Challenges", type: "textarea" }
 ];
@@ -362,15 +304,17 @@ const ACTIVITY_PROPERTY_DEFS = {
     { key: "fuel_used", label: "Fuel used", type: "text" },
     { key: "operator_name", label: "Operator name", type: "text" }
   ],
-  // Ratoon number counts up and cultivation_status flips to "replant
-  // renovation" automatically on save (see saveLogActivityForm's Harvesting
-  // write-back), and a matching row is added to the plot's harvest history.
+  // Ratoon number isn't user-entered — the system already knows the plot's
+  // current ratoon number, so saveLogActivityForm reads it and writes it
+  // into activity_properties.ratoon_number automatically before the insert
+  // (see the Harvesting block there). It also counts up and
+  // cultivation_status flips to "replant renovation" automatically on save
+  // (see applyHarvestingWriteBack), and a matching row is added to the
+  // plot's harvest history. Only "Yield (tonnes)" is collected for weight —
+  // separate gross/net weight fields were removed as redundant.
   "Harvesting": [
     { key: "yield_tonnes", label: "Yield (tonnes)", type: "number" },
-    { key: "ratoon_number", label: "Ratoon number at harvest", type: "number" },
     { key: "brix_reading", label: "Brix reading", type: "number" },
-    { key: "gross_weight_tonnes", label: "Gross weight (tonnes)", type: "number" },
-    { key: "net_weight_tonnes", label: "Net weight (tonnes)", type: "number" },
     { key: "transport_vehicle", label: "Transport vehicle(s)", type: "text" },
     { key: "mill_destination", label: "Mill destination", type: "text" },
     WEATHER_CONDITION_FIELD
@@ -392,11 +336,25 @@ const ACTIVITY_PROPERTY_DEFS = {
 };
 
 /** Renders one <tr><th>label</th><td><input/></td></tr> row for a field def
- *  ({key, label, type: text|number|date|select|textarea, options?, optionLabels?, default?}).
- *  Shared by the Log Activity and Log Alert modals. */
+ *  ({key, label, type: text|number|date|select|textarea, options?, optionLabels?,
+ *  default?, min?, max?, allowNegative?, showWhen?: {key, notEquals}}).
+ *  Shared by the Log Activity and Log Alert modals.
+ *
+ *  Every number field gets min="0" unless def.allowNegative is true — none
+ *  of the activity properties (depths, quantities, counts, hours, weights,
+ *  pH, etc.) are ever legitimately negative, so this is the default rather
+ *  than something each def has to opt into.
+ *
+ *  showWhen lets a row hide itself until another field (in the same
+ *  container) has a value other than notEquals — used for the "Area
+ *  covered" field, which only makes sense while Progress isn't 100%. See
+ *  wireConditionalFieldVisibility, which actually applies this at render time. */
 function buildPropFieldRow(def) {
   const fieldId = `propField_${def.key}_${Math.random().toString(36).slice(2, 8)}`;
   let control;
+  const isNumber = def.type === "number";
+  const minAttr = isNumber && !def.allowNegative ? ` min="${def.min ?? 0}"` : "";
+  const maxAttr = isNumber && def.max != null ? ` max="${def.max}"` : "";
   if (def.type === "select") {
     const opts = (def.options || []).map((val, i) => {
       const optLabel = def.optionLabels ? def.optionLabels[i] : val;
@@ -407,9 +365,42 @@ function buildPropFieldRow(def) {
   } else if (def.type === "textarea") {
     control = `<textarea id="${fieldId}" class="vsl-prop-input" data-key="${escapeHtml(def.key)}" rows="2">${escapeHtml(def.default || "")}</textarea>`;
   } else {
-    control = `<input id="${fieldId}" class="vsl-prop-input" data-key="${escapeHtml(def.key)}" type="${def.type}" value="${escapeHtml(def.default || "")}">`;
+    control = `<input id="${fieldId}" class="vsl-prop-input" data-key="${escapeHtml(def.key)}" type="${def.type}" value="${escapeHtml(def.default || "")}"${minAttr}${maxAttr}>`;
   }
-  return `<tr><th><label for="${fieldId}">${escapeHtml(def.label)}</label></th><td>${control}</td></tr>`;
+  const rowAttrs = def.showWhen
+    ? ` data-show-when-key="${escapeHtml(def.showWhen.key)}" data-show-when-not-equals="${escapeHtml(def.showWhen.notEquals)}"`
+    : "";
+  return `<tr${rowAttrs}><th><label for="${fieldId}">${escapeHtml(def.label)}</label></th><td>${control}</td></tr>`;
+}
+
+/** Wires up any showWhen-driven rows inside a rendered field table: hides a
+ *  row while its controlling field's value equals notEquals... no wait —
+ *  shows the row EXCEPT when the controlling field's value equals notEquals.
+ *  (Named from the controlling field's perspective: "show when [key] is not
+ *  equal to [notEquals]".) Safe to call on any container; no-ops if there
+ *  are no conditional rows in it. */
+function wireConditionalFieldVisibility(container) {
+  if (!container) return;
+  const rows = Array.from(container.querySelectorAll("tr[data-show-when-key]"));
+  if (!rows.length) return;
+  const apply = () => {
+    rows.forEach((row) => {
+      const key = row.dataset.showWhenKey;
+      const notEquals = row.dataset.showWhenNotEquals;
+      const controller = container.querySelector(`[data-key="${key}"]`);
+      const val = controller ? controller.value : "";
+      row.hidden = val === notEquals;
+    });
+  };
+  const seen = new Set();
+  rows.forEach((row) => {
+    const key = row.dataset.showWhenKey;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const controller = container.querySelector(`[data-key="${key}"]`);
+    controller?.addEventListener("change", apply);
+  });
+  apply();
 }
 
 // ---------------------------------------------------------------------------
@@ -442,15 +433,155 @@ function buildKvTable(rows) {
   return `<table class="map-popup__table"><tbody>${trs}</tbody></table>`;
 }
 
-/** rows: [[cellHtml, ...], ...] — cells are trusted (pass through fmt()/escapeHtml() first). */
-function buildListTable(headers, rows, emptyMsg = "No records yet.") {
+/** rows: [[cellHtml, ...], ...] — cells are trusted (pass through fmt()/escapeHtml() first).
+ *  colWidths: optional array of percentages (one per header) — e.g. [40, 30, 30] for
+ *  3-column tables, whose default auto layout otherwise tends to squeeze the last
+ *  column (often a date) down to ~20%. 2-column tables look fine with the default
+ *  ~40/60 from .map-popup__table's CSS and don't need this. */
+function buildListTable(headers, rows, emptyMsg = "No records yet.", colWidths = null) {
   if (!rows.length) return `<p class="map-popup__empty">${escapeHtml(emptyMsg)}</p>`;
-  const thead = `<tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
+  const thead = `<tr>${headers.map((h, i) => {
+    const widthAttr = colWidths && colWidths[i] != null ? ` style="width:${colWidths[i]}%"` : "";
+    return `<th${widthAttr}>${escapeHtml(h)}</th>`;
+  }).join("")}</tr>`;
   const trs = rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("");
   return `<table class="map-popup__table"><thead>${thead}</thead><tbody>${trs}</tbody></table>`;
 }
 
+const THREE_COL_WIDTHS = [40, 30, 30];
+
 const HISTORY_AUDIT_PLACEHOLDER = `<p class="map-popup__empty">Change history isn't tracked yet for this record.</p>`;
+
+// ---------------------------------------------------------------------------
+// Record detail drill-down (windows/record-detail-modal.html) — clicking the
+// first-column cell of a repeating group (Alerts, Activity History, Harvest
+// History, Media, Comments) in the parcel info panel opens this modal with
+// every field of that one record. infoPanelRecords holds the raw rows the
+// currently-open info panel was built from, keyed the same way as
+// RECORD_LIST_KEY below; buildParcelInfoHtml populates it, and the delegated
+// click listener set up in setupRecordDetailModal() reads back into it using
+// each link's data-record-kind/data-record-index attributes.
+// ---------------------------------------------------------------------------
+let infoPanelRecords = {};
+
+const RECORD_LIST_KEY = { alert: "alerts", activity: "activities", harvest: "harvests", media: "media", comment: "comments" };
+const RECORD_DETAIL_TITLES = { alert: "Alert details", activity: "Activity details", harvest: "Harvest details", media: "Media details", comment: "Comment details" };
+const RECORD_DETAIL_ICONS = { alert: "fa-triangle-exclamation", activity: "fa-list-check", harvest: "fa-wheat-awn", media: "fa-image", comment: "fa-comment" };
+
+/** Wraps a table cell's text in a link that opens the drill-down detail
+ *  modal for that specific record — used for the first column of every
+ *  repeating group in the parcel info panel. `label` is trusted (already
+ *  run through fmt()/escapeHtml()). */
+function buildRecordLink(kind, index, label) {
+  return `<a href="#" class="vsl-record-link" data-record-kind="${escapeHtml(kind)}" data-record-index="${index}">${label}</a>`;
+}
+
+/** snake_case_key -> "Snake case key" — fallback label for any DB column
+ *  that isn't explicitly named below, so the drill-down view never just
+ *  silently drops an unfamiliar field. */
+function humanizeKey(key) {
+  const s = String(key).replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Raw ids/FKs that are internal plumbing, not something worth showing the
+// user spelled out in the drill-down view.
+const RECORD_DETAIL_SKIP_KEYS = new Set(["id", "parcel_id", "block_id", "target_id", "layer_type", "entity_type", "entity_id", "activity_properties"]);
+
+const RECORD_DETAIL_LABELS = {
+  alert: { alert_name: "Alert name", note: "Description", status: "Status", severity: "Severity", created_at: "Logged", resolved_at: "Resolved at", created_by: "Logged by", resolved_by: "Resolved by" },
+  activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", completion_value: "Progress (%)", challenges: "Challenges", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
+  harvest: { harvest_date: "Harvest date", gross_weight_tonnes: "Yield (tonnes)", ratoon_at_harvest: "Ratoon", created_at: "Logged at", created_by: "Logged by" },
+  media: { media_type: "Type", caption: "Caption", captured_at: "Captured", file_url: "File", created_at: "Uploaded at", created_by: "Uploaded by" },
+  comment: { comment_type: "Type", comment_text: "Comment", is_resolved: "Resolved", created_at: "Date", created_by: "Author" }
+};
+
+/** Builds the [[label, valueHtml], ...] rows for the drill-down detail
+ *  view: every real column becomes a row (skipping internal FK/id
+ *  plumbing), plus — for activities specifically — every key inside
+ *  activity_properties flattened out using the same field labels the Log
+ *  Activity form itself uses (ACTIVITY_PROPERTY_DEFS), so the full set of
+ *  whatever was actually logged is visible, not just the shared columns. */
+function buildRecordDetailRows(kind, record) {
+  const labels = RECORD_DETAIL_LABELS[kind] || {};
+  const rows = [];
+
+  for (const [key, value] of Object.entries(record)) {
+    if (RECORD_DETAIL_SKIP_KEYS.has(key)) continue;
+    const label = labels[key] || humanizeKey(key);
+
+    let display;
+    if (kind === "alert" && key === "severity") display = fmt(SEVERITY_LABELS[value] || value);
+    else if (key === "is_resolved") display = value ? "Resolved" : "Open";
+    else if (key === "file_url" && value) display = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener">Open</a>`;
+    else if (value != null && /(_at|_date)$/.test(key)) display = fmt(String(value).length > 10 ? String(value).slice(0, 16).replace("T", " ") : value);
+    else display = fmt(value);
+
+    rows.push([label, display]);
+  }
+
+  if (kind === "activity" && record.activity_properties && typeof record.activity_properties === "object") {
+    const defs = ACTIVITY_PROPERTY_DEFS[record.activity_name] || [];
+    const labelByKey = {};
+    defs.forEach((d) => { labelByKey[d.key] = d.label; });
+    // These aren't in ACTIVITY_PROPERTY_DEFS (area_covered_acres is a common
+    // field; ratoon_number/expected_germination_date are auto-filled by the
+    // write-back logic, never shown as inputs) but still deserve a label.
+    labelByKey.area_covered_acres = labelByKey.area_covered_acres || "Area covered (ac)";
+    labelByKey.ratoon_number = labelByKey.ratoon_number || "Ratoon number";
+    labelByKey.expected_germination_date = labelByKey.expected_germination_date || "Expected germination date";
+
+    for (const [key, value] of Object.entries(record.activity_properties)) {
+      if (value === "" || value == null) continue;
+      rows.push([labelByKey[key] || humanizeKey(key), fmt(value)]);
+    }
+  }
+
+  return rows;
+}
+
+function openRecordDetailModal(kind, record) {
+  const overlay = document.getElementById("recordDetailOverlay");
+  const inner = document.getElementById("recordDetailInner");
+  const titleEl = document.getElementById("recordDetailTitle");
+  const iconEl = document.getElementById("recordDetailIcon");
+  if (!overlay || !inner || !record) return;
+  if (titleEl) titleEl.textContent = RECORD_DETAIL_TITLES[kind] || "Record details";
+  if (iconEl) iconEl.innerHTML = `<i class="fas ${RECORD_DETAIL_ICONS[kind] || "fa-circle-info"}" aria-hidden="true"></i>`;
+  inner.innerHTML = buildKvTable(buildRecordDetailRows(kind, record));
+  overlay.hidden = false;
+}
+
+function closeRecordDetailModal() {
+  const overlay = document.getElementById("recordDetailOverlay");
+  if (overlay) overlay.hidden = true;
+}
+
+/** Delegated click listener lives on #featureInfoPanelInner (the info
+ *  panel's body, which is fully re-rendered via innerHTML on every open) so
+ *  it keeps working across re-renders without needing to be re-wired. */
+function setupRecordDetailModal() {
+  const overlay = document.getElementById("recordDetailOverlay");
+  const closeBtn = document.getElementById("recordDetailCloseBtn");
+  const panelInner = document.getElementById("featureInfoPanelInner");
+  if (!overlay) return;
+
+  closeBtn?.addEventListener("click", () => closeRecordDetailModal());
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !overlay.hidden) closeRecordDetailModal();
+  });
+
+  panelInner?.addEventListener("click", (ev) => {
+    const link = ev.target.closest("a[data-record-kind]");
+    if (!link) return;
+    ev.preventDefault();
+    const kind = link.dataset.recordKind;
+    const index = Number(link.dataset.recordIndex);
+    const list = infoPanelRecords[RECORD_LIST_KEY[kind]] || [];
+    const record = list[index];
+    if (record) openRecordDetailModal(kind, record);
+  });
+}
 
 /** Given the selected feature/layer, resolves which vsl_parcels.id(s) an
  *  activity/alert should be logged against. A parcel selection is just
@@ -520,11 +651,9 @@ async function applyPlantingWriteBack(parcelIds, properties) {
  */
 async function applyHarvestingWriteBack(parcelIds, properties, createdBy) {
   const today = new Date().toISOString().slice(0, 10);
-  const grossWeight = numOrNull(properties.gross_weight_tonnes)
-    ?? numOrNull(properties.net_weight_tonnes)
-    ?? numOrNull(properties.yield_tonnes);
-  if (grossWeight == null) {
-    throw new Error("Enter a gross weight, net weight, or yield (tonnes) before saving a Harvesting activity.");
+  const yieldWeight = numOrNull(properties.yield_tonnes);
+  if (yieldWeight == null) {
+    throw new Error("Enter a yield (tonnes) before saving a Harvesting activity.");
   }
 
   const { data: parcelsNow, error: fetchErr } = await supabase
@@ -536,7 +665,7 @@ async function applyHarvestingWriteBack(parcelIds, properties, createdBy) {
   const harvestRows = (parcelsNow || []).map((p) => ({
     parcel_id: p.id,
     harvest_date: today,
-    gross_weight_tonnes: grossWeight,
+    gross_weight_tonnes: yieldWeight,
     ratoon_at_harvest: p.ratoon_number ?? 0,
     created_by: createdBy
   }));
@@ -603,15 +732,28 @@ async function buildParcelInfoHtml(parcelId) {
     ["Last updated", fmt(parcel.cultivation_updated_at ? String(parcel.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
   ]), { open: true }));
 
+  // Name/Status/Severity only — Description and Logged date are still
+  // there, just one click away via the record-detail drill-down (the link
+  // on the Name cell) rather than crowding the summary row. Severity is
+  // filled with its color whenever the alert is still unresolved (open or
+  // investigating) so an urgent one stands out at a glance.
   groups.push(buildCollapsibleGroup(`Alerts (${alerts.length})`, buildListTable(
-    ["Severity", "Name", "Description", "Status", "Logged"],
-    alerts.map((a) => [
-      fmt(SEVERITY_LABELS[a.severity] || a.severity),
-      fmt(a.alert_name),
-      fmt(a.note),
-      fmt(a.status),
-      fmt(a.created_at ? String(a.created_at).slice(0, 10) : null)
-    ])
+    ["Name", "Status", "Severity"],
+    alerts.map((a, i) => {
+      const unresolved = a.status === "open" || a.status === "investigating";
+      const sevLabel = fmt(SEVERITY_LABELS[a.severity] || a.severity);
+      const sevColor = ALERT_SEVERITY_COLORS[a.severity] || ALERT_SEVERITY_COLORS.information;
+      const sevCell = unresolved
+        ? `<span class="vsl-severity-chip" style="background:${sevColor}">${sevLabel}</span>`
+        : sevLabel;
+      return [
+        buildRecordLink("alert", i, fmt(a.alert_name)),
+        fmt(a.status),
+        sevCell
+      ];
+    }),
+    "No alerts yet.",
+    THREE_COL_WIDTHS
   )));
 
   groups.push(buildCollapsibleGroup("Current Crop Cycle", currentSeason
@@ -632,19 +774,21 @@ async function buildParcelInfoHtml(parcelId) {
 
   groups.push(buildCollapsibleGroup(`Activity History (${activities.length})`,
     buildKvTable([["Current activity", fmt(parcel.current_activity_name)]]) +
-    buildListTable(["Activity", "Progress", "Date"], activities.map((a) => [
-      fmt(a.activity_name),
+    buildListTable(["Activity", "Progress", "Date"], activities.map((a, i) => [
+      buildRecordLink("activity", i, fmt(a.activity_name)),
       a.completion_value != null ? `${escapeHtml(a.completion_value)}%` : "—",
       fmt(a.activity_date)
-    ]))));
+    ]), "No activities logged yet.", THREE_COL_WIDTHS)));
 
   groups.push(buildCollapsibleGroup(`Harvest History (${harvests.length})`, buildListTable(
-    ["Date", "Gross weight", "Ratoon at harvest"],
-    harvests.map((h) => [
-      fmt(h.harvest_date),
+    ["Date", "Gross weight", "Ratoon"],
+    harvests.map((h, i) => [
+      buildRecordLink("harvest", i, fmt(h.harvest_date)),
       h.gross_weight_tonnes != null ? `${escapeHtml(h.gross_weight_tonnes)} t` : "—",
       fmt(h.ratoon_at_harvest, { fallback: "0" })
-    ])
+    ]),
+    "No harvests logged yet.",
+    THREE_COL_WIDTHS
   )));
 
   groups.push(buildCollapsibleGroup(`Soil & Land (${soilTests.length})`, buildListTable(
@@ -658,7 +802,7 @@ async function buildParcelInfoHtml(parcelId) {
 
   groups.push(buildCollapsibleGroup(`Media (${media.length})`, buildListTable(
     ["Type", "Caption", "Captured", "File"],
-    media.map((m) => [fmt(m.media_type), fmt(m.caption), fmt(m.captured_at ? String(m.captured_at).slice(0, 10) : null),
+    media.map((m, i) => [buildRecordLink("media", i, fmt(m.media_type)), fmt(m.caption), fmt(m.captured_at ? String(m.captured_at).slice(0, 10) : null),
       m.file_url ? `<a href="${escapeHtml(m.file_url)}" target="_blank" rel="noopener">Open</a>` : "—"])
   )));
 
@@ -670,10 +814,15 @@ async function buildParcelInfoHtml(parcelId) {
 
   groups.push(buildCollapsibleGroup(`Comments (${comments.length})`, buildListTable(
     ["Type", "Comment", "Status", "Date"],
-    comments.map((c) => [fmt(c.comment_type), fmt(c.comment_text), c.is_resolved ? "Resolved" : "Open", fmt(c.created_at ? String(c.created_at).slice(0, 10) : null)])
+    comments.map((c, i) => [buildRecordLink("comment", i, fmt(c.comment_type)), fmt(c.comment_text), c.is_resolved ? "Resolved" : "Open", fmt(c.created_at ? String(c.created_at).slice(0, 10) : null)])
   )));
 
   groups.push(buildCollapsibleGroup("History / Audit", HISTORY_AUDIT_PLACEHOLDER));
+
+  // Drives the record-detail drill-down's click handler (see
+  // setupRecordDetailModal) — the links just rendered above reference rows
+  // in these same arrays by index.
+  infoPanelRecords = { alerts, activities, harvests, media, comments };
 
   return groups.join("");
 }
@@ -814,6 +963,10 @@ async function buildBlockInfoHtml(blockId) {
   )));
   groups.push(buildCollapsibleGroup("History / Audit", HISTORY_AUDIT_PLACEHOLDER));
 
+  // Block view has no per-row drill-down links, so nothing here would ever
+  // read this — reset it anyway so a stale parcel's records can't linger.
+  infoPanelRecords = {};
+
   return groups.join("");
 }
 
@@ -944,26 +1097,70 @@ const parcelsLayer = new ol.layer.Vector({
     }));
 
     // Two-stage label reveal while zooming in:
-    //  - PARCEL_NAME_ONLY_RES..PARCEL_FULL_DETAIL_RES: name only (compact,
-    //    same visual weight the ratoon badge will later occupy that spot with).
-    //  - <= PARCEL_FULL_DETAIL_RES (or highlighted): full "name\narea" label
-    //    PLUS the ratoon/alert badges — all of the detail appears together.
+    //  - PARCEL_NAME_ONLY_RES..PARCEL_FULL_DETAIL_RES: name only (compact).
+    //  - <= PARCEL_FULL_DETAIL_RES (or highlighted): full "name\narea\nR:n"
+    //    label, plus a 4th "Alerts(n)" line (its own Style/color) when the
+    //    plot has an unresolved alert — see below. No more circle badges at
+    //    all now; both ratoon and alerts are plain stacked text lines.
     const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
     const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
 
+    // Anchor every text line at the same guaranteed-inside-the-polygon
+    // point (rather than leaving geometry unset) so label/ratoon/alert text
+    // is never at the mercy of OL's own default anchor-on-unset-geometry
+    // behavior, which could diverge from this point on large/concave plots.
+    const labelIp = getFeatureInteriorPoint(feature.getGeometry());
+
     let textStyle = null;
+    let alertLineStyle = null;
     if (hi || resolution <= PARCEL_FULL_DETAIL_RES) {
       const expArea = feature.get("expected_area_acres");
       const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
-      const text = area ? `${label}\n${area}` : label;
+      const ratoonVal = feature.get("ratoon_number");
+      const hasRatoon = ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
+      const ratoonLine = hasRatoon ? `R:${ratoonVal}` : null;
+      let text = area ? `${label}\n${area}` : label;
+      let lineCount = area ? 2 : 1;
+      if (ratoonLine) { text += `\n${ratoonLine}`; lineCount += 1; }
 
+      const fontPx = hi ? 12 : 11;
+      const lineHeightPx = fontPx * LABEL_LINE_HEIGHT;
       textStyle = new ol.style.Text({
         text,
-        font: hi ? "700 12px Inter, sans-serif" : "600 11px Inter, sans-serif",
+        font: `${hi ? "700" : "600"} ${fontPx}px Inter, sans-serif`,
         fill: new ol.style.Fill({ color: hi ? "#f57f17" : textColor }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: hi ? 4 : 3 }),
-        overflow: true
+        overflow: true,
+        // Explicit, so the offset math below (which assumes this exact
+        // multiplier) can't drift out of sync with whatever line spacing
+        // the canvas/OL would otherwise pick as its own default.
+        lineHeight: LABEL_LINE_HEIGHT
       });
+
+      // Alerts line — its own Text/Style (not appended into the string
+      // above) so it can be colored by severity independently of the
+      // name/area/ratoon block, which is always one solid color.
+      const alertSeverity = feature.get("_alert_severity");
+      const alertCount = feature.get("_alert_count");
+      if (alertSeverity && alertCount) {
+        const alertColor = ALERT_SEVERITY_COLORS[alertSeverity] || ALERT_SEVERITY_COLORS.information;
+        // textStyle above is vertically CENTERED on labelIp (OL's default
+        // for multi-line point text), not top-aligned to it — so the gap to
+        // the next line has to be measured from the middle of that block
+        // (half its height) plus half this line's own height, not from
+        // lineCount full line-heights (which was overshooting by half a
+        // line-height, the "too offset from area" gap that was reported).
+        const gapPx = 2;
+        const alertOffsetY = ((lineCount + 1) / 2) * lineHeightPx + gapPx;
+        alertLineStyle = new ol.style.Text({
+          text: `Alerts(${alertCount})`,
+          font: `800 ${fontPx}px Inter, sans-serif`,
+          fill: new ol.style.Fill({ color: alertColor }),
+          stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+          overflow: true,
+          offsetY: alertOffsetY
+        });
+      }
     } else if (resolution <= PARCEL_NAME_ONLY_RES) {
       textStyle = new ol.style.Text({
         text: label,
@@ -974,13 +1171,27 @@ const parcelsLayer = new ol.layer.Vector({
       });
     }
 
+    // Polygon's second (colored) outline — kept on the feature's own
+    // geometry (a Point geometry has nothing to stroke).
     styles.push(new ol.style.Style({
-      stroke: new ol.style.Stroke({ color: hi ? "#f9a825" : strokeColor, width: strokeWidth }),
-      text: textStyle
+      stroke: new ol.style.Stroke({ color: hi ? "#f9a825" : strokeColor, width: strokeWidth })
     }));
 
-    if (hi || resolution <= PARCEL_FULL_DETAIL_RES) {
-      styles.push(...buildParcelBadgeStyles(feature, feature.getGeometry()));
+    // Label text (and the alerts line, if any) are their own Style objects,
+    // explicitly anchored at labelIp rather than sharing the polygon-stroke
+    // Style or falling back to OL's default text-anchor-on-unset-geometry
+    // behavior.
+    if (textStyle) {
+      styles.push(new ol.style.Style({
+        geometry: labelIp || undefined,
+        text: textStyle
+      }));
+    }
+    if (alertLineStyle) {
+      styles.push(new ol.style.Style({
+        geometry: labelIp || undefined,
+        text: alertLineStyle
+      }));
     }
 
     if (hi || resolution <= 4) {
@@ -1778,8 +1989,10 @@ function setupParcelStatusPanel() {
   const tabParcels = document.getElementById("modifyTabParcels");
   const tabBlocks = document.getElementById("modifyTabBlocks");
 
+  // Cancel button was removed from the footer (see edit-details-modal.html) —
+  // the header X close button is the only close/cancel affordance now, to
+  // avoid two controls doing the exact same thing.
   const modalCloseBtn = document.getElementById("editDetailsCloseBtn");
-  const modalCancelBtn = document.getElementById("editDetailsCancelBtn");
   const modalForm = document.getElementById("editDetailsForm");
 
   deleteBtn?.addEventListener("click", async () => {
@@ -1859,7 +2072,6 @@ function setupParcelStatusPanel() {
   modifyBtn?.addEventListener("click", () => openEditDetailsModal());
 
   modalCloseBtn?.addEventListener("click", () => closeEditDetailsModal());
-  modalCancelBtn?.addEventListener("click", () => closeEditDetailsModal());
   modalForm?.addEventListener("submit", (e) => saveEditDetailsForm(e));
 }
 
@@ -1888,9 +2100,25 @@ function renderLogActivityFields(activityName) {
   }
 
   commonBody.innerHTML = LOG_ACTIVITY_COMMON_FIELDS.map(buildPropFieldRow).join("");
+  wireConditionalFieldVisibility(commonBody);
+
+  // Area covered can't exceed the selected plot's (or block's) own expected
+  // area + 5 acres — set that cap as the input's max here, once the feature
+  // whose area it's bounded by is known (also enforced again on save).
+  const areaCoveredInput = commonBody.querySelector('[data-key="area_covered_acres"]');
+  if (areaCoveredInput) {
+    const ownArea = Number(logActivityState.feature?.get("expected_area_acres"));
+    if (Number.isFinite(ownArea)) {
+      areaCoveredInput.max = String(ownArea + 5);
+    } else {
+      areaCoveredInput.removeAttribute("max");
+    }
+  }
+
   const extra = ACTIVITY_PROPERTY_DEFS[activityName] || [];
   if (extra.length) {
     propsBody.innerHTML = extra.map(buildPropFieldRow).join("");
+    wireConditionalFieldVisibility(propsBody);
     if (propsTable) propsTable.hidden = false;
   } else {
     propsBody.innerHTML = "";
@@ -1967,6 +2195,20 @@ async function saveLogActivityForm(event) {
       if (v !== "") properties[el.dataset.key] = v;
     });
 
+    // Area covered only applies (and is only visible) while progress isn't
+    // 100% — ignore any stale value if progress got set back to 100 without
+    // the field being cleared, and cap it at the plot's own area + 5.
+    if (common.completion_value !== "100" && common.area_covered_acres !== "") {
+      const areaCovered = numOrNull(common.area_covered_acres);
+      if (areaCovered != null) {
+        const ownArea = Number(feature.get("expected_area_acres"));
+        if (Number.isFinite(ownArea) && areaCovered > ownArea + 5) {
+          throw new Error(`Area covered can't exceed the plot's area + 5 (max ${(ownArea + 5).toFixed(2)} ac).`);
+        }
+        properties.area_covered_acres = areaCovered;
+      }
+    }
+
     // Planting: ratoon number and germination date are never typed in — the
     // write-back below always resets ratoon to 0, and germination date is
     // approximated (sugarcane typically germinates ~30 days after planting)
@@ -1977,15 +2219,24 @@ async function saveLogActivityForm(event) {
       properties.expected_germination_date = germDate.toISOString().slice(0, 10);
     }
 
-    // Harvesting needs a weight to record in vsl_harvests — validate before
-    // the activity row (and the harvest record) gets written at all.
+    // Harvesting needs a yield to record in vsl_harvests — validate before
+    // the activity row (and the harvest record) gets written at all. Ratoon
+    // number is never typed in either — it's read from each plot's current
+    // ratoon_number and stamped into that plot's own activity_properties
+    // below, purely for the record (applyHarvestingWriteBack is what
+    // actually bumps the real ratoon_number column afterwards).
+    let harvestRatoonByParcel = null;
     if (activityName === "Harvesting") {
-      const grossWeight = numOrNull(properties.gross_weight_tonnes)
-        ?? numOrNull(properties.net_weight_tonnes)
-        ?? numOrNull(properties.yield_tonnes);
-      if (grossWeight == null) {
-        throw new Error("Enter a gross weight, net weight, or yield (tonnes) before saving a Harvesting activity.");
+      const yieldWeight = numOrNull(properties.yield_tonnes);
+      if (yieldWeight == null) {
+        throw new Error("Enter a yield (tonnes) before saving a Harvesting activity.");
       }
+      const { data: parcelsNow, error: fetchErr } = await supabase
+        .from("vsl_parcels")
+        .select("id, ratoon_number")
+        .in("id", parcelIds);
+      if (fetchErr) throw fetchErr;
+      harvestRatoonByParcel = new Map((parcelsNow || []).map((p) => [String(p.id), p.ratoon_number ?? 0]));
     }
 
     const basePayload = {
@@ -1995,13 +2246,17 @@ async function saveLogActivityForm(event) {
       completion_value: numOrNull(common.completion_value),
       challenges: common.challenges || null,
       comments: common.comments || null,
-      activity_properties: properties,
       activity_date: new Date().toISOString().slice(0, 10),
       created_by: currentUser.id,
       block_id: blockId || null
     };
 
-    const rows = parcelIds.map((parcelId) => ({ ...basePayload, parcel_id: parcelId }));
+    const rows = parcelIds.map((parcelId) => {
+      const rowProperties = harvestRatoonByParcel
+        ? { ...properties, ratoon_number: harvestRatoonByParcel.get(String(parcelId)) ?? 0 }
+        : properties;
+      return { ...basePayload, activity_properties: rowProperties, parcel_id: parcelId };
+    });
     const { error } = await supabase.from("vsl_activities").insert(rows);
     if (error) throw error;
 
@@ -2041,14 +2296,14 @@ async function saveLogActivityForm(event) {
 function setupLogActivityModal() {
   const modal = document.getElementById("logActivityModal");
   const select = document.getElementById("logActivitySelect");
+  // Cancel button was removed from the footer — the header X close button
+  // is the only close/cancel affordance now (was a redundant duplicate).
   const closeBtn = document.getElementById("logActivityCloseBtn");
-  const cancelBtn = document.getElementById("logActivityCancelBtn");
   const form = document.getElementById("logActivityForm");
   if (!modal) return;
 
   select?.addEventListener("change", () => renderLogActivityFields(select.value));
   closeBtn?.addEventListener("click", () => closeLogActivityModal());
-  cancelBtn?.addEventListener("click", () => closeLogActivityModal());
   form?.addEventListener("submit", (e) => saveLogActivityForm(e));
 }
 
@@ -2175,14 +2430,14 @@ async function saveLogAlertForm(event) {
 function setupLogAlertModal() {
   const modal = document.getElementById("logAlertModal");
   const select = document.getElementById("logAlertSeveritySelect");
+  // Cancel button was removed from the footer — the header X close button
+  // is the only close/cancel affordance now (was a redundant duplicate).
   const closeBtn = document.getElementById("logAlertCloseBtn");
-  const cancelBtn = document.getElementById("logAlertCancelBtn");
   const form = document.getElementById("logAlertForm");
   if (!modal) return;
 
   select?.addEventListener("change", () => renderLogAlertFields(select.value));
   closeBtn?.addEventListener("click", () => closeLogAlertModal());
-  cancelBtn?.addEventListener("click", () => closeLogAlertModal());
   form?.addEventListener("submit", (e) => saveLogAlertForm(e));
 }
 
@@ -2192,6 +2447,23 @@ function closeInfoPopup() {
   if (inner) inner.innerHTML = "";
   if (overlay) overlay.hidden = true;
   hideParcelActionToolbar();
+}
+
+/** Rough half-height (in px) of the name/area/ratoon(/alerts) label block
+ *  for a given feature, used to lift the action toolbar clear of it. Mirrors
+ *  the line-count logic in the parcels layer's style function; assumes the
+ *  non-highlighted 11px font since a plain single-click selection (the only
+ *  time this toolbar shows) isn't necessarily in the "hi" highlighted state. */
+function estimateParcelLabelHalfHeightPx(feature) {
+  const fontPx = 11;
+  const lineHeightPx = fontPx * LABEL_LINE_HEIGHT;
+  let lines = 2; // name + area — a safe default/upper bound even if area is blank
+  const ratoonVal = feature.get("ratoon_number");
+  if (ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "") lines += 1;
+  const alertSeverity = feature.get("_alert_severity");
+  const alertCount = feature.get("_alert_count");
+  if (alertSeverity && alertCount) lines += 1;
+  return (lines * lineHeightPx) / 2;
 }
 
 /**
@@ -2204,10 +2476,23 @@ function showParcelActionToolbar(feature) {
   const el = document.getElementById("parcelActionToolbar");
   const geometry = feature?.getGeometry?.();
   if (!el || !parcelActionOverlay || !geometry) return;
+  // Anchor horizontally/vertically on the same guaranteed-inside-the-shape
+  // point the plot's label uses (getFeatureInteriorPoint) — a bounding-box
+  // based anchor (extent midpoint/top) doesn't work reliably here, since
+  // for an irregular/triangular plot the box can extend well beyond the
+  // shape itself, landing the toolbar over a neighboring plot.
+  const ip = getFeatureInteriorPoint(geometry);
   const extent = geometry.getExtent();
-  const topCenter = [(extent[0] + extent[2]) / 2, extent[3]];
+  const anchor = ip ? ip.getCoordinates() : [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
+
+  // The label block is vertically centered on that same anchor point, so
+  // "above the label" means clearing half its height (not sitting right on
+  // top of the anchor, which covers the name/area text) plus a small gap.
+  const gapPx = 10;
+  parcelActionOverlay.setOffset([0, -(estimateParcelLabelHalfHeightPx(feature) + gapPx)]);
+
   el.hidden = false;
-  parcelActionOverlay.setPosition(topCenter);
+  parcelActionOverlay.setPosition(anchor);
 }
 
 function hideParcelActionToolbar() {
@@ -2220,10 +2505,16 @@ function setupParcelActionToolbar() {
   const el = document.getElementById("parcelActionToolbar");
   if (!el) return;
 
+  // "bottom-center" so the toolbar's bottom edge sits at the given anchor
+  // coordinate, then showParcelActionToolbar sets a per-feature negative Y
+  // offset (via setOffset) that lifts it just clear of the label block
+  // instead of covering it. The offset is set dynamically per-show (it
+  // depends on how many lines that feature's label has), so the value here
+  // is just a sane pre-first-show default.
   parcelActionOverlay = new ol.Overlay({
     element: el,
     positioning: "bottom-center",
-    offset: [0, -14],
+    offset: [0, -18],
     stopEvent: true
   });
   map.addOverlay(parcelActionOverlay);
@@ -2627,12 +2918,14 @@ async function loadLayersFromDb() {
 }
 
 /**
- * Populates the "_alert_severity"/"_alert_count" feature properties that
- * buildParcelBadgeStyles() reads for the alert badge — only unresolved
+ * Populates the "_alert_severity"/"_alert_count" feature properties that the
+ * parcels layer's style function reads to render the severity-colored
+ * "Alerts(n)" text line below the name/area/ratoon label — only unresolved
  * (open/investigating) vsl_alerts rows count, so a plot with no active
- * alerts (or only resolved ones) simply gets no badge. Severity shown is
- * the highest-ranked one present (critical > warning > information).
- * Called after every bbox reload and right after logging a new alert.
+ * alerts (or only resolved ones) simply gets no alerts line at all.
+ * Severity shown is the highest-ranked one present (critical > warning >
+ * information). Called after every bbox reload and right after logging a
+ * new alert.
  */
 async function refreshParcelAlertBadges() {
   const features = parcelsSource.getFeatures();
@@ -3998,6 +4291,7 @@ async function initMap() {
   setupParcelActionToolbar();
   setupLogActivityModal();
   setupLogAlertModal();
+  setupRecordDetailModal();
   bindEvents();
   startBackgroundLocationTracking();
   initPrintComposer({

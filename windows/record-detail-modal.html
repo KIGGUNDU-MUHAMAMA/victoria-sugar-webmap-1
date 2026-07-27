@@ -1,0 +1,22 @@
+<!-- Record detail drill-down — opened by clicking the first-column link of a
+     row in any of the parcel info panel's repeating groups (Alerts, Activity
+     History, Harvest History, Media, Comments). Shows every field of that
+     one record. Generic across all five record kinds; see
+     openRecordDetailModal/buildRecordDetailRows in js/map-app.js. No tabs,
+     no footer actions — this is a pure read-only view, closed via the
+     header X (or Escape) like the other non-form popups. -->
+<div id="recordDetailOverlay" class="vsl-modal-overlay" hidden>
+  <section id="recordDetailPanel" class="vsl-modal-card vsl-modal-card--wide popWinMain" role="region" aria-label="Record details">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon" id="recordDetailIcon"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle" id="recordDetailTitle">Record details</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="recordDetailCloseBtn" aria-label="Close record details">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div id="recordDetailInner" class="popWinBody"></div>
+  </section>
+</div>

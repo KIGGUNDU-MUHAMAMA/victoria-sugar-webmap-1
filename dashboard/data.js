@@ -92,6 +92,16 @@ const DATA = {
     values: [8.4, 7.9, 7.2, 8.1, 6.8],
   },
 
+  // ── ACTIVITIES (placeholder; replaced by live vsl_activities rows) ──
+  activities: [],
+
+  // ── ACTIVITY COSTS (placeholder; replaced by live vsl_activity_costs rows) ──
+  costs: [],
+
+  // ── DOCUMENTS & MEDIA (placeholder; replaced by live rows) ──
+  documents: [],
+  media: [],
+
   // ── USERS ──
   users: [
     { id: 'U001', name: 'Admin Moses',     email: 'moses@sugarestate.ug',   role: 'Admin',         estate: 'All Estates',  status: 'active',   lastLogin: '2024-10-14 08:30', avatar: 'AM' },

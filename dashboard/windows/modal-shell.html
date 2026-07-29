@@ -1,0 +1,24 @@
+<!-- Generic modal window shell — used for every add/edit form AND every
+     confirm/delete dialog in the dashboard (see showModal()/closeModal() in
+     app.js). Fetched once at boot (dashboard/app.js loadWindowFragments())
+     and appended to <body>; app.js repopulates #modalIcon/#modalTitle/
+     #modalBody/#modalFooter and toggles the [hidden] attribute to open/close
+     it, rather than rebuilding the whole modal from a string each time.
+
+     There is no footer "Cancel" button by design — the header X (or Escape,
+     or clicking the dimmed backdrop) is how you back out. The footer only
+     ever holds the 0-2 buttons that actually take an action. -->
+<div id="modalOverlay" class="modal-backdrop" hidden>
+  <div id="modalBox" class="modal-box popWinMain" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <img class="popWinLogo" src="../assets/victoria-sugar-logo.jpg" alt="Victoria Sugar">
+        <span class="popWinIcon" id="modalIcon">◈</span>
+        <h2 class="popWinTitle" id="modalTitle">Window title</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="modalCloseBtn" aria-label="Close">✕</button>
+    </header>
+    <div class="popWinBody" id="modalBody"><!-- populated by app.js --></div>
+    <div class="popWinActionBtns" id="modalFooter"><!-- populated by app.js --></div>
+  </div>
+</div>

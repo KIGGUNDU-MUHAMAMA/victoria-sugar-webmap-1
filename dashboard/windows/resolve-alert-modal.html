@@ -1,0 +1,27 @@
+<!-- Resolve Alert window — opened from the Alerts page's "Resolve" action
+     (see resolveAlert()/openResolveAlertModal() in app.js). Shows the alert
+     being resolved (read-only) and asks for a resolution note before
+     marking vsl_alerts.status = 'resolved'. The alert is never deleted by
+     this flow — it moves from the Open table to the Resolved table. -->
+<div id="resolveAlertOverlay" class="modal-backdrop" hidden>
+  <div class="modal-box popWinMain" role="dialog" aria-modal="true" aria-labelledby="resolveAlertTitle">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <img class="popWinLogo" src="../assets/victoria-sugar-logo.jpg" alt="Victoria Sugar">
+        <span class="popWinIcon">✓</span>
+        <h2 class="popWinTitle" id="resolveAlertTitle">Resolve Alert</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="resolveAlertCloseBtn" aria-label="Close">✕</button>
+    </header>
+    <div class="popWinBody">
+      <div id="resolveAlertSummary" class="resolve-alert-summary"><!-- populated by app.js --></div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label" for="resolveAlertNote">Resolution note</label>
+        <textarea class="form-input" id="resolveAlertNote" rows="4" placeholder="What was done to resolve this alert?"></textarea>
+      </div>
+    </div>
+    <div class="popWinActionBtns">
+      <button type="button" class="btn btn-primary" id="resolveAlertSubmitBtn">Mark Resolved</button>
+    </div>
+  </div>
+</div>

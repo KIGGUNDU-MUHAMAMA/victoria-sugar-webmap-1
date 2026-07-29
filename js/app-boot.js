@@ -39,6 +39,8 @@ const WINDOW_FRAGMENTS = [
   { parent: "body", url: "./windows/record-detail-modal.html" },
   // Opened by clicking a plot's "Alerts(n)" chip directly on the map.
   { parent: "body", url: "./windows/alerts-list-modal.html" },
+  // Opened from the "Resolve" action on an unresolved row in the Alerts List modal above.
+  { parent: "body", url: "./windows/resolve-alert-modal.html" },
 ];
 
 async function loadWindowFragments() {

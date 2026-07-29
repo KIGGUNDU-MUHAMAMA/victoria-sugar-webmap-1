@@ -19,22 +19,16 @@
   </div>
 </div>
 
-<!-- ═══ MAP BACKGROUND ═══ -->
-<div class="map-bg" id="map-bg">
-  <div class="map-label">GOOGLE MAP</div>
-</div>
-
-<!-- ═══ SIDEBAR ═══ -->
+<!-- ═══ SIDEBAR — fixed & always expanded on desktop; collapses to an icon rail on mobile ═══ -->
 <aside class="sidebar" id="sidebar">
 
-  <!-- Brand + collapse toggle always visible -->
   <div class="sidebar-brand">
     <div class="brand-icon">🌿</div>
     <div class="brand-text">
       <div class="brand-name">SugarEstate</div>
       <div class="brand-sub">Admin Console</div>
     </div>
-    <button class="sidebar-collapse-btn" id="collapse-btn" onclick="toggleSidebar()" title="Collapse sidebar">‹</button>
+    <button class="sidebar-collapse-btn" id="collapse-btn" onclick="toggleSidebar()" title="Collapse">‹</button>
   </div>
 
   <nav class="sidebar-nav">
@@ -56,6 +50,12 @@
     <a href="#" class="nav-item" onclick="openPanel('activities',this)">
       <span class="nav-icon">◷</span><span class="nav-label"> Activities</span>
     </a>
+    <a href="#" class="nav-item" onclick="openPanel('costs',this)">
+      <span class="nav-icon">◍</span><span class="nav-label"> Costs</span>
+    </a>
+    <a href="#" class="nav-item" onclick="openPanel('documents',this)">
+      <span class="nav-icon">▤</span><span class="nav-label"> Documents &amp; Media</span>
+    </a>
     <a href="#" class="nav-item" onclick="openPanel('users',this)">
       <span class="nav-icon">◎</span><span class="nav-label"> Users</span>
     </a>
@@ -63,6 +63,9 @@
     <div class="nav-section-label">COMMUNICATIONS</div>
     <a href="#" class="nav-item" onclick="openPanel('notifications',this)">
       <span class="nav-icon">◌</span><span class="nav-label"> Email Reports</span>
+    </a>
+    <a href="#" class="nav-item" onclick="openPanel('messages',this)">
+      <span class="nav-icon">✉</span><span class="nav-label"> Messages</span>
     </a>
     <a href="#" class="nav-item" onclick="openPanel('alerts',this)">
       <span class="nav-icon">⬡</span><span class="nav-label"> Alerts</span>
@@ -82,18 +85,19 @@
   </div>
 </aside>
 
-<!-- ═══ SLIDE-UP PANEL ═══ -->
-<div class="panel-backdrop" id="panel-backdrop" onclick="closePanel()"></div>
+<!-- Backdrop behind the expanded mobile sidebar overlay (tap to collapse back to icon rail) -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
+<!-- ═══ MAIN CONTENT — the dashboard itself is the page, nothing to close ═══ -->
 <div class="panel" id="panel">
   <div class="panel-header">
     <div class="panel-title" id="panel-title">Dashboard</div>
     <div class="topbar-row">
       <div class="topbar-season">Season: <strong>2024-B</strong></div>
-      <div class="topbar-alert-badge" onclick="closePanel();setTimeout(()=>openPanel('alerts',null),50)">
-        <span>⬡</span><span class="badge-count">3</span>
+      <div class="topbar-alert-badge" onclick="openPanel('alerts',null)">
+        <span>⬡</span><span class="badge-count" id="topbar-alert-count">0</span>
       </div>
-      <div class="topbar-avatar">AM</div>
-      <button class="panel-close-btn" onclick="closePanel()" title="Close panel">✕</button>
+      <div class="topbar-avatar" id="topbar-avatar" title="Account">AM</div>
     </div>
   </div>
   <div class="panel-body" id="panel-body">

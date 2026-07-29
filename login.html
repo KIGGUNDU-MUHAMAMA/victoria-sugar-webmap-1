@@ -23,11 +23,6 @@
 
     <section class="login-panel">
       <div class="card">
-        <div class="auth-tabs">
-          <button id="tabSignIn" class="auth-tab active" type="button">Sign In</button>
-          <button id="tabSignUp" class="auth-tab" type="button">Create Account</button>
-        </div>
-
         <div id="panelSignIn" class="auth-panel">
           <label for="email">Email</label>
           <input id="email" type="email" autocomplete="username">
@@ -45,27 +40,7 @@
           </div>
         </div>
 
-        <div id="panelSignUp" class="auth-panel" hidden>
-          <label for="newEmail">Email</label>
-          <input id="newEmail" type="email">
-
-          <label for="newPassword">Password</label>
-          <div class="password-wrapper">
-            <input id="newPassword" type="password">
-            <button type="button" class="toggle-password" onclick="togglePwd('newPassword', this)">Show</button>
-          </div>
-
-          <label for="role">Role</label>
-          <select id="role">
-            <option value="ADMIN">ADMIN</option>
-            <option value="SURVEYOR">SURVEYOR</option>
-            <option value="MANAGMENT">MANAGMENT</option>
-          </select>
-
-          <button id="signUpBtn" type="button">Create User</button>
-        </div>
-
-        <p class="small auth-help">After you sign in, you will be taken to the map. Create an account above if you do not have one yet.</p>
+        <p class="small auth-help">Accounts are created by an administrator from the Dashboard. If you don't have login details, contact your administrator.</p>
 
         <div id="status" class="status" hidden></div>
       </div>
@@ -73,6 +48,6 @@
   </main>
 
   <script src="./js/login-ui.js"></script>
-  <script type="module" src="./js/auth.js?v=5"></script>
+  <script type="module" src="./js/auth.js?v=6"></script>
 </body>
 </html>

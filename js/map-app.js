@@ -521,9 +521,17 @@ const THREE_COL_WIDTHS = [40, 30, 30];
  *  behave identically. Name links to the alert record-detail drill-down;
  *  Severity is filled with its color only while the alert is unresolved
  *  (open/investigating) so an urgent one stands out at a glance. */
-function buildAlertsListTableHtml(alerts, emptyMsg = "No alerts yet.") {
+/** `withActions`: only the standalone Alerts List modal passes this — adds a
+ *  4th "Actions" column with a Resolve button on unresolved rows, gated to
+ *  ADMIN/SURVEYOR (same as the "flags resolve admin_surveyor" RLS policy).
+ *  The embedded info-panel Alerts group keeps the original 3-column,
+ *  read-only table. */
+function buildAlertsListTableHtml(alerts, emptyMsg = "No alerts yet.", withActions = false) {
+  const canResolve = withActions && (currentProfile?.role === "ADMIN" || currentProfile?.role === "SURVEYOR");
+  const headers = withActions ? ["Name", "Status", "Severity", "Actions"] : ["Name", "Status", "Severity"];
+  const widths = withActions ? [32, 22, 22, 24] : THREE_COL_WIDTHS;
   return buildListTable(
-    ["Name", "Status", "Severity"],
+    headers,
     alerts.map((a, i) => {
       const unresolved = a.status === "open" || a.status === "investigating";
       const sevLabel = fmt(SEVERITY_LABELS[a.severity] || a.severity);
@@ -531,14 +539,22 @@ function buildAlertsListTableHtml(alerts, emptyMsg = "No alerts yet.") {
       const sevCell = unresolved
         ? `<span class="vsl-severity-chip" style="background:${sevColor}">${sevLabel}</span>`
         : sevLabel;
-      return [
+      const row = [
         buildRecordLink("alert", i, fmt(a.alert_name)),
         fmt(a.status),
         sevCell
       ];
+      if (withActions) {
+        row.push(
+          unresolved && canResolve
+            ? `<button type="button" class="vsl-resolve-alert-btn" data-resolve-index="${i}" title="Resolve this alert">✓ Resolve</button>`
+            : (unresolved ? "—" : "Resolved")
+        );
+      }
+      return row;
     }),
     emptyMsg,
-    THREE_COL_WIDTHS
+    widths
   );
 }
 
@@ -698,6 +714,7 @@ function setupRecordDetailModal() {
 // record-detail drill-down used everywhere else.
 // ---------------------------------------------------------------------------
 let alertsListRecords = [];
+let alertsListCurrentParcel = null; // { id, label } — so resolving an alert can refresh this same list
 
 async function openAlertsListModal(parcelId, parcelLabel) {
   const overlay = document.getElementById("alertsListOverlay");
@@ -705,6 +722,7 @@ async function openAlertsListModal(parcelId, parcelLabel) {
   const titleEl = document.getElementById("alertsListTitle");
   if (!overlay || !inner || parcelId == null) return;
 
+  alertsListCurrentParcel = { id: parcelId, label: parcelLabel };
   if (titleEl) titleEl.textContent = `Alerts${parcelLabel ? ` — ${parcelLabel}` : ""}`;
   inner.innerHTML = `<p class="map-popup__empty">Loading…</p>`;
   overlay.hidden = false;
@@ -719,7 +737,7 @@ async function openAlertsListModal(parcelId, parcelLabel) {
     if (error) throw error;
 
     alertsListRecords = data || [];
-    inner.innerHTML = buildAlertsListTableHtml(alertsListRecords);
+    inner.innerHTML = buildAlertsListTableHtml(alertsListRecords, "No alerts yet.", true);
   } catch (err) {
     console.error("[Victoria] Failed to load alerts list:", err);
     alertsListRecords = [];
@@ -733,6 +751,7 @@ function closeAlertsListModal() {
   if (inner) inner.innerHTML = "";
   if (overlay) overlay.hidden = true;
   alertsListRecords = [];
+  alertsListCurrentParcel = null;
 }
 
 function setupAlertsListModal() {
@@ -749,6 +768,99 @@ function setupAlertsListModal() {
     document.getElementById("alertsListInner"),
     () => alertsListRecords
   );
+
+  document.getElementById("alertsListInner")?.addEventListener("click", (ev) => {
+    const btn = ev.target.closest(".vsl-resolve-alert-btn");
+    if (!btn) return;
+    const record = alertsListRecords[Number(btn.dataset.resolveIndex)];
+    if (record) openResolveAlertModal(record);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Resolve Alert modal (windows/resolve-alert-modal.html) — opened via the
+// "Resolve" button added to unresolved rows in the Alerts List modal above.
+// ADMIN/SURVEYOR only. Captures a resolution note, then updates the alert's
+// status to "resolved" (never deletes it) and refreshes the Alerts List
+// modal it was opened from.
+// ---------------------------------------------------------------------------
+let resolveAlertTarget = null;
+
+function openResolveAlertModal(alertRecord) {
+  const overlay = document.getElementById("resolveAlertOverlay");
+  const summaryEl = document.getElementById("resolveAlertSummary");
+  const noteEl = document.getElementById("resolveAlertNote");
+  const errorEl = document.getElementById("resolveAlertError");
+  if (!overlay || !alertRecord) return;
+
+  resolveAlertTarget = alertRecord;
+  if (summaryEl) {
+    const sevLabel = fmt(SEVERITY_LABELS[alertRecord.severity] || alertRecord.severity);
+    summaryEl.innerHTML = `<strong>${escapeHtml(fmt(alertRecord.alert_name))}</strong> — ${escapeHtml(sevLabel)}<br>${escapeHtml(fmt(alertRecord.note))}`;
+  }
+  if (noteEl) noteEl.value = "";
+  if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+  overlay.hidden = false;
+}
+
+function closeResolveAlertModal() {
+  const overlay = document.getElementById("resolveAlertOverlay");
+  if (overlay) overlay.hidden = true;
+  resolveAlertTarget = null;
+}
+
+async function submitResolveAlertForm(event) {
+  event.preventDefault();
+  const errorEl = document.getElementById("resolveAlertError");
+  const saveBtn = document.getElementById("resolveAlertSaveBtn");
+  if (!resolveAlertTarget) return;
+
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+    if (errorEl) { errorEl.textContent = "Sign in to resolve alerts."; errorEl.hidden = false; }
+    return;
+  }
+  if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
+    if (errorEl) { errorEl.textContent = "Only Admin or Surveyor can resolve alerts."; errorEl.hidden = false; }
+    return;
+  }
+
+  const note = document.getElementById("resolveAlertNote")?.value?.trim() || null;
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
+  try {
+    const { error } = await supabase
+      .from("vsl_alerts")
+      .update({
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        resolved_by: currentUser.id,
+        resolution_note: note,
+      })
+      .eq("id", resolveAlertTarget.id);
+    if (error) throw error;
+
+    closeResolveAlertModal();
+    if (alertsListCurrentParcel) {
+      await openAlertsListModal(alertsListCurrentParcel.id, alertsListCurrentParcel.label);
+    }
+  } catch (err) {
+    console.error("[Victoria] Failed to resolve alert:", err);
+    if (errorEl) { errorEl.textContent = err?.message || "Failed to resolve alert."; errorEl.hidden = false; }
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Mark Resolved"; }
+  }
+}
+
+function setupResolveAlertModal() {
+  const overlay = document.getElementById("resolveAlertOverlay");
+  const closeBtn = document.getElementById("resolveAlertCloseBtn");
+  const form = document.getElementById("resolveAlertForm");
+  if (!overlay) return;
+
+  closeBtn?.addEventListener("click", () => closeResolveAlertModal());
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !overlay.hidden) closeResolveAlertModal();
+  });
+  form?.addEventListener("submit", submitResolveAlertForm);
 }
 
 /** Given the selected feature/layer, resolves which vsl_parcels.id(s) an
@@ -4448,6 +4560,7 @@ async function initMap() {
   setupLogAlertModal();
   setupRecordDetailModal();
   setupAlertsListModal();
+  setupResolveAlertModal();
   bindEvents();
   startBackgroundLocationTracking();
   initPrintComposer({

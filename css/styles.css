@@ -4962,6 +4962,28 @@ select.search-panel__input {
   letter-spacing: 0.02em;
 }
 
+/* Alerts List modal's Actions column — "Resolve" button on unresolved rows
+   (ADMIN/SURVEYOR only). See buildAlertsListTableHtml()/openResolveAlertModal()
+   in js/map-app.js. */
+.vsl-resolve-alert-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--primary-2, #234f38);
+  background: var(--panel, #fff);
+  color: var(--primary-2, #234f38);
+  font-weight: 700;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.vsl-resolve-alert-btn:hover {
+  background: var(--primary-2, #234f38);
+  color: #fff;
+}
+
 @media (max-width: 480px) {
   #featureInfoPanel.popWinMain,
   #recordDetailPanel.popWinMain {

@@ -3,8 +3,6 @@
 // ══════════════════════════════════════
 
 let activeCharts = [];
-let sidebarCollapsed = false;
-let panelOpen = false;
 let currentPage = null;
 
 // ── UTILS ──────────────────────────────
@@ -57,20 +55,21 @@ function destroyCharts() {
   activeCharts = [];
 }
 
-// ── SIDEBAR TOGGLE ──────────────────────
+// ── SIDEBAR TOGGLE (mobile icon-rail ⇄ expanded overlay only; desktop sidebar is fixed) ──
 
-function toggleSidebar() {
-  const sb = document.getElementById('sidebar');
-  const panel = document.getElementById('panel');
-  sidebarCollapsed = !sidebarCollapsed;
-  sb.classList.toggle('collapsed', sidebarCollapsed);
-  // Shift panel left edge
-  const w = sidebarCollapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)';
-  panel.style.left = w;
-  document.getElementById('panel-backdrop').style.left = w;
+function isMobileViewport() {
+  return window.matchMedia('(max-width: 768px)').matches;
 }
 
-// ── PANEL OPEN / CLOSE ────────────────────
+function toggleSidebar() {
+  if (!isMobileViewport()) return; // desktop sidebar is fixed and not collapsible
+  const sb = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const expanded = sb.classList.toggle('mobile-expanded');
+  backdrop.classList.toggle('visible', expanded);
+}
+
+// ── PAGE SWITCHING ────────────────────
 
 const PAGE_TITLES = {
   dashboard:     'Dashboard',
@@ -78,17 +77,24 @@ const PAGE_TITLES = {
   estates:       'Estates, Blocks & Plots',
   production:    'Production',
   activities:    'Activities',
+  costs:         'Costs',
+  documents:     'Documents & Media',
   users:         'Users',
   notifications: 'Email Reports',
+  messages:      'Messages',
   alerts:        'Alerts & Notifications',
   settings:      'Settings',
 };
 
 function openPanel(page, navEl) {
-  // Update active nav item
+  // Update active nav item — fall back to matching by page id if no element was clicked
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (navEl) {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     navEl.classList.add('active');
+  } else {
+    const match = [...document.querySelectorAll('.nav-item')]
+      .find(n => (n.getAttribute('onclick') || '').includes(`openPanel('${page}'`));
+    if (match) match.classList.add('active');
   }
 
   currentPage = page;
@@ -104,43 +110,25 @@ function openPanel(page, navEl) {
     estates:       renderEstatesPage,
     production:    renderProduction,
     activities:    renderActivities,
+    costs:         renderCosts,
+    documents:     renderDocuments,
     users:         renderUsers,
     notifications: renderNotifications,
+    messages:      renderMessages,
     alerts:        renderAlerts,
     settings:      renderSettings,
   };
   if (pages[page]) pages[page](body);
 
-  // Open the panel
-  const panel = document.getElementById('panel');
-  const backdrop = document.getElementById('panel-backdrop');
-  panel.classList.add('open');
-  backdrop.classList.add('visible');
-  panelOpen = true;
+  // On mobile, collapse the sidebar back to the icon rail after navigating
+  if (isMobileViewport()) {
+    document.getElementById('sidebar').classList.remove('mobile-expanded');
+    document.getElementById('sidebar-backdrop').classList.remove('visible');
+  }
 
-  // Set left offset based on sidebar state
-  const w = sidebarCollapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)';
-  panel.style.left = w;
-  backdrop.style.left = w;
-
+  window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
   setTimeout(() => initCharts(page), 60);
 }
-
-function closePanel() {
-  const panel    = document.getElementById('panel');
-  const backdrop = document.getElementById('panel-backdrop');
-  panel.classList.remove('open');
-  backdrop.classList.remove('visible');
-  panelOpen = false;
-  destroyCharts();
-  // Deactivate nav
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-}
-
-// Keyboard ESC closes panel
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && panelOpen) closePanel();
-});
 
 // ══════════════════════════════════════
 //  PAGE: DASHBOARD
@@ -256,15 +244,15 @@ function renderDashboard(el) {
   </div>
 
   <div class="card" style="margin-bottom:20px">
-    <div class="card-header"><div class="card-title">Quality &amp; Efficiency Indicators</div></div>
+    <div class="card-header"><div class="card-title">Operational Indicators</div></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));border:1px solid var(--gray-100);border-radius:var(--radius-sm);overflow:hidden">
       ${[
-        ['Avg Brix',s.avgBrix+'%','Sugar content'],
-        ['Avg Sucrose',s.avgSucrose+'%','Pol purity'],
-        ['Yield / Ha',s.avgYieldPerHa+' t','Season avg'],
-        ['Active Blocks',18,'Of '+s.totalBlocks],
-        ['Estates',s.totalEstates,'Operational'],
-        ['Harvest Ready','14 plots','Next 30 days'],
+        ['Active Blocks', DATA.blocks.filter(b=>b.status==='active').length, 'Of '+s.totalBlocks],
+        ['Estates', s.totalEstates, 'Operational'],
+        ['Boundary Captured', pct(DATA.blocks.filter(b=>b.geometryStatus==='captured').length, DATA.blocks.length)+'%', 'Blocks surveyed'],
+        ['Open Alerts', DATA.alerts.filter(a=>!a.isReal || a.status!=='resolved').length, DATA.alerts.filter(a=>a.type==='critical').length+' critical'],
+        ['Activities (7d)', DATA.activities.filter(a=>a.date && new Date(a.date).getTime() >= Date.now()-7*24*60*60*1000).length, 'Logged this week'],
+        ['Total Cost Logged', fmtUGX(DATA.costs.reduce((sum,c)=>sum+c.amount,0)), DATA.costs.length+' entries'],
       ].map(([l,v,m])=>`
         <div class="kpi-mini" style="border-right:1px solid var(--gray-100)">
           <div class="kpi-mini-val">${v}</div>
@@ -510,8 +498,8 @@ function renderEstatesPage(el) {
               <td>${healthPill(e.health)}</td>
               <td>
                 <div style="display:flex;gap:4px">
-                  <button class="btn btn-outline btn-sm" onclick="showEditEstateModal('${e.id}')">Edit</button>
-                  <button class="btn btn-danger btn-sm" onclick="confirmDeleteEstate('${e.id}','${e.name}')">Delete</button>
+                  <button class="icon-btn" onclick="showEditEstateModal('${e.id}')" title="Edit">✎</button>
+                  <button class="icon-btn danger" onclick="confirmDeleteEstate('${e.id}','${e.name}')" title="Delete">🗑</button>
                 </div>
               </td>
             </tr>`;
@@ -572,8 +560,8 @@ function renderEstatesPage(el) {
               <td>${healthPill(b.status)}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px">
-                  <button class="btn btn-outline btn-sm" onclick="showEditBlockModal('${b.id}')">Edit</button>
-                  <button class="btn btn-danger btn-sm" onclick="confirmDeleteBlock('${b.id}')">Del</button>
+                  <button class="icon-btn" onclick="showEditBlockModal('${b.id}')" title="Edit">✎</button>
+                  <button class="icon-btn danger" onclick="confirmDeleteBlock('${b.id}')" title="Delete">🗑</button>
                 </div>
               </td>
             </tr>`).join('')}
@@ -1257,32 +1245,577 @@ function renderProduction(el) {
 //  PAGE: ACTIVITIES
 // ══════════════════════════════════════
 
+const ACTIVITY_TYPES = ['Bush Clearing','Ploughing','Harrow','Ripping','Ridging','Furrowing',
+  'Lime Application','Planting','Manuring','Fertilization','Weeding','Spraying','Irrigation',
+  'Harvesting','Loading','Trash Lining','Trash Collection'];
+
 function renderActivities(el) {
+  let estFilter = '';
+  const acts = () => DATA.activities.filter(a => !estFilter || a.estate === estFilter);
+
+  const oneWeekAgo = Date.now() - 7*24*60*60*1000;
+  const thisWeek = DATA.activities.filter(a => a.date && new Date(a.date).getTime() >= oneWeekAgo).length;
+  const distinctTypes = new Set(DATA.activities.map(a => a.name)).size;
+  const linkedCost = DATA.costs.filter(c => DATA.activities.some(a => a.id === c.activityId))
+    .reduce((s,c) => s + c.amount, 0);
+
+  function table() {
+    const rows = acts();
+    return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Activity</th><th>Estate</th><th>Block</th><th>Parcel</th>
+        <th>Assigned To</th><th>Team</th><th>Completion</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(a=>`
+            <tr>
+              <td>${a.date || '—'}</td>
+              <td><strong>${a.name}</strong></td>
+              <td>${a.estate}</td>
+              <td>${a.block}</td>
+              <td>${a.parcel || '—'}</td>
+              <td>${a.assignedTo || '—'}</td>
+              <td>${a.teamSize ?? '—'}</td>
+              <td>${a.completionValue != null ? a.completionValue : '—'}</td>
+              <td><div style="display:flex;gap:4px">
+                <button class="btn btn-outline btn-sm btn-icon" onclick="showEditActivityModal('${a.id}')" title="Edit">✏</button>
+                <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteActivity('${a.id}')" title="Delete">🗑</button>
+              </div></td>
+            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--gray-500);padding:24px">No activities logged yet</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
   el.innerHTML = `
   <div class="page-header">
     <div><div class="page-header-title">Field Activities</div>
-    <div class="page-header-sub">Task tracking — not yet captured as a dedicated table in the database</div></div>
-  </div>
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-header">
-      <div class="card-title">Recent Field Updates</div>
-      <div style="font-size:11px;color:var(--gray-500)">Derived from parcel record changes</div>
+    <div class="page-header-sub">${DATA.activities.length} activities logged${DATA.isLive ? '' : ' · placeholder data'}</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select class="form-input" style="width:160px" id="act-estate-filter" onchange="filterActivitiesEstate(this.value)">
+        <option value="">All Estates</option>
+        ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="showAddActivityModal()">+ Log Activity</button>
     </div>
-    ${DATA.recentActivity && DATA.recentActivity.length ? DATA.recentActivity.map(a=>`
-      <div class="activity-item">
-        <div class="activity-dot ${a.color}">${a.icon}</div>
-        <div class="activity-content">
-          <div class="activity-text">${a.text}</div>
-          <div class="activity-meta">${a.meta}</div>
-        </div>
-      </div>`).join('') : `<div style="text-align:center;color:var(--gray-500);padding:24px">No recent activity</div>`}
+  </div>
+  <div class="grid-4">
+    <div class="stat-card green"><div class="stat-label">Total Logged</div><div class="stat-value">${DATA.activities.length}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Last 7 Days</div><div class="stat-value">${thisWeek}</div></div>
+    <div class="stat-card amber"><div class="stat-label">Activity Types Used</div><div class="stat-value">${distinctTypes}</div><div class="stat-meta">of ${ACTIVITY_TYPES.length} defined</div></div>
+    <div class="stat-card green"><div class="stat-label">Linked Cost</div><div class="stat-value" style="font-size:20px">${fmtUGX(linkedCost)}</div></div>
+  </div>
+  <div class="card"><div class="card-header"><div class="card-title">Activity Log</div></div>
+  <div id="activities-table">${table()}</div></div>`;
+
+  window.filterActivitiesEstate = function(val) { estFilter = val; document.getElementById('activities-table').innerHTML = table(); };
+
+  function scopePickerHTML(prefix, blockVal, parcelVal) {
+    return `
+      <div class="form-group"><label class="form-label">Block</label>
+        <select class="form-input" id="${prefix}-block" onchange="onActivityBlockChange('${prefix}')">
+          <option value="">— None (estate-level) —</option>
+          ${DATA.blocks.map(b=>`<option value="${b._uuid}" ${b._uuid===blockVal?'selected':''}>${b.id} (${b.estate})</option>`).join('')}
+        </select></div>
+      <div class="form-group"><label class="form-label">Parcel (optional)</label>
+        <select class="form-input" id="${prefix}-parcel">
+          <option value="">— Whole block —</option>
+          ${DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}" ${p._uuid===parcelVal?'selected':''}>${p.id}</option>`).join('')}
+        </select></div>`;
+  }
+  window.onActivityBlockChange = function(prefix) {
+    const blockVal = document.getElementById(`${prefix}-block`).value;
+    const parcelSel = document.getElementById(`${prefix}-parcel`);
+    parcelSel.innerHTML = `<option value="">— Whole block —</option>` +
+      DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}">${p.id}</option>`).join('');
+  };
+
+  window.showAddActivityModal = function() {
+    showModal(`
+      <div class="modal-title">Log New Activity</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Activity Type</label>
+          <select class="form-input" id="aa-name">${ACTIVITY_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Date</label>
+          <input class="form-input" id="aa-date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        ${scopePickerHTML('aa','','')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="aa-team" type="number" min="0"></div>
+        <div class="form-group"><label class="form-label">Completion (acres or %)</label><input class="form-input" id="aa-completion" type="number" min="0" step="0.01"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Challenges</label><textarea class="form-input" id="aa-challenges" rows="2"></textarea></div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="aa-comments" rows="2"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitAddActivity()">Save Activity</button>
+      </div>`);
+  };
+
+  window.submitAddActivity = async function() {
+    const name = document.getElementById('aa-name').value;
+    const date = document.getElementById('aa-date').value || null;
+    const blockId = document.getElementById('aa-block').value || null;
+    const parcelId = document.getElementById('aa-parcel').value || null;
+    const team = document.getElementById('aa-team').value;
+    const completion = document.getElementById('aa-completion').value;
+    const challenges = document.getElementById('aa-challenges').value.trim();
+    const comments = document.getElementById('aa-comments').value.trim();
+    try {
+      const client = getSbClient();
+      const block = DATA.blocks.find(b => b._uuid === blockId);
+      const estateRow = block ? DATA.estates.find(e => e.name === block.estate) : null;
+      const { error } = await client.from('vsl_activities').insert([{
+        activity_name: name, activity_date: date,
+        block_id: blockId, parcel_id: parcelId, estate_id: estateRow ? estateRow._id : null,
+        team_size: team || null, completion_value: completion || null,
+        challenges: challenges || null, comments: comments || null,
+      }]);
+      if (error) throw error;
+      closeModal();
+      showToast('Activity logged');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('activities');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to log activity: ' + err.message, 'red');
+    }
+  };
+
+  window.showEditActivityModal = function(id) {
+    const a = DATA.activities.find(x => x.id === id);
+    if (!a) return;
+    showModal(`
+      <div class="modal-title">Edit Activity — ${a.name}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Activity Type</label>
+          <select class="form-input" id="ea-name">${ACTIVITY_TYPES.map(t=>`<option ${t===a.name?'selected':''}>${t}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="ea-date" type="date" value="${a.date||''}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="ea-team" type="number" value="${a.teamSize ?? ''}"></div>
+        <div class="form-group"><label class="form-label">Completion</label><input class="form-input" id="ea-completion" type="number" step="0.01" value="${a.completionValue ?? ''}"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Challenges</label><textarea class="form-input" id="ea-challenges" rows="2">${a.challenges||''}</textarea></div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="ea-comments" rows="2">${a.comments||''}</textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditActivity('${a.id}')">Save Changes</button>
+      </div>`);
+  };
+
+  window.submitEditActivity = async function(id) {
+    const name = document.getElementById('ea-name').value;
+    const date = document.getElementById('ea-date').value || null;
+    const team = document.getElementById('ea-team').value;
+    const completion = document.getElementById('ea-completion').value;
+    const challenges = document.getElementById('ea-challenges').value.trim();
+    const comments = document.getElementById('ea-comments').value.trim();
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_activities').update({
+        activity_name: name, activity_date: date, team_size: team || null,
+        completion_value: completion || null, challenges: challenges || null, comments: comments || null,
+      }).eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Activity updated');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('activities');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update activity: ' + err.message, 'red');
+    }
+  };
+
+  window.confirmDeleteActivity = function(id) {
+    showModal(`
+      <div class="modal-title">Delete Activity</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete this activity record? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="submitDeleteActivity('${id}')">Yes, Delete</button>
+      </div>`);
+  };
+
+  window.submitDeleteActivity = async function(id) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_activities').delete().eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Activity deleted', 'red');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('activities');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to delete activity: ' + err.message, 'red');
+    }
+  };
+}
+
+// Re-render a page only if it's still the one currently on screen (avoids clobbering
+// the user's view if they navigated away while an async save was in flight).
+function renderTabIfCurrent(page) {
+  if (currentPage === page) openPanel(page, document.querySelector('.nav-item.active'));
+}
+
+// ══════════════════════════════════════
+//  PAGE: COSTS
+// ══════════════════════════════════════
+
+const COST_TYPES = ['Land Prep','Planting','Inputs','Labour','Irrigation','Harvest','Transport','Other'];
+
+function renderCosts(el) {
+  let estFilter = '';
+  const rows = () => DATA.costs.filter(c => !estFilter || c.estate === estFilter);
+  const totalCost = () => rows().reduce((s,c) => s + c.amount, 0);
+  const byType = () => {
+    const m = {};
+    rows().forEach(c => { m[c.costType] = (m[c.costType]||0) + c.amount; });
+    return m;
+  };
+
+  function table() {
+    const r = rows();
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Activity</th><th>Type</th><th>Estate</th><th>Block</th><th>Parcel</th><th>Amount</th><th>Actions</th></tr></thead>
+      <tbody>${r.length ? r.map(c=>`
+        <tr>
+          <td>${c.createdAt ? c.createdAt.slice(0,10) : '—'}</td>
+          <td>${c.activityName}</td>
+          <td>${pill(c.costType,'blue')}</td>
+          <td>${c.estate}</td><td>${c.block}</td><td>${c.parcel}</td>
+          <td><strong>${fmtUGX(c.amount)}</strong></td>
+          <td><button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteCost('${c.id}')" title="Delete">🗑</button></td>
+        </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--gray-500);padding:24px">No cost entries yet</td></tr>`}
+      </tbody></table></div>`;
+  }
+
+  el.innerHTML = `
+  <div class="page-header">
+    <div><div class="page-header-title">Costs</div>
+    <div class="page-header-sub">${DATA.costs.length} entries logged against activities${DATA.isLive ? '' : ' · placeholder data'}</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select class="form-input" style="width:160px" id="cost-estate-filter" onchange="filterCostsEstate(this.value)">
+        <option value="">All Estates</option>
+        ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="showAddCostModal()">+ Log Cost</button>
+    </div>
+  </div>
+  <div class="grid-4">
+    <div class="stat-card red"><div class="stat-label">Total Cost</div><div class="stat-value" style="font-size:20px">${fmtUGX(totalCost())}</div></div>
+    <div class="stat-card amber"><div class="stat-label">Entries</div><div class="stat-value">${rows().length}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Cost / Planted Ha</div><div class="stat-value" style="font-size:20px">${DATA.stats.plantedAreaHa ? fmtUGX(Math.round(totalCost()/DATA.stats.plantedAreaHa)) : '—'}</div></div>
+    <div class="stat-card green"><div class="stat-label">Top Category</div><div class="stat-value" style="font-size:16px">${(() => { const bt = byType(); const k = Object.keys(bt).sort((a,b)=>bt[b]-bt[a])[0]; return k || '—'; })()}</div></div>
+  </div>
+  <div class="card" id="costs-table">${table()}</div>`;
+
+  window.filterCostsEstate = function(val) { estFilter = val; document.getElementById('costs-table').innerHTML = table(); };
+
+  window.showAddCostModal = function() {
+    showModal(`
+      <div class="modal-title">Log New Cost</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Cost Type</label>
+          <select class="form-input" id="ac-type">${COST_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Amount (UGX)</label><input class="form-input" id="ac-amount" type="number" min="0"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Related Activity (optional)</label>
+        <select class="form-input" id="ac-activity">
+          <option value="">— No specific activity —</option>
+          ${DATA.activities.map(a=>`<option value="${a.id}">${a.name} — ${a.estate} ${a.date?('· '+a.date):''}</option>`).join('')}
+        </select></div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Description</label><input class="form-input" id="ac-desc" placeholder="Optional note"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitAddCost()">Save Cost</button>
+      </div>`);
+  };
+
+  window.submitAddCost = async function() {
+    const costType = document.getElementById('ac-type').value;
+    const amount = document.getElementById('ac-amount').value;
+    const activityId = document.getElementById('ac-activity').value || null;
+    const desc = document.getElementById('ac-desc').value.trim();
+    if (!amount || Number(amount) <= 0) { showToast('Enter a valid amount', 'red'); return; }
+    try {
+      const client = getSbClient();
+      const activity = activityId ? DATA.activities.find(a => a.id === activityId) : null;
+      const { error } = await client.from('vsl_activity_costs').insert([{
+        activity_id: activityId, cost_type: costType, amount,
+        description: desc || null,
+        block_id: activity ? activity._blockId : null,
+        parcel_id: activity ? activity._parcelId : null,
+      }]);
+      if (error) throw error;
+      closeModal();
+      showToast('Cost logged');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('costs');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to log cost: ' + err.message, 'red');
+    }
+  };
+
+  window.confirmDeleteCost = function(id) {
+    showModal(`
+      <div class="modal-title">Delete Cost Entry</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete this cost entry? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="submitDeleteCost('${id}')">Yes, Delete</button>
+      </div>`);
+  };
+
+  window.submitDeleteCost = async function(id) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_activity_costs').delete().eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Cost entry deleted', 'red');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('costs');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to delete cost entry: ' + err.message, 'red');
+    }
+  };
+}
+
+// ══════════════════════════════════════
+//  PAGE: DOCUMENTS & MEDIA
+// ══════════════════════════════════════
+
+function renderDocuments(el) {
+  let activeTab = 'documents';
+
+  function docsTable() {
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>Title</th><th>Type</th><th>Linked To</th><th>Uploaded</th><th>Link</th><th>Actions</th></tr></thead>
+      <tbody>${DATA.documents.length ? DATA.documents.map(d=>`
+        <tr>
+          <td><strong>${d.title}</strong>${d.description ? `<br><span style="font-size:11px;color:var(--gray-500)">${d.description}</span>` : ''}</td>
+          <td>${pill(d.docType,'blue')}</td>
+          <td>${titleCaseLocal(d.entityType)}: ${d.entityLabel}</td>
+          <td>${d.uploadDate || '—'}</td>
+          <td>${d.fileUrl ? `<a href="${d.fileUrl}" target="_blank" rel="noopener">Open ↗</a>` : '—'}</td>
+          <td><button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteDocument('${d.id}')" title="Delete">🗑</button></td>
+        </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No documents yet</td></tr>`}
+      </tbody></table></div>`;
+  }
+  function mediaTable() {
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>Caption</th><th>Type</th><th>Linked To</th><th>Captured</th><th>Link</th><th>Actions</th></tr></thead>
+      <tbody>${DATA.media.length ? DATA.media.map(m=>`
+        <tr>
+          <td>${m.caption || '—'}</td>
+          <td>${pill(m.mediaType,'green')}</td>
+          <td>${titleCaseLocal(m.entityType)}: ${m.entityLabel}</td>
+          <td>${m.capturedAt ? m.capturedAt.replace('T',' ').slice(0,16) : '—'}</td>
+          <td>${m.fileUrl ? `<a href="${m.fileUrl}" target="_blank" rel="noopener">Open ↗</a>` : '—'}</td>
+          <td><button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteMedia('${m.id}')" title="Delete">🗑</button></td>
+        </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No media yet</td></tr>`}
+      </tbody></table></div>`;
+  }
+
+  function renderTab() {
+    document.getElementById('docmedia-content').innerHTML = activeTab === 'documents' ? docsTable() : mediaTable();
+  }
+
+  el.innerHTML = `
+  <div class="page-header">
+    <div><div class="page-header-title">Documents &amp; Media</div>
+    <div class="page-header-sub">${DATA.documents.length} documents · ${DATA.media.length} media files</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="showAddDocumentModal()">+ Add Document</button>
+      <button class="btn btn-outline btn-sm" onclick="showAddMediaModal()">+ Add Media</button>
+    </div>
+  </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="documents" onclick="switchDocMediaTab('documents',this)">Documents (${DATA.documents.length})</button>
+    <button class="tab-btn" data-tab="media" onclick="switchDocMediaTab('media',this)">Media (${DATA.media.length})</button>
+  </div>
+  <div class="card" id="docmedia-content">${docsTable()}</div>`;
+
+  window.switchDocMediaTab = function(tab, btn) {
+    activeTab = tab;
+    document.querySelectorAll('.tab-bar .tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTab();
+  };
+
+  function entityPickerHTML(prefix) {
+    return `
+      <div class="form-group"><label class="form-label">Linked To</label>
+        <select class="form-input" id="${prefix}-entity-type" onchange="onEntityTypeChange('${prefix}')">
+          <option value="estate">Estate</option><option value="block">Block</option><option value="parcel">Parcel</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">&nbsp;</label>
+        <select class="form-input" id="${prefix}-entity-id"></select></div>`;
+  }
+  window.onEntityTypeChange = function(prefix) {
+    const type = document.getElementById(`${prefix}-entity-type`).value;
+    const sel = document.getElementById(`${prefix}-entity-id`);
+    if (type === 'estate') sel.innerHTML = DATA.estates.map(e=>`<option value="${e._id}">${e.name}</option>`).join('');
+    else if (type === 'block') sel.innerHTML = DATA.blocks.map(b=>`<option value="${b._uuid}">${b.id} (${b.estate})</option>`).join('');
+    else sel.innerHTML = DATA.plots.map(p=>`<option value="${p._uuid}">${p.id}</option>`).join('');
+  };
+
+  window.showAddDocumentModal = function() {
+    showModal(`
+      <div class="modal-title">Add Document</div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Title</label><input class="form-input" id="ad-title" placeholder="e.g. Land Title Deed"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Document Type</label><input class="form-input" id="ad-type" placeholder="e.g. Title, Survey Plan"></div>
+        <div class="form-group"><label class="form-label">File URL</label><input class="form-input" id="ad-url" placeholder="https://..."></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">${entityPickerHTML('ad')}</div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Description</label><textarea class="form-input" id="ad-desc" rows="2"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitAddDocument()">Save Document</button>
+      </div>`);
+    onEntityTypeChange('ad');
+  };
+
+  window.submitAddDocument = async function() {
+    const title = document.getElementById('ad-title').value.trim();
+    const docType = document.getElementById('ad-type').value.trim();
+    const url = document.getElementById('ad-url').value.trim();
+    const entityType = document.getElementById('ad-entity-type').value;
+    const entityId = document.getElementById('ad-entity-id').value;
+    const desc = document.getElementById('ad-desc').value.trim();
+    if (!title || !url) { showToast('Title and file URL are required', 'red'); return; }
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_documents').insert([{
+        document_title: title, doc_type: docType || null, file_url: url,
+        entity_type: entityType, entity_id: String(entityId), description: desc || null,
+      }]);
+      if (error) throw error;
+      closeModal();
+      showToast('Document added');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('documents');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to add document: ' + err.message, 'red');
+    }
+  };
+
+  window.confirmDeleteDocument = function(id) {
+    showModal(`
+      <div class="modal-title">Delete Document</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete this document record? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="submitDeleteDocument('${id}')">Yes, Delete</button>
+      </div>`);
+  };
+  window.submitDeleteDocument = async function(id) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_documents').delete().eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Document deleted', 'red');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('documents');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to delete document: ' + err.message, 'red');
+    }
+  };
+
+  window.showAddMediaModal = function() {
+    showModal(`
+      <div class="modal-title">Add Media</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Media Type</label>
+          <select class="form-input" id="am-type"><option value="photo">Photo</option><option value="video">Video</option></select></div>
+        <div class="form-group"><label class="form-label">File URL</label><input class="form-input" id="am-url" placeholder="https://..."></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">${entityPickerHTML('am')}</div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Caption</label><input class="form-input" id="am-caption"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitAddMedia()">Save Media</button>
+      </div>`);
+    onEntityTypeChange('am');
+  };
+
+  window.submitAddMedia = async function() {
+    const mediaType = document.getElementById('am-type').value;
+    const url = document.getElementById('am-url').value.trim();
+    const entityType = document.getElementById('am-entity-type').value;
+    const entityId = document.getElementById('am-entity-id').value;
+    const caption = document.getElementById('am-caption').value.trim();
+    if (!url) { showToast('File URL is required', 'red'); return; }
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_media').insert([{
+        media_type: mediaType, file_url: url,
+        entity_type: entityType, entity_id: String(entityId), caption: caption || null,
+      }]);
+      if (error) throw error;
+      closeModal();
+      showToast('Media added');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('documents');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to add media: ' + err.message, 'red');
+    }
+  };
+
+  window.confirmDeleteMedia = function(id) {
+    showModal(`
+      <div class="modal-title">Delete Media</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete this media record? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="submitDeleteMedia('${id}')">Yes, Delete</button>
+      </div>`);
+  };
+  window.submitDeleteMedia = async function(id) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_media').delete().eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Media deleted', 'red');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('documents');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to delete media: ' + err.message, 'red');
+    }
+  };
+}
+
+// ══════════════════════════════════════
+//  PAGE: MESSAGES (stub — DB table & delivery logic coming later)
+// ══════════════════════════════════════
+
+function renderMessages(el) {
+  el.innerHTML = `
+  <div class="page-header">
+    <div><div class="page-header-title">Messages</div>
+    <div class="page-header-sub">Broadcast messages to users of the map/dashboard</div></div>
   </div>
   <div class="card">
-    <div class="card-header"><div class="card-title">Task Management</div></div>
+    <div class="card-header"><div class="card-title">Coming Soon</div></div>
     <p style="font-size:13px;color:var(--gray-600);line-height:1.6">
-      A dedicated field-activity / task table (e.g. <code>vsl_tasks</code>) has not yet been added to the database.
-      Once available, this page will show fertilizer applications, weeding, irrigation, and scouting logs per parcel
-      with assignment, cost, and completion tracking. <span class="placeholder-tag">Pending schema addition</span>
+      This section will let an admin write, edit and delete short messages/announcements shown to users
+      inside the webmap and dashboard (e.g. maintenance notices, season updates). The database table and
+      delivery logic haven't been built yet — this page is a placeholder for that upcoming feature.
+      <span class="placeholder-tag">Planned</span>
     </p>
   </div>`;
 }
@@ -1291,18 +1824,36 @@ function renderActivities(el) {
 //  PAGE: USERS
 // ══════════════════════════════════════
 
+// Real permission roles, per vsl_profiles' check constraint / RLS policies.
+const ROLE_LABEL_MAP = { ADMIN: 'Admin', SURVEYOR: 'Surveyor', MANAGMENT: 'Management' };
+const ROLE_COLOR_MAP = { Admin: 'red', Surveyor: 'blue', Management: 'green' };
+
+// Call the vsl-admin-users Edge Function with the current admin's session token.
+async function callAdminUsersFn(action, payload) {
+  const client = getSbClient();
+  const { data: sess } = await client.auth.getSession();
+  const token = sess?.session?.access_token;
+  if (!token) throw new Error('You must be signed in.');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/vsl-admin-users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': SUPABASE_ANON_KEY },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.success === false) throw new Error(json.error || `Request failed (${res.status})`);
+  return json;
+}
+
 function renderUsers(el) {
-  const roleColors = {Admin:'red','Land Manager':'green','Field Officer':'blue',
-                      Investor:'amber',Surveyor:'blue',Agronomist:'green',Stakeholder:'gray'};
   el.innerHTML = `
   <div class="page-header">
     <div><div class="page-header-title">User Management</div>
-    <div class="page-header-sub">${DATA.users.length} registered users${DATA.isLive ? '' : ' · placeholder data'}</div></div>
+    <div class="page-header-sub">${DATA.users.length} registered users · admin-only account creation${DATA.isLive ? '' : ' · placeholder data'}</div></div>
     <button class="btn btn-primary btn-sm" onclick="showAddUserModal()">+ Add User</button>
   </div>
   <div class="grid-4">
     ${[['Total Users',DATA.users.length,'blue'],
-       ['Admins',DATA.users.filter(u=>u.role==='Admin').length,'red'],
+       ['Admins',DATA.users.filter(u=>u.roleRaw==='ADMIN').length,'red'],
        ['Active',DATA.users.filter(u=>u.status==='active').length,'green'],
        ['Inactive',DATA.users.filter(u=>u.status==='inactive').length,'amber']].map(([l,v,c])=>`
       <div class="stat-card ${c}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`).join('')}
@@ -1314,13 +1865,13 @@ function renderUsers(el) {
                oninput="filterUsers(this.value)">
         <select class="form-input" style="width:140px" onchange="filterUsersByRole(this.value)">
           <option value="">All Roles</option>
-          ${['Admin','Land Manager','Field Officer','Investor','Surveyor','Agronomist','Stakeholder'].map(r=>`<option>${r}</option>`).join('')}
+          ${Object.values(ROLE_LABEL_MAP).map(r=>`<option>${r}</option>`).join('')}
         </select>
       </div>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>User</th><th>Role</th><th>Estate</th><th>Status</th><th>Last Updated</th><th>Actions</th></tr></thead>
+        <thead><tr><th>User</th><th>Role</th><th>Title</th><th>Estate</th><th>Status</th><th>Last Login</th><th>Actions</th></tr></thead>
         <tbody id="users-tbody">
           ${DATA.users.map(u=>`
             <tr data-role="${u.role}">
@@ -1328,13 +1879,17 @@ function renderUsers(el) {
                 <div class="user-avatar">${u.avatar}</div>
                 <div><div class="user-name">${u.name}</div><div class="user-email">${u.email}</div></div>
               </div></td>
-              <td>${pill(u.role,roleColors[u.role]||'gray')}</td>
+              <td>${pill(u.role,ROLE_COLOR_MAP[u.role]||'gray')}</td>
+              <td style="font-size:12px;color:var(--gray-500)">${u.title || '—'}</td>
               <td>${u.estate}</td>
               <td>${pill(u.status==='active'?'Active':'Inactive',u.status==='active'?'green':'gray')}</td>
               <td style="font-size:12px;color:var(--gray-500)">${u.lastLogin}</td>
-              <td><div style="display:flex;gap:4px">
-                <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">Edit</button>
-                <button class="btn btn-danger btn-sm" onclick="confirmDeleteUser('${u.id}','${u.name}')">Remove</button>
+              <td><div style="display:flex;gap:4px;flex-wrap:wrap">
+                <button class="icon-btn" onclick="showEditUserModal('${u.id}')" title="Edit">✎</button>
+                ${u.status==='active'
+                  ? `<button class="icon-btn" onclick="toggleUserActive('${u.id}',false)" title="Deactivate">⏸</button>`
+                  : `<button class="icon-btn primary" onclick="toggleUserActive('${u.id}',true)" title="Reactivate">▶</button>`}
+                <button class="icon-btn danger" onclick="confirmDeleteUser('${u.id}','${u.name}')" title="Delete">🗑</button>
               </div></td>
             </tr>`).join('')}
         </tbody>
@@ -1353,27 +1908,33 @@ function renderUsers(el) {
     });
   };
 
-  // Map UI role label → real DB role value (vsl_profiles.role)
-  const ROLE_TO_DB = {
-    'Admin': 'ADMIN',
-    'Land Manager': 'MANAGMENT', // NB: matches the misspelled value already used in the DB
-    'Surveyor': 'SURVEYOR',
-    'Field Officer': 'SURVEYOR',   // closest existing DB role until a dedicated role is added
-    'Investor': 'MANAGMENT',
-    'Agronomist': 'MANAGMENT',
-    'Stakeholder': 'MANAGMENT',
-  };
+  function estateOptions(selectedId) {
+    return `<option value="">All Estates</option>` +
+      DATA.estates.map(e=>`<option value="${e._id}" ${String(e._id)===String(selectedId)?'selected':''}>${e.name}</option>`).join('');
+  }
 
   window.showAddUserModal = function() {
     showModal(`
       <div class="modal-title">Add New User</div>
       <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px">
-        This creates a profile record. The user must already have (or separately be issued) a Supabase auth account using the same email for login to work.
+        Creates a real sign-in account and profile. Only admins can do this.
       </p>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Email</label>
-        <input class="form-input" id="au-email" type="email" placeholder="user@example.com"></div>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Role</label>
-        <select class="form-input" id="au-role">${Object.keys(ROLE_TO_DB).map(r=>`<option>${r}</option>`).join('')}</select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="au-name" placeholder="e.g. Jane Doe"></div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="au-email" type="email" placeholder="user@example.com"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Temporary Password</label><input class="form-input" id="au-password" type="text" placeholder="At least 8 characters"></div>
+        <div class="form-group"><label class="form-label">Role</label>
+          <select class="form-input" id="au-role">${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Title / Position <span style="font-weight:400;color:var(--gray-500)">(display only)</span></label>
+          <input class="form-input" id="au-title" placeholder="e.g. Field Officer, Agronomist"></div>
+        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="au-phone" placeholder="07XXXXXXXX"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Home Estate</label>
+        <select class="form-input" id="au-estate">${estateOptions('')}</select></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="submitAddUser()">Create User</button>
@@ -1381,18 +1942,21 @@ function renderUsers(el) {
   };
 
   window.submitAddUser = async function() {
+    const full_name = document.getElementById('au-name').value.trim();
     const email = document.getElementById('au-email').value.trim();
-    const roleLabel = document.getElementById('au-role').value;
+    const password = document.getElementById('au-password').value;
+    const role = document.getElementById('au-role').value;
+    const title = document.getElementById('au-title').value.trim();
+    const phone = document.getElementById('au-phone').value.trim();
+    const estate_id = document.getElementById('au-estate').value || null;
     if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Please enter a valid email','red'); return; }
+    if (!password || password.length < 8) { showToast('Password must be at least 8 characters','red'); return; }
     try {
-      const client = getSbClient();
-      const { error } = await client.from('vsl_profiles').insert([{
-        email, role: ROLE_TO_DB[roleLabel] || 'MANAGMENT',
-      }]);
-      if (error) throw error;
+      await callAdminUsersFn('create', { email, password, role, full_name, phone, title, estate_id });
       closeModal();
-      showToast('User profile created successfully');
+      showToast('User created successfully');
       await retryLiveDataLoad();
+      renderTabIfCurrent('users');
     } catch (err) {
       console.error(err);
       showToast('Failed to add user: ' + err.message, 'red');
@@ -1403,55 +1967,73 @@ function renderUsers(el) {
     const u = DATA.users.find(x=>x.id===id); if (!u) return;
     showModal(`
       <div class="modal-title">Edit User — ${u.name}</div>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Email</label>
-        <input class="form-input" id="eu-email" value="${u.email}"></div>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Role</label>
-        <select class="form-input" id="eu-role">${Object.keys(ROLE_TO_DB).map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="eu-name" value="${u.name}"></div>
+        <div class="form-group"><label class="form-label">Role</label>
+          <select class="form-input" id="eu-role">${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}" ${k===u.roleRaw?'selected':''}>${v}</option>`).join('')}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Title / Position</label><input class="form-input" id="eu-title" value="${u.title||''}"></div>
+        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="eu-phone" value="${u.phone||''}"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Home Estate</label>
+        <select class="form-input" id="eu-estate">${estateOptions(u.estateId)}</select></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="submitEditUser('${u.id}')">Save Changes</button>
       </div>`);
   };
 
-  window.submitEditUser = async function(profileId) {
-    const email = document.getElementById('eu-email').value.trim();
-    const roleLabel = document.getElementById('eu-role').value;
+  window.submitEditUser = async function(id) {
+    const full_name = document.getElementById('eu-name').value.trim();
+    const role = document.getElementById('eu-role').value;
+    const title = document.getElementById('eu-title').value.trim();
+    const phone = document.getElementById('eu-phone').value.trim();
+    const estate_id = document.getElementById('eu-estate').value || null;
     try {
-      const client = getSbClient();
-      const { error } = await client.from('vsl_profiles').update({
-        email, role: ROLE_TO_DB[roleLabel] || 'MANAGMENT',
-      }).eq('id', profileId);
-      if (error) throw error;
+      await callAdminUsersFn('update', { id, full_name, role, title, phone, estate_id });
       closeModal();
       showToast('User updated successfully');
       await retryLiveDataLoad();
+      renderTabIfCurrent('users');
     } catch (err) {
       console.error(err);
       showToast('Failed to update user: ' + err.message, 'red');
     }
   };
 
+  window.toggleUserActive = async function(id, activate) {
+    try {
+      await callAdminUsersFn(activate ? 'reactivate' : 'deactivate', { id });
+      showToast(activate ? 'User reactivated' : 'User deactivated');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('users');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed: ' + err.message, 'red');
+    }
+  };
+
   window.confirmDeleteUser = function(id, name) {
     showModal(`
-      <div class="modal-title">Remove User</div>
-      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Remove <strong>${name}</strong>? This deletes their profile record. This cannot be undone.</p>
+      <div class="modal-title">Delete User</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Permanently delete <strong>${name}</strong>'s account? This cannot be undone.</p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="submitDeleteUser('${id}')">Yes, Remove</button>
+        <button class="btn btn-danger" onclick="submitDeleteUser('${id}')">Yes, Delete</button>
       </div>`);
   };
 
-  window.submitDeleteUser = async function(profileId) {
+  window.submitDeleteUser = async function(id) {
     try {
-      const client = getSbClient();
-      const { error } = await client.from('vsl_profiles').delete().eq('id', profileId);
-      if (error) throw error;
+      await callAdminUsersFn('delete', { id });
       closeModal();
-      showToast('User removed', 'red');
+      showToast('User deleted', 'red');
       await retryLiveDataLoad();
+      renderTabIfCurrent('users');
     } catch (err) {
       console.error(err);
-      showToast('Failed to remove user: ' + err.message, 'red');
+      showToast('Failed to delete user: ' + err.message, 'red');
     }
   };
 }
@@ -1479,8 +2061,8 @@ function renderNotifications(el) {
         <div style="font-size:11px;color:var(--gray-500);min-width:110px">${s.reportType||'Season Summary'}</div>
         <div style="font-size:11px;color:var(--gray-500);min-width:90px">Sent: ${s.lastSent}</div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-amber btn-sm" onclick="sendEmailNow('${s.id}','${s.email}')">Send Now</button>
-          <button class="btn btn-danger btn-sm btn-icon" onclick="removeSubscriber('${s.id}')" title="Remove">\u2715</button>
+          <button class="icon-btn primary" onclick="sendEmailNow('${s.id}','${s.email}')" title="Send Now">\ud83d\udce4</button>
+          <button class="icon-btn danger" onclick="removeSubscriber('${s.id}')" title="Remove">\ud83d\uddd1</button>
         </div>
       </div>`).join('');
   }
@@ -1517,7 +2099,7 @@ function renderNotifications(el) {
       <div class="form-group">
         <label class="form-label">Frequency</label>
         <select class="form-input" id="new-sub-freq">
-          <option>Weekly</option><option>Monthly</option><option>Quarterly</option>
+          <option>Daily</option><option>Weekly</option><option>Monthly</option>
         </select>
       </div>
       <div class="form-group">
@@ -1593,7 +2175,7 @@ function renderNotifications(el) {
       const { error } = await client.from('vsl_report_recipients').insert([{
         email,
         name,
-        freq: freq.toLowerCase(),
+        freq, // 'Daily' | 'Weekly' | 'Monthly' — matches the vsl_report_recipients.freq enum's Title Case labels
         estate: estate || 'All Estates',
         report_type: reportType || 'Season Summary Report',
       }]);
@@ -1677,46 +2259,186 @@ function renderNotifications(el) {
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 function renderAlerts(el) {
+  const severityIcon = t => t==='critical' ? '\ud83d\udea8' : t==='warning' ? '\u26a0\ufe0f' : '\u2139\ufe0f';
+  const openRows     = () => DATA.alerts.filter(a => !a.isReal || a.status !== 'resolved');
+  const resolvedRows = () => DATA.alerts.filter(a => a.isReal && a.status === 'resolved');
+
+  function openTable() {
+    const rows = openRows();
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>Severity</th><th>Alert</th><th>Scope</th><th>Note</th><th>Raised</th><th>Actions</th></tr></thead>
+      <tbody>${rows.length ? rows.map(a=>`
+        <tr>
+          <td>${severityIcon(a.type)} ${pill(titleCaseLocal(a.type),a.type==='critical'?'red':a.type==='warning'?'amber':'blue')}</td>
+          <td><strong>${a.title}</strong></td>
+          <td>${a.estate}${a.layerType ? `<br><span style="font-size:11px;color:var(--gray-500)">${titleCaseLocal(a.layerType)}</span>` : ''}</td>
+          <td style="max-width:220px">${a.desc || '\u2014'}</td>
+          <td style="font-size:12px;color:var(--gray-500)">${a.time}</td>
+          <td>${a.isReal ? `
+            <div style="display:flex;gap:4px">
+              <button class="icon-btn primary" onclick="openResolveAlertModal('${a.id}')" title="Resolve">\u2713</button>
+              <button class="icon-btn danger" onclick="confirmDeleteAlert('${a.id}')" title="Delete">\ud83d\uddd1</button>
+            </div>` : `<span style="font-size:11px;color:var(--gray-500)">Auto-generated</span>`}</td>
+        </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No open alerts \ud83c\udf89</td></tr>`}
+      </tbody></table></div>`;
+  }
+
+  function resolvedTable() {
+    const rows = resolvedRows();
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>Severity</th><th>Alert</th><th>Scope</th><th>Resolution</th><th>Resolved</th><th>Actions</th></tr></thead>
+      <tbody>${rows.length ? rows.map(a=>`
+        <tr>
+          <td>${severityIcon(a.type)} ${pill(titleCaseLocal(a.type),a.type==='critical'?'red':a.type==='warning'?'amber':'blue')}</td>
+          <td><strong>${a.title}</strong></td>
+          <td>${a.estate}</td>
+          <td style="max-width:220px">${a.resolutionNote || '<span style="color:var(--gray-500)">\u2014</span>'}</td>
+          <td style="font-size:12px;color:var(--gray-500)">${a.resolvedTime || '\u2014'}</td>
+          <td><button class="icon-btn danger" onclick="confirmDeleteAlert('${a.id}')" title="Delete">\ud83d\uddd1</button></td>
+        </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No resolved alerts yet</td></tr>`}
+      </tbody></table></div>`;
+  }
+
   el.innerHTML = `
   <div class="page-header">
     <div><div class="page-header-title">Alerts &amp; Notifications</div>
     <div class="page-header-sub">${DATA.alerts.filter(a=>a.type==='critical').length} critical \u00b7 ${DATA.alerts.filter(a=>a.type==='warning').length} warnings</div></div>
-    <button class="btn btn-outline btn-sm" onclick="showToast('All alerts marked as read')">Mark all read</button>
+    <button class="btn btn-primary btn-sm" onclick="showAddAlertModal()">+ New Alert</button>
   </div>
   <div class="grid-3" style="margin-bottom:20px">
     <div class="stat-card red"><div class="stat-label">Critical</div><div class="stat-value">${DATA.alerts.filter(a=>a.type==='critical').length}</div></div>
     <div class="stat-card amber"><div class="stat-label">Warnings</div><div class="stat-value">${DATA.alerts.filter(a=>a.type==='warning').length}</div></div>
     <div class="stat-card blue"><div class="stat-label">Info</div><div class="stat-value">${DATA.alerts.filter(a=>a.type==='info').length}</div></div>
   </div>
-  <div style="margin-bottom:20px">
-    ${DATA.alerts.map(a=>`
-      <div class="alert-item ${a.type}">
-        <div class="alert-icon">${a.type==='critical'?'\ud83d\udea8':a.type==='warning'?'\u26a0\ufe0f':'\u2139\ufe0f'}</div>
-        <div style="flex:1">
-          <div class="alert-title">${a.title}</div>
-          <div class="alert-desc">${a.desc}</div>
-          <div class="alert-time">${a.estate} \u00b7 ${a.time}</div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:flex-start;flex-shrink:0">
-          <button class="btn btn-outline btn-sm" onclick="showToast('Alert resolved')">Resolve</button>
-          <button class="btn btn-outline btn-sm btn-icon" onclick="showToast('Alert dismissed')">\u2715</button>
-        </div>
-      </div>`).join('')}
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><div class="card-title">Open Alerts</div><div style="font-size:11px;color:var(--gray-500)">${openRows().length} open</div></div>
+    <div id="alerts-open-table">${openTable()}</div>
   </div>
   <div class="card">
-    <div class="card-header"><div class="card-title">Alert Thresholds &amp; Rules</div></div>
-    ${[
-      ['Pest scouting overdue','21 days since last scouting','warning'],
-      ['Yield below target','15% below season target','warning'],
-      ['Planting rate critical','Below 50% of plots planted by mid-season','critical'],
-      ['Harvest overdue','14 days past expected harvest date','critical'],
-      ['Soil test reminder','90-day cycle per plot','info'],
-    ].map(([l,d,t])=>`
-      <div class="settings-row">
-        <div><div class="settings-label">${l}</div><div class="settings-desc">${d}</div></div>
-        ${pill(t.charAt(0).toUpperCase()+t.slice(1), t==='critical'?'red':t==='warning'?'amber':'blue')}
-      </div>`).join('')}
+    <div class="card-header"><div class="card-title">Resolved Alerts</div><div style="font-size:11px;color:var(--gray-500)">${resolvedRows().length} resolved</div></div>
+    <div id="alerts-resolved-table">${resolvedTable()}</div>
   </div>`;
+
+  function refresh() {
+    document.getElementById('alerts-open-table').innerHTML = openTable();
+    document.getElementById('alerts-resolved-table').innerHTML = resolvedTable();
+  }
+
+  function scopePickerHTML() {
+    return `
+      <div class="form-group"><label class="form-label">Scope</label>
+        <select class="form-input" id="aal-scope" onchange="onAlertScopeChange()">
+          <option value="ESTATE">Estate</option><option value="BLOCKS">Block</option><option value="PARCELS">Parcel</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">&nbsp;</label><select class="form-input" id="aal-target"></select></div>`;
+  }
+  window.onAlertScopeChange = function() {
+    const scope = document.getElementById('aal-scope').value;
+    const sel = document.getElementById('aal-target');
+    if (scope === 'ESTATE') sel.innerHTML = DATA.estates.map(e=>`<option value="${e._id}">${e.name}</option>`).join('');
+    else if (scope === 'BLOCKS') sel.innerHTML = DATA.blocks.map(b=>`<option value="${b._uuid}">${b.id} (${b.estate})</option>`).join('');
+    else sel.innerHTML = DATA.plots.map(p=>`<option value="${p._uuid}">${p.id}</option>`).join('');
+  };
+
+  window.showAddAlertModal = function() {
+    showModal(`
+      <div class="modal-title">New Alert</div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Alert Name</label><input class="form-input" id="aal-name" placeholder="e.g. Pest scouting overdue"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Severity</label>
+          <select class="form-input" id="aal-severity"><option value="information">Information</option><option value="warning">Warning</option><option value="critical">Critical</option></select></div>
+        <div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">${scopePickerHTML()}</div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Note</label><textarea class="form-input" id="aal-note" rows="3"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="submitAddAlert()">Create Alert</button>
+      </div>`);
+    onAlertScopeChange();
+  };
+
+  window.submitAddAlert = async function() {
+    const name = document.getElementById('aal-name').value.trim();
+    const severity = document.getElementById('aal-severity').value;
+    const layerType = document.getElementById('aal-scope').value;
+    const targetId = document.getElementById('aal-target').value;
+    const note = document.getElementById('aal-note').value.trim();
+    if (!name) { showToast('Alert name is required', 'red'); return; }
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_alerts').insert([{
+        alert_name: name, severity, layer_type: layerType, target_id: String(targetId), note: note || null,
+      }]);
+      if (error) throw error;
+      closeModal();
+      showToast('Alert created');
+      await retryLiveDataLoad();
+      refresh();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to create alert: ' + err.message, 'red');
+    }
+  };
+
+  // \u2500\u2500 Resolve flow: dedicated dashboard/windows/resolve-alert-modal.html
+  // window (not the generic showModal shell) \u2014 captures a resolution note
+  // before marking the alert resolved. The row moves from the Open table to
+  // the Resolved table; it is never deleted by this action.
+  window.openResolveAlertModal = function(id) {
+    const a = DATA.alerts.find(x => x.id === id);
+    if (!a) return;
+    const overlay = document.getElementById('resolveAlertOverlay');
+    if (!overlay) { showToast('Resolve window not loaded', 'red'); return; }
+    document.getElementById('resolveAlertSummary').innerHTML = `
+      <div class="ras-title">${severityIcon(a.type)} ${a.title}</div>
+      <div>${a.desc || 'No description provided.'}</div>
+      <div class="ras-meta">${a.estate} \u00b7 Raised ${a.time}</div>`;
+    document.getElementById('resolveAlertNote').value = '';
+    const submitBtn = document.getElementById('resolveAlertSubmitBtn');
+    submitBtn.onclick = () => submitResolveAlert(id);
+    overlay.hidden = false;
+  };
+
+  async function submitResolveAlert(id) {
+    const note = document.getElementById('resolveAlertNote').value.trim();
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_alerts').update({
+        status: 'resolved', resolved_at: new Date().toISOString(), resolution_note: note || null,
+      }).eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Alert marked resolved');
+      await retryLiveDataLoad();
+      refresh();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to resolve alert: ' + err.message, 'red');
+    }
+  }
+
+  window.confirmDeleteAlert = function(id) {
+    showModal(`
+      <div class="modal-title">Delete Alert</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete this alert? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="submitDeleteAlert('${id}')">Yes, Delete</button>
+      </div>`);
+  };
+  window.submitDeleteAlert = async function(id) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_alerts').delete().eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Alert deleted', 'red');
+      await retryLiveDataLoad();
+      refresh();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to delete alert: ' + err.message, 'red');
+    }
+  };
 }
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
@@ -1806,20 +2528,58 @@ function renderSettings(el) {
 //  MODAL SYSTEM
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
+// Icon shown in the modal header, guessed from the (legacy) title text so call
+// sites don't each have to specify one.
+function guessModalIcon(title) {
+  const t = (title || '').toLowerCase();
+  if (t.startsWith('delete') || t.startsWith('remove')) return '🗑';
+  if (t.startsWith('resolve')) return '✓';
+  if (t.startsWith('edit')) return '✎';
+  if (t.startsWith('add') || t.startsWith('log') || t.startsWith('new') || t.startsWith('create')) return '+';
+  return '◈';
+}
+
+// Populates the shared dashboard/windows/modal-shell.html shell and shows it.
+// `html` follows the existing convention: a leading `<div class="modal-title">…`
+// element (moved into the header) and a trailing `<div class="modal-actions">…`
+// element (moved into the footer band, with any "Cancel" button stripped —
+// closing now happens via the header ✕, the backdrop, or Escape only).
 function showModal(html) {
-  closeModal();
-  const bd = document.createElement('div');
-  bd.className = 'modal-backdrop';
-  bd.id = 'active-modal';
-  bd.innerHTML = `<div class="modal-box">${html}</div>`;
-  bd.addEventListener('click', e => { if (e.target === bd) closeModal(); });
-  document.body.appendChild(bd);
+  const overlay = document.getElementById('modalOverlay');
+  if (!overlay) { console.error('dashboard/windows/modal-shell.html did not load'); return; }
+
+  const body = document.getElementById('modalBody');
+  body.innerHTML = html;
+
+  const titleEl = body.querySelector('.modal-title');
+  const titleText = titleEl ? titleEl.textContent.trim() : '';
+  document.getElementById('modalTitle').textContent = titleText;
+  document.getElementById('modalIcon').textContent = guessModalIcon(titleText);
+  if (titleEl) titleEl.remove();
+
+  const actionsEl = body.querySelector('.modal-actions');
+  const footer = document.getElementById('modalFooter');
+  footer.innerHTML = '';
+  if (actionsEl) {
+    [...actionsEl.querySelectorAll('button')].forEach(btn => {
+      if (btn.getAttribute('onclick') === 'closeModal()' || /^cancel$/i.test(btn.textContent.trim())) btn.remove();
+    });
+    footer.appendChild(actionsEl);
+    actionsEl.className = ''; // was "modal-actions" (margin/justify); footer band now owns that layout
+  }
+  footer.hidden = !footer.children.length || !footer.querySelector('button');
+
+  overlay.hidden = false;
 }
 
 function closeModal() {
-  const m = document.getElementById('active-modal');
-  if (m) m.remove();
+  const overlay = document.getElementById('modalOverlay');
+  if (overlay) overlay.hidden = true;
+  const resolveOverlay = document.getElementById('resolveAlertOverlay');
+  if (resolveOverlay) resolveOverlay.hidden = true;
 }
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 //  CHART INITIALISATION
@@ -1893,11 +2653,21 @@ function initCharts(page) {
     }));
 
     const c6 = document.getElementById('chart-cost-break');
-    if (c6) reg(new Chart(c6, {
-      type: 'doughnut',
-      data: { labels:DATA.costBreakdown.labels, datasets:[{ data:DATA.costBreakdown.values, backgroundColor:['#1a3d2b','#2e6647','#4a9e6e','#e8a020','#f4c56a','#c0392b','#9fd4b8'], borderWidth:2, borderColor:'#fff' }] },
-      options: { ...defaults, cutout:'55%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{ size:10 } } } } },
-    }));
+    if (c6) {
+      // Prefer real vsl_activity_costs rollups; fall back to placeholder shape if none logged yet.
+      let costLabels = DATA.costBreakdown.labels, costValues = DATA.costBreakdown.values;
+      if (DATA.costs && DATA.costs.length) {
+        const byType = {};
+        DATA.costs.forEach(c => { byType[c.costType] = (byType[c.costType]||0) + c.amount; });
+        costLabels = Object.keys(byType);
+        costValues = Object.values(byType);
+      }
+      reg(new Chart(c6, {
+        type: 'doughnut',
+        data: { labels:costLabels, datasets:[{ data:costValues, backgroundColor:['#1a3d2b','#2e6647','#4a9e6e','#e8a020','#f4c56a','#c0392b','#9fd4b8'], borderWidth:2, borderColor:'#fff' }] },
+        options: { ...defaults, cutout:'55%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{ size:10 } } } } },
+      }));
+    }
 
     const c7 = document.getElementById('chart-stage-dist');
     if (c7) reg(new Chart(c7, {
@@ -1963,6 +2733,9 @@ function renderSidebarEstateHealth() {
       <span class="nav-label">${e.name}</span>
       <span class="ml-auto nav-label">${labelText(e.health)}</span>
     </div>`).join('');
+
+  const badge = document.getElementById('topbar-alert-count');
+  if (badge) badge.textContent = (DATA.alerts || []).filter(a => !a.isReal || a.status !== 'resolved').length;
 }
 
 // ══════════════════════════════════════
@@ -1996,7 +2769,30 @@ async function retryLiveDataLoad() {
 //  BOOT
 // ══════════════════════════════════════
 
-document.addEventListener('DOMContentLoaded', () => {
+// Popup window HTML fragments (see dashboard/windows/) — fetched once at boot
+// and appended to <body>, same pattern the main webmap uses for its windows/*.html.
+const WINDOW_FRAGMENTS = [
+  './windows/modal-shell.html',
+  './windows/resolve-alert-modal.html',
+];
+async function loadWindowFragments() {
+  await Promise.all(WINDOW_FRAGMENTS.map(async url => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      const html = await res.text();
+      const wrap = document.createElement('div');
+      wrap.innerHTML = html.trim();
+      [...wrap.children].forEach(child => document.body.appendChild(child));
+    } catch (err) {
+      console.error(`Failed to load window fragment ${url}:`, err);
+    }
+  }));
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadWindowFragments();
+
   // Remap the "Plots & Blocks" nav link to the renamed "estates" page
   document.querySelectorAll('.nav-item').forEach(item => {
     const oc = item.getAttribute('onclick') || '';
@@ -2007,6 +2803,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Wire the now-loaded modal shells' close buttons / backdrop-click / Escape
+  const overlay = document.getElementById('modalOverlay');
+  if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  const closeBtn = document.getElementById('modalCloseBtn');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  const resolveOverlay = document.getElementById('resolveAlertOverlay');
+  if (resolveOverlay) resolveOverlay.addEventListener('click', e => { if (e.target === resolveOverlay) closeModal(); });
+  const resolveCloseBtn = document.getElementById('resolveAlertCloseBtn');
+  if (resolveCloseBtn) resolveCloseBtn.addEventListener('click', closeModal);
+
   // Show placeholder sidebar health immediately, then refresh once live data lands
   renderSidebarEstateHealth();
 
@@ -2015,12 +2821,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initLiveData();
   } else {
     console.error('initLiveData() not found — supabase-client.js may have failed to load');
-    const overlay = document.getElementById('data-loading-overlay');
-    if (overlay) overlay.classList.add('hidden');
+    const overlay2 = document.getElementById('data-loading-overlay');
+    if (overlay2) overlay2.classList.add('hidden');
   }
 
-  // Dashboard starts closed — the map background is the home screen
-  // Users can click any sidebar item to open the panel
+  // The dashboard IS the page now — land straight on the Dashboard view.
+  openPanel('dashboard', null);
 });
 
 // Fired by supabase-client.js once live data has successfully replaced DATA
@@ -2029,8 +2835,8 @@ document.addEventListener('sugarestate:data-ready', () => {
   if (overlay) overlay.classList.add('hidden');
   hideDataSourceBanner();
   renderSidebarEstateHealth();
-  // If a panel is currently open, re-render it with the fresh live data
-  if (panelOpen && currentPage) {
+  // Re-render whatever page is currently showing with the fresh live data
+  if (currentPage) {
     const activeNav = document.querySelector('.nav-item.active');
     openPanel(currentPage, activeNav);
   }

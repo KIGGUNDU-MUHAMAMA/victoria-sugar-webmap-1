@@ -82,7 +82,10 @@ function titleCase(str) {
 async function loadLiveData() {
   const client = getSbClient();
 
-  const [estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes] = await Promise.all([
+  const [
+    estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes,
+    actRes, actCostRes, alertRes, docRes, mediaRes,
+  ] = await Promise.all([
     client.from('vsl_estate').select('*'),
     client.from('vsl_blocks').select('*'),
     client.from('vsl_parcels').select('*'),
@@ -90,6 +93,11 @@ async function loadLiveData() {
     client.from('vsl_report_recipients').select('*'),
     client.from('v_block_last_harvest').select('block_id, harvest_tonnes, last_harvest_date'),
     client.from('v_parcel_last_harvest').select('parcel_id, harvest_tonnes, last_harvest_date'),
+    client.from('vsl_activities').select('*').order('activity_date', { ascending: false }).limit(200),
+    client.from('vsl_activity_costs').select('*').order('created_at', { ascending: false }).limit(500),
+    client.from('vsl_alerts').select('*').order('created_at', { ascending: false }),
+    client.from('vsl_documents').select('*').order('upload_date', { ascending: false }).limit(200),
+    client.from('vsl_media').select('*').order('captured_at', { ascending: false }).limit(200),
   ]);
 
   if (estRes.error) console.error('Supabase estate fetch error:', estRes.error);
@@ -99,12 +107,22 @@ async function loadLiveData() {
   if (recRes.error) console.error('Supabase report_recipients fetch error:', recRes.error);
   if (blkHarvestRes.error) console.error('Supabase block harvest fetch error:', blkHarvestRes.error);
   if (parHarvestRes.error) console.error('Supabase parcel harvest fetch error:', parHarvestRes.error);
+  if (actRes.error) console.error('Supabase activities fetch error:', actRes.error);
+  if (actCostRes.error) console.error('Supabase activity_costs fetch error:', actCostRes.error);
+  if (alertRes.error) console.error('Supabase alerts fetch error:', alertRes.error);
+  if (docRes.error) console.error('Supabase documents fetch error:', docRes.error);
+  if (mediaRes.error) console.error('Supabase media fetch error:', mediaRes.error);
 
   const rawEstates = estRes.data || [];
   const rawBlocks  = blkRes.data || [];
   const rawParcels = parRes.data || [];
   const rawProfiles = profRes.data || [];
   const rawRecipients = recRes.data || [];
+  const rawActivities = actRes.data || [];
+  const rawActivityCosts = actCostRes.data || [];
+  const rawAlerts = alertRes.data || [];
+  const rawDocuments = docRes.data || [];
+  const rawMedia = mediaRes.data || [];
 
   // Estate id → estate_name lookup (estate_name was dropped from vsl_blocks/vsl_parcels; both
   // now reference vsl_estate via estate_id / block_id → block.estate_id).
@@ -223,20 +241,26 @@ async function loadLiveData() {
   // ── USERS (profiles) reshaped ──
   const ROLE_LABELS = {
     ADMIN: 'Admin',
-    MANAGMENT: 'Land Manager', // NB: source value is misspelled "MANAGMENT" in the DB
+    MANAGMENT: 'Management', // NB: source value is misspelled "MANAGMENT" in the DB — kept as-is to match the check constraint
     SURVEYOR: 'Surveyor',
   };
+  const estateNameByIdForUsers = new Map(rawEstates.map(e => [e.id, e.estate_name]));
   const users = rawProfiles.map(p => {
-    const initials = (p.email || '??').split('@')[0].slice(0, 2).toUpperCase();
+    const initials = (p.full_name || p.email || '??')
+      .split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
     return {
       id: p.id,
-      name: p.email ? p.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unnamed User',
+      name: p.full_name || (p.email ? p.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unnamed User'),
       email: p.email,
-      role: ROLE_LABELS[p.role] || titleCase(p.role) || 'Stakeholder',
-      estate: 'All Estates', // not tracked per-user in current schema
-      status: 'active',
-      lastLogin: p.updated_at ? p.updated_at.replace('T', ' ').slice(0, 16) : '—',
-      avatar: initials,
+      role: ROLE_LABELS[p.role] || titleCase(p.role) || p.role,
+      roleRaw: p.role,
+      title: p.title || '',
+      phone: p.phone || '',
+      estate: p.estate_id ? (estateNameByIdForUsers.get(p.estate_id) || 'Unassigned') : 'All Estates',
+      estateId: p.estate_id || null,
+      status: p.is_active === false ? 'inactive' : 'active',
+      lastLogin: p.last_login_at ? p.last_login_at.replace('T', ' ').slice(0, 16) : '—',
+      avatar: initials || '??',
       createdAt: p.created_at,
     };
   });
@@ -253,6 +277,133 @@ async function loadLiveData() {
     status: 'active',
     createdBy: r.created_by,
     createdAt: r.created_at,
+  }));
+
+  // ── ACTIVITIES reshaped ──
+  const blockById = new Map(rawBlocks.map(b => [b.id, b]));
+  const parcelById = new Map(rawParcels.map(p => [p.id, p]));
+  const profileById = new Map(rawProfiles.map(p => [p.id, p]));
+  function estateNameForActivity(a) {
+    if (a.estate_id != null) return estateNameByIdForUsers.get(a.estate_id) || 'Unassigned';
+    const blk = a.block_id ? blockById.get(a.block_id) : (a.parcel_id ? blockById.get(parcelById.get(a.parcel_id)?.block_id) : null);
+    return blk ? (estateNameByIdForUsers.get(blk.estate_id) || 'Unassigned') : 'Unassigned';
+  }
+  const activities = rawActivities.map(a => {
+    const parcel = a.parcel_id ? parcelById.get(a.parcel_id) : null;
+    const block = a.block_id ? blockById.get(a.block_id) : (parcel ? blockById.get(parcel.block_id) : null);
+    const assignee = a.assigned_to ? profileById.get(a.assigned_to) : null;
+    return {
+      id: a.id,
+      name: a.activity_name,
+      date: a.activity_date,
+      estate: estateNameForActivity(a),
+      block: block ? (block.block_code || block.id) : '—',
+      parcel: parcel ? (parcel.parcel_code || parcel.parcel_name || parcel.id) : (a.parcel_id ? '—' : null),
+      assignedTo: assignee ? (assignee.full_name || assignee.email) : (a.assigned_to_legacy || '—'),
+      teamSize: a.team_size,
+      machines: a.number_of_machines,
+      completionValue: a.completion_value,
+      challenges: a.challenges,
+      comments: a.comments,
+      properties: a.activity_properties || {},
+      createdAt: a.created_at,
+      _blockId: a.block_id,
+      _parcelId: a.parcel_id,
+      _estateId: a.estate_id,
+    };
+  });
+
+  // ── ACTIVITY COSTS reshaped ──
+  const activityById = new Map(rawActivities.map(a => [a.id, a]));
+  const costs = rawActivityCosts.map(c => {
+    const parcel = c.parcel_id ? parcelById.get(c.parcel_id) : null;
+    const block = c.block_id ? blockById.get(c.block_id) : (parcel ? blockById.get(parcel.block_id) : null);
+    const activity = c.activity_id ? activityById.get(c.activity_id) : null;
+    return {
+      id: c.id,
+      activityId: c.activity_id,
+      activityName: activity ? activity.activity_name : '—',
+      costType: c.cost_type || '—',
+      description: c.description || '',
+      amount: Number(c.amount) || 0,
+      currency: c.currency || 'UGX',
+      estate: block ? (estateNameByIdForUsers.get(block.estate_id) || 'Unassigned') : 'Unassigned',
+      block: block ? (block.block_code || block.id) : '—',
+      parcel: parcel ? (parcel.parcel_code || parcel.parcel_name) : '—',
+      createdAt: c.created_at,
+      _blockId: c.block_id,
+      _parcelId: c.parcel_id,
+    };
+  });
+
+  // ── ALERTS reshaped (real vsl_alerts rows) ──
+  function resolveAlertScope(a) {
+    if (a.layer_type === 'ESTATE') {
+      const est = rawEstates.find(e => String(e.id) === String(a.target_id));
+      return est ? est.estate_name : 'Unassigned';
+    }
+    if (a.layer_type === 'BLOCKS') {
+      const blk = rawBlocks.find(b => b.id === a.target_id);
+      return blk ? (estateNameByIdForUsers.get(blk.estate_id) || 'Unassigned') : 'Unassigned';
+    }
+    if (a.layer_type === 'PARCELS') {
+      const par = rawParcels.find(p => p.id === a.target_id);
+      const blk = par ? blockById.get(par.block_id) : null;
+      return blk ? (estateNameByIdForUsers.get(blk.estate_id) || 'Unassigned') : 'Unassigned';
+    }
+    return 'All Estates';
+  }
+  const dbAlerts = rawAlerts.map(a => ({
+    id: a.id,
+    type: a.severity === 'critical' ? 'critical' : a.severity === 'warning' ? 'warning' : 'info',
+    title: a.alert_name || titleCase(a.layer_type) + ' alert',
+    desc: a.note || '',
+    layerType: a.layer_type,
+    targetId: a.target_id,
+    estate: resolveAlertScope(a),
+    status: a.status,
+    time: a.created_at ? new Date(a.created_at).toLocaleString() : '—',
+    createdAt: a.created_at,
+    resolvedAt: a.resolved_at,
+    resolvedTime: a.resolved_at ? new Date(a.resolved_at).toLocaleString() : '',
+    resolutionNote: a.resolution_note || '',
+    isReal: true,
+  }));
+
+  // ── DOCUMENTS & MEDIA reshaped ──
+  function resolveEntityLabel(entity_type, entity_id) {
+    if (entity_type === 'estate') {
+      const e = rawEstates.find(x => String(x.id) === String(entity_id));
+      return e ? e.estate_name : entity_id;
+    }
+    if (entity_type === 'block') {
+      const b = blockById.get(entity_id);
+      return b ? (b.block_code || b.id) : entity_id;
+    }
+    if (entity_type === 'parcel') {
+      const p = parcelById.get(entity_id);
+      return p ? (p.parcel_code || p.parcel_name || p.id) : entity_id;
+    }
+    return entity_id;
+  }
+  const documents = rawDocuments.map(d => ({
+    id: d.id,
+    title: d.document_title,
+    docType: d.doc_type || '—',
+    entityType: d.entity_type,
+    entityLabel: resolveEntityLabel(d.entity_type, d.entity_id),
+    fileUrl: d.file_url,
+    description: d.description || '',
+    uploadDate: d.upload_date,
+  }));
+  const media = rawMedia.map(m => ({
+    id: m.id,
+    mediaType: m.media_type || 'photo',
+    entityType: m.entity_type,
+    entityLabel: resolveEntityLabel(m.entity_type, m.entity_id),
+    fileUrl: m.file_url,
+    caption: m.caption || '',
+    capturedAt: m.captured_at,
   }));
 
   // ── AGGREGATE STATS ──
@@ -301,8 +452,20 @@ async function loadLiveData() {
     yieldByVariety: DATA.yieldByVariety,              // placeholder — variety not tracked per-parcel yet
     users,
     emailSubscribers,
-    alerts: buildAlertsFromLiveData(estates, blocks, plots),
-    recentActivity: buildRecentActivityFromLiveData(rawParcels, rawBlocks, estateNameById),
+    activities,
+    costs,
+    documents,
+    media,
+    alerts: dbAlerts.length ? dbAlerts : buildAlertsFromLiveData(estates, blocks, plots),
+    recentActivity: activities.length
+      ? activities.slice(0, 8).map(a => ({
+          type: 'activity',
+          icon: '🌾',
+          color: 'green',
+          text: `${a.name} logged on ${a.parcel && a.parcel !== '—' ? 'parcel ' + a.parcel : (a.block !== '—' ? 'block ' + a.block : a.estate)}`,
+          meta: `${a.estate} · ${a.assignedTo || 'Unassigned'} · ${a.date || ''}`,
+        }))
+      : buildRecentActivityFromLiveData(rawParcels, rawBlocks, estateNameById),
   };
 }
 

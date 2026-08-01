@@ -17,11 +17,39 @@ function fmtUGX(n) {
   if (n >= 1_000_000)     return 'UGX ' + (n / 1_000_000).toFixed(1) + 'M';
   return 'UGX ' + fmt(n);
 }
-function fmtHa(n)   { return n != null ? Number(n).toFixed(1) + ' ha' : '—'; }
+// Internal area values are stored in hectares (converted from the DB's acre
+// columns in supabase-client.js); the UI's default display unit is acres, so
+// this formatter converts back on the way out. Kept named fmtHa for the
+// (very large) set of existing call sites — it now renders acres.
+function fmtHa(n)   { return n != null ? (Number(n) * 2.47105).toFixed(1) + ' ac' : '—'; }
+function fmtAcres(n){ return fmtHa(n); }
 function pct(a, b)  { return b ? Math.round((a / b) * 100) : 0; }
 function titleCaseLocal(str) {
   if (!str) return str;
   return String(str).replace(/_/g, ' ').replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+}
+// Entity-type labels for Documents/Media "Linked To" — DB stores 'parcel' but the UI says "Plot".
+function entityTypeLabel(t) { return t === 'parcel' ? 'Plot' : titleCaseLocal(t); }
+
+// Superset of growth-stage labels — covers both the live-data buckets (from
+// stageFromCultivationStatus() in supabase-client.js: Grand Growth, Tillering,
+// Under Prep, Fallow) and the richer placeholder/fallback dataset's labels
+// (data.js), so the stage-distribution charts stay accurate whichever data
+// source is active. Order here is display order; unknown stages fall back
+// to gray rather than being silently dropped.
+const STAGE_ORDER  = ['Germination','Tillering','Grand Growth','Ripening','Harvested','Under Prep','Fallow'];
+const STAGE_COLORS = { Germination:'#60a5fa', Tillering:'#2563eb', 'Grand Growth':'#4a9e6e', Ripening:'#e8a020', Harvested:'#16a34a', 'Under Prep':'#f4c56a', Fallow:'#c8d0ce' };
+function plotStageDistribution() {
+  const counts = {};
+  DATA.plots.forEach(p => { counts[p.stage] = (counts[p.stage]||0) + 1; });
+  const known = STAGE_ORDER.filter(s => counts[s]);
+  const other = Object.keys(counts).filter(s => !STAGE_ORDER.includes(s));
+  const labels = [...known, ...other];
+  return {
+    labels,
+    values: labels.map(s => counts[s]),
+    colors: labels.map(s => STAGE_COLORS[s] || '#9ca3af'),
+  };
 }
 
 function pill(text, color) {
@@ -55,21 +83,9 @@ function destroyCharts() {
   activeCharts = [];
 }
 
-// ── SIDEBAR TOGGLE (mobile icon-rail ⇄ expanded overlay only; desktop sidebar is fixed) ──
-
-function isMobileViewport() {
-  return window.matchMedia('(max-width: 768px)').matches;
-}
-
-function toggleSidebar() {
-  if (!isMobileViewport()) return; // desktop sidebar is fixed and not collapsible
-  const sb = document.getElementById('sidebar');
-  const backdrop = document.getElementById('sidebar-backdrop');
-  const expanded = sb.classList.toggle('mobile-expanded');
-  backdrop.classList.toggle('visible', expanded);
-}
-
 // ── PAGE SWITCHING ────────────────────
+// Sidebar is a fixed rail on desktop and a permanent icon-only rail on mobile
+// (nav items are directly tappable by icon — no expand/collapse affordance).
 
 const PAGE_TITLES = {
   dashboard:     'Dashboard',
@@ -80,7 +96,7 @@ const PAGE_TITLES = {
   costs:         'Costs',
   documents:     'Documents & Media',
   users:         'Users',
-  notifications: 'Email Reports',
+  notifications: 'Reports',
   messages:      'Messages',
   alerts:        'Alerts & Notifications',
   settings:      'Settings',
@@ -119,12 +135,6 @@ function openPanel(page, navEl) {
     settings:      renderSettings,
   };
   if (pages[page]) pages[page](body);
-
-  // On mobile, collapse the sidebar back to the icon rail after navigating
-  if (isMobileViewport()) {
-    document.getElementById('sidebar').classList.remove('mobile-expanded');
-    document.getElementById('sidebar-backdrop').classList.remove('visible');
-  }
 
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
   setTimeout(() => initCharts(page), 60);
@@ -227,6 +237,11 @@ function renderDashboard(el) {
                 <td>${healthPill(e.health)}</td>
               </tr>`).join('')}
           </tbody>
+          <tfoot><tr style="font-weight:700;background:var(--gray-50)">
+            <td>Total</td>
+            <td>${s.totalBlocks}</td><td>${s.totalPlots}</td>
+            <td>${fmtHa(s.totalAreaHa)}</td><td></td>
+          </tr></tfoot>
         </table>
       </div>
     </div>
@@ -268,6 +283,69 @@ function renderDashboard(el) {
 // ══════════════════════════════════════
 
 function renderAnalytics(el) {
+  let estFilter = '';
+
+  function estateRows() { return DATA.estates.filter(e => !estFilter || e.name === estFilter); }
+  function activityRows() { return DATA.activities.filter(a => !estFilter || a.estate === estFilter).slice(0, 12); }
+
+  function estateTable() {
+    const rows = estateRows();
+    const totals = rows.reduce((t,e)=>({
+      blocks: t.blocks+e.blocks, plots: t.plots+e.plots, areaHa: t.areaHa+e.areaHa, plantedHa: t.plantedHa+e.plantedHa,
+    }), { blocks:0, plots:0, areaHa:0, plantedHa:0 });
+    return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Estate</th><th>District</th><th>Manager</th><th>Blocks</th><th>Plots</th>
+          <th>Total Area</th><th>Planted</th><th>Utilisation</th><th>Health</th></tr>
+        </thead>
+        <tbody>
+          ${rows.length ? rows.map(e=>`
+            <tr>
+              <td><strong>${e.name}</strong></td><td>${e.district}</td><td>${e.manager}</td>
+              <td>${e.blocks}</td><td>${e.plots}</td>
+              <td>${fmtHa(e.areaHa)}</td><td>${fmtHa(e.plantedHa)}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div class="progress-bar-wrap" style="width:80px">
+                    <div class="progress-bar ${pct(e.plantedHa,e.areaHa)>75?'green':pct(e.plantedHa,e.areaHa)>50?'amber':'red'}"
+                         style="width:${pct(e.plantedHa,e.areaHa)}%"></div>
+                  </div>
+                  <span style="font-size:12px;font-weight:600">${pct(e.plantedHa,e.areaHa)}%</span>
+                </div>
+              </td>
+              <td>${healthPill(e.health)}</td>
+            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--gray-500);padding:24px">No estates match this filter</td></tr>`}
+        </tbody>
+        ${rows.length ? `<tfoot><tr style="font-weight:700;background:var(--gray-50)">
+          <td colspan="3">Total</td>
+          <td>${totals.blocks}</td><td>${totals.plots}</td>
+          <td>${fmtHa(totals.areaHa)}</td><td>${fmtHa(totals.plantedHa)}</td>
+          <td colspan="2">${pct(totals.plantedHa,totals.areaHa)}% overall</td>
+        </tr></tfoot>` : ''}
+      </table>
+    </div>`;
+  }
+
+  function activityTable() {
+    const rows = activityRows();
+    return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Activity</th><th>Estate</th><th>Block</th><th>Plot</th><th>Assigned To</th><th>Completion</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(a=>`
+            <tr>
+              <td>${a.date || '—'}</td><td><strong>${a.name}</strong></td><td>${a.estate}</td>
+              <td>${a.block}</td><td>${a.parcel || '—'}</td><td>${a.assignedTo || '—'}</td>
+              <td>${a.completionValue != null ? a.completionValue : '—'}</td>
+            </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--gray-500);padding:24px">No activities logged yet</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
   el.innerHTML = `
   <div class="page-header">
     <div>
@@ -275,54 +353,18 @@ function renderAnalytics(el) {
       <div class="page-header-sub">Comprehensive estate performance data</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <select class="form-input" style="width:140px">
-        <option>All Estates</option>
-        ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
+      <select class="form-input" style="width:160px" id="an-estate-filter" onchange="applyAnalyticsFilter(this.value)">
+        <option value="">All Estates</option>
+        ${DATA.estates.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}
       </select>
-      <select class="form-input" style="width:120px">
-        <option>Season 2024-B</option><option>Season 2024-A</option><option>Season 2023-B</option>
-      </select>
-      <button class="btn btn-primary btn-sm">Export PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="showToast('PDF export coming soon')">Export PDF</button>
     </div>
   </div>
 
   <div class="card" style="margin-bottom:20px">
-    <div class="card-header">
-      <div class="card-title">Area Status by Block</div>
-      <div style="display:flex;gap:14px;font-size:11px;color:var(--gray-500);flex-wrap:wrap">
-        <span><span style="display:inline-block;width:10px;height:10px;background:var(--green-400);border-radius:2px;margin-right:4px"></span>Planted</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:var(--amber-300);border-radius:2px;margin-right:4px"></span>Fallow</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:var(--gray-300);border-radius:2px;margin-right:4px"></span>Reserved</span>
-      </div>
-    </div>
-    ${DATA.blocks.map(b=>{
-      const fallow   = b.areaHa - b.plantedHa;
-      const reserved = b.areaHa * 0.05;
-      const pPct = pct(b.plantedHa, b.areaHa);
-      const fPct = pct(fallow - reserved, b.areaHa);
-      const rPct = pct(reserved, b.areaHa);
-      return `
-      <div class="area-block">
-        <div class="area-block-header">
-          <div class="area-block-name">${b.id} <span style="font-weight:400;color:var(--gray-500)">· ${b.estate}</span></div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span class="area-block-ha">${fmtHa(b.plantedHa)} / ${fmtHa(b.areaHa)}</span>
-            ${healthPill(b.status)}
-          </div>
-        </div>
-        <div class="area-segment-row">
-          <div class="area-seg" style="width:${pPct}%;background:var(--green-400)"></div>
-          <div class="area-seg" style="width:${fPct}%;background:var(--amber-300)"></div>
-          <div class="area-seg" style="width:${rPct}%;background:var(--gray-300)"></div>
-        </div>
-        <div style="display:flex;gap:16px;font-size:11px;color:var(--gray-500);flex-wrap:wrap">
-          <span>Planted: <strong>${pPct}%</strong></span>
-          <span>Fallow: <strong>${fPct}%</strong></span>
-          <span>Avg Yield: <strong>${b.avgYield} t/ha</strong></span>
-          <span>Plots: <strong>${b.plots}</strong></span>
-        </div>
-      </div>`;
-    }).join('')}
+    <div class="card-header"><div class="card-title">Recent Activities</div>
+      <div style="font-size:11px;color:var(--gray-500)">Latest 12${estFilter ? ' · ' + estFilter : ''}</div></div>
+    <div id="an-activities">${activityTable()}</div>
   </div>
 
   <div class="grid-3" style="margin-bottom:20px">
@@ -342,39 +384,13 @@ function renderAnalytics(el) {
 
   <div class="card" style="margin-bottom:20px">
     <div class="card-header"><div class="card-title">Estate Performance Comparison</div></div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Estate</th><th>District</th><th>Manager</th><th>Blocks</th><th>Plots</th>
-          <th>Total Area</th><th>Planted</th><th>Utilisation</th><th>Health</th></tr>
-        </thead>
-        <tbody>
-          ${DATA.estates.map(e=>`
-            <tr>
-              <td><strong>${e.name}</strong></td><td>${e.district}</td><td>${e.manager}</td>
-              <td>${e.blocks}</td><td>${e.plots}</td>
-              <td>${fmtHa(e.areaHa)}</td><td>${fmtHa(e.plantedHa)}</td>
-              <td>
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div class="progress-bar-wrap" style="width:80px">
-                    <div class="progress-bar ${pct(e.plantedHa,e.areaHa)>75?'green':pct(e.plantedHa,e.areaHa)>50?'amber':'red'}"
-                         style="width:${pct(e.plantedHa,e.areaHa)}%"></div>
-                  </div>
-                  <span style="font-size:12px;font-weight:600">${pct(e.plantedHa,e.areaHa)}%</span>
-                </div>
-              </td>
-              <td>${healthPill(e.health)}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+    <div id="an-estates">${estateTable()}</div>
   </div>
 
   <div class="grid-4" style="margin-bottom:20px">
     <div class="stat-card green">
       <div class="stat-label">Total Revenue</div>
       <div class="stat-value" style="font-size:20px">${fmtUGX(DATA.stats.totalRevenue)}</div>
-      <div class="stat-meta">Season 2024-B</div>
     </div>
     <div class="stat-card red">
       <div class="stat-label">Total Cost</div>
@@ -390,6 +406,12 @@ function renderAnalytics(el) {
       <div class="stat-value" style="font-size:20px">UGX ${fmt(Math.round(DATA.stats.totalCost/DATA.stats.currentSeasonYieldTonnes))}</div>
     </div>
   </div>`;
+
+  window.applyAnalyticsFilter = function(val) {
+    estFilter = val;
+    document.getElementById('an-estates').innerHTML = estateTable();
+    document.getElementById('an-activities').innerHTML = activityTable();
+  };
 }
 
 // ══════════════════════════════════════
@@ -466,8 +488,8 @@ function renderEstatesPage(el) {
         <thead>
           <tr>
             <th>Estate</th><th>District</th><th>Manager</th><th>Blocks</th>
-            <th>Plots</th><th>Total Area</th><th>Planted Ha</th>
-            <th>Fallow Ha</th><th>Utilisation</th><th>Health</th><th>Actions</th>
+            <th>Plots</th><th>Total Area</th><th>Planted Ac</th>
+            <th>Fallow Ac</th><th>Utilisation</th><th>Health</th><th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -526,8 +548,8 @@ function renderEstatesPage(el) {
         <option value="">All Statuses</option>
         <option>active</option><option>watch</option><option>alert</option>
       </select>
-      <div style="margin-left:auto;display:flex;gap:8px">
-        <button class="btn btn-primary btn-sm" onclick="showAddBlockModal()">+ Add Block</button>
+      <div style="margin-left:auto;font-size:11px;color:var(--gray-500);align-self:center">
+        💡 Blocks are surveyed &amp; imported, not created here
       </div>
     </div>
     <div class="table-wrap">
@@ -555,7 +577,7 @@ function renderEstatesPage(el) {
                   <span style="font-size:11px;font-weight:700">${pct(b.plantedHa,b.areaHa)}%</span>
                 </div>
               </td>
-              <td><strong>${b.avgYield}</strong> t/ha</td>
+              <td><strong>${b.avgYield}</strong> t/ac</td>
               <td>${b.season}</td>
               <td>${healthPill(b.status)}</td>
               <td onclick="event.stopPropagation()">
@@ -591,8 +613,7 @@ function renderEstatesPage(el) {
       <select class="form-input" style="width:140px" id="plt-stage-filter"
               onchange="filterPlotsByStage(this.value)">
         <option value="">All Stages</option>
-        <option>Germination</option><option>Tillering</option><option>Grand Growth</option>
-        <option>Ripening</option><option>Harvested</option><option>Fallow</option>
+        ${STAGE_ORDER.map(s=>`<option>${s}</option>`).join('')}
       </select>
       <select class="form-input" style="width:130px" id="plt-health-filter"
               onchange="filterPlotsByHealth(this.value)">
@@ -600,9 +621,9 @@ function renderEstatesPage(el) {
         <option value="good">Good</option><option value="watch">Watch</option>
         <option value="alert">Alert</option>
       </select>
-      <div style="margin-left:auto;display:flex;gap:8px">
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         ${blockId ? `<button class="btn btn-outline btn-sm" onclick="clearBlockDrill()">← All Blocks</button>` : ''}
-        <button class="btn btn-primary btn-sm" onclick="showAddPlotModal()">+ Add Plot</button>
+        <span style="font-size:11px;color:var(--gray-500)">💡 Plots are surveyed &amp; imported, not created here</span>
       </div>
     </div>
     ${blockId ? `<div style="padding:8px 12px;background:var(--blue-100);border-radius:var(--radius-sm);margin-bottom:14px;font-size:12px;color:var(--blue-500);font-weight:600">Showing plots in <strong>${blockId}</strong></div>` : ''}
@@ -629,8 +650,8 @@ function renderEstatesPage(el) {
               <td>${p.expectedHarvest||'—'}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px">
-                  <button class="btn btn-outline btn-sm btn-icon" onclick="showEditPlotModal('${p.id}')" title="Edit">✏</button>
-                  <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeletePlot('${p.id}')" title="Delete">🗑</button>
+                  <button class="icon-btn" onclick="showEditPlotModal('${p.id}')" title="Edit">✎</button>
+                  <button class="icon-btn danger" onclick="confirmDeletePlot('${p.id}')" title="Delete">🗑</button>
                 </div>
               </td>
             </tr>`).join('')}
@@ -656,7 +677,7 @@ function renderEstatesPage(el) {
       ['Current Activity',    p.currentActivity || '—'],
       ['Block',               p.block],
       ['Estate',               p.estate],
-      ['Area (ha)',           fmtHa(p.areaHa)],
+      ['Area (ac)',           fmtHa(p.areaHa)],
       ['Geometry Status',     p.geometryStatus ? titleCaseLocal(p.geometryStatus) : '—'],
       ['Cultivation Status',  p.cultivationStatus ? titleCaseLocal(p.cultivationStatus) : '—'],
       ['Cane Variety',        (p.variety || '—') + (DATA.isLive ? tag : '')],
@@ -666,7 +687,7 @@ function renderEstatesPage(el) {
       ['Growth Stage',        p.stage],
       ['Health Status',       p.health.charAt(0).toUpperCase()+p.health.slice(1)],
       ['Actual Harvest (t)',  p.yield ? p.yield + ' t' : 'Pending harvest'],
-      ['Yield per Ha',        p.yield ? (p.yield/p.areaHa).toFixed(2) + ' t/ha' : '—'],
+      ['Yield per Ac',        p.yield ? (p.yield/(p.areaHa*2.47105)).toFixed(2) + ' t/ac' : '—'],
       ['Last Harvest Date',   p.lastHarvestDate || '—'],
       ['Soil Type',           (ph.soilType || '—') + (DATA.isLive ? tag : '')],
       ['Soil pH',             (ph.soilPh || '—') + (DATA.isLive ? tag : '')],
@@ -894,7 +915,7 @@ function renderEstatesPage(el) {
     showModal(`
       <div class="modal-title">Delete Estate</div>
       <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">
-        Are you sure you want to delete <strong>${name}</strong>? Blocks and parcels referencing this estate name will remain but lose their estate link. This action cannot be undone.
+        Are you sure you want to delete <strong>${name}</strong>? Blocks and plots referencing this estate name will remain but lose their estate link. This action cannot be undone.
       </p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1007,7 +1028,7 @@ function renderEstatesPage(el) {
     showModal(`
       <div class="modal-title">Delete Block</div>
       <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">
-        Delete <strong>${id}</strong>? Parcels referencing this block will lose their block link. This cannot be undone.
+        Delete <strong>${id}</strong>? Plots referencing this block will lose their block link. This cannot be undone.
       </p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1033,9 +1054,9 @@ function renderEstatesPage(el) {
   // ── PLOT (PARCEL) MODALS ──
   window.showAddPlotModal = function() {
     showModal(`
-      <div class="modal-title">Add New Parcel</div>
+      <div class="modal-title">Add New Plot</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Parcel Code</label><input class="form-input" id="ap-code" placeholder="e.g. P-25"></div>
+        <div class="form-group"><label class="form-label">Plot Code</label><input class="form-input" id="ap-code" placeholder="e.g. P-25"></div>
         <div class="form-group"><label class="form-label">Block</label>
           <select class="form-input" id="ap-block">${DATA.blocks.map(b=>`<option value="${b._uuid}">${b.id} (${b.estate})</option>`).join('')}</select></div>
       </div>
@@ -1046,7 +1067,7 @@ function renderEstatesPage(el) {
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Planting Date</label><input class="form-input" id="ap-planted" type="date"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitAddPlot()">Save Parcel</button>
+        <button class="btn btn-primary" onclick="submitAddPlot()">Save Plot</button>
       </div>`);
   };
 
@@ -1056,7 +1077,7 @@ function renderEstatesPage(el) {
     const area = document.getElementById('ap-area').value;
     const ratoon = document.getElementById('ap-ratoon').value;
     const planted = document.getElementById('ap-planted').value;
-    if (!code) { showToast('Parcel code is required','red'); return; }
+    if (!code) { showToast('Plot code is required','red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_parcels').insert([{
@@ -1067,12 +1088,12 @@ function renderEstatesPage(el) {
       }]);
       if (error) throw error;
       closeModal();
-      showToast('Parcel added successfully');
+      showToast('Plot added successfully');
       await retryLiveDataLoad();
       renderTabContent();
     } catch (err) {
       console.error(err);
-      showToast('Failed to add parcel: ' + err.message, 'red');
+      showToast('Failed to add plot: ' + err.message, 'red');
     }
   };
 
@@ -1080,7 +1101,7 @@ function renderEstatesPage(el) {
     const p = DATA.plots.find(x=>x.id===id);
     if (!p) return;
     showModal(`
-      <div class="modal-title">Edit Parcel — ${p.id}</div>
+      <div class="modal-title">Edit Plot — ${p.id}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Cultivation Status</label>
           <select class="form-input" id="ep-status">
@@ -1126,20 +1147,20 @@ function renderEstatesPage(el) {
         if (hErr) console.error('Failed to record harvest:', hErr);
       }
       closeModal();
-      showToast('Parcel updated successfully');
+      showToast('Plot updated successfully');
       await retryLiveDataLoad();
       renderTabContent();
     } catch (err) {
       console.error(err);
-      showToast('Failed to update parcel: ' + err.message, 'red');
+      showToast('Failed to update plot: ' + err.message, 'red');
     }
   };
 
   window.confirmDeletePlot = function(id) {
     const p = DATA.plots.find(x=>x.id===id);
     showModal(`
-      <div class="modal-title">Delete Parcel</div>
-      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete parcel <strong>${id}</strong>? This cannot be undone.</p>
+      <div class="modal-title">Delete Plot</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete plot <strong>${id}</strong>? This cannot be undone.</p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-danger" onclick="submitDeletePlot('${p?._uuid}')">Yes, Delete</button>
@@ -1152,12 +1173,12 @@ function renderEstatesPage(el) {
       const { error } = await client.from('vsl_parcels').delete().eq('id', parcelDbId);
       if (error) throw error;
       closeModal();
-      showToast('Parcel deleted', 'red');
+      showToast('Plot deleted', 'red');
       await retryLiveDataLoad();
       renderTabContent();
     } catch (err) {
       console.error(err);
-      showToast('Failed to delete parcel: ' + err.message, 'red');
+      showToast('Failed to delete plot: ' + err.message, 'red');
     }
   };
 }
@@ -1180,7 +1201,7 @@ function renderProduction(el) {
   <div class="page-header">
     <div>
       <div class="page-header-title">Production Tracking</div>
-      <div class="page-header-sub">Harvest records from live parcel data${DATA.isLive ? '' : ' · placeholder data'}</div>
+      <div class="page-header-sub">Harvest records from live plot data${DATA.isLive ? '' : ' · placeholder data'}</div>
     </div>
   </div>
   <div class="grid-4">
@@ -1189,13 +1210,13 @@ function renderProduction(el) {
       <div class="stat-meta">${pct(totalHarvested, DATA.stats.targetYieldTonnes)}% of estimated target</div></div>
     <div class="stat-card amber"><div class="stat-label">Estimated Target</div>
       <div class="stat-value">${fmt(DATA.stats.targetYieldTonnes)}<span style="font-size:14px"> t</span></div>
-      <div class="stat-meta">8 t/ha placeholder estimate <span class="placeholder-tag">Est.</span></div></div>
-    <div class="stat-card blue"><div class="stat-label">Parcels Harvested</div>
+      <div class="stat-meta">~3.2 t/ac placeholder estimate <span class="placeholder-tag">Est.</span></div></div>
+    <div class="stat-card blue"><div class="stat-label">Plots Harvested</div>
       <div class="stat-value">${harvestedParcels.length}</div>
-      <div class="stat-meta">of ${DATA.plots.length} total parcels</div></div>
-    <div class="stat-card green"><div class="stat-label">Avg Yield / Ha</div>
+      <div class="stat-meta">of ${DATA.plots.length} total plots</div></div>
+    <div class="stat-card green"><div class="stat-label">Avg Yield / Ac</div>
       <div class="stat-value">${DATA.stats.avgYieldPerHa}<span style="font-size:14px"> t</span></div>
-      <div class="stat-meta">Across harvested parcels</div></div>
+      <div class="stat-meta">Across harvested plots</div></div>
   </div>
 
   <div class="grid-2" style="margin-bottom:20px">
@@ -1220,11 +1241,11 @@ function renderProduction(el) {
 
   <div class="card">
     <div class="card-header"><div class="card-title">Harvest Log</div>
-      <div style="font-size:11px;color:var(--gray-500)">Sourced from vsl_harvests (latest per parcel)</div></div>
+      <div style="font-size:11px;color:var(--gray-500)">Sourced from vsl_harvests (latest per plot)</div></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Parcel</th><th>Block</th><th>Estate</th><th>Last Harvest Date</th>
-        <th>Harvest Tonnage</th><th>Area</th><th>Yield/Ha</th><th>Status</th></tr></thead>
+        <thead><tr><th>Plot</th><th>Block</th><th>Estate</th><th>Last Harvest Date</th>
+        <th>Harvest Tonnage</th><th>Area</th><th>Yield/Ac</th><th>Status</th></tr></thead>
         <tbody>
           ${harvestedParcels.length ? harvestedParcels.map(p=>`
             <tr>
@@ -1232,7 +1253,7 @@ function renderProduction(el) {
               <td>${p.lastHarvestDate || '—'}</td>
               <td>${p.yield} t</td>
               <td>${fmtHa(p.areaHa)}</td>
-              <td>${p.areaHa ? (p.yield/p.areaHa).toFixed(2) : '—'} t/ha</td>
+              <td>${p.areaHa ? (p.yield/(p.areaHa*2.47105)).toFixed(2) : '—'} t/ac</td>
               <td>${stagePill(p.stage)}</td>
             </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--gray-500);padding:24px">No harvest records yet</td></tr>`}
         </tbody>
@@ -1264,11 +1285,11 @@ function renderActivities(el) {
     return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Date</th><th>Activity</th><th>Estate</th><th>Block</th><th>Parcel</th>
+        <thead><tr><th>Date</th><th>Activity</th><th>Estate</th><th>Block</th><th>Plot</th>
         <th>Assigned To</th><th>Team</th><th>Completion</th><th>Actions</th></tr></thead>
         <tbody>
           ${rows.length ? rows.map(a=>`
-            <tr>
+            <tr style="cursor:pointer" onclick="viewActivityDetail('${a.id}')">
               <td>${a.date || '—'}</td>
               <td><strong>${a.name}</strong></td>
               <td>${a.estate}</td>
@@ -1276,10 +1297,17 @@ function renderActivities(el) {
               <td>${a.parcel || '—'}</td>
               <td>${a.assignedTo || '—'}</td>
               <td>${a.teamSize ?? '—'}</td>
-              <td>${a.completionValue != null ? a.completionValue : '—'}</td>
-              <td><div style="display:flex;gap:4px">
-                <button class="btn btn-outline btn-sm btn-icon" onclick="showEditActivityModal('${a.id}')" title="Edit">✏</button>
-                <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteActivity('${a.id}')" title="Delete">🗑</button>
+              <td>${a.completionValue != null ? `
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div class="progress-bar-wrap" style="width:70px">
+                    <div class="progress-bar ${a.completionValue>75?'green':a.completionValue>50?'amber':'red'}"
+                         style="width:${Math.min(100,a.completionValue)}%"></div>
+                  </div>
+                  <span style="font-size:11px;font-weight:700">${a.completionValue}%</span>
+                </div>` : '—'}</td>
+              <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px">
+                <button class="icon-btn" onclick="showEditActivityModal('${a.id}')" title="Edit">✎</button>
+                <button class="icon-btn danger" onclick="confirmDeleteActivity('${a.id}')" title="Delete">🗑</button>
               </div></td>
             </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--gray-500);padding:24px">No activities logged yet</td></tr>`}
         </tbody>
@@ -1310,6 +1338,43 @@ function renderActivities(el) {
 
   window.filterActivitiesEstate = function(val) { estFilter = val; document.getElementById('activities-table').innerHTML = table(); };
 
+  window.viewActivityDetail = function(id) {
+    const a = DATA.activities.find(x => x.id === id);
+    if (!a) return;
+    const attrs = [
+      ['Activity', a.name],
+      ['Date', a.date || '—'],
+      ['Estate', a.estate],
+      ['Block', a.block],
+      ['Plot', a.parcel || '— (whole block)'],
+      ['Assigned To', a.assignedTo || '—'],
+      ['Team Size', a.teamSize ?? '—'],
+      ['Machines', a.machines ?? '—'],
+      ['Completion', a.completionValue != null ? a.completionValue + '%' : '—'],
+      ['Challenges', a.challenges || '—'],
+      ['Comments', a.comments || '—'],
+      ['Logged', a.createdAt ? a.createdAt.replace('T',' ').slice(0,16) : '—'],
+    ];
+    showModal(`
+      <div class="modal-title">Activity — ${a.name}</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:40%">Attribute</th><th>Value</th></tr></thead>
+          <tbody>
+            ${attrs.map(([k,v],i)=>`
+              <tr style="background:${i%2===0?'var(--gray-50)':'var(--white)'}">
+                <td style="font-weight:600;color:var(--gray-700);font-size:12px">${k}</td>
+                <td style="color:var(--gray-900);font-size:13px">${v}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal();showEditActivityModal('${a.id}')">✎ Edit</button>
+        <button class="btn btn-danger" onclick="closeModal();confirmDeleteActivity('${a.id}')">🗑 Delete</button>
+      </div>`);
+  };
+
   function scopePickerHTML(prefix, blockVal, parcelVal) {
     return `
       <div class="form-group"><label class="form-label">Block</label>
@@ -1317,7 +1382,7 @@ function renderActivities(el) {
           <option value="">— None (estate-level) —</option>
           ${DATA.blocks.map(b=>`<option value="${b._uuid}" ${b._uuid===blockVal?'selected':''}>${b.id} (${b.estate})</option>`).join('')}
         </select></div>
-      <div class="form-group"><label class="form-label">Parcel (optional)</label>
+      <div class="form-group"><label class="form-label">Plot (optional)</label>
         <select class="form-input" id="${prefix}-parcel">
           <option value="">— Whole block —</option>
           ${DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}" ${p._uuid===parcelVal?'selected':''}>${p.id}</option>`).join('')}
@@ -1344,7 +1409,7 @@ function renderActivities(el) {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="aa-team" type="number" min="0"></div>
-        <div class="form-group"><label class="form-label">Completion (acres or %)</label><input class="form-input" id="aa-completion" type="number" min="0" step="0.01"></div>
+        <div class="form-group"><label class="form-label">Completion (%)</label><input class="form-input" id="aa-completion" type="number" min="0" max="100" step="1"></div>
       </div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Challenges</label><textarea class="form-input" id="aa-challenges" rows="2"></textarea></div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="aa-comments" rows="2"></textarea></div>
@@ -1481,7 +1546,7 @@ function renderCosts(el) {
   function table() {
     const r = rows();
     return `<div class="table-wrap"><table>
-      <thead><tr><th>Date</th><th>Activity</th><th>Type</th><th>Estate</th><th>Block</th><th>Parcel</th><th>Amount</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Date</th><th>Activity</th><th>Type</th><th>Estate</th><th>Block</th><th>Plot</th><th>Amount</th><th>Actions</th></tr></thead>
       <tbody>${r.length ? r.map(c=>`
         <tr>
           <td>${c.createdAt ? c.createdAt.slice(0,10) : '—'}</td>
@@ -1489,7 +1554,7 @@ function renderCosts(el) {
           <td>${pill(c.costType,'blue')}</td>
           <td>${c.estate}</td><td>${c.block}</td><td>${c.parcel}</td>
           <td><strong>${fmtUGX(c.amount)}</strong></td>
-          <td><button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteCost('${c.id}')" title="Delete">🗑</button></td>
+          <td><button class="icon-btn danger" onclick="confirmDeleteCost('${c.id}')" title="Delete">🗑</button></td>
         </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--gray-500);padding:24px">No cost entries yet</td></tr>`}
       </tbody></table></div>`;
   }
@@ -1509,7 +1574,7 @@ function renderCosts(el) {
   <div class="grid-4">
     <div class="stat-card red"><div class="stat-label">Total Cost</div><div class="stat-value" style="font-size:20px">${fmtUGX(totalCost())}</div></div>
     <div class="stat-card amber"><div class="stat-label">Entries</div><div class="stat-value">${rows().length}</div></div>
-    <div class="stat-card blue"><div class="stat-label">Cost / Planted Ha</div><div class="stat-value" style="font-size:20px">${DATA.stats.plantedAreaHa ? fmtUGX(Math.round(totalCost()/DATA.stats.plantedAreaHa)) : '—'}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Cost / Planted Ac</div><div class="stat-value" style="font-size:20px">${DATA.stats.plantedAreaHa ? fmtUGX(Math.round(totalCost()/(DATA.stats.plantedAreaHa*2.47105))) : '—'}</div></div>
     <div class="stat-card green"><div class="stat-label">Top Category</div><div class="stat-value" style="font-size:16px">${(() => { const bt = byType(); const k = Object.keys(bt).sort((a,b)=>bt[b]-bt[a])[0]; return k || '—'; })()}</div></div>
   </div>
   <div class="card" id="costs-table">${table()}</div>`;
@@ -1602,10 +1667,10 @@ function renderDocuments(el) {
         <tr>
           <td><strong>${d.title}</strong>${d.description ? `<br><span style="font-size:11px;color:var(--gray-500)">${d.description}</span>` : ''}</td>
           <td>${pill(d.docType,'blue')}</td>
-          <td>${titleCaseLocal(d.entityType)}: ${d.entityLabel}</td>
+          <td>${entityTypeLabel(d.entityType)}: ${d.entityLabel}</td>
           <td>${d.uploadDate || '—'}</td>
           <td>${d.fileUrl ? `<a href="${d.fileUrl}" target="_blank" rel="noopener">Open ↗</a>` : '—'}</td>
-          <td><button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteDocument('${d.id}')" title="Delete">🗑</button></td>
+          <td><button class="icon-btn danger" onclick="confirmDeleteDocument('${d.id}')" title="Delete">🗑</button></td>
         </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No documents yet</td></tr>`}
       </tbody></table></div>`;
   }
@@ -1616,10 +1681,10 @@ function renderDocuments(el) {
         <tr>
           <td>${m.caption || '—'}</td>
           <td>${pill(m.mediaType,'green')}</td>
-          <td>${titleCaseLocal(m.entityType)}: ${m.entityLabel}</td>
+          <td>${entityTypeLabel(m.entityType)}: ${m.entityLabel}</td>
           <td>${m.capturedAt ? m.capturedAt.replace('T',' ').slice(0,16) : '—'}</td>
           <td>${m.fileUrl ? `<a href="${m.fileUrl}" target="_blank" rel="noopener">Open ↗</a>` : '—'}</td>
-          <td><button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteMedia('${m.id}')" title="Delete">🗑</button></td>
+          <td><button class="icon-btn danger" onclick="confirmDeleteMedia('${m.id}')" title="Delete">🗑</button></td>
         </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No media yet</td></tr>`}
       </tbody></table></div>`;
   }
@@ -1654,7 +1719,7 @@ function renderDocuments(el) {
     return `
       <div class="form-group"><label class="form-label">Linked To</label>
         <select class="form-input" id="${prefix}-entity-type" onchange="onEntityTypeChange('${prefix}')">
-          <option value="estate">Estate</option><option value="block">Block</option><option value="parcel">Parcel</option>
+          <option value="estate">Estate</option><option value="block">Block</option><option value="parcel">Plot</option>
         </select></div>
       <div class="form-group"><label class="form-label">&nbsp;</label>
         <select class="form-input" id="${prefix}-entity-id"></select></div>`;
@@ -2061,17 +2126,111 @@ function renderNotifications(el) {
         <div style="font-size:11px;color:var(--gray-500);min-width:110px">${s.reportType||'Season Summary'}</div>
         <div style="font-size:11px;color:var(--gray-500);min-width:90px">Sent: ${s.lastSent}</div>
         <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="icon-btn" onclick="showEditSubscriberModal('${s.id}')" title="Edit">\u270e</button>
           <button class="icon-btn primary" onclick="sendEmailNow('${s.id}','${s.email}')" title="Send Now">\ud83d\udce4</button>
           <button class="icon-btn danger" onclick="removeSubscriber('${s.id}')" title="Remove">\ud83d\uddd1</button>
         </div>
       </div>`).join('');
   }
 
+  const REPORT_TYPES = ['Season Summary Report','Weekly Field Update','Financial Dashboard','Harvest Log','Agronomic Scouting Report','Quarterly Investor Briefing'];
+
+  function subscriberFormFields(prefix, s) {
+    return `
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Select Existing User (optional)</label>
+        <select class="form-input" id="${prefix}-user" onchange="onSubscriberUserPick('${prefix}')">
+          <option value="">\u2014 Enter details manually \u2014</option>
+          ${DATA.users.map(u=>`<option value="${u.id}" data-name="${u.name}" data-email="${u.email}">${u.name} (${u.email})</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Full Name</label>
+          <input class="form-input" id="${prefix}-name" placeholder="Recipient name" value="${s?.name||''}"></div>
+        <div class="form-group"><label class="form-label">Email Address</label>
+          <input class="form-input" id="${prefix}-email" type="email" placeholder="email@example.com" value="${s?.email||''}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Frequency</label>
+          <select class="form-input" id="${prefix}-freq">
+            ${['Daily','Weekly','Monthly'].map(f=>`<option ${s?.frequency===f?'selected':''}>${f}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Estate</label>
+          <select class="form-input" id="${prefix}-estate">
+            <option value="All Estates" ${!s||s.estate==='All Estates'?'selected':''}>All Estates</option>
+            ${DATA.estates.map(e=>`<option ${s?.estate===e.name?'selected':''}>${e.name}</option>`).join('')}
+          </select></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Report Type</label>
+        <select class="form-input" id="${prefix}-type">
+          ${REPORT_TYPES.map(t=>`<option ${s?.reportType===t?'selected':''}>${t}</option>`).join('')}
+        </select></div>`;
+  }
+
+  window.onSubscriberUserPick = function(prefix) {
+    const sel = document.getElementById(`${prefix}-user`);
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    document.getElementById(`${prefix}-name`).value = opt.dataset.name || '';
+    document.getElementById(`${prefix}-email`).value = opt.dataset.email || '';
+  };
+
+  window.showAddSubscriberModal = function() {
+    showModal(`
+      <div class="modal-title">Add Subscriber</div>
+      ${subscriberFormFields('nsub', null)}
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="addSubscriber()">Save Subscriber</button>
+      </div>`);
+  };
+
+  window.showEditSubscriberModal = function(id) {
+    const s = subscribers.find(x => x.id === id);
+    if (!s) return;
+    showModal(`
+      <div class="modal-title">Edit Subscriber \u2014 ${s.name}</div>
+      ${subscriberFormFields('esub', s)}
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditSubscriber('${s.id}')">Save Changes</button>
+      </div>`);
+  };
+
+  window.submitEditSubscriber = async function(id) {
+    const name       = document.getElementById('esub-name').value.trim();
+    const email      = document.getElementById('esub-email').value.trim();
+    const freq       = document.getElementById('esub-freq').value;
+    const estate     = document.getElementById('esub-estate').value;
+    const reportType = document.getElementById('esub-type').value;
+    if (!name || !email) { showToast('Please fill in name and email','red'); return; }
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_report_recipients').update({
+        name, email, freq, estate: estate || 'All Estates', report_type: reportType || 'Season Summary Report',
+      }).eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Subscriber updated');
+      await retryLiveDataLoad();
+      subscribers.length = 0;
+      DATA.emailSubscribers.forEach(s => subscribers.push(s));
+      const subListEl = document.getElementById('subscribers-list');
+      if (subListEl) subListEl.innerHTML = renderSubList();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update subscriber: ' + err.message, 'red');
+    }
+  };
+
   el.innerHTML = `
   <div class="page-header">
-    <div><div class="page-header-title">Email Reports</div>
+    <div><div class="page-header-title">Reports</div>
     <div class="page-header-sub">Manage automated report distribution</div></div>
-    <button class="btn btn-amber" onclick="sendAllEmails()">\ud83d\udce4 Send Report to All</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="showAddSubscriberModal()">+ Add Subscriber</button>
+      <button class="btn btn-amber btn-sm" onclick="sendAllEmails()">\ud83d\udce4 Send Report to All</button>
+    </div>
   </div>
 
   <div class="grid-3" style="margin-bottom:20px">
@@ -2079,49 +2238,9 @@ function renderNotifications(el) {
       <div class="stat-value" id="sub-count">${subscribers.length}</div>
       <div class="stat-meta">Active recipients</div></div>
     <div class="stat-card green"><div class="stat-label">Last Batch Sent</div>
-      <div class="stat-value" style="font-size:18px">Oct 7</div><div class="stat-meta">Weekly report</div></div>
+      <div class="stat-value" style="font-size:18px">\u2014</div><div class="stat-meta">Not yet sent</div></div>
     <div class="stat-card amber"><div class="stat-label">Next Scheduled</div>
-      <div class="stat-value" style="font-size:18px">Oct 14</div><div class="stat-meta">Weekly \u2014 auto-send</div></div>
-  </div>
-
-  <!-- ADD SUBSCRIBER -->
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-header"><div class="card-title">Add Email Subscriber</div></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">
-      <div class="form-group">
-        <label class="form-label">Full Name</label>
-        <input class="form-input" id="new-sub-name" placeholder="Recipient name">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Email Address</label>
-        <input class="form-input" id="new-sub-email" type="email" placeholder="email@example.com">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Frequency</label>
-        <select class="form-input" id="new-sub-freq">
-          <option>Daily</option><option>Weekly</option><option>Monthly</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Estate</label>
-        <select class="form-input" id="new-sub-estate">
-          <option value="All Estates">All Estates</option>
-          ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Report Type</label>
-        <select class="form-input" id="new-sub-type">
-          <option>Season Summary Report</option>
-          <option>Weekly Field Update</option>
-          <option>Financial Dashboard</option>
-          <option>Harvest Log</option>
-          <option>Agronomic Scouting Report</option>
-          <option>Quarterly Investor Briefing</option>
-        </select>
-      </div>
-    </div>
-    <button class="btn btn-primary" onclick="addSubscriber()">+ Add Subscriber</button>
+      <div class="stat-value" style="font-size:18px">\u2014</div><div class="stat-meta">Delivery backend coming soon</div></div>
   </div>
 
   <!-- SUBSCRIBER LIST -->
@@ -2163,11 +2282,11 @@ function renderNotifications(el) {
   </div>`;
 
   window.addSubscriber = async function() {
-    const name       = document.getElementById('new-sub-name').value.trim();
-    const email      = document.getElementById('new-sub-email').value.trim();
-    const freq       = document.getElementById('new-sub-freq').value;
-    const estate     = document.getElementById('new-sub-estate').value;
-    const reportType = document.getElementById('new-sub-type').value;
+    const name       = document.getElementById('nsub-name').value.trim();
+    const email      = document.getElementById('nsub-email').value.trim();
+    const freq       = document.getElementById('nsub-freq').value;
+    const estate     = document.getElementById('nsub-estate').value;
+    const reportType = document.getElementById('nsub-type').value;
     if (!name || !email) { showToast('Please fill in name and email','red'); return; }
     if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Invalid email address','red'); return; }
     try {
@@ -2180,8 +2299,7 @@ function renderNotifications(el) {
         report_type: reportType || 'Season Summary Report',
       }]);
       if (error) throw error;
-      document.getElementById('new-sub-name').value = '';
-      document.getElementById('new-sub-email').value = '';
+      closeModal();
       showToast(`${email} added to report list`);
       await retryLiveDataLoad();
       // Sync local closure array from freshly-loaded DATA, then refresh the list
@@ -2268,17 +2386,19 @@ function renderAlerts(el) {
     return `<div class="table-wrap"><table>
       <thead><tr><th>Severity</th><th>Alert</th><th>Scope</th><th>Note</th><th>Raised</th><th>Actions</th></tr></thead>
       <tbody>${rows.length ? rows.map(a=>`
-        <tr>
+        <tr style="cursor:pointer" onclick="viewAlertDetail('${a.id}')">
           <td>${severityIcon(a.type)} ${pill(titleCaseLocal(a.type),a.type==='critical'?'red':a.type==='warning'?'amber':'blue')}</td>
           <td><strong>${a.title}</strong></td>
           <td>${a.estate}${a.layerType ? `<br><span style="font-size:11px;color:var(--gray-500)">${titleCaseLocal(a.layerType)}</span>` : ''}</td>
           <td style="max-width:220px">${a.desc || '\u2014'}</td>
           <td style="font-size:12px;color:var(--gray-500)">${a.time}</td>
-          <td>${a.isReal ? `
+          <td onclick="event.stopPropagation()">
             <div style="display:flex;gap:4px">
+              <button class="icon-btn" onclick="viewAlertDetail('${a.id}')" title="View">\ud83d\udc41</button>
+              ${a.isReal ? `
               <button class="icon-btn primary" onclick="openResolveAlertModal('${a.id}')" title="Resolve">\u2713</button>
-              <button class="icon-btn danger" onclick="confirmDeleteAlert('${a.id}')" title="Delete">\ud83d\uddd1</button>
-            </div>` : `<span style="font-size:11px;color:var(--gray-500)">Auto-generated</span>`}</td>
+              <button class="icon-btn danger" onclick="confirmDeleteAlert('${a.id}')" title="Delete">\ud83d\uddd1</button>` : ''}
+            </div></td>
         </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No open alerts \ud83c\udf89</td></tr>`}
       </tbody></table></div>`;
   }
@@ -2288,13 +2408,17 @@ function renderAlerts(el) {
     return `<div class="table-wrap"><table>
       <thead><tr><th>Severity</th><th>Alert</th><th>Scope</th><th>Resolution</th><th>Resolved</th><th>Actions</th></tr></thead>
       <tbody>${rows.length ? rows.map(a=>`
-        <tr>
+        <tr style="cursor:pointer" onclick="viewAlertDetail('${a.id}')">
           <td>${severityIcon(a.type)} ${pill(titleCaseLocal(a.type),a.type==='critical'?'red':a.type==='warning'?'amber':'blue')}</td>
           <td><strong>${a.title}</strong></td>
           <td>${a.estate}</td>
           <td style="max-width:220px">${a.resolutionNote || '<span style="color:var(--gray-500)">\u2014</span>'}</td>
           <td style="font-size:12px;color:var(--gray-500)">${a.resolvedTime || '\u2014'}</td>
-          <td><button class="icon-btn danger" onclick="confirmDeleteAlert('${a.id}')" title="Delete">\ud83d\uddd1</button></td>
+          <td onclick="event.stopPropagation()">
+            <div style="display:flex;gap:4px">
+              <button class="icon-btn" onclick="viewAlertDetail('${a.id}')" title="View">\ud83d\udc41</button>
+              <button class="icon-btn danger" onclick="confirmDeleteAlert('${a.id}')" title="Delete">\ud83d\uddd1</button>
+            </div></td>
         </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No resolved alerts yet</td></tr>`}
       </tbody></table></div>`;
   }
@@ -2324,11 +2448,48 @@ function renderAlerts(el) {
     document.getElementById('alerts-resolved-table').innerHTML = resolvedTable();
   }
 
+  window.viewAlertDetail = function(id) {
+    const a = DATA.alerts.find(x => x.id === id);
+    if (!a) return;
+    const isResolved = a.isReal && a.status === 'resolved';
+    const attrs = [
+      ['Severity', titleCaseLocal(a.type)],
+      ['Alert', a.title],
+      ['Scope', a.estate + (a.layerType ? ' · ' + titleCaseLocal(a.layerType) : '')],
+      ['Note', a.desc || '—'],
+      ['Raised', a.time],
+      ['Status', isResolved ? 'Resolved' : 'Open'],
+      ...(isResolved ? [['Resolution', a.resolutionNote || '—'], ['Resolved', a.resolvedTime || '—']] : []),
+    ];
+    showModal(`
+      <div class="modal-title">${severityIcon(a.type)} ${a.title}</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:35%">Attribute</th><th>Value</th></tr></thead>
+          <tbody>
+            ${attrs.map(([k,v],i)=>`
+              <tr style="background:${i%2===0?'var(--gray-50)':'var(--white)'}">
+                <td style="font-weight:600;color:var(--gray-700);font-size:12px">${k}</td>
+                <td style="color:var(--gray-900);font-size:13px">${v}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${a.isReal && !isResolved ? `
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal();openResolveAlertModal('${a.id}')">✓ Resolve</button>
+        <button class="btn btn-danger" onclick="closeModal();confirmDeleteAlert('${a.id}')">🗑 Delete</button>
+      </div>` : a.isReal ? `
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="closeModal();confirmDeleteAlert('${a.id}')">🗑 Delete</button>
+      </div>` : ''}`);
+  };
+
   function scopePickerHTML() {
     return `
       <div class="form-group"><label class="form-label">Scope</label>
         <select class="form-input" id="aal-scope" onchange="onAlertScopeChange()">
-          <option value="ESTATE">Estate</option><option value="BLOCKS">Block</option><option value="PARCELS">Parcel</option>
+          <option value="ESTATE">Estate</option><option value="BLOCKS">Block</option><option value="PARCELS">Plot</option>
         </select></div>
       <div class="form-group"><label class="form-label">&nbsp;</label><select class="form-input" id="aal-target"></select></div>`;
   }
@@ -2618,27 +2779,35 @@ function initCharts(page) {
       options: { ...defaults, cutout:'65%' },
     }));
 
+    // Real growth-stage counts (Stage is derived from cultivation_status — see
+    // stageFromCultivationStatus() in supabase-client.js — or, on the
+    // placeholder/fallback dataset, data.js's own richer stage labels).
     const c3 = document.getElementById('chart-plot-status');
-    if (c3) reg(new Chart(c3, {
-      type: 'bar',
-      data: {
-        labels: ['Germination','Tillering','Grand Growth','Ripening','Harvested','Fallow','Under Prep'],
-        datasets: [{ data:[18,32,48,22,26,38,14], backgroundColor:['#60a5fa','#2563eb','#4a9e6e','#e8a020','#16a34a','#c8d0ce','#f4c56a'], borderRadius:4 }],
-      },
-      options: { ...defaults, indexAxis:'y',
-        scales: {
-          x: { grid:{ color:gridColor }, ticks:{ color:tickColor, font:{ size:11 } } },
-          y: { grid:{ display:false }, ticks:{ color:tickColor, font:{ size:11 } } },
+    if (c3) {
+      const sd = plotStageDistribution();
+      reg(new Chart(c3, {
+        type: 'bar',
+        data: {
+          labels: sd.labels,
+          datasets: [{ data: sd.values, backgroundColor: sd.colors, borderRadius:4 }],
         },
-      },
-    }));
+        options: { ...defaults, indexAxis:'y',
+          scales: {
+            x: { grid:{ color:gridColor }, ticks:{ color:tickColor, font:{ size:11 }, precision:0 } },
+            y: { grid:{ display:false }, ticks:{ color:tickColor, font:{ size:11 } } },
+          },
+        },
+      }));
+    }
 
+    // Real planted vs fallow area split (both rolled up from live block data —
+    // see loadLiveData() in supabase-client.js). No "reserved" placeholder slice.
     const c4 = document.getElementById('chart-area-util');
     if (c4) reg(new Chart(c4, {
       type: 'doughnut',
       data: {
-        labels: ['Planted','Fallow','Reserved'],
-        datasets: [{ data:[DATA.stats.plantedAreaHa, DATA.stats.fallowAreaHa, DATA.stats.reservedAreaHa], backgroundColor:['#4a9e6e','#e8a020','#c8d0ce'], borderWidth:2, borderColor:'#fff' }],
+        labels: ['Planted','Fallow'],
+        datasets: [{ data:[DATA.stats.plantedAreaHa, DATA.stats.fallowAreaHa], backgroundColor:['#4a9e6e','#e8a020'], borderWidth:2, borderColor:'#fff' }],
       },
       options: { ...defaults, cutout:'60%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } } },
     }));
@@ -2670,14 +2839,17 @@ function initCharts(page) {
     }
 
     const c7 = document.getElementById('chart-stage-dist');
-    if (c7) reg(new Chart(c7, {
-      type: 'doughnut',
-      data: {
-        labels: ['Germination','Tillering','Grand Growth','Ripening','Harvested','Fallow'],
-        datasets: [{ data:[18,32,48,22,26,68], backgroundColor:['#60a5fa','#3b82f6','#4a9e6e','#e8a020','#16a34a','#c8d0ce'], borderWidth:2, borderColor:'#fff' }],
-      },
-      options: { ...defaults, cutout:'55%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{ size:10 } } } } },
-    }));
+    if (c7) {
+      const sd2 = plotStageDistribution();
+      reg(new Chart(c7, {
+        type: 'doughnut',
+        data: {
+          labels: sd2.labels,
+          datasets: [{ data: sd2.values, backgroundColor: sd2.colors, borderWidth:2, borderColor:'#fff' }],
+        },
+        options: { ...defaults, cutout:'55%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{ size:10 } } } } },
+      }));
+    }
   }
 
   if (page === 'production') {

@@ -66,6 +66,7 @@ const MAP_DRAW_PROJ = "EPSG:3857";
 
 const blocksSource = new ol.source.Vector();
 const parcelsSource = new ol.source.Vector();
+const estatesSource = new ol.source.Vector();
 const editSource = new ol.source.Vector();
 
 /** Set by parcel search RPC; layer styles emphasize these ids after bbox reload. */
@@ -206,6 +207,10 @@ let infoHelpEscapeHandler = null;
 let searchPanelOpen = false;
 let searchPanelOutsideHandler = null;
 let searchPanelEscapeHandler = null;
+// Which search tab is active — drives the shared Clear/Go buttons in the
+// footer (see setupUnifiedSearchActionButtons()) so they act on whichever
+// tab the user is actually looking at.
+let activeSearchTabId = "parcel";
 
 // Legacy aliases kept for internal functions that still reference these names
 let parcelSearchDockOpen = false;
@@ -1286,6 +1291,72 @@ function surveyFeatureAreaAcresText(feature) {
   return areaAcres > 0 ? `${areaAcres.toFixed(2)} ac` : "";
 }
 
+// Estate boundary — a computed rectangular bbox (vsl_estate.geom, see
+// vsl_recompute_estate_geometry() / trg_vsl_blocks_estate_geometry in the DB),
+// drawn as a dotted outline with the estate name labeled above its top-right
+// corner. Loaded once at boot from v_estate_boundaries (see loadEstateBoundaries()),
+// not refetched on every pan/zoom like blocks/parcels — estate boundaries rarely change.
+const estatesLayer = new ol.layer.Vector({
+  title: "ESTATES",
+  visible: true,
+  declutter: false,
+  source: estatesSource,
+  style: (feature) => {
+    const geometry = feature.getGeometry();
+    const styles = [
+      new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: "#D76213", width: 2, lineDash: [2, 8], lineCap: "round" }),
+        fill: new ol.style.Fill({ color: "rgba(0,0,0,0)" })
+      })
+    ];
+    if (geometry) {
+      const extent = geometry.getExtent();
+      const topLeft = new ol.geom.Point([extent[0], extent[3]]);
+      const name = String(feature.get("estate_name") ?? "").trim();
+      if (name) {
+        styles.push(new ol.style.Style({
+          geometry: topLeft,
+          text: new ol.style.Text({
+            text: name,
+            font: "700 13px Inter, sans-serif",
+            fill: new ol.style.Fill({ color: "#D76213" }),
+            stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+            textAlign: "left",
+            textBaseline: "bottom",
+            offsetY: -2,
+            offsetX: 4
+          })
+        }));
+      }
+    }
+    return styles;
+  }
+});
+
+async function loadEstateBoundaries() {
+  const { data, error } = await supabase.from("v_estate_boundaries").select("id, estate_name, geojson");
+  if (error) {
+    if (cfg.DEBUG_MAP_RPC && window.console?.debug) console.debug("[Victoria map] Estate boundary load failed:", error.message);
+    return;
+  }
+  estatesSource.clear(true);
+  const geojsonFmt = new ol.format.GeoJSON();
+  const projOpts = { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" };
+  for (const row of data || []) {
+    if (!row.geojson) continue;
+    let geom;
+    try {
+      geom = geojsonFmt.readGeometry(row.geojson, projOpts);
+    } catch {
+      continue;
+    }
+    const feature = new ol.Feature({ geometry: geom });
+    feature.setId(row.id);
+    feature.set("estate_name", row.estate_name, true);
+    estatesSource.addFeature(feature);
+  }
+}
+
 const blocksLayer = new ol.layer.Vector({
   title: "BLOCKS",
   visible: true,
@@ -1715,7 +1786,7 @@ function buildLayerTree() {
   const overlaysGroup = new ol.layer.Group({
     title: "SURVEY LAYERS",
     fold: "open",
-    layers: [blocksLayer, parcelsLayer]
+    layers: [estatesLayer, blocksLayer, parcelsLayer]
   });
   overlaysGroup.setZIndex(20);
 
@@ -3345,6 +3416,7 @@ function activateSearchTab(tab) {
     if (tabEl) tabEl.setAttribute("aria-selected", String(active));
     if (bodyEl) bodyEl.hidden = !active;
   });
+  activeSearchTabId = tab;
 }
 
 function setupSearchTabSwitching() {
@@ -3354,6 +3426,42 @@ function setupSearchTabSwitching() {
       const tab = btn.dataset.tab;
       if (tab) activateSearchTab(tab);
     });
+  });
+}
+
+// Resets the Place-search tab (no dedicated "clear" button of its own
+// pre-existing, unlike Parcel/Coords) — empties the query, hides results,
+// and clears any error message.
+function clearPlaceSearch() {
+  const input = document.getElementById("placeSearchInput");
+  if (input) input.value = "";
+  setPlaceSearchError("");
+  const ul = document.getElementById("placeSearchResults");
+  if (ul) {
+    ul.innerHTML = "";
+    ul.hidden = true;
+  }
+}
+
+// One shared Clear + Go pair in the search panel's footer (see
+// windows/search-panel.html) forwards its clicks to whichever tab is
+// currently active, instead of each tab having its own button pair. The
+// original per-tab buttons stay in the DOM (hidden) so their existing
+// listeners — runLocateParcelFromPopover() / runPlaceSearchQuery() /
+// coord-search-drawer.js's own wiring — don't need to be duplicated here.
+function setupUnifiedSearchActionButtons() {
+  const goBtn = document.getElementById("searchGoBtn");
+  const clearBtn = document.getElementById("searchClearBtn");
+  const goBtnIdByTab = { parcel: "parcelSearchGoBtn", place: "placeSearchGoBtn", coords: "coordPlotSingleBtn" };
+  const clearBtnIdByTab = { parcel: "parcelSearchPopoverCancelBtn", coords: "coordClearMarkersBtn" };
+
+  goBtn?.addEventListener("click", () => {
+    document.getElementById(goBtnIdByTab[activeSearchTabId])?.click();
+  });
+  clearBtn?.addEventListener("click", () => {
+    const proxyId = clearBtnIdByTab[activeSearchTabId];
+    if (proxyId) document.getElementById(proxyId)?.click();
+    else clearPlaceSearch(); // "place" tab has no proxy clear button — clear its own state directly
   });
 }
 
@@ -4310,6 +4418,7 @@ function bindEvents() {
   setupParcelSearchPopover();
   setupParcelStatusPanel();
   setupPlaceSearch();
+  setupUnifiedSearchActionButtons();
 
   const searchCloseBtn = document.getElementById("searchPanelCloseBtn");
   searchCloseBtn?.addEventListener("click", () => closeSearchPanel({ clearHighlight: false }));
@@ -4664,6 +4773,7 @@ async function initMap() {
   });
 
   await loadLayersFromDb();
+  await loadEstateBoundaries();
   map.on("moveend", async () => {
     await loadLayersFromDb();
   });

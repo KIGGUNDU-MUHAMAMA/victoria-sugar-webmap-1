@@ -154,7 +154,7 @@ async function loadLiveData() {
       status: b.cultivation_status === 'not_in_cane' ? 'watch'
             : b.cultivation_status === 'replant_renovation' ? 'alert'
             : 'active',
-      avgYield: harvestTonnes && areaHa ? Number((harvestTonnes / areaHa).toFixed(2)) : Number((6.5 + (seed % 30) / 10).toFixed(1)), // placeholder if no harvest yet
+      avgYield: harvestTonnes && areaHa ? Number((harvestTonnes / (areaHa * 2.47105)).toFixed(2)) : Number(((6.5 + (seed % 30) / 10) / 2.47105).toFixed(2)), // t/acre; placeholder if no harvest yet
       season: '2024-B',
       managerName: b.manager_name || '—',
       managerPhone: b.manager_phone || '—',
@@ -431,7 +431,7 @@ async function loadLiveData() {
     totalRevenue: 0,      // not tracked yet in DB — placeholder until finance module is wired
     totalCost: 0,         // not tracked yet in DB
     grossProfit: 0,
-    avgYieldPerHa: plantedAreaHa ? Number((harvestedTonnage / plantedAreaHa).toFixed(2)) : 0,
+    avgYieldPerHa: plantedAreaHa ? Number((harvestedTonnage / (plantedAreaHa * 2.47105)).toFixed(2)) : 0, // t/acre
     avgBrix: 16.4,         // placeholder — agronomy capture not yet live
     avgSucrose: 14.1,      // placeholder
   };

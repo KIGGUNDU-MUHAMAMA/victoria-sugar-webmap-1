@@ -48,14 +48,6 @@
           </div>
 
           <p id="parcelSearchPopoverError" class="search-panel__error" role="alert" hidden></p>
-          <div class="search-panel__row futuristic-actions">
-            <button type="button" class="futuristic-icon-btn btn-clear" id="parcelSearchPopoverCancelBtn" title="Clear highlight">
-              <i class="fas fa-eraser" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="futuristic-icon-btn btn-add" id="parcelSearchGoBtn" title="Go">
-              <i class="fas fa-location-arrow" aria-hidden="true"></i>
-            </button>
-          </div>
         </div>
 
         <!-- ── TAB 2: Place Search ── -->
@@ -63,9 +55,6 @@
           <label class="visually-hidden" for="placeSearchInput">Place or address</label>
           <div class="search-panel__place-row futuristic-place-row">
             <input id="placeSearchInput" type="search" class="search-panel__input search-panel__place-input" placeholder="Town, road, landmark…" autocomplete="off" enterkeyhint="search">
-            <button type="button" id="placeSearchGoBtn" class="futuristic-icon-btn btn-add search-panel__place-go" title="Go">
-              <i class="fas fa-location-arrow" aria-hidden="true"></i>
-            </button>
           </div>
           <p id="placeSearchError" class="search-panel__error" role="alert" hidden></p>
           <ul id="placeSearchResults" class="place-search-results" hidden></ul>
@@ -88,15 +77,32 @@
                 <input id="coordDrawerNorthing" type="text" class="search-panel__input" inputmode="decimal" placeholder="e.g. 0.35" autocomplete="off">
               </div>
             </div>
-            <div class="search-panel__row futuristic-actions u-mt-07r">
-              <button type="button" id="coordClearMarkersBtn" class="futuristic-icon-btn btn-clear" title="Clear Markers">
-                <i class="fas fa-eraser" aria-hidden="true"></i>
-              </button>
-              <button type="button" id="coordPlotSingleBtn" class="futuristic-icon-btn btn-add" title="Plot on Map">
-                <i class="fas fa-location-arrow" aria-hidden="true"></i>
-              </button>
-            </div>
           </div>
         </div>
+      </div>
+
+      <!-- One shared Clear + Go pair, reused across all 3 tabs — see
+           setupUnifiedSearchActionButtons() in map-app.js, which forwards
+           each click to whichever tab is currently active. The original
+           per-tab buttons below stay in the DOM (their existing listeners —
+           runLocateParcelFromPopover(), runPlaceSearchQuery(), and the ones
+           coord-search-drawer.js attaches — are untouched) but are never
+           shown; setupUnifiedSearchActionButtons() triggers them with
+           .click() instead of duplicating their logic. -->
+      <div class="popWinActionBtns">
+        <button type="button" class="futuristic-icon-btn btn-clear" id="searchClearBtn" title="Clear">
+          <i class="fas fa-eraser" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="futuristic-icon-btn btn-add" id="searchGoBtn" title="Go to">
+          <i class="fas fa-location-arrow" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div hidden>
+        <button type="button" id="parcelSearchPopoverCancelBtn" title="Clear highlight"></button>
+        <button type="button" id="parcelSearchGoBtn" title="Go"></button>
+        <button type="button" id="placeSearchGoBtn" title="Go"></button>
+        <button type="button" id="coordClearMarkersBtn" title="Clear Markers"></button>
+        <button type="button" id="coordPlotSingleBtn" title="Plot on Map"></button>
       </div>
     </section>

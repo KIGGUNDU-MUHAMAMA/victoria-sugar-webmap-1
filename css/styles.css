@@ -4691,8 +4691,8 @@ select.search-panel__input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.7rem 0.85rem;
+  gap: 10px;
+  padding: 8px 16px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.18);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
@@ -4700,27 +4700,27 @@ select.search-panel__input {
 .popWinHead__inner {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 10px;
   min-width: 0;
 }
 
 .popWinIcon {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--panel);
   color: var(--primary-2);
-  font-size: 1rem;
+  font-size: 15px;
 }
 
 .popWinTitle {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   color: var(--panel);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4728,55 +4728,63 @@ select.search-panel__input {
 }
 
 .popWinCloseBtn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 8px;
   border: none;
   background: rgba(255, 255, 255, 0.14);
   color: var(--panel);
   cursor: pointer;
+  font-size: 14px;
   transition: background 0.15s;
 }
 .popWinCloseBtn:hover {
   background: rgba(255, 255, 255, 0.28);
 }
 
-/* Toolbar-style band (holds the activity/severity picker in place of tabs
-   on some windows) — a soft gradient plus an inset top highlight and a
-   bottom divider read as a distinct "toolbar" strip rather than a flat
-   solid bar, echoing a native window's title/toolbar separation. */
+/* Toolbar-style tab-switcher band — mirrors the dashboard's .tab-bar/.tab-btn
+   look (flat, white, underline-on-active) instead of the old segmented-pill
+   style, so windows in the webmap and the dashboard read as the same design
+   language. */
 .popWinTabs {
   display: flex;
   flex-shrink: 0;
-  background: var(--accent); /* fallback for browsers without color-mix() */
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff 8%), var(--accent));
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.18) inset,
-    0 1px 0 rgba(0, 0, 0, 0.16);
+  gap: 0;
+  background: var(--panel);
+  border-bottom: 2px solid var(--border);
   position: relative;
 }
 .popWinTabs[hidden] {
   display: none;
 }
-/* .search-tab pills default to muted-on-light styling (used elsewhere on a
-   pale background) — restyle them for legibility on .popWinTabs' solid
-   accent-colored bar, without touching the shared base .search-tab rule
-   other (unconverted) windows still rely on. */
+/* .search-tab pills default to muted-on-light styling elsewhere — restyle
+   them here to underline-style tabs, without touching the shared base
+   .search-tab rule other (unconverted) windows still rely on. */
 .popWinTabs .search-tab {
-  color: rgba(255, 255, 255, 0.85);
+  flex: 0 1 auto;
+  padding: 0.55rem 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
 }
 .popWinTabs .search-tab:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: none;
+  color: var(--text);
+  box-shadow: none;
 }
 .popWinTabs .search-tab[aria-selected="true"] {
-  background: rgba(255, 255, 255, 0.95);
+  background: none;
   color: var(--primary-2);
-  border-color: transparent;
+  border-color: var(--primary-2);
+  box-shadow: none;
 }
 
 .popWinBody {
@@ -4792,14 +4800,40 @@ select.search-panel__input {
    .futuristic-icon-btn--modal-pad below so their label text always fits. */
 .popWinActionBtns {
   display: flex;
-  gap: 12px;
-  padding: 0.75rem 1rem;
+  gap: 10px;
+  padding: 8px 16px;
   justify-content: center;
   border-top: 1px solid rgba(0, 0, 0, 0.18);
   box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 .popWinActionBtns[hidden] {
   display: none;
+}
+
+/* Container padding alone isn't enough to match the dashboard's footer
+   height — a flex row's rendered height is padding + tallest child, and
+   .futuristic-icon-btn (44px circle) / .futuristic-icon-btn--modal-pad
+   (0.7rem 1.75rem) are both taller than the dashboard's .btn (padding
+   8px 16px, font-size 13px). Re-size both variants here, scoped to
+   .popWinActionBtns only, so every webmap window's footer computes to the
+   same height as the dashboard's regardless of which button variant it
+   uses. This intentionally overrides the round icon-only shape in favor of
+   the dashboard's compact rectangular button, per "copy the dashboard's
+   window style." Specificity (2 classes) beats both source rules, no
+   !important needed. */
+.popWinActionBtns .futuristic-icon-btn {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.popWinActionBtns .futuristic-icon-btn:hover {
+  transform: none;
 }
 
 /* For windows whose body is a <form> that must stay a descendant of the

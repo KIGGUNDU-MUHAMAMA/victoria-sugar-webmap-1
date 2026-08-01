@@ -73,9 +73,6 @@ body {
   overflow: hidden;
 }
 
-/* The in-sidebar collapse button is a mobile-only affordance (desktop sidebar is fixed) */
-.sidebar-collapse-btn { display: none; }
-
 /* Brand row */
 .sidebar-brand {
   display: flex;
@@ -90,22 +87,6 @@ body {
 .brand-text  { flex: 1; overflow: hidden; transition: opacity .2s; white-space: nowrap; }
 .brand-name  { font-size: 15px; font-weight: 700; color: #fff; }
 .brand-sub   { font-size: 9px; color: var(--green-200); letter-spacing: 1.2px; text-transform: uppercase; }
-
-/* Collapse toggle button — always visible */
-.sidebar-collapse-btn {
-  flex-shrink: 0;
-  background: rgba(255,255,255,.1);
-  border: none; cursor: pointer;
-  color: var(--green-200);
-  font-size: 18px; font-weight: 700;
-  width: 26px; height: 26px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  transition: transform .25s, background .15s;
-  line-height: 1;
-}
-.sidebar-collapse-btn:hover { background: rgba(255,255,255,.2); color: #fff; }
-.sidebar.mobile-expanded .sidebar-collapse-btn { transform: rotate(180deg); margin: 0 auto; }
 
 /* Nav */
 .sidebar-nav { flex: 1; padding: 10px 0; overflow-y: auto; overflow-x: hidden; }
@@ -441,13 +422,9 @@ input.form-input:focus, select.form-input:focus {
 .popWinHead, .popWinActionBtns { background: var(--green-800); flex-shrink: 0; }
 .popWinHead {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; padding: 14px 16px;
+  gap: 10px; padding: 8px 16px;
 }
 .popWinHead__inner { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.popWinLogo {
-  width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.25);
-}
 .popWinIcon {
   width: 30px; height: 30px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -471,7 +448,7 @@ input.form-input:focus, select.form-input:focus {
 
 .popWinActionBtns {
   display: flex; gap: 10px; justify-content: center;
-  padding: 14px 16px;
+  padding: 8px 16px;
 }
 .popWinActionBtns[hidden] { display: none; }
 
@@ -587,8 +564,8 @@ input.form-input:focus, select.form-input:focus {
   .grid-4 { grid-template-columns: repeat(2,1fr); }
 }
 
-/* 768px — sidebar defaults to an icon-only rail; tapping the toggle expands it into
-   a full labeled overlay on top of the content (content itself never shifts). */
+/* 768px — sidebar is a permanent icon-only rail (nav items are tappable by icon;
+   no expand/collapse toggle). */
 @media (max-width: 768px) {
   .sidebar {
     width: var(--sidebar-w-collapsed);
@@ -599,22 +576,8 @@ input.form-input:focus, select.form-input:focus {
   .sidebar .sidebar-estate-status { opacity: 0; pointer-events: none; }
   .sidebar .sidebar-brand { justify-content: center; padding: 12px 0; }
   .sidebar .nav-item { justify-content: center; padding: 11px 0; }
-  .sidebar .sidebar-collapse-btn { display: flex; }
 
-  .sidebar.mobile-expanded {
-    width: var(--sidebar-w);
-    box-shadow: 4px 0 24px rgba(0,0,0,.3);
-  }
-  .sidebar.mobile-expanded .brand-text,
-  .sidebar.mobile-expanded .nav-label,
-  .sidebar.mobile-expanded .nav-section-label,
-  .sidebar.mobile-expanded .sidebar-estate-status { opacity: 1; pointer-events: all; }
-  .sidebar.mobile-expanded .sidebar-brand { justify-content: flex-start; padding: 18px 10px 16px 14px; }
-  .sidebar.mobile-expanded .nav-item { justify-content: flex-start; padding: 9px 14px; }
-
-  .sidebar-backdrop.visible { background: rgba(0,0,0,.35); pointer-events: all; }
-
-  /* Content sits beside the icon rail regardless of expanded state */
+  /* Content sits beside the icon rail */
   .panel { margin-left: var(--sidebar-w-collapsed); }
 
   /* Grids */
@@ -654,15 +617,6 @@ input.form-input:focus, select.form-input:focus {
   .btn-sm { padding: 4px 8px; font-size: 11px; }
 }
 
-/* Dim backdrop behind the expanded mobile sidebar overlay (desktop: always inert) */
-.sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0);
-  z-index: 190;
-  pointer-events: none;
-  transition: background .25s;
-}
 
 /* ═══════════════════════════════════════
    DATA LOADING OVERLAY (Supabase fetch)

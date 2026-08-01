@@ -28,51 +28,50 @@
       <div class="brand-name">SugarEstate</div>
       <div class="brand-sub">Admin Console</div>
     </div>
-    <button class="sidebar-collapse-btn" id="collapse-btn" onclick="toggleSidebar()" title="Collapse">‹</button>
   </div>
 
   <nav class="sidebar-nav">
     <div class="nav-section-label">OVERVIEW</div>
-    <a href="#" class="nav-item" onclick="openPanel('dashboard',this)">
+    <a href="#" class="nav-item" title="Dashboard" onclick="openPanel('dashboard',this)">
       <span class="nav-icon">◈</span><span class="nav-label"> Dashboard</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('analytics',this)">
+    <a href="#" class="nav-item" title="Estate Analytics" onclick="openPanel('analytics',this)">
       <span class="nav-icon">◉</span><span class="nav-label"> Estate Analytics</span>
     </a>
 
     <div class="nav-section-label">MANAGEMENT</div>
-    <a href="#" class="nav-item" onclick="openPanel('estates',this)">
+    <a href="#" class="nav-item" title="Estates" onclick="openPanel('estates',this)">
       <span class="nav-icon">▦</span><span class="nav-label"> Estates</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('production',this)">
+    <a href="#" class="nav-item" title="Production" onclick="openPanel('production',this)">
       <span class="nav-icon">◐</span><span class="nav-label"> Production</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('activities',this)">
+    <a href="#" class="nav-item" title="Activities" onclick="openPanel('activities',this)">
       <span class="nav-icon">◷</span><span class="nav-label"> Activities</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('costs',this)">
+    <a href="#" class="nav-item" title="Costs" onclick="openPanel('costs',this)">
       <span class="nav-icon">◍</span><span class="nav-label"> Costs</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('documents',this)">
+    <a href="#" class="nav-item" title="Documents &amp; Media" onclick="openPanel('documents',this)">
       <span class="nav-icon">▤</span><span class="nav-label"> Documents &amp; Media</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('users',this)">
+    <a href="#" class="nav-item" title="Users" onclick="openPanel('users',this)">
       <span class="nav-icon">◎</span><span class="nav-label"> Users</span>
     </a>
 
     <div class="nav-section-label">COMMUNICATIONS</div>
-    <a href="#" class="nav-item" onclick="openPanel('notifications',this)">
-      <span class="nav-icon">◌</span><span class="nav-label"> Email Reports</span>
+    <a href="#" class="nav-item" title="Reports" onclick="openPanel('notifications',this)">
+      <span class="nav-icon">◌</span><span class="nav-label"> Reports</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('messages',this)">
+    <a href="#" class="nav-item" title="Messages" onclick="openPanel('messages',this)">
       <span class="nav-icon">✉</span><span class="nav-label"> Messages</span>
     </a>
-    <a href="#" class="nav-item" onclick="openPanel('alerts',this)">
+    <a href="#" class="nav-item" title="Alerts" onclick="openPanel('alerts',this)">
       <span class="nav-icon">⬡</span><span class="nav-label"> Alerts</span>
     </a>
 
     <div class="nav-section-label">SYSTEM</div>
-    <a href="#" class="nav-item" onclick="openPanel('settings',this)">
+    <a href="#" class="nav-item" title="Settings" onclick="openPanel('settings',this)">
       <span class="nav-icon">◧</span><span class="nav-label"> Settings</span>
     </a>
   </nav>
@@ -85,8 +84,6 @@
   </div>
 </aside>
 
-<!-- Backdrop behind the expanded mobile sidebar overlay (tap to collapse back to icon rail) -->
-<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
 
 <!-- ═══ MAIN CONTENT — the dashboard itself is the page, nothing to close ═══ -->
 <div class="panel" id="panel">

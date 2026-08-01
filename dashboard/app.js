@@ -68,6 +68,28 @@ function stagePill(s) {
   return pill(s, map[s] || 'gray');
 }
 
+// Shared "Managers" card used by the Estate / Block / Plot detail views —
+// lists whoever is linked (via vsl_estate_managers) at that scope, with a
+// button to link another and an unlink action per row.
+function managersCardHTML(scopeType, scopeId, scopeLabel, managers) {
+  return `
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <div class="card-title">Managers</div>
+      <button class="btn btn-primary btn-sm" onclick="showLinkManagerModal('${scopeType}','${scopeId}','${scopeLabel}')">+ Link Manager</button>
+    </div>
+    ${managers && managers.length ? managers.map(m => `
+      <div class="activity-item">
+        <div class="activity-dot blue">👤</div>
+        <div class="activity-content" style="flex:1">
+          <div class="activity-text">${m.name} <span style="color:var(--gray-500);font-weight:400">— ${titleCaseLocal(m.role)}</span></div>
+          <div class="activity-meta">Assigned ${m.assignedFrom || '—'}</div>
+        </div>
+        <button class="icon-btn danger" onclick="confirmUnlinkManager('${m.linkId}','${(m.name||'').replace(/'/g,"")}')" title="Unlink">🗑</button>
+      </div>`).join('') : `<div style="padding:16px 0;text-align:center;color:var(--gray-500);font-size:13px">No managers linked yet</div>`}
+  </div>`;
+}
+
 function showToast(msg, color) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -91,7 +113,7 @@ const PAGE_TITLES = {
   dashboard:     'Dashboard',
   analytics:     'Estate Analytics',
   estates:       'Estates, Blocks & Plots',
-  production:    'Production',
+  production:    'Harvests',
   activities:    'Activities',
   costs:         'Costs',
   documents:     'Documents & Media',
@@ -424,6 +446,8 @@ function renderEstatesPage(el) {
   let selectedEstate    = '';
   let selectedBlock     = null;   // block id when drilling into a block
   let viewingPlotId     = null;   // plot id when viewing full plot detail
+  let viewingEstateId   = null;   // estate id when viewing full estate detail (from Estates tab)
+  let viewingBlockId    = null;   // block id when viewing full block detail (from Estates tab drill-down)
 
   // ── Helper: estate summary stats for one estate ──
   function estateStats(estate) {
@@ -496,7 +520,7 @@ function renderEstatesPage(el) {
           ${estatesData.filter(e=>!selectedEstate||e.name===selectedEstate).map(e=>{
             const st = estateStats(e.name);
             return `
-            <tr>
+            <tr style="cursor:pointer" onclick="viewEstateDetail('${e.id}')">
               <td>
                 <div style="font-weight:700">${e.name}</div>
                 <div style="font-size:11px;color:var(--gray-500)">${e.id}</div>
@@ -518,8 +542,9 @@ function renderEstatesPage(el) {
                 </div>
               </td>
               <td>${healthPill(e.health)}</td>
-              <td>
+              <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px">
+                  <button class="icon-btn" onclick="showLinkManagerModal('estate','${e._id}','${e.name}')" title="Link Manager">👤</button>
                   <button class="icon-btn" onclick="showEditEstateModal('${e.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeleteEstate('${e.id}','${e.name}')" title="Delete">🗑</button>
                 </div>
@@ -528,6 +553,9 @@ function renderEstatesPage(el) {
           }).join('')}
         </tbody>
       </table>
+    </div>
+    <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
+      💡 Click any estate row to view full estate details
     </div>`;
   }
 
@@ -543,27 +571,19 @@ function renderEstatesPage(el) {
         <option value="">All Estates</option>
         ${DATA.estates.map(e=>`<option value="${e.name}" ${selectedEstate===e.name?'selected':''}>${e.name}</option>`).join('')}
       </select>
-      <select class="form-input" style="width:130px" id="blk-status-filter"
-              onchange="filterBlocksByStatus(this.value)">
-        <option value="">All Statuses</option>
-        <option>active</option><option>watch</option><option>alert</option>
-      </select>
-      <div style="margin-left:auto;font-size:11px;color:var(--gray-500);align-self:center">
-        💡 Blocks are surveyed &amp; imported, not created here
-      </div>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Block ID</th><th>Estate</th><th>Plots</th><th>Total Area</th>
+          <tr><th>Block Name</th><th>Estate</th><th>Plots</th><th>Total Area</th>
           <th>Planted</th><th>Utilisation</th><th>Avg Yield</th><th>Season</th>
           <th>Status</th><th>Actions</th></tr>
         </thead>
         <tbody id="blocks-tbody">
           ${filtered.map(b=>`
             <tr class="blk-row" data-estate="${b.estate}" data-status="${b.status}"
-                style="cursor:pointer" onclick="drillIntoBlock('${b.id}')">
-              <td><strong>${b.id}</strong></td>
+                style="cursor:pointer" onclick="viewBlockDetail('${b.id}')">
+              <td><strong>${b.name || b.id}</strong><br><span style="font-size:11px;color:var(--gray-500)">${b.id}</span></td>
               <td>${b.estate}</td>
               <td>${b.plots}</td>
               <td>${fmtHa(b.areaHa)}</td>
@@ -582,6 +602,7 @@ function renderEstatesPage(el) {
               <td>${healthPill(b.status)}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px">
+                  <button class="icon-btn" onclick="showLinkManagerModal('block','${b._uuid}','${b.name || b.id}')" title="Link Manager">👤</button>
                   <button class="icon-btn" onclick="showEditBlockModal('${b.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeleteBlock('${b.id}')" title="Delete">🗑</button>
                 </div>
@@ -591,7 +612,7 @@ function renderEstatesPage(el) {
       </table>
     </div>
     <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
-      💡 Click any block row to view all plots inside that block
+      💡 Click any block row to view full block details
     </div>`;
   }
 
@@ -601,7 +622,9 @@ function renderEstatesPage(el) {
       (!selectedEstate || p.estate === selectedEstate) &&
       (!blockId || p.block === blockId)
     );
-    const blockLabel = blockId ? ` — Block ${blockId}` : '';
+    // Block filter options are scoped to the currently selected estate (if any)
+    const blocksForFilter = DATA.blocks.filter(b => !selectedEstate || b.estate === selectedEstate);
+    const activeBlock = blockId ? DATA.blocks.find(b => b.id === blockId) : null;
     return `
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end">
       <input class="form-input" style="max-width:180px" placeholder="Search plots..." id="plt-search"
@@ -610,39 +633,30 @@ function renderEstatesPage(el) {
         <option value="">All Estates</option>
         ${DATA.estates.map(e=>`<option value="${e.name}" ${selectedEstate===e.name?'selected':''}>${e.name}</option>`).join('')}
       </select>
-      <select class="form-input" style="width:140px" id="plt-stage-filter"
-              onchange="filterPlotsByStage(this.value)">
-        <option value="">All Stages</option>
-        ${STAGE_ORDER.map(s=>`<option>${s}</option>`).join('')}
+      <select class="form-input" style="width:160px" id="plt-block-filter" onchange="applyPlotBlockFilter(this.value)">
+        <option value="">All Blocks</option>
+        ${blocksForFilter.map(b=>`<option value="${b.id}" ${b.id===blockId?'selected':''}>${b.name || b.id}</option>`).join('')}
       </select>
-      <select class="form-input" style="width:130px" id="plt-health-filter"
-              onchange="filterPlotsByHealth(this.value)">
-        <option value="">All Health</option>
-        <option value="good">Good</option><option value="watch">Watch</option>
-        <option value="alert">Alert</option>
-      </select>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        ${blockId ? `<button class="btn btn-outline btn-sm" onclick="clearBlockDrill()">← All Blocks</button>` : ''}
-        <span style="font-size:11px;color:var(--gray-500)">💡 Plots are surveyed &amp; imported, not created here</span>
+      <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
+        💡 Click any plot row to view full plot details
       </div>
     </div>
-    ${blockId ? `<div style="padding:8px 12px;background:var(--blue-100);border-radius:var(--radius-sm);margin-bottom:14px;font-size:12px;color:var(--blue-500);font-weight:600">Showing plots in <strong>${blockId}</strong></div>` : ''}
+    ${activeBlock ? `<div style="padding:8px 12px;background:var(--blue-100);border-radius:var(--radius-sm);margin-bottom:14px;font-size:12px;color:var(--blue-500);font-weight:600">Showing plots in <strong>${activeBlock.name || activeBlock.id}</strong></div>` : ''}
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Plot ID</th><th>Block</th><th>Estate</th><th>Area</th>
+          <tr><th>Plot Name</th><th>Block</th><th>Estate</th><th>Area</th>
           <th>Variety</th><th>Ratoon</th><th>Stage</th><th>Health</th>
           <th>Planted</th><th>Est. Harvest</th><th>Actions</th></tr>
         </thead>
         <tbody id="plots-tbody">
           ${filtered.map(p=>`
-            <tr class="plt-row" data-stage="${p.stage}" data-health="${p.health}"
-                style="cursor:pointer" onclick="viewPlotDetail('${p.id}')">
-              <td><strong style="color:var(--green-700)">${p.id}</strong></td>
-              <td>${p.block}</td>
+            <tr class="plt-row" style="cursor:pointer" onclick="viewPlotDetail('${p.id}')">
+              <td><strong style="color:var(--green-700)">${p.parcelName || p.id}</strong><br><span style="font-size:11px;color:var(--gray-500)">${p.id}</span></td>
+              <td>${p.blockName || p.block}</td>
               <td>${p.estate}</td>
               <td>${fmtHa(p.areaHa)}</td>
-              <td>${p.variety}</td>
+              <td>${p.variety || '—'}</td>
               <td>${p.ratoon===0?'Plant Crop':'Ratoon '+p.ratoon}</td>
               <td>${stagePill(p.stage)}</td>
               <td>${healthPill(p.health)}</td>
@@ -650,6 +664,7 @@ function renderEstatesPage(el) {
               <td>${p.expectedHarvest||'—'}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px">
+                  <button class="icon-btn" onclick="showLinkManagerModal('parcel','${p._uuid}','${p.parcelName || p.id}')" title="Link Manager">👤</button>
                   <button class="icon-btn" onclick="showEditPlotModal('${p.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeletePlot('${p.id}')" title="Delete">🗑</button>
                 </div>
@@ -657,9 +672,6 @@ function renderEstatesPage(el) {
             </tr>`).join('')}
         </tbody>
       </table>
-    </div>
-    <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
-      💡 Click any plot row to view full plot details
     </div>`;
   }
 
@@ -668,19 +680,18 @@ function renderEstatesPage(el) {
     const p = DATA.plots.find(x=>x.id===plotId) || DATA.plots[0];
     if (!p) return '<p>Plot not found.</p>';
 
-    const ph = p._placeholders || {}; // placeholder agronomy fields when running on live data
-    const tag = ' <span class="placeholder-tag">Not yet recorded</span>';
+    const soil = p.soilTest; // real vsl_parcel_soil_tests row (latest), or null if none logged yet
 
     const attrs = [
       ['Plot ID',             p.id],
       ['Plot Name',           p.parcelName || p.id],
       ['Current Activity',    p.currentActivity || '—'],
-      ['Block',               p.block],
+      ['Block',               p.blockName || p.block],
       ['Estate',               p.estate],
       ['Area (ac)',           fmtHa(p.areaHa)],
       ['Geometry Status',     p.geometryStatus ? titleCaseLocal(p.geometryStatus) : '—'],
       ['Cultivation Status',  p.cultivationStatus ? titleCaseLocal(p.cultivationStatus) : '—'],
-      ['Cane Variety',        (p.variety || '—') + (DATA.isLive ? tag : '')],
+      ['Cane Variety',        p.variety || '— (no season record yet)'],
       ['Ratoon Number',       p.ratoon===0 ? 'Plant Crop (0)' : 'Ratoon ' + p.ratoon],
       ['Planting Date',       p.planted || '—'],
       ['Expected Harvest',    p.expectedHarvest || '—'],
@@ -689,22 +700,26 @@ function renderEstatesPage(el) {
       ['Actual Harvest (t)',  p.yield ? p.yield + ' t' : 'Pending harvest'],
       ['Yield per Ac',        p.yield ? (p.yield/(p.areaHa*2.47105)).toFixed(2) + ' t/ac' : '—'],
       ['Last Harvest Date',   p.lastHarvestDate || '—'],
-      ['Soil Type',           (ph.soilType || '—') + (DATA.isLive ? tag : '')],
-      ['Soil pH',             (ph.soilPh || '—') + (DATA.isLive ? tag : '')],
-      ['Irrigation Type',     (ph.irrigationType || '—') + (DATA.isLive ? tag : '')],
-      ['Drainage Class',      (ph.drainageClass || '—') + (DATA.isLive ? tag : '')],
-      ['Brix Reading',        p.yield ? (ph.brix || '—') + '%' + (DATA.isLive ? tag : '') : '—'],
-      ['Sucrose (%)',         p.yield ? (ph.sucrose || '—') + '%' + (DATA.isLive ? tag : '') : '—'],
+      ['Irrigation Type (from Block)', p.blockIrrigationType || '—'],
+      ['Soil Test — pH',            soil ? (soil.soilPh ?? '—') : 'No soil test recorded yet'],
+      ['Soil Test — Texture',       soil ? (soil.texture || '—') : 'No soil test recorded yet'],
+      ['Soil Test — N / P / K',     soil ? `${soil.nitrogen ?? '—'} / ${soil.phosphorus ?? '—'} / ${soil.potassium ?? '—'}` : 'No soil test recorded yet'],
+      ['Soil Test — Organic Matter %', soil ? (soil.organicMatterPct ?? '—') : 'No soil test recorded yet'],
+      ['Soil Test Date',            soil ? (soil.sampleDate || '—') : '—'],
+      ['Soil Type (from Block)',    p.blockSoilType || '—'],
+      ['Soil pH (from Block)',      p.blockSoilPh ?? '—'],
       ['Cultivation Notes',   p.cultivationNotes || '—'],
       ['Date Created',        p.createdAt ? p.createdAt.replace('T',' ').slice(0,16) : '—'],
       ['Last Updated',        p.updatedAt ? p.updatedAt.replace('T',' ').slice(0,16) : '—'],
       ['Record ID (UUID)',    p._uuid || '—'],
     ];
 
+    const backLabel = viewingBlockId ? '← Back to Block' : viewingEstateId ? '← Back to Estate' : '← Back to Plots';
+
     return `
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-outline btn-sm" onclick="clearPlotDetail()">← Back to Plots</button>
-      <div style="font-size:13px;color:var(--gray-500)">Full Plot Record — <strong>${p.id}</strong></div>
+      <button class="btn btn-outline btn-sm btn-back-accent" onclick="clearPlotDetail()">${backLabel}</button>
+      <div style="font-size:13px;color:var(--gray-500)">Full Plot Record — <strong>${p.parcelName || p.id}</strong></div>
       <div style="margin-left:auto;display:flex;gap:8px">
         <button class="btn btn-outline btn-sm" onclick="showEditPlotModal('${p.id}')">✏ Edit Plot</button>
         <button class="btn btn-danger btn-sm" onclick="confirmDeletePlot('${p.id}')">🗑 Delete Plot</button>
@@ -713,12 +728,14 @@ function renderEstatesPage(el) {
     <div class="grid-4" style="margin-bottom:20px">
       <div class="stat-card green"><div class="stat-label">Area</div><div class="stat-value" style="font-size:20px">${fmtHa(p.areaHa)}</div></div>
       <div class="stat-card blue"><div class="stat-label">Growth Stage</div><div class="stat-value" style="font-size:16px">${p.stage}</div></div>
-      <div class="stat-card amber"><div class="stat-label">Variety</div><div class="stat-value" style="font-size:16px">${p.variety}</div></div>
+      <div class="stat-card amber"><div class="stat-label">Variety</div><div class="stat-value" style="font-size:16px">${p.variety || '—'}</div></div>
       <div class="stat-card ${p.health==='good'?'green':p.health==='watch'?'amber':'red'}">
         <div class="stat-label">Health</div>
         <div class="stat-value" style="font-size:16px">${p.health.charAt(0).toUpperCase()+p.health.slice(1)}</div>
       </div>
     </div>
+    ${locationCardHTML(`qr-plot-${p._uuid}`, p.mapsLink)}
+    ${managersCardHTML('parcel', p._uuid, p.parcelName || p.id, p.managers)}
     <div class="card">
       <div class="card-header"><div class="card-title">All Plot Attributes</div></div>
       <div class="table-wrap">
@@ -736,12 +753,193 @@ function renderEstatesPage(el) {
     </div>`;
   }
 
+  // ── ESTATE DETAIL VIEW ──
+  function buildEstateDetail(estateId) {
+    const e = DATA.estates.find(x=>x.id===estateId);
+    if (!e) return '<p>Estate not found.</p>';
+
+    const blocksInEstate = DATA.blocks.filter(b=>b.estate===e.name);
+
+    const attrs = [
+      ['Estate Name',       e.name],
+      ['Estate ID',         e.id],
+      ['District',          e.district || '—'],
+      ['Address',           e.location || '—'],
+      ['Manager / Owner',   e.manager || '—'],
+      ['Manager Phone',     e.managerPhone || '—'],
+      ['Total Blocks',      e.blocks],
+      ['Total Plots',       e.plots],
+      ['Total Area',        fmtHa(e.areaHa)],
+      ['Planted Area',      fmtHa(e.plantedHa)],
+      ['Fallow Area',       fmtHa(e.areaHa - e.plantedHa)],
+      ['Utilisation',       pct(e.plantedHa, e.areaHa) + '%'],
+      ['Health Status',     e.health ? e.health.charAt(0).toUpperCase()+e.health.slice(1) : '—'],
+      ['Date Created',      e.createdAt ? e.createdAt.replace('T',' ').slice(0,16) : '—'],
+    ];
+
+    return `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-outline btn-sm btn-back-accent" onclick="clearEstateDetail()">← Back to Estates</button>
+      <div style="font-size:13px;color:var(--gray-500)">Full Estate Record — <strong>${e.name}</strong></div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="showEditEstateModal('${e.id}')">✏ Edit Estate</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmDeleteEstate('${e.id}','${e.name}')">🗑 Delete Estate</button>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-bottom:20px">
+      <div class="stat-card green"><div class="stat-label">Total Area</div><div class="stat-value" style="font-size:20px">${fmtHa(e.areaHa)}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Blocks</div><div class="stat-value" style="font-size:20px">${e.blocks}</div></div>
+      <div class="stat-card amber"><div class="stat-label">Plots</div><div class="stat-value" style="font-size:20px">${e.plots}</div></div>
+      <div class="stat-card ${e.health==='good'?'green':e.health==='watch'?'amber':'red'}">
+        <div class="stat-label">Health</div>
+        <div class="stat-value" style="font-size:16px">${e.health ? e.health.charAt(0).toUpperCase()+e.health.slice(1) : '—'}</div>
+      </div>
+    </div>
+    ${locationCardHTML(`qr-estate-${e.id}`, e.mapsLink)}
+    ${managersCardHTML('estate', e._id, e.name, e.managers)}
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><div class="card-title">Estate Attributes</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:40%">Attribute</th><th>Value</th></tr></thead>
+          <tbody>
+            ${attrs.map(([attr,val],i)=>`
+              <tr style="background:${i%2===0?'var(--gray-50)':'var(--white)'}">
+                <td style="font-weight:600;color:var(--gray-700);font-size:12px">${attr}</td>
+                <td style="color:var(--gray-900);font-size:13px">${val}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Blocks in this Estate</div>
+        <div style="font-size:11px;color:var(--gray-500)">${blocksInEstate.length} block(s)</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Block Name</th><th>Plots</th><th>Total Area</th><th>Planted</th><th>Utilisation</th><th>Status</th></tr></thead>
+          <tbody>
+            ${blocksInEstate.length ? blocksInEstate.map(b=>`
+              <tr style="cursor:pointer" onclick="viewBlockDetail('${b.id}')">
+                <td><strong>${b.name || b.id}</strong><br><span style="font-size:11px;color:var(--gray-500)">${b.id}</span></td>
+                <td>${b.plots}</td>
+                <td>${fmtHa(b.areaHa)}</td>
+                <td>${fmtHa(b.plantedHa)}</td>
+                <td>${pct(b.plantedHa,b.areaHa)}%</td>
+                <td>${healthPill(b.status)}</td>
+              </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No blocks yet</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
+        💡 Click any block row to view full block details
+      </div>
+    </div>`;
+  }
+
+  // ── BLOCK DETAIL VIEW ──
+  function buildBlockDetail(blockId) {
+    const b = DATA.blocks.find(x=>x.id===blockId);
+    if (!b) return '<p>Block not found.</p>';
+
+    const plotsInBlock = DATA.plots.filter(p=>p.block===blockId);
+
+    const attrs = [
+      ['Block Name',         b.name || b.id],
+      ['Block Code',         b.id],
+      ['Estate',             b.estate],
+      ['Total Plots',        b.plots],
+      ['Total Area',         fmtHa(b.areaHa)],
+      ['Planted Area',       fmtHa(b.plantedHa)],
+      ['Fallow Area',        fmtHa(b.areaHa - b.plantedHa)],
+      ['Utilisation',        pct(b.plantedHa, b.areaHa) + '%'],
+      ['Avg Yield',          b.avgYield + ' t/ac'],
+      ['Season',             b.season || '—'],
+      ['Manager Name',       b.managerName || '—'],
+      ['Manager Phone',      b.managerPhone || '—'],
+      ['Soil Type',          b.soilType || '—'],
+      ['Soil pH',            b.soilPh || '—'],
+      ['Irrigation Type',    b.irrigationType || '—'],
+      ['Ownership',          b.ownership || '—'],
+      ['Geometry Status',    b.geometryStatus ? titleCaseLocal(b.geometryStatus) : '—'],
+      ['Cultivation Status', b.cultivationStatus ? titleCaseLocal(b.cultivationStatus) : '—'],
+      ['Last Harvest Date',  b.lastHarvestDate || '—'],
+      ['Harvest Tonnes',     b.harvestTonnes ? b.harvestTonnes + ' t' : '—'],
+      ['Cultivation Notes',  b.cultivationNotes || '—'],
+      ['Date Created',       b.createdAt ? b.createdAt.replace('T',' ').slice(0,16) : '—'],
+      ['Last Updated',       b.updatedAt ? b.updatedAt.replace('T',' ').slice(0,16) : '—'],
+      ['Record ID (UUID)',   b._uuid || '—'],
+    ];
+
+    const blockBackLabel = viewingEstateId ? '← Back to Estate' : '← Back to Blocks';
+
+    return `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-outline btn-sm btn-back-accent" onclick="clearBlockDetail()">${blockBackLabel}</button>
+      <div style="font-size:13px;color:var(--gray-500)">Full Block Record — <strong>${b.name || b.id}</strong></div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="showEditBlockModal('${b.id}')">✏ Edit Block</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmDeleteBlock('${b.id}')">🗑 Delete Block</button>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-bottom:20px">
+      <div class="stat-card green"><div class="stat-label">Total Area</div><div class="stat-value" style="font-size:20px">${fmtHa(b.areaHa)}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Plots</div><div class="stat-value" style="font-size:20px">${b.plots}</div></div>
+      <div class="stat-card amber"><div class="stat-label">Avg Yield</div><div class="stat-value" style="font-size:16px">${b.avgYield} t/ac</div></div>
+      <div class="stat-card ${b.status==='active'?'green':b.status==='watch'?'amber':'red'}">
+        <div class="stat-label">Status</div>
+        <div class="stat-value" style="font-size:16px">${healthPill(b.status)}</div>
+      </div>
+    </div>
+    ${locationCardHTML(`qr-block-${b._uuid}`, b.mapsLink)}
+    ${managersCardHTML('block', b._uuid, b.name || b.id, b.managers)}
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><div class="card-title">Block Attributes</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:40%">Attribute</th><th>Value</th></tr></thead>
+          <tbody>
+            ${attrs.map(([attr,val],i)=>`
+              <tr style="background:${i%2===0?'var(--gray-50)':'var(--white)'}">
+                <td style="font-weight:600;color:var(--gray-700);font-size:12px">${attr}</td>
+                <td style="color:var(--gray-900);font-size:13px">${val}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Plots in this Block</div>
+        <div style="font-size:11px;color:var(--gray-500)">${plotsInBlock.length} plot(s)</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Plot Name</th><th>Area</th><th>Variety</th><th>Stage</th><th>Health</th></tr></thead>
+          <tbody>
+            ${plotsInBlock.length ? plotsInBlock.map(p=>`
+              <tr style="cursor:pointer" onclick="viewPlotDetail('${p.id}')">
+                <td><strong style="color:var(--green-700)">${p.parcelName || p.id}</strong><br><span style="font-size:11px;color:var(--gray-500)">${p.id}</span></td>
+                <td>${fmtHa(p.areaHa)}</td>
+                <td>${p.variety || '—'}</td>
+                <td>${stagePill(p.stage)}</td>
+                <td>${healthPill(p.health)}</td>
+              </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--gray-500);padding:24px">No plots yet</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
+        💡 Click any plot row to view full plot details
+      </div>
+    </div>`;
+  }
+
   // ── RENDER CONTAINER ──
   function renderTabContent() {
     const container = document.getElementById('estates-tab-content');
     if (!container) return;
     container.innerHTML =
-      viewingPlotId  ? buildPlotDetail(viewingPlotId) :
+      viewingPlotId   ? buildPlotDetail(viewingPlotId) :
+      viewingBlockId  ? buildBlockDetail(viewingBlockId) :
+      viewingEstateId ? buildEstateDetail(viewingEstateId) :
       activeTab==='estates' ? buildEstatesTab() :
       activeTab==='blocks'  ? buildBlocksTab() :
       buildPlotsTab(selectedBlock);
@@ -772,36 +970,13 @@ function renderEstatesPage(el) {
         r.style.display = r.textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
       });
     };
-    window.filterBlocksByStatus = function(val) {
-      document.querySelectorAll('.blk-row').forEach(r=>{
-        r.style.display = (!val||r.dataset.status===val) ? '' : 'none';
-      });
-    };
     window.filterPlotRows = function(val) {
       document.querySelectorAll('#plots-tbody tr').forEach(r=>{
         r.style.display = r.textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
       });
     };
-    window.filterPlotsByStage = function(val) {
-      document.querySelectorAll('.plt-row').forEach(r=>{
-        r.style.display = (!val||r.dataset.stage===val) ? '' : 'none';
-      });
-    };
-    window.filterPlotsByHealth = function(val) {
-      document.querySelectorAll('.plt-row').forEach(r=>{
-        r.style.display = (!val||r.dataset.health===val) ? '' : 'none';
-      });
-    };
-    window.drillIntoBlock = function(blockId) {
-      selectedBlock = blockId;
-      activeTab = 'plots';
-      document.querySelectorAll('.tab-btn').forEach(b=>{
-        b.classList.toggle('active', b.dataset.tab==='plots');
-      });
-      renderTabContent();
-    };
-    window.clearBlockDrill = function() {
-      selectedBlock = null;
+    window.applyPlotBlockFilter = function(val) {
+      selectedBlock = val || null;
       renderTabContent();
     };
     window.viewPlotDetail = function(plotId) {
@@ -812,6 +987,26 @@ function renderEstatesPage(el) {
       viewingPlotId = null;
       renderTabContent();
     };
+    window.viewEstateDetail = function(estateId) {
+      viewingEstateId = estateId;
+      viewingBlockId = null;
+      viewingPlotId = null;
+      renderTabContent();
+    };
+    window.clearEstateDetail = function() {
+      viewingEstateId = null;
+      viewingBlockId = null;
+      renderTabContent();
+    };
+    window.viewBlockDetail = function(blockId) {
+      viewingBlockId = blockId;
+      viewingPlotId = null;
+      renderTabContent();
+    };
+    window.clearBlockDetail = function() {
+      viewingBlockId = null;
+      renderTabContent();
+    };
   }
 
   rebindHelpers();
@@ -819,6 +1014,8 @@ function renderEstatesPage(el) {
   window.switchEBPTab = function(tab, btn) {
     activeTab = tab;
     viewingPlotId = null;
+    viewingBlockId = null;
+    viewingEstateId = null;
     if (tab !== 'plots') selectedBlock = null;
     document.querySelectorAll('#estates-tabs .tab-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
@@ -827,6 +1024,11 @@ function renderEstatesPage(el) {
 
   window.applyEstFilter = function(val) {
     selectedEstate = val;
+    // Reset the block filter if the previously-selected block doesn't belong to the newly chosen estate
+    if (selectedBlock) {
+      const blk = DATA.blocks.find(b => b.id === selectedBlock);
+      if (!blk || (val && blk.estate !== val)) selectedBlock = null;
+    }
     renderTabContent();
   };
 
@@ -938,6 +1140,77 @@ function renderEstatesPage(el) {
     }
   };
 
+  // ── MANAGER LINKING (shared by Estate / Block / Plot — vsl_estate_managers) ──
+  const MANAGER_ROLE_OPTIONS = ['Manager', 'Supervisor', 'Agronomist', 'Field Officer'];
+
+  window.showLinkManagerModal = function(scopeType, scopeId, scopeLabel) {
+    showModal(`
+      <div class="modal-title">Link Manager — ${scopeLabel}</div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">User</label>
+        <select class="form-input" id="lm-user">
+          ${DATA.users.map(u=>`<option value="${u.id}">${u.name} (${u.email})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Role</label>
+        <select class="form-input" id="lm-role">
+          ${MANAGER_ROLE_OPTIONS.map(r=>`<option value="${r.toLowerCase()}">${r}</option>`).join('')}
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitLinkManager('${scopeType}','${scopeId}')">Link Manager</button>
+      </div>`);
+  };
+
+  window.submitLinkManager = async function(scopeType, scopeId) {
+    const userId = document.getElementById('lm-user').value;
+    const role = document.getElementById('lm-role').value;
+    if (!userId) { showToast('Select a user', 'red'); return; }
+    try {
+      const client = getSbClient();
+      const payload = { user_id: userId, role };
+      if (scopeType === 'estate') payload.estate_id = scopeId;
+      if (scopeType === 'block') payload.block_id = scopeId;
+      if (scopeType === 'parcel') payload.parcel_id = scopeId;
+      const { error } = await client.from('vsl_estate_managers').insert([payload]);
+      if (error) throw error;
+      closeModal();
+      showToast('Manager linked successfully');
+      await retryLiveDataLoad();
+      renderTabContent();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to link manager: ' + err.message, 'red');
+    }
+  };
+
+  window.confirmUnlinkManager = function(linkId, managerName) {
+    showModal(`
+      <div class="modal-title">Unlink Manager</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Remove <strong>${managerName}</strong> from this record?</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="submitUnlinkManager('${linkId}')">Yes, Unlink</button>
+      </div>`);
+  };
+
+  window.submitUnlinkManager = async function(linkId) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_estate_managers').update({ is_active: false }).eq('id', linkId);
+      if (error) throw error;
+      closeModal();
+      showToast('Manager unlinked', 'red');
+      await retryLiveDataLoad();
+      renderTabContent();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to unlink manager: ' + err.message, 'red');
+    }
+  };
+
   // ── BLOCK MODALS ──
   window.showAddBlockModal = function() {
     showModal(`
@@ -985,7 +1258,7 @@ function renderEstatesPage(el) {
     const b = DATA.blocks.find(x=>x.id===id);
     if (!b) return;
     showModal(`
-      <div class="modal-title">Edit Block — ${b.id}</div>
+      <div class="modal-title">Edit Block — ${b.name || b.id}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Block Code</label><input class="form-input" id="eb-code" value="${b.id}"></div>
         <div class="form-group"><label class="form-label">Cultivation Status</label>
@@ -1028,7 +1301,7 @@ function renderEstatesPage(el) {
     showModal(`
       <div class="modal-title">Delete Block</div>
       <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">
-        Delete <strong>${id}</strong>? Plots referencing this block will lose their block link. This cannot be undone.
+        Delete <strong>${b?.name || id}</strong>? Plots referencing this block will lose their block link. This cannot be undone.
       </p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1058,7 +1331,7 @@ function renderEstatesPage(el) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Plot Code</label><input class="form-input" id="ap-code" placeholder="e.g. P-25"></div>
         <div class="form-group"><label class="form-label">Block</label>
-          <select class="form-input" id="ap-block">${DATA.blocks.map(b=>`<option value="${b._uuid}">${b.id} (${b.estate})</option>`).join('')}</select></div>
+          <select class="form-input" id="ap-block">${DATA.blocks.map(b=>`<option value="${b._uuid}">${b.name || b.id} (${b.estate})</option>`).join('')}</select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Expected Area (acres)</label><input class="form-input" id="ap-area" type="number" placeholder="0.00"></div>
@@ -1101,7 +1374,7 @@ function renderEstatesPage(el) {
     const p = DATA.plots.find(x=>x.id===id);
     if (!p) return;
     showModal(`
-      <div class="modal-title">Edit Plot — ${p.id}</div>
+      <div class="modal-title">Edit Plot — ${p.parcelName || p.id}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Cultivation Status</label>
           <select class="form-input" id="ep-status">
@@ -1160,7 +1433,7 @@ function renderEstatesPage(el) {
     const p = DATA.plots.find(x=>x.id===id);
     showModal(`
       <div class="modal-title">Delete Plot</div>
-      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete plot <strong>${id}</strong>? This cannot be undone.</p>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete plot <strong>${p?.parcelName || id}</strong>? This cannot be undone.</p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-danger" onclick="submitDeletePlot('${p?._uuid}')">Yes, Delete</button>
@@ -1200,7 +1473,7 @@ function renderProduction(el) {
   el.innerHTML = `
   <div class="page-header">
     <div>
-      <div class="page-header-title">Production Tracking</div>
+      <div class="page-header-title">Harvest Tracking</div>
       <div class="page-header-sub">Harvest records from live plot data${DATA.isLive ? '' : ' · placeholder data'}</div>
     </div>
   </div>
@@ -1245,21 +1518,60 @@ function renderProduction(el) {
     <div class="table-wrap">
       <table>
         <thead><tr><th>Plot</th><th>Block</th><th>Estate</th><th>Last Harvest Date</th>
-        <th>Harvest Tonnage</th><th>Area</th><th>Yield/Ac</th><th>Status</th></tr></thead>
+        <th>Harvest Tonnage</th><th>Area</th><th>Yield/Ac</th></tr></thead>
         <tbody>
           ${harvestedParcels.length ? harvestedParcels.map(p=>`
-            <tr>
-              <td><strong>${p.id}</strong></td><td>${p.block}</td><td>${p.estate}</td>
+            <tr style="cursor:pointer" onclick="viewHarvestDetail('${p.id}')">
+              <td><strong>${p.parcelName || p.id}</strong></td><td>${p.blockName || p.block}</td><td>${p.estate}</td>
               <td>${p.lastHarvestDate || '—'}</td>
               <td>${p.yield} t</td>
               <td>${fmtHa(p.areaHa)}</td>
               <td>${p.areaHa ? (p.yield/(p.areaHa*2.47105)).toFixed(2) : '—'} t/ac</td>
-              <td>${stagePill(p.stage)}</td>
-            </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--gray-500);padding:24px">No harvest records yet</td></tr>`}
+            </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--gray-500);padding:24px">No harvest records yet</td></tr>`}
         </tbody>
       </table>
     </div>
+    <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
+      💡 Click any row to view full harvest details
+    </div>
   </div>`;
+
+  window.viewHarvestDetail = function(plotId) {
+    const p = DATA.plots.find(x => x.id === plotId);
+    if (!p) return;
+    const attrs = [
+      ['Plot Name',           p.parcelName || p.id],
+      ['Block',               p.blockName || p.block],
+      ['Estate',              p.estate],
+      ['Area (ac)',           fmtHa(p.areaHa)],
+      ['Cane Variety',        p.variety || '— (no season record yet)'],
+      ['Ratoon Number',       p.ratoon===0 ? 'Plant Crop (0)' : 'Ratoon ' + p.ratoon],
+      ['Growth Stage',        p.stage],
+      ['Health Status',       p.health.charAt(0).toUpperCase()+p.health.slice(1)],
+      ['Planting Date',       p.planted || '—'],
+      ['Last Harvest Date',   p.lastHarvestDate || '—'],
+      ['Harvest Tonnage',     p.yield ? p.yield + ' t' : '—'],
+      ['Yield per Ac',        p.yield && p.areaHa ? (p.yield/(p.areaHa*2.47105)).toFixed(2) + ' t/ac' : '—'],
+      ['Cultivation Notes',   p.cultivationNotes || '—'],
+    ];
+    showModal(`
+      <div class="modal-title">Harvest Details — ${p.parcelName || p.id}</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:40%">Attribute</th><th>Value</th></tr></thead>
+          <tbody>
+            ${attrs.map(([attr,val],i)=>`
+              <tr style="background:${i%2===0?'var(--gray-50)':'var(--white)'}">
+                <td style="font-weight:600;color:var(--gray-700);font-size:12px">${attr}</td>
+                <td style="color:var(--gray-900);font-size:13px">${val}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal();openPanel('estates',null);setTimeout(()=>viewPlotDetail('${p.id}'),0)">View Full Plot Record</button>
+      </div>`);
+  };
 }
 
 // ══════════════════════════════════════
@@ -1380,19 +1692,19 @@ function renderActivities(el) {
       <div class="form-group"><label class="form-label">Block</label>
         <select class="form-input" id="${prefix}-block" onchange="onActivityBlockChange('${prefix}')">
           <option value="">— None (estate-level) —</option>
-          ${DATA.blocks.map(b=>`<option value="${b._uuid}" ${b._uuid===blockVal?'selected':''}>${b.id} (${b.estate})</option>`).join('')}
+          ${DATA.blocks.map(b=>`<option value="${b._uuid}" ${b._uuid===blockVal?'selected':''}>${b.name || b.id} (${b.estate})</option>`).join('')}
         </select></div>
       <div class="form-group"><label class="form-label">Plot (optional)</label>
         <select class="form-input" id="${prefix}-parcel">
           <option value="">— Whole block —</option>
-          ${DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}" ${p._uuid===parcelVal?'selected':''}>${p.id}</option>`).join('')}
+          ${DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}" ${p._uuid===parcelVal?'selected':''}>${p.parcelName || p.id}</option>`).join('')}
         </select></div>`;
   }
   window.onActivityBlockChange = function(prefix) {
     const blockVal = document.getElementById(`${prefix}-block`).value;
     const parcelSel = document.getElementById(`${prefix}-parcel`);
     parcelSel.innerHTML = `<option value="">— Whole block —</option>` +
-      DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}">${p.id}</option>`).join('');
+      DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
   };
 
   window.showAddActivityModal = function() {
@@ -1728,8 +2040,8 @@ function renderDocuments(el) {
     const type = document.getElementById(`${prefix}-entity-type`).value;
     const sel = document.getElementById(`${prefix}-entity-id`);
     if (type === 'estate') sel.innerHTML = DATA.estates.map(e=>`<option value="${e._id}">${e.name}</option>`).join('');
-    else if (type === 'block') sel.innerHTML = DATA.blocks.map(b=>`<option value="${b._uuid}">${b.id} (${b.estate})</option>`).join('');
-    else sel.innerHTML = DATA.plots.map(p=>`<option value="${p._uuid}">${p.id}</option>`).join('');
+    else if (type === 'block') sel.innerHTML = DATA.blocks.map(b=>`<option value="${b._uuid}">${b.name || b.id} (${b.estate})</option>`).join('');
+    else sel.innerHTML = DATA.plots.map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
   };
 
   window.showAddDocumentModal = function() {
@@ -2497,8 +2809,8 @@ function renderAlerts(el) {
     const scope = document.getElementById('aal-scope').value;
     const sel = document.getElementById('aal-target');
     if (scope === 'ESTATE') sel.innerHTML = DATA.estates.map(e=>`<option value="${e._id}">${e.name}</option>`).join('');
-    else if (scope === 'BLOCKS') sel.innerHTML = DATA.blocks.map(b=>`<option value="${b._uuid}">${b.id} (${b.estate})</option>`).join('');
-    else sel.innerHTML = DATA.plots.map(p=>`<option value="${p._uuid}">${p.id}</option>`).join('');
+    else if (scope === 'BLOCKS') sel.innerHTML = DATA.blocks.map(b=>`<option value="${b._uuid}">${b.name || b.id} (${b.estate})</option>`).join('');
+    else sel.innerHTML = DATA.plots.map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
   };
 
   window.showAddAlertModal = function() {
@@ -2615,7 +2927,7 @@ function renderSettings(el) {
         <div class="settings-section-title">General</div>
         <div class="form-group" style="margin-bottom:12px">
           <label class="form-label">System Name</label>
-          <input class="form-input" value="SugarEstate Management System">
+          <input class="form-input" value="Victoria Sugar Management System">
         </div>
         <div class="form-group" style="margin-bottom:12px">
           <label class="form-label">Active Season</label>

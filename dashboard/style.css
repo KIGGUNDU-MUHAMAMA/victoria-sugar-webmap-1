@@ -83,7 +83,11 @@ body {
   flex-shrink: 0;
   min-height: 64px;
 }
-.brand-icon { font-size: 24px; line-height: 1; flex-shrink: 0; }
+.brand-icon {
+  width: 34px; height: 34px; flex-shrink: 0;
+  border-radius: 50%; object-fit: cover; background: #fff;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.15);
+}
 .brand-text  { flex: 1; overflow: hidden; transition: opacity .2s; white-space: nowrap; }
 .brand-name  { font-size: 15px; font-weight: 700; color: #fff; }
 .brand-sub   { font-size: 9px; color: var(--green-200); letter-spacing: 1.2px; text-transform: uppercase; }
@@ -283,6 +287,9 @@ table { min-width: 500px; }
 .btn-amber:hover { background: var(--amber-600); }
 .btn-outline { background: transparent; color: var(--gray-700); border: 1px solid var(--gray-300); }
 .btn-outline:hover { background: var(--gray-100); }
+/* Back-navigation buttons (Plot/Block/Estate detail views) — accent orange border */
+.btn-back-accent { border-color: #D46112; }
+.btn-back-accent:hover { background: rgba(212,97,18,.08); border-color: #D46112; }
 .btn-danger  { background: var(--red-500); color: #fff; }
 .btn-danger:hover { opacity: .85; }
 .btn-sm   { padding: 5px 11px; font-size: 12px; }

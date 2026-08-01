@@ -18,25 +18,14 @@ function getSbClient() {
   return sbClient;
 }
 
-// ── Helpers for placeholder agronomy fields not yet captured in the DB ──
-// These are clearly-labelled, deterministic placeholders (not random per reload)
-// so the UI looks complete while real agronomy capture is rolled out.
-
-const CANE_VARIETIES = ['N14', 'Co421', 'Mex64-1487', 'NCo376', 'R570'];
-const SOIL_TYPES      = ['Clay Loam', 'Sandy Loam', 'Silty Clay', 'Loam'];
-const IRRIGATION_TYPES = ['Furrow', 'Drip', 'Overhead', 'Rainfed'];
-const DRAINAGE_CLASSES = ['Well Drained', 'Moderately Drained', 'Poorly Drained'];
-
+// seedFromString() gives a deterministic per-record number, still used as a
+// last-resort estimate for avgYield when a block has no real harvest logged yet.
 function seedFromString(str) {
-  // Simple deterministic hash so the same parcel always gets the same placeholder values
   let hash = 0;
   for (let i = 0; i < (str || '').length; i++) {
     hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
   }
   return hash;
-}
-function pickFromSeed(arr, seed) {
-  return arr[seed % arr.length];
 }
 
 // Acres → hectares
@@ -84,7 +73,8 @@ async function loadLiveData() {
 
   const [
     estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes,
-    actRes, actCostRes, alertRes, docRes, mediaRes,
+    actRes, actCostRes, alertRes, docRes, mediaRes, blkStatsRes, parStatsRes, mgrRes,
+    seasonRes, soilTestRes,
   ] = await Promise.all([
     client.from('vsl_estate').select('*'),
     client.from('vsl_blocks').select('*'),
@@ -98,6 +88,11 @@ async function loadLiveData() {
     client.from('vsl_alerts').select('*').order('created_at', { ascending: false }),
     client.from('vsl_documents').select('*').order('upload_date', { ascending: false }).limit(200),
     client.from('vsl_media').select('*').order('captured_at', { ascending: false }).limit(200),
+    client.from('vsl_block_stats').select('block_id, centroid_lat, centroid_lon'),
+    client.from('vsl_parcel_stats').select('parcel_id, centroid_lat, centroid_lon'),
+    client.from('vsl_estate_managers').select('*').eq('is_active', true),
+    client.from('vsl_parcel_seasons').select('*'),
+    client.from('vsl_parcel_soil_tests').select('*').order('sample_date', { ascending: false }),
   ]);
 
   if (estRes.error) console.error('Supabase estate fetch error:', estRes.error);
@@ -112,6 +107,11 @@ async function loadLiveData() {
   if (alertRes.error) console.error('Supabase alerts fetch error:', alertRes.error);
   if (docRes.error) console.error('Supabase documents fetch error:', docRes.error);
   if (mediaRes.error) console.error('Supabase media fetch error:', mediaRes.error);
+  if (blkStatsRes.error) console.error('Supabase block stats fetch error:', blkStatsRes.error);
+  if (parStatsRes.error) console.error('Supabase parcel stats fetch error:', parStatsRes.error);
+  if (mgrRes.error) console.error('Supabase estate_managers fetch error:', mgrRes.error);
+  if (seasonRes.error) console.error('Supabase parcel_seasons fetch error:', seasonRes.error);
+  if (soilTestRes.error) console.error('Supabase parcel_soil_tests fetch error:', soilTestRes.error);
 
   const rawEstates = estRes.data || [];
   const rawBlocks  = blkRes.data || [];
@@ -123,6 +123,19 @@ async function loadLiveData() {
   const rawAlerts = alertRes.data || [];
   const rawDocuments = docRes.data || [];
   const rawMedia = mediaRes.data || [];
+  const rawManagerLinks = mgrRes.data || [];
+  const rawSeasons = seasonRes.data || [];
+  const rawSoilTests = soilTestRes.data || [];
+
+  // Centroid lookups (used to build Google Maps links + QR codes per block/parcel).
+  const blockStatsById  = new Map((blkStatsRes.data || []).map(s => [s.block_id, s]));
+  const parcelStatsById = new Map((parStatsRes.data || []).map(s => [s.parcel_id, s]));
+
+  // Real (non-placeholder) agronomy lookups for the Plot detail view.
+  const seasonById = new Map(rawSeasons.map(s => [s.id, s]));
+  // Latest soil test per parcel (rawSoilTests is already ordered sample_date desc).
+  const latestSoilTestByParcel = new Map();
+  rawSoilTests.forEach(t => { if (!latestSoilTestByParcel.has(t.parcel_id)) latestSoilTestByParcel.set(t.parcel_id, t); });
 
   // Estate id → estate_name lookup (estate_name was dropped from vsl_blocks/vsl_parcels; both
   // now reference vsl_estate via estate_id / block_id → block.estate_id).
@@ -144,10 +157,13 @@ async function loadLiveData() {
     const seed = seedFromString(b.id);
     const harvest = blockHarvestById.get(b.id);
     const harvestTonnes = harvest?.harvest_tonnes ?? null;
+    const blockStats = blockStatsById.get(b.id);
     return {
       id: b.block_code || b.id,
+      name: b.block_name || b.block_code || b.id,
       _uuid: b.id,
       estate: estateNameById.get(b.estate_id) || 'Unassigned',
+      mapsLink: buildGoogleMapsLink(blockStats?.centroid_lat, blockStats?.centroid_lon) || buildGoogleMapsSearchLink(b.location_address) || null,
       plots: parcelsInBlock.length,
       areaHa: Number(areaHa.toFixed(2)),
       plantedHa: Number(plantedHa.toFixed(2)),
@@ -158,10 +174,10 @@ async function loadLiveData() {
       season: '2024-B',
       managerName: b.manager_name || '—',
       managerPhone: b.manager_phone || '—',
-      soilType: b.soil_type || pickFromSeed(SOIL_TYPES, seed),
-      irrigationType: b.irrigation_type || pickFromSeed(IRRIGATION_TYPES, seed),
-      soilPh: b.soil_ph || (5.8 + (seed % 12) / 10).toFixed(2),
-      ownership: b.ownership || 'Company-owned',
+      soilType: b.soil_type || null,
+      irrigationType: b.irrigation_type || null,
+      soilPh: b.soil_ph ?? null,
+      ownership: b.ownership || null,
       geometryStatus: b.geometry_status || 'pending',
       cultivationStatus: b.cultivation_status || 'not_in_cane',
       lastHarvestDate: harvest?.last_harvest_date ?? null,
@@ -174,18 +190,31 @@ async function loadLiveData() {
 
   // ── PARCELS (plots) reshaped ──
   const plots = rawParcels.map(p => {
-    const seed = seedFromString(p.id);
     const parentBlock = rawBlocks.find(b => b.id === p.block_id);
+    // The already-reshaped block (built above) so we can show its real,
+    // DB-backed soil/irrigation values as a block-level fallback — no more
+    // per-parcel seeded placeholders.
+    const parentBlockReshaped = blocks.find(b => b._uuid === p.block_id);
     const areaHa = acresToHa(p.expected_area_acres);
     const harvest = parcelHarvestById.get(p.id);
+    const parcelStats = parcelStatsById.get(p.id);
+    // Real per-parcel season history (cane_variety etc.) — trigger-maintained
+    // on vsl_parcels.current_season_id, falls back to the newest season row
+    // for this parcel if the cache pointer isn't set yet.
+    const currentSeason = (p.current_season_id && seasonById.get(p.current_season_id))
+      || rawSeasons.filter(s => s.parcel_id === p.id).sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0]
+      || null;
+    const soilTest = latestSoilTestByParcel.get(p.id) || null;
     return {
       id: p.parcel_code || p.parcel_name || p.id,
       _uuid: p.id,
       block: parentBlock ? (parentBlock.block_code || parentBlock.id) : '—',
+      blockName: parentBlock ? (parentBlock.block_name || parentBlock.block_code || parentBlock.id) : '—',
       _blockUuid: p.block_id,
       estate: parentBlock ? (estateNameById.get(parentBlock.estate_id) || 'Unassigned') : 'Unassigned',
+      mapsLink: buildGoogleMapsLink(parcelStats?.centroid_lat, parcelStats?.centroid_lon) || null,
       areaHa: Number(areaHa.toFixed(2)),
-      variety: pickFromSeed(CANE_VARIETIES, seed), // placeholder — not yet captured per-parcel
+      variety: currentSeason?.cane_variety || null, // real value from vsl_parcel_seasons; '—' in the UI if this parcel has no season history yet
       stage: stageFromCultivationStatus(p.cultivation_status),
       ratoon: p.ratoon_number ?? 0,
       health: healthFromCultivationStatus(p.cultivation_status),
@@ -200,15 +229,23 @@ async function loadLiveData() {
       currentActivity: p.current_activity_name || null,
       createdAt: p.created_at,
       updatedAt: p.updated_at,
-      // Placeholder agronomy fields (clearly not yet in DB)
-      _placeholders: {
-        soilType: pickFromSeed(SOIL_TYPES, seed),
-        soilPh: (5.8 + (seed % 14) / 10).toFixed(2),
-        irrigationType: pickFromSeed(IRRIGATION_TYPES, seed + 1),
-        drainageClass: pickFromSeed(DRAINAGE_CLASSES, seed + 2),
-        brix: (15 + (seed % 30) / 10).toFixed(1),
-        sucrose: (13 + (seed % 25) / 10).toFixed(1),
-      },
+      // Real soil-test history from vsl_parcel_soil_tests (empty until the
+      // agronomy team logs a sample for this parcel — no fabricated numbers).
+      soilTest: soilTest ? {
+        soilPh: soilTest.soil_ph,
+        nitrogen: soilTest.nitrogen,
+        phosphorus: soilTest.phosphorus,
+        potassium: soilTest.potassium,
+        organicMatterPct: soilTest.organic_matter_pct,
+        texture: soilTest.texture,
+        sampleDate: soilTest.sample_date,
+        labName: soilTest.lab_name,
+      } : null,
+      // Block-level real DB columns (vsl_blocks.soil_type/irrigation_type/soil_ph)
+      // shown as a fallback since these aren't tracked per-parcel in the DB.
+      blockSoilType: parentBlockReshaped?.soilType || null,
+      blockSoilPh: parentBlockReshaped?.soilPh || null,
+      blockIrrigationType: parentBlockReshaped?.irrigationType || null,
     };
   });
 
@@ -226,6 +263,7 @@ async function loadLiveData() {
       name: e.estate_name,
       district: e.district || (e.address || '').split(',').pop().trim() || '—',
       location: e.address || '—',
+      mapsLink: e.location_link || buildGoogleMapsSearchLink(e.address) || null,
       blocks: estBlocks.length,
       plots: totalPlots,
       areaHa: Number(totalAreaHa.toFixed(2)),
@@ -237,6 +275,38 @@ async function loadLiveData() {
       createdAt: e.created_at,
     };
   });
+
+  // ── MANAGER LINKS (vsl_estate_managers) — resolve to display names and attach to each level ──
+  const profileByIdForManagers = new Map(rawProfiles.map(p => [p.id, p]));
+  function managerLabel(m) {
+    const prof = profileByIdForManagers.get(m.user_id);
+    return {
+      linkId: m.id,
+      userId: m.user_id,
+      name: prof ? (prof.full_name || prof.email) : 'Unknown user',
+      role: m.role || 'manager',
+      assignedFrom: m.assigned_from,
+    };
+  }
+  const managersByEstate = new Map();
+  const managersByBlock = new Map();
+  const managersByParcel = new Map();
+  rawManagerLinks.forEach(m => {
+    const label = managerLabel(m);
+    if (m.parcel_id) {
+      if (!managersByParcel.has(m.parcel_id)) managersByParcel.set(m.parcel_id, []);
+      managersByParcel.get(m.parcel_id).push(label);
+    } else if (m.block_id) {
+      if (!managersByBlock.has(m.block_id)) managersByBlock.set(m.block_id, []);
+      managersByBlock.get(m.block_id).push(label);
+    } else if (m.estate_id) {
+      if (!managersByEstate.has(m.estate_id)) managersByEstate.set(m.estate_id, []);
+      managersByEstate.get(m.estate_id).push(label);
+    }
+  });
+  estates.forEach(e => { e.managers = managersByEstate.get(e._id) || []; });
+  blocks.forEach(b => { b.managers = managersByBlock.get(b._uuid) || []; });
+  plots.forEach(p => { p.managers = managersByParcel.get(p._uuid) || []; });
 
   // ── USERS (profiles) reshaped ──
   const ROLE_LABELS = {
@@ -297,8 +367,8 @@ async function loadLiveData() {
       name: a.activity_name,
       date: a.activity_date,
       estate: estateNameForActivity(a),
-      block: block ? (block.block_code || block.id) : '—',
-      parcel: parcel ? (parcel.parcel_code || parcel.parcel_name || parcel.id) : (a.parcel_id ? '—' : null),
+      block: block ? (block.block_name || block.block_code || block.id) : '—',
+      parcel: parcel ? (parcel.parcel_name || parcel.parcel_code || parcel.id) : (a.parcel_id ? '—' : null),
       assignedTo: assignee ? (assignee.full_name || assignee.email) : (a.assigned_to_legacy || '—'),
       teamSize: a.team_size,
       machines: a.number_of_machines,
@@ -328,8 +398,8 @@ async function loadLiveData() {
       amount: Number(c.amount) || 0,
       currency: c.currency || 'UGX',
       estate: block ? (estateNameByIdForUsers.get(block.estate_id) || 'Unassigned') : 'Unassigned',
-      block: block ? (block.block_code || block.id) : '—',
-      parcel: parcel ? (parcel.parcel_code || parcel.parcel_name) : '—',
+      block: block ? (block.block_name || block.block_code || block.id) : '—',
+      parcel: parcel ? (parcel.parcel_name || parcel.parcel_code) : '—',
       createdAt: c.created_at,
       _blockId: c.block_id,
       _parcelId: c.parcel_id,
@@ -378,11 +448,11 @@ async function loadLiveData() {
     }
     if (entity_type === 'block') {
       const b = blockById.get(entity_id);
-      return b ? (b.block_code || b.id) : entity_id;
+      return b ? (b.block_name || b.block_code || b.id) : entity_id;
     }
     if (entity_type === 'parcel') {
       const p = parcelById.get(entity_id);
-      return p ? (p.parcel_code || p.parcel_name || p.id) : entity_id;
+      return p ? (p.parcel_name || p.parcel_code || p.id) : entity_id;
     }
     return entity_id;
   }
@@ -490,7 +560,7 @@ function buildAlertsFromLiveData(estates, blocks, plots) {
     alerts.push({
       id: 'auto-blk-' + b._uuid,
       type: 'warning',
-      title: `${b.id} flagged for renovation`,
+      title: `${b.name || b.id} flagged for renovation`,
       desc: `Block is marked for replant/renovation in ${b.estate}.`,
       time: 'Live',
       estate: b.estate,
@@ -535,7 +605,7 @@ function buildRecentActivityFromLiveData(rawParcels, rawBlocks, estateNameById) 
       type: 'update',
       icon: p.cultivation_status === 'not_in_cane' ? '🪴' : '🌾',
       color: p.cultivation_status === 'replant_renovation' ? 'amber' : 'green',
-      text: `Parcel ${p.parcel_code || p.parcel_name} updated — status: ${titleCase(p.cultivation_status)}`,
+      text: `Parcel ${p.parcel_name || p.parcel_code} updated — status: ${titleCase(p.cultivation_status)}`,
       meta: `${estateName || ''} · ${new Date(p.updated_at).toLocaleString()}`,
     });
   });

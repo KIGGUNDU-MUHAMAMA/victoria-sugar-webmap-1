@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>SugarEstate Admin — Victoria Sugar Webmap</title>
+<title>Victoria Sugar Admin — Victoria Sugar Webmap</title>
+<link rel="icon" type="image/jpeg" href="../assets/victoria-sugar-logo.jpg"/>
 <link rel="stylesheet" href="style.css"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -23,9 +24,9 @@
 <aside class="sidebar" id="sidebar">
 
   <div class="sidebar-brand">
-    <div class="brand-icon">🌿</div>
+    <img class="brand-icon" src="../assets/victoria-sugar-logo.jpg" alt="Victoria Sugar"/>
     <div class="brand-text">
-      <div class="brand-name">SugarEstate</div>
+      <div class="brand-name">Victoria Sugar</div>
       <div class="brand-sub">Admin Console</div>
     </div>
   </div>
@@ -43,8 +44,8 @@
     <a href="#" class="nav-item" title="Estates" onclick="openPanel('estates',this)">
       <span class="nav-icon">▦</span><span class="nav-label"> Estates</span>
     </a>
-    <a href="#" class="nav-item" title="Production" onclick="openPanel('production',this)">
-      <span class="nav-icon">◐</span><span class="nav-label"> Production</span>
+    <a href="#" class="nav-item" title="Harvests" onclick="openPanel('production',this)">
+      <span class="nav-icon">◐</span><span class="nav-label"> Harvests</span>
     </a>
     <a href="#" class="nav-item" title="Activities" onclick="openPanel('activities',this)">
       <span class="nav-icon">◷</span><span class="nav-label"> Activities</span>
@@ -105,6 +106,8 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="qrcode.js"></script>
 <script src="data.js"></script>
 <script src="supabase-client.js"></script>
 <script src="app.js"></script>

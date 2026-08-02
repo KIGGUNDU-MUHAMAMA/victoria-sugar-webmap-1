@@ -25,6 +25,16 @@ function fmtUGX(n) {
 function fmtHa(n)   { return n != null ? (Number(n) * 2.47105).toFixed(1) + ' ac' : '—'; }
 function fmtAcres(n){ return fmtHa(n); }
 function pct(a, b)  { return b ? Math.round((a / b) * 100) : 0; }
+// Adds N months to a 'YYYY-MM-DD' date string, returning a new 'YYYY-MM-DD' string.
+// Used by the Harvests page to project the next harvest-due date after a harvest is
+// logged (harvest_date + the estate's configured harvest_period_months).
+function addMonthsToDateStr(dateStr, months) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  d.setMonth(d.getMonth() + (Number(months) || 0));
+  return d.toISOString().slice(0, 10);
+}
 function titleCaseLocal(str) {
   if (!str) return str;
   return String(str).replace(/_/g, ' ').replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
@@ -97,11 +107,12 @@ function avatarHTML(name, avatarUrl, size, shape) {
 // their photo (or an initials/emoji placeholder, titled with their name) is
 // a clickable button that opens a small detail popup; otherwise a
 // "+ Link Manager" button is shown in its place.
-function managerCellHTML(scopeType, scopeId, scopeLabel, managerId, managerName, managerAvatarUrl) {
+function managerCellHTML(scopeType, scopeId, scopeLabel, managerId, managerName, managerAvatarUrl, showName) {
   if (managerId) {
     return `<button type="button" onclick="viewManagerDetail('${scopeType}','${scopeId}')"
-              style="background:none;border:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;line-height:0">
+              style="background:none;border:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;gap:8px;line-height:1.2">
               ${avatarHTML(managerName, managerAvatarUrl, 32, 'square')}
+              ${showName ? `<span style="font-weight:600;color:var(--green-700);text-decoration:underline">${managerName || 'View manager'}</span>` : ''}
             </button>`;
   }
   return `<button class="icon-btn" onclick="event.stopPropagation();showLinkManagerModal('${scopeType}','${scopeId}','${(scopeLabel||'').replace(/'/g,"")}')" title="Link Manager">👤</button>`;
@@ -119,6 +130,19 @@ async function uploadAvatarFile(file) {
   const { error } = await client.storage.from('Media').upload(path, file, { upsert: false, contentType: file.type || undefined });
   if (error) throw new Error('Photo upload failed: ' + error.message);
   return client.storage.from('Media').getPublicUrl(path).data.publicUrl;
+}
+
+// Resolves the signed-in user's id (auth.users.id == vsl_profiles.id) so writes
+// that should be attributed to "who did this" (created_by columns) can be set
+// explicitly rather than left null — used when logging activities/harvests.
+async function getCurrentUserId() {
+  try {
+    const { data: sess } = await getSbClient().auth.getSession();
+    return sess?.session?.user?.id || null;
+  } catch (err) {
+    console.error('Failed to resolve current user id:', err);
+    return null;
+  }
 }
 
 function showToast(msg, color) {
@@ -145,6 +169,7 @@ const PAGE_TITLES = {
   analytics:     'Estate Analytics',
   estates:       'Land Management',
   production:    'Harvests',
+  seasons:       'Seasons',
   activities:    'Activities',
   costs:         'Costs',
   documents:     'Documents & Media',
@@ -178,6 +203,7 @@ function openPanel(page, navEl) {
     analytics:     renderAnalytics,
     estates:       renderEstatesPage,
     production:    renderProduction,
+    seasons:       renderSeasons,
     activities:    renderActivities,
     costs:         renderCosts,
     documents:     renderDocuments,
@@ -691,7 +717,6 @@ function renderEstatesPage(el) {
               <td>${p.expectedHarvest||'—'}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px;align-items:center">
-                  ${managerCellHTML('parcel', p._uuid, p.parcelName || p.id, p.managerId, p.assignedManagerName, p.assignedManagerAvatarUrl)}
                   <button class="icon-btn" onclick="showEditPlotModal('${p.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeletePlot('${p.id}')" title="Delete">🗑</button>
                 </div>
@@ -715,7 +740,6 @@ function renderEstatesPage(el) {
       ['Current Activity',    p.currentActivity || '—'],
       ['Block',               p.blockName || p.block],
       ['Estate',               p.estate],
-      ['Assigned Manager',    managerCellHTML('parcel', p._uuid, p.parcelName || p.id, p.managerId, p.assignedManagerName, p.assignedManagerAvatarUrl)],
       ['Area (ac)',           fmtHa(p.areaHa)],
       ['Geometry Status',     p.geometryStatus ? titleCaseLocal(p.geometryStatus) : '—'],
       ['Cultivation Status',  p.cultivationStatus ? titleCaseLocal(p.cultivationStatus) : '—'],
@@ -792,7 +816,7 @@ function renderEstatesPage(el) {
       ['Estate ID',         e.id],
       ['District',          e.district || '—'],
       ['Address',           e.location || '—'],
-      ['Assigned Manager',  managerCellHTML('estate', e._id, e.name, e.managerId, e.assignedManagerName, e.assignedManagerAvatarUrl)],
+      ['Assigned Manager',  managerCellHTML('estate', e._id, e.name, e.managerId, e.assignedManagerName, e.assignedManagerAvatarUrl, true)],
       ['Owner Name',        e.manager || '—'],
       ['Owner Phone',       e.managerPhone || '—'],
       ['Total Blocks',      e.blocks],
@@ -881,9 +905,7 @@ function renderEstatesPage(el) {
       ['Fallow Area',        fmtHa(b.areaHa - b.plantedHa)],
       ['Utilisation',        pct(b.plantedHa, b.areaHa) + '%'],
       ['Avg Yield',          b.avgYield + ' t/ac'],
-      ['Assigned Manager',   managerCellHTML('block', b._uuid, b.name || b.id, b.managerId, b.assignedManagerName, b.assignedManagerAvatarUrl)],
-      ['Manager Name (legacy)',  b.managerName || '—'],
-      ['Manager Phone (legacy)', b.managerPhone || '—'],
+      ['Assigned Manager',   managerCellHTML('block', b._uuid, b.name || b.id, b.managerId, b.assignedManagerName, b.assignedManagerAvatarUrl, true)],
       ['Soil Type',          b.soilType || '—'],
       ['Soil pH',            b.soilPh || '—'],
       ['Irrigation Type',    b.irrigationType || '—'],
@@ -1169,9 +1191,9 @@ function renderEstatesPage(el) {
   // ── MANAGER LINKING ──
   // Estate / Block / Plot: one manager each, stored as a direct FK
   // (vsl_estate.manager_id / vsl_blocks.manager_id / vsl_parcels.manager_id
-  // → vsl_profiles). All three scopes share the same assign/remove/view flow.
-  const MANAGER_TABLE_BY_SCOPE = { estate: 'vsl_estate', block: 'vsl_blocks', parcel: 'vsl_parcels' };
-  const MANAGER_MODAL_TITLE_BY_SCOPE = { estate: 'Assign Estate Manager', block: 'Assign Block Manager', parcel: 'Assign Plot Manager' };
+  // → vsl_profiles). Plots don't have a manager concept — only estate/block do.
+  const MANAGER_TABLE_BY_SCOPE = { estate: 'vsl_estate', block: 'vsl_blocks' };
+  const MANAGER_MODAL_TITLE_BY_SCOPE = { estate: 'Assign Estate Manager', block: 'Assign Block Manager' };
 
   window.showLinkManagerModal = function(scopeType, scopeId, scopeLabel) {
     showModal(`
@@ -1246,9 +1268,7 @@ function renderEstatesPage(el) {
   window.viewManagerDetail = function(scopeType, scopeId) {
     const scope = scopeType === 'estate'
       ? DATA.estates.find(x => String(x._id) === String(scopeId))
-      : scopeType === 'block'
-      ? DATA.blocks.find(x => x._uuid === scopeId)
-      : DATA.plots.find(x => x._uuid === scopeId);
+      : DATA.blocks.find(x => x._uuid === scopeId);
     if (!scope || !scope.managerId) return;
     const prof = DATA.users.find(u => String(u.id) === String(scope.managerId));
     const name = prof ? prof.name : (scope.assignedManagerName || 'Unknown user');
@@ -1429,12 +1449,31 @@ function renderEstatesPage(el) {
     }
   };
 
+  // Every editable vsl_parcels column is exposed here except: id (plot ID),
+  // parcel_code, geom, created_by/updated_by, created_at/updated_at,
+  // geometry_status, and expected_area_acres (all excluded per request) —
+  // plus current_activity_id/current_activity_name and current_season_id,
+  // which are trigger-maintained cache pointers (vsl_sync_parcel_current_activity /
+  // vsl_sync_parcel_season), and cultivation_updated_at/by, which are
+  // auto-stamped alongside cultivation_status — none of those are meant to
+  // be hand-edited.
   window.showEditPlotModal = function(id) {
     const p = DATA.plots.find(x=>x.id===id);
     if (!p) return;
     showModal(`
       <div class="modal-title">Edit Plot — ${p.parcelName || p.id}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Plot Name</label><input class="form-input" id="ep-name" value="${p.parcelName||''}"></div>
+        <div class="form-group"><label class="form-label">Estate</label>
+          <select class="form-input" id="ep-estate" onchange="onEditPlotEstateChange(this.value)">
+            ${DATA.estates.map(e=>`<option value="${e.name}" ${e.name===p.estate?'selected':''}>${e.name}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Block</label>
+          <select class="form-input" id="ep-block">
+            ${DATA.blocks.filter(b=>b.estate===p.estate).map(b=>`<option value="${b._uuid}" ${b._uuid===p._blockUuid?'selected':''}>${b.name || b.id}</option>`).join('')}
+          </select></div>
         <div class="form-group"><label class="form-label">Cultivation Status</label>
           <select class="form-input" id="ep-status">
             <option value="not_in_cane" ${p.cultivationStatus==='not_in_cane'?'selected':''}>Not in Cane</option>
@@ -1442,12 +1481,17 @@ function renderEstatesPage(el) {
             <option value="ratoon" ${p.cultivationStatus==='ratoon'?'selected':''}>Ratoon</option>
             <option value="replant_renovation" ${p.cultivationStatus==='replant_renovation'?'selected':''}>Replant / Renovation</option>
           </select></div>
-        <div class="form-group"><label class="form-label">Ratoon Number</label><input class="form-input" id="ep-ratoon" type="number" value="${p.ratoon||0}"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Ratoon Number</label><input class="form-input" id="ep-ratoon" type="number" value="${p.ratoon||0}"></div>
         <div class="form-group"><label class="form-label">Planting Date</label><input class="form-input" id="ep-planted" type="date" value="${p.planted||''}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Ratoon Start Date</label><input class="form-input" id="ep-ratoon-start" type="date" value="${p.ratoonStartDate||''}"></div>
         <div class="form-group"><label class="form-label">Expected Harvest</label><input class="form-input" id="ep-harvest" type="date" value="${p.expectedHarvest||''}"></div>
       </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Cultivation Notes</label>
+        <textarea class="form-input" id="ep-notes" rows="2">${p.cultivationNotes||''}</textarea></div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Harvest Tonnage (if harvested)</label>
         <input class="form-input" id="ep-yield" type="number" value="${p.yield||''}"></div>
       <div class="modal-actions">
@@ -1456,17 +1500,38 @@ function renderEstatesPage(el) {
       </div>`);
   };
 
+  // Re-populates the Block select when the Estate select changes, so the
+  // block list only ever shows blocks that belong to the chosen estate
+  // instead of one long combined "Block (Estate)" list.
+  window.onEditPlotEstateChange = function(estateName) {
+    const blockSelect = document.getElementById('ep-block');
+    if (!blockSelect) return;
+    blockSelect.innerHTML = DATA.blocks
+      .filter(b => b.estate === estateName)
+      .map(b => `<option value="${b._uuid}">${b.name || b.id}</option>`)
+      .join('');
+  };
+
   window.submitEditPlot = async function(parcelDbId) {
+    const name = document.getElementById('ep-name').value.trim();
+    const blockId = document.getElementById('ep-block').value;
     const status = document.getElementById('ep-status').value;
     const ratoon = document.getElementById('ep-ratoon').value;
     const planted = document.getElementById('ep-planted').value;
+    const ratoonStart = document.getElementById('ep-ratoon-start').value;
     const harvest = document.getElementById('ep-harvest').value;
+    const notes = document.getElementById('ep-notes').value.trim();
     const yieldT = document.getElementById('ep-yield').value;
+    if (!blockId) { showToast('Select a block', 'red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_parcels').update({
+        parcel_name: name || null,
+        block_id: blockId,
         cultivation_status: status, ratoon_number: ratoon || 0,
-        planting_date: planted || null, expected_harvest_date: harvest || null,
+        planting_date: planted || null, ratoon_start_date: ratoonStart || null,
+        expected_harvest_date: harvest || null,
+        cultivation_notes: notes || null,
       }).eq('id', parcelDbId);
       if (error) throw error;
       // Harvest tonnage now lives in the vsl_harvests history table, not a flat parcel column
@@ -1520,7 +1585,9 @@ function renderEstatesPage(el) {
 // ══════════════════════════════════════
 
 function renderProduction(el) {
-  const harvestedParcels = DATA.plots.filter(p => p.yield && parseFloat(p.yield) > 0);
+  // Latest harvest first.
+  const harvestedParcels = DATA.plots.filter(p => p.yield && parseFloat(p.yield) > 0)
+    .sort((a,b) => new Date(b.lastHarvestDate || 0) - new Date(a.lastHarvestDate || 0));
   const totalHarvested = harvestedParcels.reduce((s,p) => s + parseFloat(p.yield), 0);
 
   // Build per-estate harvest rollup for bar chart
@@ -1529,20 +1596,75 @@ function renderProduction(el) {
     tonnes: harvestedParcels.filter(p => p.estate === e.name).reduce((s, p) => s + parseFloat(p.yield), 0),
   }));
 
+  // Plots due for harvest — computed in supabase-client.js from each estate's
+  // configured harvest_period_months, counted from planting_date (plant crop) or
+  // ratoon_start_date (ratooned crop). See computeHarvestDue()/isHarvestDue there.
+  const allDuePlots = DATA.plots.filter(p => p.isHarvestDue);
+  const totalDueExpectedYield = allDuePlots.reduce((s,p) => s + (p.expectedYieldTons || 0), 0);
+
+  // ── Harvests Due filters (estate / block / plot) — closure state, reset on page open ──
+  let hdEstFilter = '', hdBlockFilter = '';
+
+  function dueFiltersHTML() {
+    const blocksForFilter = DATA.blocks.filter(b => !hdEstFilter || b.estate === hdEstFilter);
+    return `
+      <input class="form-input" style="max-width:180px" placeholder="Search plot…" id="hd-plot-search" oninput="filterHarvestDuePlotSearch(this.value)">
+      <select class="form-input" style="width:150px" id="hd-estate-filter" onchange="filterHarvestDueEstate(this.value)">
+        <option value="">All Estates</option>
+        ${DATA.estates.map(e=>`<option value="${e.name}" ${hdEstFilter===e.name?'selected':''}>${e.name}</option>`).join('')}
+      </select>
+      <select class="form-input" style="width:160px" id="hd-block-filter" onchange="filterHarvestDueBlock(this.value)">
+        <option value="">All Blocks</option>
+        ${blocksForFilter.map(b=>`<option value="${b._uuid}" ${hdBlockFilter===b._uuid?'selected':''}>${b.name || b.id}</option>`).join('')}
+      </select>`;
+  }
+
+  function dueTableHTML() {
+    const rows = DATA.plots.filter(p => p.isHarvestDue
+      && (!hdEstFilter || p.estate === hdEstFilter)
+      && (!hdBlockFilter || p._blockUuid === hdBlockFilter)
+    ).sort((a,b) => (b.monthsPastDue||0) - (a.monthsPastDue||0));
+    return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Plot</th><th>Block</th><th>Estate</th><th>Ratoon</th>
+        <th>Reference Date</th><th>Due Since</th><th>Area</th><th>Expected Yield</th><th>Actions</th></tr></thead>
+        <tbody id="harvest-due-tbody">
+          ${rows.length ? rows.map(p=>`
+            <tr>
+              <td><strong>${p.parcelName || p.id}</strong></td>
+              <td>${p.blockName || p.block}</td>
+              <td>${p.estate}</td>
+              <td>${p.ratoon===0 ? 'Plant Crop' : 'Ratoon ' + p.ratoon}</td>
+              <td>${p.harvestReferenceDate || '—'}<br><span style="font-size:10px;color:var(--gray-500)">${p.harvestReferenceType==='ratoon' ? 'ratoon start' : 'planting date'}</span></td>
+              <td>${p.monthsPastDue > 0 ? pill(p.monthsPastDue + ' mo overdue', p.monthsPastDue>=3?'red':'amber') : pill('Due now','blue')}</td>
+              <td>${fmtHa(p.areaHa)}</td>
+              <td>${p.expectedYieldTons!=null ? fmt(p.expectedYieldTons)+' t' : '—'}</td>
+              <td><button class="btn btn-primary btn-sm" onclick="showLogHarvestModal('${p._uuid}')">Log Harvest</button></td>
+            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--gray-500);padding:24px">No plots currently due for harvest</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
   el.innerHTML = `
   <div class="page-header">
     <div>
       <div class="page-header-title">Harvest Tracking</div>
       <div class="page-header-sub">Harvest records from live plot data${DATA.isLive ? '' : ' · placeholder data'}</div>
     </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="showHarvestSettingsModal()">⚙ Configure</button>
+      <button class="btn btn-primary btn-sm" onclick="showLogHarvestModal()">+ Log Harvest</button>
+    </div>
   </div>
   <div class="grid-4">
     <div class="stat-card green"><div class="stat-label">Total Harvested</div>
       <div class="stat-value">${fmt(totalHarvested.toFixed(1))}<span style="font-size:14px"> t</span></div>
       <div class="stat-meta">${pct(totalHarvested, DATA.stats.targetYieldTonnes)}% of estimated target</div></div>
-    <div class="stat-card amber"><div class="stat-label">Estimated Target</div>
-      <div class="stat-value">${fmt(DATA.stats.targetYieldTonnes)}<span style="font-size:14px"> t</span></div>
-      <div class="stat-meta">~3.2 t/ac placeholder estimate <span class="placeholder-tag">Est.</span></div></div>
+    <div class="stat-card amber"><div class="stat-label">Plots Due for Harvest</div>
+      <div class="stat-value">${allDuePlots.length}</div>
+      <div class="stat-meta">${fmt(totalDueExpectedYield.toFixed(1))} t expected yield</div></div>
     <div class="stat-card blue"><div class="stat-label">Plots Harvested</div>
       <div class="stat-value">${harvestedParcels.length}</div>
       <div class="stat-meta">of ${DATA.plots.length} total plots</div></div>
@@ -1571,6 +1693,15 @@ function renderProduction(el) {
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><div class="card-title">Harvests Due</div>
+      <div style="font-size:11px;color:var(--gray-500)">Plots past their configured harvest maturity period</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end" id="harvest-due-filters">
+      ${dueFiltersHTML()}
+    </div>
+    <div id="harvest-due-table">${dueTableHTML()}</div>
+  </div>
+
   <div class="card">
     <div class="card-header"><div class="card-title">Harvest Log</div>
       <div style="font-size:11px;color:var(--gray-500)">Sourced from vsl_harvests (latest per plot)</div></div>
@@ -1595,6 +1726,191 @@ function renderProduction(el) {
     </div>
   </div>`;
 
+  // ── Harvests Due filter handlers ──
+  window.filterHarvestDueEstate = function(val) {
+    hdEstFilter = val; hdBlockFilter = '';
+    document.getElementById('harvest-due-filters').innerHTML = dueFiltersHTML();
+    document.getElementById('harvest-due-table').innerHTML = dueTableHTML();
+  };
+  window.filterHarvestDueBlock = function(val) {
+    hdBlockFilter = val;
+    document.getElementById('harvest-due-table').innerHTML = dueTableHTML();
+  };
+  // Plain text row filter (like the Land Management plot search) — toggles row
+  // visibility instead of re-rendering, so the input never loses focus while typing.
+  window.filterHarvestDuePlotSearch = function(val) {
+    document.querySelectorAll('#harvest-due-tbody tr').forEach(r => {
+      r.style.display = r.textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
+    });
+  };
+
+  // ── Log Harvest modal (admin enters the harvest directly — records vsl_harvests +
+  // a matching vsl_activities "Harvesting" entry, marks the plot's ratoon shifted) ──
+  window.showLogHarvestModal = function(plotUuid) {
+    const preselected = plotUuid ? DATA.plots.find(p => p._uuid === plotUuid) : null;
+    const today = new Date().toISOString().slice(0,10);
+    showModal(`
+      <div class="modal-title">Log Harvest</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Estate</label>
+          <select class="form-input" id="lh-estate" onchange="onLogHarvestEstateChange()">
+            <option value="">Select estate…</option>
+            ${DATA.estates.map(e=>`<option value="${e.name}" ${preselected&&preselected.estate===e.name?'selected':''}>${e.name}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Block</label>
+          <select class="form-input" id="lh-block" onchange="onLogHarvestBlockChange()">
+            <option value="">Select block…</option>
+            ${(preselected ? DATA.blocks.filter(b=>b.estate===preselected.estate) : []).map(b=>`<option value="${b._uuid}" ${preselected&&preselected._blockUuid===b._uuid?'selected':''}>${b.name || b.id}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Plot</label>
+          <select class="form-input" id="lh-plot" onchange="onLogHarvestPlotChange()">
+            <option value="">Select plot…</option>
+            ${(preselected ? DATA.plots.filter(p=>p._blockUuid===preselected._blockUuid) : []).map(p=>`<option value="${p._uuid}" ${preselected&&preselected._uuid===p._uuid?'selected':''}>${p.parcelName || p.id}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Harvest Date</label>
+          <input class="form-input" id="lh-date" type="date" value="${today}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Harvest Tonnage (t)</label>
+          <input class="form-input" id="lh-tonnage" type="number" min="0" step="0.01" placeholder="e.g. 145.5"></div>
+        <div class="form-group"><label class="form-label">Current Ratoon</label>
+          <input class="form-input" id="lh-ratoon" type="text" value="${preselected ? (preselected.ratoon===0?'Plant Crop (0)':'Ratoon '+preselected.ratoon) : '—'}" disabled></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label>
+        <textarea class="form-input" id="lh-comments" rows="2" placeholder="Optional notes"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitLogHarvest()">Save Harvest</button>
+      </div>`);
+  };
+
+  window.onLogHarvestEstateChange = function() {
+    const estName = document.getElementById('lh-estate').value;
+    const blockSel = document.getElementById('lh-block');
+    blockSel.innerHTML = `<option value="">Select block…</option>` +
+      DATA.blocks.filter(b => !estName || b.estate === estName).map(b=>`<option value="${b._uuid}">${b.name || b.id}</option>`).join('');
+    document.getElementById('lh-plot').innerHTML = `<option value="">Select plot…</option>`;
+    document.getElementById('lh-ratoon').value = '—';
+  };
+  window.onLogHarvestBlockChange = function() {
+    const blockId = document.getElementById('lh-block').value;
+    const plotSel = document.getElementById('lh-plot');
+    plotSel.innerHTML = `<option value="">Select plot…</option>` +
+      DATA.plots.filter(p => p._blockUuid === blockId).map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
+    document.getElementById('lh-ratoon').value = '—';
+  };
+  window.onLogHarvestPlotChange = function() {
+    const plotUuid = document.getElementById('lh-plot').value;
+    const p = DATA.plots.find(x => x._uuid === plotUuid);
+    document.getElementById('lh-ratoon').value = p ? (p.ratoon===0?'Plant Crop (0)':'Ratoon '+p.ratoon) : '—';
+  };
+
+  window.submitLogHarvest = async function() {
+    const plotUuid = document.getElementById('lh-plot').value;
+    const dateVal = document.getElementById('lh-date').value;
+    const tonnage = document.getElementById('lh-tonnage').value;
+    const comments = document.getElementById('lh-comments').value.trim();
+    if (!plotUuid) { showToast('Select a plot', 'red'); return; }
+    if (!dateVal) { showToast('Harvest date is required', 'red'); return; }
+    if (!tonnage || parseFloat(tonnage) <= 0) { showToast('Enter a valid harvest tonnage', 'red'); return; }
+    const plot = DATA.plots.find(p => p._uuid === plotUuid);
+    if (!plot) { showToast('Plot not found', 'red'); return; }
+    const estateRow = DATA.estates.find(e => e.name === plot.estate);
+    const currentRatoon = plot.ratoon || 0;
+    const nextRatoon = currentRatoon + 1;
+    const nextExpectedHarvest = addMonthsToDateStr(dateVal, estateRow ? estateRow.harvestPeriodMonths : 18);
+    try {
+      const client = getSbClient();
+      const uid = await getCurrentUserId();
+
+      const { error: hErr } = await client.from('vsl_harvests').insert([{
+        parcel_id: plotUuid, harvest_date: dateVal, gross_weight_tonnes: tonnage,
+        ratoon_at_harvest: currentRatoon, created_by: uid,
+      }]);
+      if (hErr) throw hErr;
+
+      const { error: aErr } = await client.from('vsl_activities').insert([{
+        activity_name: 'Harvesting', activity_date: dateVal,
+        parcel_id: plotUuid, block_id: plot._blockUuid, estate_id: estateRow ? estateRow._id : null,
+        completion_value: 100, comments: comments || null, created_by: uid,
+      }]);
+      if (aErr) throw aErr;
+
+      // Mark the plot harvested and shift it onto the next ratoon cycle.
+      const { error: pErr } = await client.from('vsl_parcels').update({
+        ratoon_number: nextRatoon, ratoon_start_date: dateVal,
+        expected_harvest_date: nextExpectedHarvest, cultivation_status: 'standing',
+      }).eq('id', plotUuid);
+      if (pErr) throw pErr;
+
+      closeModal();
+      showToast(`Harvest logged — ${plot.parcelName || plot.id} shifted to Ratoon ${nextRatoon}`);
+      await retryLiveDataLoad();
+      renderTabIfCurrent('production');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to log harvest: ' + err.message, 'red');
+    }
+  };
+
+  // ── Harvest Settings modal (admin-configurable per estate) — one editable
+  // table covering every estate at once, saved together. ──
+  window.showHarvestSettingsModal = function() {
+    showModal(`
+      <div class="modal-title">Harvest Settings</div>
+      <div class="table-wrap">
+        <table style="min-width:0;table-layout:fixed">
+          <thead><tr>
+            <th style="width:38%">Estate</th>
+            <th style="width:31%;white-space:normal">Harvest Period<br>(months)</th>
+            <th style="width:31%;white-space:normal">Yield per Acre<br>(t/ac)</th>
+          </tr></thead>
+          <tbody>
+            ${DATA.estates.map(e=>`
+              <tr>
+                <td style="overflow-wrap:break-word"><strong>${e.name}</strong></td>
+                <td><input class="form-input" style="width:100%;box-sizing:border-box" type="number" min="1" step="1" id="hs-period-${e._id}" value="${e.harvestPeriodMonths}"></td>
+                <td><input class="form-input" style="width:100%;box-sizing:border-box" type="number" min="0" step="0.1" id="hs-yield-${e._id}" value="${e.yieldPerAcreTons}"></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitHarvestSettings()">Save Settings</button>
+      </div>`);
+  };
+  window.submitHarvestSettings = async function() {
+    const updates = [];
+    for (const e of DATA.estates) {
+      const period = parseInt(document.getElementById(`hs-period-${e._id}`).value, 10);
+      const yieldAc = parseFloat(document.getElementById(`hs-yield-${e._id}`).value);
+      if (!period || period <= 0) { showToast(`Enter a valid harvest period for ${e.name}`, 'red'); return; }
+      if (!yieldAc || yieldAc <= 0) { showToast(`Enter a valid yield per acre for ${e.name}`, 'red'); return; }
+      if (period !== e.harvestPeriodMonths || yieldAc !== e.yieldPerAcreTons) {
+        updates.push({ id: e._id, harvest_period_months: period, yield_per_acre_tons: yieldAc });
+      }
+    }
+    if (!updates.length) { closeModal(); return; }
+    try {
+      const client = getSbClient();
+      const results = await Promise.all(updates.map(u => client.from('vsl_estate').update({
+        harvest_period_months: u.harvest_period_months, yield_per_acre_tons: u.yield_per_acre_tons,
+      }).eq('id', u.id)));
+      const firstError = results.find(r => r.error);
+      if (firstError) throw firstError.error;
+      closeModal();
+      showToast('Harvest settings saved');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('production');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to save harvest settings: ' + err.message, 'red');
+    }
+  };
+
   window.viewHarvestDetail = function(plotId) {
     const p = DATA.plots.find(x => x.id === plotId);
     if (!p) return;
@@ -1609,8 +1925,10 @@ function renderProduction(el) {
       ['Health Status',       p.health.charAt(0).toUpperCase()+p.health.slice(1)],
       ['Planting Date',       p.planted || '—'],
       ['Last Harvest Date',   p.lastHarvestDate || '—'],
+      ['Ratoon at Last Harvest', p.lastHarvestRatoon != null ? p.lastHarvestRatoon : '—'],
       ['Harvest Tonnage',     p.yield ? p.yield + ' t' : '—'],
       ['Yield per Ac',        p.yield && p.areaHa ? (p.yield/(p.areaHa*2.47105)).toFixed(2) + ' t/ac' : '—'],
+      ['Logged By',           p.lastHarvestLoggedByName || '—'],
       ['Cultivation Notes',   p.cultivationNotes || '—'],
     ];
     showModal(`
@@ -1634,6 +1952,412 @@ function renderProduction(el) {
 }
 
 // ══════════════════════════════════════
+//  PAGE: SEASONS
+//  Manages public.vsl_parcel_seasons — the append-only planting/crop-cycle
+//  history per plot (cane variety, ratoon, planting/harvest dates, yield,
+//  status). Most fields are trigger-maintained on the DB side by
+//  vsl_sync_parcel_season(), which fires whenever a vsl_parcels row changes:
+//  a changed planting_date inserts a fresh season row and points the
+//  parcel's current_season_id at it; any other change just updates the
+//  latest season row in place. "Log New Season" below works *with* that
+//  trigger (it updates vsl_parcels, then patches the manual-only fields —
+//  season name, cane variety, target yield — the trigger never touches).
+//  "Edit" on an existing row updates vsl_parcel_seasons directly, which is
+//  always safe since none of those writes touch vsl_parcels.
+// ══════════════════════════════════════
+
+const SEASON_STATUSES = ['planned', 'planted', 'growing', 'harvested', 'failed'];
+const SEASON_STATUS_COLORS = { planned: 'gray', planted: 'blue', growing: 'green', harvested: 'green', failed: 'red' };
+function seasonStatusPill(s) {
+  if (!s) return pill('—', 'gray');
+  return pill(titleCaseLocal(s), SEASON_STATUS_COLORS[s] || 'gray');
+}
+
+function renderSeasons(el) {
+  let sEstFilter = '', sBlockFilter = '', sStatusFilter = '';
+
+  function filteredSeasons() {
+    return DATA.seasons.filter(s =>
+      (!sEstFilter || s.estate === sEstFilter) &&
+      (!sBlockFilter || s.blockUuid === sBlockFilter) &&
+      (!sStatusFilter || s.status === sStatusFilter)
+    );
+  }
+
+  const totalSeasons = DATA.seasons.length;
+  const growingCount = DATA.seasons.filter(s => s.status === 'growing').length;
+  const plannedCount = DATA.seasons.filter(s => s.status === 'planned' || s.status === 'planted').length;
+  const varietyCount = new Set(DATA.seasons.map(s => s.caneVariety).filter(Boolean)).size;
+  const knownVarieties = [...new Set(DATA.seasons.map(s => s.caneVariety).filter(Boolean))].sort();
+
+  function filtersHTML() {
+    const blocksForFilter = DATA.blocks.filter(b => !sEstFilter || b.estate === sEstFilter);
+    return `
+      <input class="form-input" style="max-width:180px" placeholder="Search plot…" id="season-plot-search" oninput="filterSeasonPlotSearch(this.value)">
+      <select class="form-input" style="width:150px" id="season-estate-filter" onchange="filterSeasonsEstate(this.value)">
+        <option value="">All Estates</option>
+        ${DATA.estates.map(e=>`<option value="${e.name}" ${sEstFilter===e.name?'selected':''}>${e.name}</option>`).join('')}
+      </select>
+      <select class="form-input" style="width:160px" id="season-block-filter" onchange="filterSeasonsBlock(this.value)">
+        <option value="">All Blocks</option>
+        ${blocksForFilter.map(b=>`<option value="${b._uuid}" ${sBlockFilter===b._uuid?'selected':''}>${b.name || b.id}</option>`).join('')}
+      </select>
+      <select class="form-input" style="width:140px" id="season-status-filter" onchange="filterSeasonsStatus(this.value)">
+        <option value="">All Statuses</option>
+        ${SEASON_STATUSES.map(s=>`<option value="${s}" ${sStatusFilter===s?'selected':''}>${titleCaseLocal(s)}</option>`).join('')}
+      </select>`;
+  }
+
+  function tableHTML() {
+    const rows = filteredSeasons();
+    return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Plot</th><th>Block</th><th>Estate</th><th>Season</th><th>Variety</th>
+        <th>Ratoon</th><th>Planting Date</th><th>Expected Harvest</th><th>Status</th><th>Target Yield</th><th>Actions</th></tr></thead>
+        <tbody id="seasons-tbody">
+          ${rows.length ? rows.map(s=>`
+            <tr style="cursor:pointer" onclick="viewSeasonDetail('${s.id}')">
+              <td><strong>${s.plot}</strong>${s.isCurrent ? ' '+pill('Current','green') : ''}</td>
+              <td>${s.block}</td>
+              <td>${s.estate}</td>
+              <td>${s.seasonName || '—'}</td>
+              <td>${s.caneVariety || '—'}</td>
+              <td>${s.ratoonNumber===0 ? 'Plant Crop' : 'Ratoon '+s.ratoonNumber}</td>
+              <td>${s.plantingDate || '—'}</td>
+              <td>${s.expectedHarvestDate || '—'}</td>
+              <td>${seasonStatusPill(s.status)}</td>
+              <td>${s.targetYieldTonnes!=null ? fmt(s.targetYieldTonnes)+' t' : '—'}</td>
+              <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px">
+                <button class="icon-btn" onclick="showEditSeasonModal('${s.id}')" title="Edit">✎</button>
+                <button class="icon-btn danger" onclick="confirmDeleteSeason('${s.id}')" title="Delete">🗑</button>
+              </div></td>
+            </tr>`).join('') : `<tr><td colspan="11" style="text-align:center;color:var(--gray-500);padding:24px">No season records yet</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  el.innerHTML = `
+  <div class="page-header">
+    <div>
+      <div class="page-header-title">Seasons</div>
+      <div class="page-header-sub">Planting &amp; crop-cycle history per plot${DATA.isLive ? '' : ' · placeholder data'}</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="showLogSeasonModal()">+ Log New Season</button>
+    </div>
+  </div>
+  <div class="grid-4">
+    <div class="stat-card blue"><div class="stat-label">Total Season Records</div>
+      <div class="stat-value">${totalSeasons}</div>
+      <div class="stat-meta">Across ${DATA.plots.length} plots</div></div>
+    <div class="stat-card green"><div class="stat-label">Currently Growing</div>
+      <div class="stat-value">${growingCount}</div></div>
+    <div class="stat-card amber"><div class="stat-label">Planned / Planted</div>
+      <div class="stat-value">${plannedCount}</div></div>
+    <div class="stat-card green"><div class="stat-label">Cane Varieties in Use</div>
+      <div class="stat-value">${varietyCount}</div></div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Seasons by Status</div></div>
+      <div class="chart-box"><canvas id="chart-season-status"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Plots by Cane Variety</div></div>
+      <div class="chart-box"><canvas id="chart-season-variety"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title">Season Records</div>
+      <div style="font-size:11px;color:var(--gray-500)">Sourced from vsl_parcel_seasons</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end" id="seasons-filters">
+      ${filtersHTML()}
+    </div>
+    <div id="seasons-table">${tableHTML()}</div>
+  </div>`;
+
+  // ── Filter handlers ──
+  window.filterSeasonsEstate = function(val) {
+    sEstFilter = val; sBlockFilter = '';
+    document.getElementById('seasons-filters').innerHTML = filtersHTML();
+    document.getElementById('seasons-table').innerHTML = tableHTML();
+  };
+  window.filterSeasonsBlock = function(val) { sBlockFilter = val; document.getElementById('seasons-table').innerHTML = tableHTML(); };
+  window.filterSeasonsStatus = function(val) { sStatusFilter = val; document.getElementById('seasons-table').innerHTML = tableHTML(); };
+  // Plain text row filter (matches the Harvests Due search) — toggles row
+  // visibility instead of re-rendering, so the input never loses focus while typing.
+  window.filterSeasonPlotSearch = function(val) {
+    document.querySelectorAll('#seasons-tbody tr').forEach(r => {
+      r.style.display = r.textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
+    });
+  };
+
+  // ── Season detail modal ──
+  window.viewSeasonDetail = function(id) {
+    const s = DATA.seasons.find(x => x.id === id);
+    if (!s) return;
+    const attrs = [
+      ['Plot', s.plot], ['Block', s.block], ['Estate', s.estate],
+      ['Season Name', s.seasonName || '—'],
+      ['Cane Variety', s.caneVariety || '—'],
+      ['Ratoon', s.ratoonNumber===0 ? 'Plant Crop (0)' : 'Ratoon '+s.ratoonNumber],
+      ['Planting Date', s.plantingDate || '—'],
+      ['Expected Harvest', s.expectedHarvestDate || '—'],
+      ['Actual Harvest', s.actualHarvestDate || '—'],
+      ['Growth Stage', s.growthStage || '—'],
+      ['Status', titleCaseLocal(s.status)],
+      ['Target Yield', s.targetYieldTonnes!=null ? s.targetYieldTonnes+' t' : '—'],
+      ['Actual Yield', s.actualYieldTonnes!=null ? s.actualYieldTonnes+' t' : '—'],
+      ['Yield / Ha', s.yieldPerHectare!=null ? s.yieldPerHectare+' t/ha' : '—'],
+      ['Failure Reason', s.failureReason || '—'],
+      ['Notes', s.notes || '—'],
+      ['Logged By', s.createdByName || '—'],
+      ['Logged', s.createdAt ? s.createdAt.replace('T',' ').slice(0,16) : '—'],
+    ];
+    showModal(`
+      <div class="modal-title">Season — ${s.plot}${s.isCurrent ? ' '+pill('Current','green') : ''}</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:40%">Attribute</th><th>Value</th></tr></thead>
+          <tbody>
+            ${attrs.map(([k,v],i)=>`
+              <tr style="background:${i%2===0?'var(--gray-50)':'var(--white)'}">
+                <td style="font-weight:600;color:var(--gray-700);font-size:12px">${k}</td>
+                <td style="color:var(--gray-900);font-size:13px">${v}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal();showEditSeasonModal('${s.id}')">✎ Edit</button>
+        <button class="btn btn-danger" onclick="closeModal();confirmDeleteSeason('${s.id}')">🗑 Delete</button>
+      </div>`);
+  };
+
+  // ── Log New Season modal — starts a new planting/crop cycle for a plot. ──
+  window.showLogSeasonModal = function(plotUuid) {
+    const preselected = plotUuid ? DATA.plots.find(p => p._uuid === plotUuid) : null;
+    const today = new Date().toISOString().slice(0,10);
+    showModal(`
+      <div class="modal-title">Log New Season</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Estate</label>
+          <select class="form-input" id="ls-estate" onchange="onLogSeasonEstateChange()">
+            <option value="">Select estate…</option>
+            ${DATA.estates.map(e=>`<option value="${e.name}" ${preselected&&preselected.estate===e.name?'selected':''}>${e.name}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Block</label>
+          <select class="form-input" id="ls-block" onchange="onLogSeasonBlockChange()">
+            <option value="">Select block…</option>
+            ${(preselected ? DATA.blocks.filter(b=>b.estate===preselected.estate) : []).map(b=>`<option value="${b._uuid}" ${preselected&&preselected._blockUuid===b._uuid?'selected':''}>${b.name || b.id}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Plot</label>
+          <select class="form-input" id="ls-plot">
+            <option value="">Select plot…</option>
+            ${(preselected ? DATA.plots.filter(p=>p._blockUuid===preselected._blockUuid) : []).map(p=>`<option value="${p._uuid}" ${preselected&&preselected._uuid===p._uuid?'selected':''}>${p.parcelName || p.id}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Season Name</label>
+          <input class="form-input" id="ls-name" placeholder="e.g. 2026-A"></div>
+        <div class="form-group"><label class="form-label">Cane Variety</label>
+          <input class="form-input" id="ls-variety" list="ls-variety-list" placeholder="e.g. CH24X">
+          <datalist id="ls-variety-list">${knownVarieties.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Ratoon Number</label>
+          <input class="form-input" id="ls-ratoon" type="number" min="0" step="1" value="0"></div>
+        <div class="form-group"><label class="form-label">Planting Date</label>
+          <input class="form-input" id="ls-planting" type="date" value="${today}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Expected Harvest Date</label>
+          <input class="form-input" id="ls-expected" type="date"></div>
+        <div class="form-group"><label class="form-label">Target Yield (t)</label>
+          <input class="form-input" id="ls-target" type="number" min="0" step="0.1" placeholder="e.g. 120"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Notes</label>
+        <textarea class="form-input" id="ls-notes" rows="2" placeholder="Optional notes"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitLogSeason()">Save Season</button>
+      </div>`);
+  };
+
+  window.onLogSeasonEstateChange = function() {
+    const estName = document.getElementById('ls-estate').value;
+    const blockSel = document.getElementById('ls-block');
+    blockSel.innerHTML = `<option value="">Select block…</option>` +
+      DATA.blocks.filter(b => !estName || b.estate === estName).map(b=>`<option value="${b._uuid}">${b.name || b.id}</option>`).join('');
+    document.getElementById('ls-plot').innerHTML = `<option value="">Select plot…</option>`;
+  };
+  window.onLogSeasonBlockChange = function() {
+    const blockId = document.getElementById('ls-block').value;
+    const plotSel = document.getElementById('ls-plot');
+    plotSel.innerHTML = `<option value="">Select plot…</option>` +
+      DATA.plots.filter(p => p._blockUuid === blockId).map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
+  };
+
+  window.submitLogSeason = async function() {
+    const plotUuid = document.getElementById('ls-plot').value;
+    const seasonName = document.getElementById('ls-name').value.trim();
+    const variety = document.getElementById('ls-variety').value.trim();
+    const ratoon = document.getElementById('ls-ratoon').value;
+    const planting = document.getElementById('ls-planting').value;
+    const expected = document.getElementById('ls-expected').value;
+    const target = document.getElementById('ls-target').value;
+    const notes = document.getElementById('ls-notes').value.trim();
+    if (!plotUuid) { showToast('Select a plot', 'red'); return; }
+    if (!planting) { showToast('Planting date is required', 'red'); return; }
+    try {
+      const client = getSbClient();
+      // 1. Update the parcel — the vsl_sync_parcel_season DB trigger reads this
+      // change and inserts a fresh vsl_parcel_seasons row, pointing
+      // current_season_id at it (or updates the latest row in place if the
+      // planting date didn't actually change).
+      const { data: updatedParcel, error: pErr } = await client.from('vsl_parcels').update({
+        planting_date: planting,
+        ratoon_number: ratoon ? parseInt(ratoon, 10) : 0,
+        expected_harvest_date: expected || null,
+        cultivation_status: 'planted',
+        cultivation_notes: notes || null,
+      }).eq('id', plotUuid).select('current_season_id').single();
+      if (pErr) throw pErr;
+
+      // 2. Patch the resulting season row with the manual-only fields the
+      // trigger doesn't set (season name, cane variety, target yield).
+      const newSeasonId = updatedParcel?.current_season_id;
+      if (newSeasonId) {
+        const { error: sErr } = await client.from('vsl_parcel_seasons').update({
+          season_name: seasonName || null,
+          cane_variety: variety || null,
+          target_yield_tonnes: target || null,
+        }).eq('id', newSeasonId);
+        if (sErr) throw sErr;
+      }
+
+      closeModal();
+      showToast('Season logged');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('seasons');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to log season: ' + err.message, 'red');
+    }
+  };
+
+  // ── Edit Season modal — direct edit of a vsl_parcel_seasons row. Safe for
+  // any field here since none of these writes touch vsl_parcels/the trigger. ──
+  window.showEditSeasonModal = function(id) {
+    const s = DATA.seasons.find(x => x.id === id);
+    if (!s) return;
+    showModal(`
+      <div class="modal-title">Edit Season — ${s.plot}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Season Name</label>
+          <input class="form-input" id="es-name" value="${s.seasonName||''}"></div>
+        <div class="form-group"><label class="form-label">Cane Variety</label>
+          <input class="form-input" id="es-variety" list="es-variety-list" value="${s.caneVariety||''}">
+          <datalist id="es-variety-list">${knownVarieties.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Growth Stage</label>
+          <select class="form-input" id="es-stage">
+            <option value="">—</option>
+            ${STAGE_ORDER.map(st=>`<option value="${st}" ${s.growthStage===st?'selected':''}>${st}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-input" id="es-status">
+            ${SEASON_STATUSES.map(st=>`<option value="${st}" ${s.status===st?'selected':''}>${titleCaseLocal(st)}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Target Yield (t)</label>
+          <input class="form-input" id="es-target" type="number" min="0" step="0.1" value="${s.targetYieldTonnes ?? ''}"></div>
+        <div class="form-group"><label class="form-label">Actual Yield (t)</label>
+          <input class="form-input" id="es-actual" type="number" min="0" step="0.1" value="${s.actualYieldTonnes ?? ''}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Actual Harvest Date</label>
+          <input class="form-input" id="es-actual-harvest" type="date" value="${s.actualHarvestDate||''}"></div>
+        <div class="form-group"><label class="form-label">Failure Reason</label>
+          <input class="form-input" id="es-failure" value="${s.failureReason||''}" placeholder="If status is Failed"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Notes</label>
+        <textarea class="form-input" id="es-notes" rows="2">${s.notes||''}</textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditSeason('${s.id}')">Save Changes</button>
+      </div>`);
+  };
+
+  window.submitEditSeason = async function(id) {
+    const seasonName = document.getElementById('es-name').value.trim();
+    const variety = document.getElementById('es-variety').value.trim();
+    const stage = document.getElementById('es-stage').value;
+    const status = document.getElementById('es-status').value;
+    const target = document.getElementById('es-target').value;
+    const actual = document.getElementById('es-actual').value;
+    const actualHarvest = document.getElementById('es-actual-harvest').value;
+    const failure = document.getElementById('es-failure').value.trim();
+    const notes = document.getElementById('es-notes').value.trim();
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_parcel_seasons').update({
+        season_name: seasonName || null,
+        cane_variety: variety || null,
+        growth_stage: stage || null,
+        season_status: status,
+        target_yield_tonnes: target || null,
+        actual_yield_tonnes: actual || null,
+        actual_harvest_date: actualHarvest || null,
+        failure_reason: failure || null,
+        notes: notes || null,
+      }).eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Season updated');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('seasons');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update season: ' + err.message, 'red');
+    }
+  };
+
+  window.confirmDeleteSeason = function(id) {
+    showModal(`
+      <div class="modal-title">Delete Season Record</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Delete this season record? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="submitDeleteSeason('${id}')">Yes, Delete</button>
+      </div>`);
+  };
+
+  window.submitDeleteSeason = async function(id) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_parcel_seasons').delete().eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Season record deleted', 'red');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('seasons');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to delete season: ' + err.message, 'red');
+    }
+  };
+}
+
+// ══════════════════════════════════════
 //  PAGE: ACTIVITIES
 // ══════════════════════════════════════
 
@@ -1643,7 +2367,12 @@ const ACTIVITY_TYPES = ['Bush Clearing','Ploughing','Harrow','Ripping','Ridging'
 
 function renderActivities(el) {
   let estFilter = '';
-  const acts = () => DATA.activities.filter(a => !estFilter || a.estate === estFilter);
+  // Latest first — activity_date desc, falling back to logged-at (createdAt) desc
+  // as a tiebreaker for same-date rows or rows with no date set.
+  const acts = () => DATA.activities
+    .filter(a => !estFilter || a.estate === estFilter)
+    .sort((a,b) => (new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+      || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
 
   const oneWeekAgo = Date.now() - 7*24*60*60*1000;
   const thisWeek = DATA.activities.filter(a => a.date && new Date(a.date).getTime() >= oneWeekAgo).length;
@@ -1657,7 +2386,7 @@ function renderActivities(el) {
     <div class="table-wrap">
       <table>
         <thead><tr><th>Date</th><th>Activity</th><th>Estate</th><th>Block</th><th>Plot</th>
-        <th>Assigned To</th><th>Team</th><th>Completion</th><th>Actions</th></tr></thead>
+        <th>Logged By</th><th>Team</th><th>Completion</th><th>Actions</th></tr></thead>
         <tbody>
           ${rows.length ? rows.map(a=>`
             <tr style="cursor:pointer" onclick="viewActivityDetail('${a.id}')">
@@ -1666,7 +2395,7 @@ function renderActivities(el) {
               <td>${a.estate}</td>
               <td>${a.block}</td>
               <td>${a.parcel || '—'}</td>
-              <td>${a.assignedTo || '—'}</td>
+              <td>${a.createdByName || '—'}</td>
               <td>${a.teamSize ?? '—'}</td>
               <td>${a.completionValue != null ? `
                 <div style="display:flex;align-items:center;gap:6px">
@@ -1724,6 +2453,7 @@ function renderActivities(el) {
       ['Completion', a.completionValue != null ? a.completionValue + '%' : '—'],
       ['Challenges', a.challenges || '—'],
       ['Comments', a.comments || '—'],
+      ['Logged By', a.createdByName || '—'],
       ['Logged', a.createdAt ? a.createdAt.replace('T',' ').slice(0,16) : '—'],
     ];
     showModal(`
@@ -1803,11 +2533,13 @@ function renderActivities(el) {
       const client = getSbClient();
       const block = DATA.blocks.find(b => b._uuid === blockId);
       const estateRow = block ? DATA.estates.find(e => e.name === block.estate) : null;
+      const uid = await getCurrentUserId();
       const { error } = await client.from('vsl_activities').insert([{
         activity_name: name, activity_date: date,
         block_id: blockId, parcel_id: parcelId, estate_id: estateRow ? estateRow._id : null,
         team_size: team || null, completion_value: completion || null,
         challenges: challenges || null, comments: comments || null,
+        created_by: uid,
       }]);
       if (error) throw error;
       closeModal();
@@ -3342,28 +4074,44 @@ function initCharts(page) {
       }));
     }
   }
+
+  if (page === 'seasons') {
+    const seasonStatusColors = { planned:'#9ca3af', planted:'#60a5fa', growing:'#4a9e6e', harvested:'#2e6647', failed:'#c0392b' };
+    const statusCounts = {};
+    DATA.seasons.forEach(s => { statusCounts[s.status] = (statusCounts[s.status] || 0) + 1; });
+    const statusLabels = SEASON_STATUSES.filter(s => statusCounts[s]);
+    const c10 = document.getElementById('chart-season-status');
+    if (c10) reg(new Chart(c10, {
+      type: 'doughnut',
+      data: {
+        labels: statusLabels.map(titleCaseLocal),
+        datasets: [{ data: statusLabels.map(s => statusCounts[s]), backgroundColor: statusLabels.map(s => seasonStatusColors[s]), borderWidth:2, borderColor:'#fff' }],
+      },
+      options: { ...defaults, cutout:'55%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{ size:10 } } } } },
+    }));
+
+    const varietyCounts = {};
+    DATA.seasons.forEach(s => { if (s.caneVariety) varietyCounts[s.caneVariety] = (varietyCounts[s.caneVariety] || 0) + 1; });
+    const vLabels = Object.keys(varietyCounts);
+    const c11 = document.getElementById('chart-season-variety');
+    if (c11) reg(new Chart(c11, {
+      type: 'bar',
+      data: { labels: vLabels, datasets: [{ data: vLabels.map(v => varietyCounts[v]), backgroundColor:'#2e6647', borderRadius:4 }] },
+      options: { ...defaults, indexAxis:'y',
+        scales: {
+          x: { grid:{ color:gridColor }, ticks:{ color:tickColor, font:{ size:11 }, precision:0 } },
+          y: { grid:{ display:false }, ticks:{ color:tickColor, font:{ size:11 } } },
+        },
+      },
+    }));
+  }
 }
 
 // ══════════════════════════════════════
-//  SIDEBAR ESTATE HEALTH (populated from live data)
+//  TOPBAR ALERT BADGE (populated from live data)
 // ══════════════════════════════════════
 
-function renderSidebarEstateHealth() {
-  const el = document.getElementById('sidebar-estate-health-list');
-  if (!el) return;
-  if (!DATA.estates || DATA.estates.length === 0) {
-    el.innerHTML = `<div class="estate-status-row"><span class="dot gray"></span><span class="nav-label">No estates found</span></div>`;
-    return;
-  }
-  const dotClass = h => h === 'good' ? 'green' : h === 'watch' ? 'amber' : 'red';
-  const labelText = h => h === 'good' ? 'Good' : h === 'watch' ? 'Watch' : 'Alert';
-  el.innerHTML = DATA.estates.map(e => `
-    <div class="estate-status-row">
-      <span class="dot ${dotClass(e.health)}"></span>
-      <span class="nav-label">${e.name}</span>
-      <span class="ml-auto nav-label">${labelText(e.health)}</span>
-    </div>`).join('');
-
+function refreshTopbarAlertBadge() {
   const badge = document.getElementById('topbar-alert-count');
   if (badge) badge.textContent = (DATA.alerts || []).filter(a => !a.isReal || a.status !== 'resolved').length;
 }
@@ -3464,8 +4212,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resolveCloseBtn = document.getElementById('resolveAlertCloseBtn');
   if (resolveCloseBtn) resolveCloseBtn.addEventListener('click', closeModal);
 
-  // Show placeholder sidebar health immediately, then refresh once live data lands
-  renderSidebarEstateHealth();
+  refreshTopbarAlertBadge();
 
   // Kick off live Supabase data load (defined in supabase-client.js)
   if (typeof initLiveData === 'function') {
@@ -3485,7 +4232,7 @@ document.addEventListener('sugarestate:data-ready', () => {
   const overlay = document.getElementById('data-loading-overlay');
   if (overlay) overlay.classList.add('hidden');
   hideDataSourceBanner();
-  renderSidebarEstateHealth();
+  refreshTopbarAlertBadge();
   // Re-render whatever page is currently showing with the fresh live data
   if (currentPage) {
     const activeNav = document.querySelector('.nav-item.active');
@@ -3499,6 +4246,6 @@ document.addEventListener('sugarestate:data-ready', () => {
 document.addEventListener('sugarestate:data-error', () => {
   const overlay = document.getElementById('data-loading-overlay');
   if (overlay) overlay.classList.add('hidden');
-  renderSidebarEstateHealth();
+  refreshTopbarAlertBadge();
   showDataSourceBanner('Could not reach Supabase — showing placeholder data.');
 });

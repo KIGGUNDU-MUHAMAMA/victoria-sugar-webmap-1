@@ -31,6 +31,7 @@ const DATA = {
   users: [],
   emailSubscribers: [],
   activities: [],
+  seasons: [],
   costs: [],
   documents: [],
   media: [],
@@ -66,6 +67,32 @@ const ACRES_TO_HA = 0.404686;
 function acresToHa(acres) {
   const n = parseFloat(acres);
   return isFinite(n) ? n * ACRES_TO_HA : 0;
+}
+
+// Statuses considered "actively growing cane" for harvest-due scheduling —
+// not_in_cane/prepared (nothing planted yet) and replant_renovation (being
+// reworked) never have a meaningful due date; 'harvested' is treated as a
+// brief transitional flag some records still carry from before the Log
+// Harvest flow existed.
+const GROWING_CULTIVATION_STATUSES = ['planted', 'standing'];
+
+// Given the reference start date (planting_date for a plant crop, or
+// ratoon_start_date once a plot has been through its first harvest) and the
+// estate's configured harvest_period_months, works out the due date and how
+// many whole months past due the plot currently is (0 if not yet due).
+function computeHarvestDue(referenceDateStr, harvestPeriodMonths) {
+  if (!referenceDateStr) return { dueDate: null, monthsPastDue: null, isDue: false };
+  const ref = new Date(referenceDateStr + 'T00:00:00');
+  if (isNaN(ref.getTime())) return { dueDate: null, monthsPastDue: null, isDue: false };
+  const due = new Date(ref);
+  due.setMonth(due.getMonth() + (harvestPeriodMonths || 18));
+  const now = new Date();
+  const daysPastDue = Math.floor((now - due) / 86400000);
+  return {
+    dueDate: due.toISOString().slice(0, 10),
+    monthsPastDue: Math.max(0, Math.floor(daysPastDue / 30.44)),
+    isDue: daysPastDue >= 0,
+  };
 }
 
 // Map raw cultivation_status → UI health bucket
@@ -125,7 +152,11 @@ async function loadLiveData() {
     client.from('vsl_parcel_stats').select('parcel_id, centroid_lat, centroid_lon'),
     client.from('vsl_parcel_seasons').select('*'),
     client.from('vsl_parcel_soil_tests').select('*').order('sample_date', { ascending: false }),
-    client.from('vsl_harvests').select('harvest_date, gross_weight_tonnes'),
+    // Full rows (not just harvest_date/gross_weight_tonnes) — parcel_id + created_by are
+    // needed to resolve "logged by" per-plot on the Harvests page, and ratoon_at_harvest
+    // for the harvest detail view. Ordered so the first row per parcel_id is the latest.
+    client.from('vsl_harvests').select('id, parcel_id, harvest_date, gross_weight_tonnes, ratoon_at_harvest, created_by, created_at')
+      .order('harvest_date', { ascending: false }).order('created_at', { ascending: false }),
   ]);
 
   if (estRes.error) console.error('Supabase estate fetch error:', estRes.error);
@@ -159,6 +190,19 @@ async function loadLiveData() {
   const rawSeasons = seasonRes.data || [];
   const rawSoilTests = soilTestRes.data || [];
   const rawHarvestHistory = harvestHistoryRes.data || [];
+
+  // Latest harvest row per parcel (rawHarvestHistory is already ordered harvest_date
+  // desc, created_at desc, so the first row seen per parcel_id wins) — used to resolve
+  // "Logged By" and ratoon-at-harvest on the Harvests page / Harvest Details modal.
+  const latestHarvestByParcel = new Map();
+  rawHarvestHistory.forEach(h => { if (!latestHarvestByParcel.has(h.parcel_id)) latestHarvestByParcel.set(h.parcel_id, h); });
+
+  // Per-estate harvest scheduling settings (admin-configurable on the Harvests page;
+  // vsl_estate.harvest_period_months / yield_per_acre_tons, default 18mo / 30 t/ac).
+  const harvestSettingsByEstateName = new Map(rawEstates.map(e => [e.estate_name, {
+    harvestPeriodMonths: e.harvest_period_months ?? 18,
+    yieldPerAcreTons: Number(e.yield_per_acre_tons) || 30,
+  }]));
 
   // Centroid lookups (used to build Google Maps links + QR codes per block/parcel).
   const blockStatsById  = new Map((blkStatsRes.data || []).map(s => [s.block_id, s]));
@@ -251,7 +295,17 @@ async function loadLiveData() {
       || rawSeasons.filter(s => s.parcel_id === p.id).sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0]
       || null;
     const soilTest = latestSoilTestByParcel.get(p.id) || null;
-    const assignedManager = p.manager_id ? profileByIdForManagers.get(p.manager_id) : null;
+    const estateNameForParcel = parentBlock ? (estateNameById.get(parentBlock.estate_id) || 'Unassigned') : 'Unassigned';
+    const harvestSettings = harvestSettingsByEstateName.get(estateNameForParcel) || { harvestPeriodMonths: 18, yieldPerAcreTons: 30 };
+    // Reference date for "months since due for harvest": the current ratoon's start
+    // date once the plot has been through at least one logged harvest, otherwise the
+    // original planting date (plant crop).
+    const harvestReferenceDate = p.ratoon_start_date || p.planting_date || null;
+    const harvestDue = GROWING_CULTIVATION_STATUSES.includes(p.cultivation_status)
+      ? computeHarvestDue(harvestReferenceDate, harvestSettings.harvestPeriodMonths)
+      : { dueDate: null, monthsPastDue: null, isDue: false };
+    const latestHarvest = latestHarvestByParcel.get(p.id) || null;
+    const latestHarvestLogger = latestHarvest?.created_by ? profileByIdForManagers.get(latestHarvest.created_by) : null;
     return {
       id: p.parcel_code || p.parcel_name || p.id,
       _uuid: p.id,
@@ -261,17 +315,10 @@ async function loadLiveData() {
       estate: parentBlock ? (estateNameById.get(parentBlock.estate_id) || 'Unassigned') : 'Unassigned',
       mapsLink: buildGoogleMapsLink(parcelStats?.centroid_lat, parcelStats?.centroid_lon) || null,
       areaHa: Number(areaHa.toFixed(2)),
-      // Assigned manager — direct vsl_parcels.manager_id → vsl_profiles (one manager per plot,
-      // same pattern as vsl_estate.manager_id / vsl_blocks.manager_id).
-      managerId: p.manager_id || null,
-      assignedManagerName:  assignedManager ? (assignedManager.full_name || assignedManager.email) : null,
-      assignedManagerEmail: assignedManager ? assignedManager.email : null,
-      assignedManagerPhone: assignedManager ? assignedManager.phone : null,
-      assignedManagerTitle: assignedManager ? assignedManager.title : null,
-      assignedManagerAvatarUrl: assignedManager ? assignedManager.avatar_url : null,
       variety: currentSeason?.cane_variety || null, // real value from vsl_parcel_seasons; '—' in the UI if this parcel has no season history yet
       stage: stageFromCultivationStatus(p.cultivation_status),
       ratoon: p.ratoon_number ?? 0,
+      ratoonStartDate: p.ratoon_start_date || null,
       health: healthFromCultivationStatus(p.cultivation_status),
       planted: p.planting_date,
       expectedHarvest: p.expected_harvest_date,
@@ -279,6 +326,22 @@ async function loadLiveData() {
       cultivationStatus: p.cultivation_status || 'not_in_cane',
       cultivationNotes: p.cultivation_notes,
       lastHarvestDate: harvest?.last_harvest_date ?? null,
+      // Logged By — who recorded this plot's most recent harvest (vsl_harvests.created_by
+      // → vsl_profiles), shown in the Harvest Details modal on the Harvests page.
+      lastHarvestLoggedByName: latestHarvestLogger ? (latestHarvestLogger.full_name || latestHarvestLogger.email) : null,
+      lastHarvestRatoon: latestHarvest?.ratoon_at_harvest ?? null,
+      // Ratoon-shift tracking (vsl_parcels.ratoon_start_date) + estate-configurable
+      // harvest-due scheduling — powers the "Harvests Due" table/settings on the
+      // Harvests page. See computeHarvestDue()/GROWING_CULTIVATION_STATUSES above.
+      ratoonStartDate: p.ratoon_start_date || null,
+      harvestReferenceDate,
+      harvestReferenceType: p.ratoon_start_date ? 'ratoon' : 'planting',
+      harvestPeriodMonths: harvestSettings.harvestPeriodMonths,
+      yieldPerAcreTons: harvestSettings.yieldPerAcreTons,
+      harvestDueDate: harvestDue.dueDate,
+      monthsPastDue: harvestDue.monthsPastDue,
+      isHarvestDue: harvestDue.isDue,
+      expectedYieldTons: harvestDue.isDue ? Number(((parseFloat(p.expected_area_acres) || 0) * harvestSettings.yieldPerAcreTons).toFixed(1)) : null,
       geometryStatus: p.geometry_status || 'pending',
       parcelName: p.parcel_name,
       currentActivity: p.current_activity_name || null,
@@ -303,6 +366,46 @@ async function loadLiveData() {
       blockIrrigationType: parentBlockReshaped?.irrigationType || null,
     };
   });
+
+  // ── SEASONS (vsl_parcel_seasons) reshaped — plot-level planting/crop-cycle
+  // history, one row per crop cycle. Most fields (ratoon_number,
+  // expected_harvest_date, season_status, actual_harvest_date) are trigger-
+  // maintained from vsl_parcels — see vsl_sync_parcel_season() in the DB,
+  // which fires on every vsl_parcels insert/update. season_name, cane_variety,
+  // target/actual yield, growth_stage, failure_reason and notes are
+  // manual-only fields, set from the Seasons page.
+  const seasons = rawSeasons.map(s => {
+    const parcel = rawParcels.find(p => p.id === s.parcel_id);
+    const parentBlockForSeason = parcel ? rawBlocks.find(b => b.id === parcel.block_id) : null;
+    const logger = s.created_by ? profileByIdForManagers.get(s.created_by) : null;
+    return {
+      id: s.id,
+      parcelId: s.parcel_id,
+      plot: parcel ? (parcel.parcel_name || parcel.parcel_code || parcel.id) : '—',
+      block: parentBlockForSeason ? (parentBlockForSeason.block_name || parentBlockForSeason.block_code || parentBlockForSeason.id) : '—',
+      blockUuid: parcel ? parcel.block_id : null,
+      estate: parentBlockForSeason ? (estateNameById.get(parentBlockForSeason.estate_id) || 'Unassigned') : 'Unassigned',
+      seasonName: s.season_name,
+      caneVariety: s.cane_variety,
+      ratoonNumber: s.ratoon_number ?? 0,
+      plantingDate: s.planting_date,
+      expectedHarvestDate: s.expected_harvest_date,
+      actualHarvestDate: s.actual_harvest_date,
+      growthStage: s.growth_stage,
+      targetYieldTonnes: s.target_yield_tonnes != null ? Number(s.target_yield_tonnes) : null,
+      actualYieldTonnes: s.actual_yield_tonnes != null ? Number(s.actual_yield_tonnes) : null,
+      yieldPerHectare: s.yield_per_hectare != null ? Number(s.yield_per_hectare) : null,
+      status: s.season_status || 'planned',
+      failureReason: s.failure_reason,
+      notes: s.notes,
+      createdBy: s.created_by,
+      createdByName: logger ? (logger.full_name || logger.email) : null,
+      createdAt: s.created_at,
+      // Whether this is the parcel's current pointer (vsl_parcels.current_season_id)
+      // — trigger-managed, always the most recently created season row per parcel.
+      isCurrent: parcel ? parcel.current_season_id === s.id : false,
+    };
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
   // ── ESTATES reshaped, with rollups from blocks ──
   const estates = rawEstates.map(e => {
@@ -337,6 +440,10 @@ async function loadLiveData() {
       assignedManagerTitle: assignedManager ? assignedManager.title : null,
       assignedManagerAvatarUrl: assignedManager ? assignedManager.avatar_url : null,
       createdAt: e.created_at,
+      // Admin-configurable harvest scheduling settings (vsl_estate.harvest_period_months /
+      // yield_per_acre_tons) — edited from the Harvest Settings panel on the Harvests page.
+      harvestPeriodMonths: e.harvest_period_months ?? 18,
+      yieldPerAcreTons: Number(e.yield_per_acre_tons) || 30,
     };
   });
 
@@ -395,6 +502,9 @@ async function loadLiveData() {
     const parcel = a.parcel_id ? parcelById.get(a.parcel_id) : null;
     const block = a.block_id ? blockById.get(a.block_id) : (parcel ? blockById.get(parcel.block_id) : null);
     const assignee = a.assigned_to ? profileById.get(a.assigned_to) : null;
+    // Logged By — vsl_activities.created_by → vsl_profiles (created_by targets
+    // auth.users.id, which is the same id vsl_profiles rows key on 1:1).
+    const logger = a.created_by ? profileById.get(a.created_by) : null;
     return {
       id: a.id,
       name: a.activity_name,
@@ -403,6 +513,8 @@ async function loadLiveData() {
       block: block ? (block.block_name || block.block_code || block.id) : '—',
       parcel: parcel ? (parcel.parcel_name || parcel.parcel_code || parcel.id) : (a.parcel_id ? '—' : null),
       assignedTo: assignee ? (assignee.full_name || assignee.email) : (a.assigned_to_legacy || '—'),
+      createdById: a.created_by || null,
+      createdByName: logger ? (logger.full_name || logger.email) : null,
       teamSize: a.team_size,
       machines: a.number_of_machines,
       completionValue: a.completion_value,
@@ -601,6 +713,7 @@ async function loadLiveData() {
     users,
     emailSubscribers,
     activities,
+    seasons,
     costs,
     documents,
     media,

@@ -93,7 +93,16 @@ body {
 .brand-sub   { font-size: 9px; color: var(--green-200); letter-spacing: 1.2px; text-transform: uppercase; }
 
 /* Nav */
-.sidebar-nav { flex: 1; padding: 10px 0; overflow-y: auto; overflow-x: hidden; }
+.sidebar-nav {
+  flex: 1; padding: 10px 0; overflow-y: auto; overflow-x: hidden;
+  /* Show only the scroll thumb, no visible track/margin, over the dark sidebar bg */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.25) transparent;
+}
+.sidebar-nav::-webkit-scrollbar { width: 6px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.25); border-radius: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.4); }
 .nav-section-label {
   font-size: 9px; letter-spacing: 1.5px;
   color: var(--green-400); padding: 12px 14px 4px;
@@ -112,30 +121,6 @@ body {
 .nav-item.active { background: rgba(255,255,255,.13); color: #fff; border-left-color: var(--amber-500); font-weight: 600; }
 .nav-icon  { font-size: 15px; opacity: .85; flex-shrink: 0; }
 .nav-label { transition: opacity .2s; }
-
-/* Estate status */
-.sidebar-estate-status {
-  padding: 12px 14px 16px;
-  border-top: 1px solid rgba(255,255,255,.1);
-  font-size: 12px;
-  flex-shrink: 0;
-  transition: opacity .2s;
-  overflow: hidden;
-}
-.estate-status-title {
-  font-size: 9px; letter-spacing: 1.5px;
-  color: var(--green-400); font-weight: 600;
-  margin-bottom: 8px; text-transform: uppercase;
-}
-.estate-status-row { display: flex; align-items: center; gap: 7px; padding: 3px 0; color: #b8d9c4; }
-.ml-auto { margin-left: auto; font-size: 11px; }
-
-.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.dot.green { background: #4ade80; }
-.dot.amber { background: var(--amber-500); }
-.dot.red   { background: #f87171; }
-.dot.blue  { background: #60a5fa; }
-.dot.gray  { background: var(--gray-300); }
 
 /* ═══════════════════════════════════════
    MAIN CONTENT
@@ -607,8 +592,7 @@ input.form-input:focus, select.form-input:focus {
   }
   .sidebar .brand-text,
   .sidebar .nav-label,
-  .sidebar .nav-section-label,
-  .sidebar .sidebar-estate-status { opacity: 0; pointer-events: none; }
+  .sidebar .nav-section-label { opacity: 0; pointer-events: none; }
   .sidebar .sidebar-brand { justify-content: center; padding: 12px 0; }
   .sidebar .nav-item { justify-content: center; padding: 11px 0; }
 

@@ -1791,14 +1791,18 @@ function buildLayerTree() {
   overlaysGroup.setZIndex(20);
 
   // ANNOTATIONS Group
-  sketchLayer.set("displayInLayerSwitcher", true);
-  measureLayer.set("displayInLayerSwitcher", true);
+  // Hidden from the Layers panel (per request) — these layers stay active on the
+  // map and the Draw/Measure/Coordinate-marker tools keep working exactly as
+  // before, they just no longer show up as toggleable rows in the switcher.
+  // sketchLayer.set("displayInLayerSwitcher", true);
+  // measureLayer.set("displayInLayerSwitcher", true);
   const annotationsGroup = new ol.layer.Group({
     title: "ANNOTATIONS",
     fold: "open",
     layers: [sketchLayer, measureLayer]
   });
   annotationsGroup.setZIndex(30);
+  annotationsGroup.set("displayInLayerSwitcher", false);
   annotationsGroupRef = annotationsGroup;
 
   // Order on map (bottom to top). Layer switcher shows reverse (top to bottom).
@@ -4205,6 +4209,8 @@ function startBackgroundLocationTracking() {
         })
       })
     });
+    // Hidden from the Layers panel (per request) — location tracking keeps
+    // running as before, it just isn't shown as a toggleable row in the switcher.
     userLocationLayer.set("displayInLayerSwitcher", false);
     userLocationLayer.set("title", "My Location");
     map.addLayer(userLocationLayer);

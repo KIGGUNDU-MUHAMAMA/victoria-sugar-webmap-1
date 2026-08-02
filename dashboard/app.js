@@ -31,12 +31,10 @@ function titleCaseLocal(str) {
 // Entity-type labels for Documents/Media "Linked To" — DB stores 'parcel' but the UI says "Plot".
 function entityTypeLabel(t) { return t === 'parcel' ? 'Plot' : titleCaseLocal(t); }
 
-// Superset of growth-stage labels — covers both the live-data buckets (from
-// stageFromCultivationStatus() in supabase-client.js: Grand Growth, Tillering,
-// Under Prep, Fallow) and the richer placeholder/fallback dataset's labels
-// (data.js), so the stage-distribution charts stay accurate whichever data
-// source is active. Order here is display order; unknown stages fall back
-// to gray rather than being silently dropped.
+// Growth-stage labels, matching the buckets stageFromCultivationStatus() in
+// supabase-client.js maps cultivation_status onto (Grand Growth, Tillering,
+// Under Prep, Fallow, etc). Order here is display order; unknown stages fall
+// back to gray rather than being silently dropped.
 const STAGE_ORDER  = ['Germination','Tillering','Grand Growth','Ripening','Harvested','Under Prep','Fallow'];
 const STAGE_COLORS = { Germination:'#60a5fa', Tillering:'#2563eb', 'Grand Growth':'#4a9e6e', Ripening:'#e8a020', Harvested:'#16a34a', 'Under Prep':'#f4c56a', Fallow:'#c8d0ce' };
 function plotStageDistribution() {
@@ -211,7 +209,7 @@ function renderDashboard(el) {
       <div class="card-header">
         <div>
           <div class="card-title">Monthly Production (Tonnes)</div>
-          <div class="card-sub">Actual vs Target · Season 2024-B</div>
+          <div class="card-sub">Actual harvest tonnage · last 12 months</div>
         </div>
       </div>
       <div class="chart-box"><canvas id="chart-prod-monthly"></canvas></div>
@@ -1495,7 +1493,7 @@ function renderProduction(el) {
   <div class="grid-2" style="margin-bottom:20px">
     <div class="card">
       <div class="card-header"><div class="card-title">Monthly Harvest Trend</div>
-        <div style="font-size:11px;color:var(--gray-500)">Actual vs Target · current season</div></div>
+        <div style="font-size:11px;color:var(--gray-500)">Actual harvest tonnage · last 12 months</div></div>
       <div class="chart-box"><canvas id="chart-harvest-trend"></canvas></div>
     </div>
     <div class="card">
@@ -3071,8 +3069,7 @@ function initCharts(page) {
     if (c1) reg(new Chart(c1, {
       type: 'bar',
       data: { labels: pm.labels, datasets: [
-        { label:'Actual', data:pm.actual, backgroundColor:'#2e6647', borderRadius:4, order:2 },
-        { label:'Target', data:pm.target, type:'line', borderColor:'#e8a020', borderWidth:2, pointRadius:3, fill:false, tension:.3, order:1 },
+        { label:'Actual', data:pm.actual, backgroundColor:'#2e6647', borderRadius:4 },
       ]},
       options: { ...defaults,
         plugins: { legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } },
@@ -3091,9 +3088,8 @@ function initCharts(page) {
       options: { ...defaults, cutout:'65%' },
     }));
 
-    // Real growth-stage counts (Stage is derived from cultivation_status — see
-    // stageFromCultivationStatus() in supabase-client.js — or, on the
-    // placeholder/fallback dataset, data.js's own richer stage labels).
+    // Real growth-stage counts (Stage is derived from cultivation_status —
+    // see stageFromCultivationStatus() in supabase-client.js).
     const c3 = document.getElementById('chart-plot-status');
     if (c3) {
       const sd = plotStageDistribution();
@@ -3134,21 +3130,13 @@ function initCharts(page) {
     }));
 
     const c6 = document.getElementById('chart-cost-break');
-    if (c6) {
-      // Prefer real vsl_activity_costs rollups; fall back to placeholder shape if none logged yet.
-      let costLabels = DATA.costBreakdown.labels, costValues = DATA.costBreakdown.values;
-      if (DATA.costs && DATA.costs.length) {
-        const byType = {};
-        DATA.costs.forEach(c => { byType[c.costType] = (byType[c.costType]||0) + c.amount; });
-        costLabels = Object.keys(byType);
-        costValues = Object.values(byType);
-      }
-      reg(new Chart(c6, {
-        type: 'doughnut',
-        data: { labels:costLabels, datasets:[{ data:costValues, backgroundColor:['#1a3d2b','#2e6647','#4a9e6e','#e8a020','#f4c56a','#c0392b','#9fd4b8'], borderWidth:2, borderColor:'#fff' }] },
-        options: { ...defaults, cutout:'55%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{ size:10 } } } } },
-      }));
-    }
+    // DATA.costBreakdown is computed straight from real vsl_activity_costs rows
+    // (see loadLiveData() in supabase-client.js) — empty doughnut until costs are logged.
+    if (c6) reg(new Chart(c6, {
+      type: 'doughnut',
+      data: { labels:DATA.costBreakdown.labels, datasets:[{ data:DATA.costBreakdown.values, backgroundColor:['#1a3d2b','#2e6647','#4a9e6e','#e8a020','#f4c56a','#c0392b','#9fd4b8'], borderWidth:2, borderColor:'#fff' }] },
+      options: { ...defaults, cutout:'55%', plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{ size:10 } } } } },
+    }));
 
     const c7 = document.getElementById('chart-stage-dist');
     if (c7) {
@@ -3170,7 +3158,6 @@ function initCharts(page) {
       type: 'line',
       data: { labels:DATA.productionMonthly.labels, datasets: [
         { label:'Actual Harvest', data:DATA.productionMonthly.actual, borderColor:'#2e6647', backgroundColor:'rgba(46,102,71,.12)', fill:true, tension:.3, pointRadius:4 },
-        { label:'Target', data:DATA.productionMonthly.target, borderColor:'#e8a020', borderDash:[5,4], fill:false, tension:.3, pointRadius:2 },
       ]},
       options: { ...defaults,
         plugins: { legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } },

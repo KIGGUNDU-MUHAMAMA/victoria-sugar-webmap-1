@@ -71,11 +71,13 @@ export function initCoordSearchDrawer(opts) {
     }
   });
   markersLayer.set("title", "Coordinate markers");
+  // Hidden from the Layers panel (per request) — the coordinate search/plot
+  // tool keeps working as before, the marker layer just isn't shown as a
+  // toggleable row in the switcher.
+  markersLayer.set("displayInLayerSwitcher", false);
   if (opts && opts.annotationsGroup) {
-    markersLayer.set("displayInLayerSwitcher", true);
     opts.annotationsGroup.getLayers().push(markersLayer);
   } else {
-    markersLayer.set("displayInLayerSwitcher", false);
     map.addLayer(markersLayer);
   }
 

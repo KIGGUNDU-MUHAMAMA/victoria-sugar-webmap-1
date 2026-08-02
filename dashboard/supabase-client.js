@@ -5,6 +5,39 @@
 //  expected by app.js (estates / blocks / plots / users / emailSubscribers).
 // ══════════════════════════════════════
 
+// ── DATA — empty shell, populated moments later by loadLiveData() ──
+// This used to be a large placeholder/demo dataset in data.js (removed —
+// the app is now live-data-only). All it needs to do now is exist with the
+// right shape so nothing crashes in the brief window between page load and
+// the live Supabase fetch finishing; initLiveData() below mutates every
+// field in place via Object.assign(DATA, live) once real rows arrive.
+const DATA = {
+  isLive: false,
+  stats: {
+    totalEstates: 0, totalBlocks: 0, totalPlots: 0,
+    totalAreaHa: 0, plantedAreaHa: 0, fallowAreaHa: 0, reservedAreaHa: 0,
+    activePlots: 0, fallowPlots: 0, underPrepPlots: 0,
+    currentSeasonYieldTonnes: 0, targetYieldTonnes: 1,
+    totalRevenue: 0, totalCost: 0, grossProfit: 0,
+    avgYieldPerHa: 0, avgBrix: 0, avgSucrose: 0,
+  },
+  estates: [],
+  blocks: [],
+  plots: [],
+  productionMonthly: { labels: [], actual: [] },
+  productionByEstate: { labels: [], values: [], colors: [] },
+  costBreakdown: { labels: [], values: [] },
+  yieldByVariety: { labels: [], values: [] },
+  users: [],
+  emailSubscribers: [],
+  activities: [],
+  costs: [],
+  documents: [],
+  media: [],
+  alerts: [],
+  recentActivity: [],
+};
+
 const SUPABASE_URL      = "https://knhgliyghacvkeeptsfl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_W2kx87RbvH0Qd1HkPPXlIg_6GAy0HAV";
 const APP_NAME           = "Victoria Sugar Webmap";
@@ -66,7 +99,7 @@ function titleCase(str) {
 
 // ── MAIN LOADER ──
 // Fetches everything from Supabase and reshapes into the DATA object
-// already declared (as fallback/placeholder) in data.js.
+// declared as an empty shell above.
 
 async function loadLiveData() {
   const client = getSbClient();
@@ -74,7 +107,7 @@ async function loadLiveData() {
   const [
     estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes,
     actRes, actCostRes, alertRes, docRes, mediaRes, blkStatsRes, parStatsRes, mgrRes,
-    seasonRes, soilTestRes,
+    seasonRes, soilTestRes, harvestHistoryRes,
   ] = await Promise.all([
     client.from('vsl_estate').select('*'),
     client.from('vsl_blocks').select('*'),
@@ -93,6 +126,7 @@ async function loadLiveData() {
     client.from('vsl_estate_managers').select('*').eq('is_active', true),
     client.from('vsl_parcel_seasons').select('*'),
     client.from('vsl_parcel_soil_tests').select('*').order('sample_date', { ascending: false }),
+    client.from('vsl_harvests').select('harvest_date, gross_weight_tonnes'),
   ]);
 
   if (estRes.error) console.error('Supabase estate fetch error:', estRes.error);
@@ -112,6 +146,7 @@ async function loadLiveData() {
   if (mgrRes.error) console.error('Supabase estate_managers fetch error:', mgrRes.error);
   if (seasonRes.error) console.error('Supabase parcel_seasons fetch error:', seasonRes.error);
   if (soilTestRes.error) console.error('Supabase parcel_soil_tests fetch error:', soilTestRes.error);
+  if (harvestHistoryRes.error) console.error('Supabase harvests history fetch error:', harvestHistoryRes.error);
 
   const rawEstates = estRes.data || [];
   const rawBlocks  = blkRes.data || [];
@@ -126,6 +161,7 @@ async function loadLiveData() {
   const rawManagerLinks = mgrRes.data || [];
   const rawSeasons = seasonRes.data || [];
   const rawSoilTests = soilTestRes.data || [];
+  const rawHarvestHistory = harvestHistoryRes.data || [];
 
   // Centroid lookups (used to build Google Maps links + QR codes per block/parcel).
   const blockStatsById  = new Map((blkStatsRes.data || []).map(s => [s.block_id, s]));
@@ -506,20 +542,65 @@ async function loadLiveData() {
     avgSucrose: 14.1,      // placeholder
   };
 
+  // ── Monthly harvest trend (last 12 months), computed from real vsl_harvests rows.
+  // No fabricated "target" line — there's no monthly-target table in the DB.
+  const productionMonthly = (() => {
+    const now = new Date();
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleString('en', { month: 'short' }) });
+    }
+    const totalsByKey = {};
+    rawHarvestHistory.forEach(h => {
+      if (!h.harvest_date) return;
+      const key = h.harvest_date.slice(0, 7); // 'YYYY-MM'
+      totalsByKey[key] = (totalsByKey[key] || 0) + (parseFloat(h.gross_weight_tonnes) || 0);
+    });
+    return {
+      labels: months.map(m => m.label),
+      actual: months.map(m => (totalsByKey[m.key] != null ? Number(totalsByKey[m.key].toFixed(1)) : null)),
+    };
+  })();
+
+  // ── Cost breakdown by category, computed from real vsl_activity_costs rows.
+  const costBreakdown = (() => {
+    const byType = {};
+    costs.forEach(c => { byType[c.costType] = (byType[c.costType] || 0) + c.amount; });
+    return { labels: Object.keys(byType), values: Object.values(byType) };
+  })();
+
+  // ── Average yield per acre by cane variety, computed from real plot data
+  // (variety comes from vsl_parcel_seasons — see PARCELS reshape above).
+  // Sparse/empty until more parcels have season + harvest history, which is
+  // honest given how little of that data exists yet.
+  const yieldByVariety = (() => {
+    const byVariety = {};
+    plots.forEach(p => {
+      if (!p.variety || !p.yield || !p.areaHa) return;
+      const yieldPerAc = p.yield / (p.areaHa * 2.47105);
+      if (!byVariety[p.variety]) byVariety[p.variety] = { total: 0, count: 0 };
+      byVariety[p.variety].total += yieldPerAc;
+      byVariety[p.variety].count += 1;
+    });
+    const labels = Object.keys(byVariety);
+    return { labels, values: labels.map(v => Number((byVariety[v].total / byVariety[v].count).toFixed(2))) };
+  })();
+
   return {
     isLive: true,
     stats,
     estates,
     blocks,
     plots,
-    productionMonthly: DATA.productionMonthly,       // kept as placeholder chart shape — no monthly history table yet
+    productionMonthly,
     productionByEstate: {
       labels: estates.map(e => e.name),
       values: estates.map(e => blocks.filter(b => b.estate === e.name).reduce((s, b) => s + (b.harvestTonnes || 0), 0)),
       colors: ['#2e6647', '#e8a020', '#4a9e6e', '#c0392b', '#2563eb', '#9fd4b8'].slice(0, estates.length),
     },
-    costBreakdown: DATA.costBreakdown,                // placeholder — no cost ledger table yet
-    yieldByVariety: DATA.yieldByVariety,              // placeholder — variety not tracked per-parcel yet
+    costBreakdown,
+    yieldByVariety,
     users,
     emailSubscribers,
     activities,

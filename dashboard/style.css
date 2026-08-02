@@ -459,6 +459,30 @@ input.form-input:focus, select.form-input:focus {
 }
 .popWinActionBtns[hidden] { display: none; }
 
+/* Buttons inside this footer sit on a dark green band — the default
+   .btn-outline (gray text on a gray border) and .btn-primary (green-700)
+   are both too close to that background to read clearly. Give buttons in
+   this context their own higher-contrast treatment. */
+.popWinActionBtns .btn-outline {
+  color: #fff;
+  border-color: rgba(255,255,255,.6);
+  background: rgba(255,255,255,.08);
+}
+.popWinActionBtns .btn-outline:hover {
+  background: rgba(255,255,255,.18);
+  border-color: #fff;
+}
+.popWinActionBtns .btn-primary {
+  background: #D46112;
+  color: #fff;
+}
+.popWinActionBtns .btn-primary:hover { background: #b8530f; }
+.popWinActionBtns .btn-danger {
+  background: var(--red-500);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.35);
+}
+
 .resolve-alert-summary {
   background: var(--gray-50); border: 1px solid var(--gray-100);
   border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; color: var(--gray-700);
@@ -497,18 +521,22 @@ input.form-input:focus, select.form-input:focus {
    TAB BAR
 ═══════════════════════════════════════ */
 .tab-bar {
-  display: flex; gap: 0; margin-bottom: 20px;
+  display: flex; gap: 4px; margin-bottom: 20px;
   border-bottom: 2px solid var(--gray-300);
   overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
 .tab-btn {
   padding: 9px 18px; font-size: 13px; font-weight: 600;
-  color: var(--gray-500); background: none; border: none;
-  cursor: pointer; border-bottom: 2px solid transparent;
-  margin-bottom: -2px; transition: all .15s; white-space: nowrap;
+  color: var(--gray-500); background: none;
+  border: 1px solid transparent; border-bottom: 3px solid transparent;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer; margin-bottom: -2px; transition: all .15s; white-space: nowrap;
 }
-.tab-btn.active           { color: var(--green-700); border-bottom-color: var(--green-700); }
-.tab-btn:hover:not(.active) { color: var(--gray-700); }
+.tab-btn.active {
+  color: #fff; background: var(--green-700);
+  border-color: var(--green-700); border-bottom-color: #D46112;
+}
+.tab-btn:hover:not(.active) { color: var(--gray-700); background: var(--gray-50); }
 
 /* ═══════════════════════════════════════
    AREA STATUS

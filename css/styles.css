@@ -603,6 +603,115 @@ button:hover {
   white-space: nowrap;
 }
 
+/* Account button, avatar-only variant (no "Profile" text label under the
+   photo — see logoutBtn in webmap.html). */
+.control-btn--avatar-only {
+  padding: 4px;
+  min-width: 34px;
+}
+
+/* Account button (top controls) + My Profile popup avatars — photo if the
+   signed-in user's vsl_profiles.avatar_url is set, otherwise a circular
+   initials badge. See updateProfileButtonAvatar()/initProfileModal() in
+   js/map-app.js and windows/profile-modal.html. */
+.vsl-profile-avatar-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+}
+.vsl-profile-avatar-fallback-sm {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary, #3f8f3f);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.vsl-profile-avatar-fallback {
+  border-radius: 50%;
+  background: var(--primary, #3f8f3f);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Account dropdown (windows/profile-modal.html) — small panel anchored under
+   the account button, positioned via JS (positionProfileDropdown() in
+   js/map-app.js) since the button doesn't sit in a positioned ancestor. */
+.vsl-profile-dropdown {
+  position: fixed;
+  z-index: 4000;
+  width: 250px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border, #e5e7eb);
+  overflow: hidden;
+  font-size: 13px;
+}
+.vsl-profile-dropdown__header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.vsl-profile-dropdown__name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text, #111827);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vsl-profile-dropdown__email {
+  font-size: 11.5px;
+  color: var(--muted, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vsl-profile-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text, #111827);
+}
+.vsl-profile-dropdown__item:hover { background: #f3f4f6; }
+.vsl-profile-dropdown__item i { width: 16px; text-align: center; color: var(--muted, #6b7280); }
+.vsl-profile-dropdown__item--danger { color: #b91c1c; }
+.vsl-profile-dropdown__item--danger i { color: #b91c1c; }
+.vsl-profile-dropdown__item--danger:hover { background: #fef2f2; }
+
+/* Manage Account form (windows/profile-modal.html) — visual separator
+   between the vsl_profiles fields and the auth.users (email/password)
+   fields, plus a small helper caption under the email field. */
+.vsl-modal-field-divider {
+  border-top: 1px solid var(--border, #e5e7eb);
+  margin: 4px 0 10px;
+}
+.vsl-modal-field-hint {
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
 /* Parcel status panel: the old independently-floating shell (position:fixed
    card with its own header/title/subtitle/close-button classes) is gone —
    the panel is docked inside .map-left-stack and uses .popWinMain/

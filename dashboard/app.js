@@ -4,6 +4,7 @@
 
 let activeCharts = [];
 let currentPage = null;
+let viewingUserId = null; // user id when viewing full user detail (Users page drill-down)
 
 // ── UTILS ──────────────────────────────
 
@@ -66,26 +67,58 @@ function stagePill(s) {
   return pill(s, map[s] || 'gray');
 }
 
-// Shared "Managers" card used by the Estate / Block / Plot detail views —
-// lists whoever is linked (via vsl_estate_managers) at that scope, with a
-// button to link another and an unlink action per row.
-function managersCardHTML(scopeType, scopeId, scopeLabel, managers) {
-  return `
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-header">
-      <div class="card-title">Managers</div>
-      <button class="btn btn-primary btn-sm" onclick="showLinkManagerModal('${scopeType}','${scopeId}','${scopeLabel}')">+ Link Manager</button>
-    </div>
-    ${managers && managers.length ? managers.map(m => `
-      <div class="activity-item">
-        <div class="activity-dot blue">👤</div>
-        <div class="activity-content" style="flex:1">
-          <div class="activity-text">${m.name} <span style="color:var(--gray-500);font-weight:400">— ${titleCaseLocal(m.role)}</span></div>
-          <div class="activity-meta">Assigned ${m.assignedFrom || '—'}</div>
-        </div>
-        <button class="icon-btn danger" onclick="confirmUnlinkManager('${m.linkId}','${(m.name||'').replace(/'/g,"")}')" title="Unlink">🗑</button>
-      </div>`).join('') : `<div style="padding:16px 0;text-align:center;color:var(--gray-500);font-size:13px">No managers linked yet</div>`}
-  </div>`;
+// ── AVATARS ──
+// initialsFrom/avatarHTML are the one shared way any person (a vsl_profiles
+// user, or an estate/block/plot's assigned manager, which is just a profile
+// referenced by manager_id) gets rendered anywhere in the dashboard: a
+// circular photo if avatar_url is set, otherwise a circular initials badge —
+// always carrying a title= tooltip with the person's name so they're still
+// identifiable without text next to it.
+function initialsFrom(name) {
+  return (name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+// shape: 'circle' (default — Users nav, topbar, etc.) or 'square' (rounded-
+// corner square — used for manager avatars in the Land Management tables).
+function avatarHTML(name, avatarUrl, size, shape) {
+  size = size || 32;
+  const radius = shape === 'square' ? Math.max(6, Math.round(size * 0.22)) + 'px' : '50%';
+  const title = (name || 'Unknown').replace(/"/g, '&quot;');
+  if (avatarUrl) {
+    return `<img src="${avatarUrl}" alt="${title}" title="${title}" style="width:${size}px;height:${size}px;border-radius:${radius};object-fit:cover;flex-shrink:0">`;
+  }
+  const initials = name ? initialsFrom(name) : '👤';
+  return `<div class="user-avatar" title="${title}" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.34)}px;flex-shrink:0;border-radius:${radius}">${initials || '👤'}</div>`;
+}
+
+// Shared clickable "Manager" cell used by the Estates, Blocks & Plots tables
+// and by their detail attribute lists. Each has a single assigned manager
+// (vsl_estate.manager_id / vsl_blocks.manager_id / vsl_parcels.manager_id —
+// a direct FK to vsl_profiles, one manager per record). If one is assigned,
+// their photo (or an initials/emoji placeholder, titled with their name) is
+// a clickable button that opens a small detail popup; otherwise a
+// "+ Link Manager" button is shown in its place.
+function managerCellHTML(scopeType, scopeId, scopeLabel, managerId, managerName, managerAvatarUrl) {
+  if (managerId) {
+    return `<button type="button" onclick="viewManagerDetail('${scopeType}','${scopeId}')"
+              style="background:none;border:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;line-height:0">
+              ${avatarHTML(managerName, managerAvatarUrl, 32, 'square')}
+            </button>`;
+  }
+  return `<button class="icon-btn" onclick="event.stopPropagation();showLinkManagerModal('${scopeType}','${scopeId}','${(scopeLabel||'').replace(/'/g,"")}')" title="Link Manager">👤</button>`;
+}
+
+// Uploads a picked File to the public "Media" Storage bucket under avatars/
+// and returns its public URL (saved straight onto vsl_profiles.avatar_url).
+// Always a fresh random filename — never overwrites — so replacing a photo
+// can't end up serving a stale cached image at the same URL.
+async function uploadAvatarFile(file) {
+  if (!file) return null;
+  const client = getSbClient();
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `avatars/${crypto.randomUUID()}.${ext}`;
+  const { error } = await client.storage.from('Media').upload(path, file, { upsert: false, contentType: file.type || undefined });
+  if (error) throw new Error('Photo upload failed: ' + error.message);
+  return client.storage.from('Media').getPublicUrl(path).data.publicUrl;
 }
 
 function showToast(msg, color) {
@@ -110,7 +143,7 @@ function destroyCharts() {
 const PAGE_TITLES = {
   dashboard:     'Dashboard',
   analytics:     'Estate Analytics',
-  estates:       'Estates, Blocks & Plots',
+  estates:       'Land Management',
   production:    'Harvests',
   activities:    'Activities',
   costs:         'Costs',
@@ -511,7 +544,7 @@ function renderEstatesPage(el) {
           <tr>
             <th>Estate</th><th>District</th><th>Manager</th><th>Blocks</th>
             <th>Plots</th><th>Total Area</th><th>Planted Ac</th>
-            <th>Fallow Ac</th><th>Utilisation</th><th>Health</th><th>Actions</th>
+            <th>Fallow Ac</th><th>Utilisation</th><th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -524,7 +557,7 @@ function renderEstatesPage(el) {
                 <div style="font-size:11px;color:var(--gray-500)">${e.id}</div>
               </td>
               <td>${e.district}</td>
-              <td>${e.manager}</td>
+              <td style="text-align:center" onclick="event.stopPropagation()">${managerCellHTML('estate', e._id, e.name, e.managerId, e.assignedManagerName, e.assignedManagerAvatarUrl)}</td>
               <td><strong>${e.blocks}</strong></td>
               <td><strong>${e.plots}</strong></td>
               <td>${fmtHa(e.areaHa)}</td>
@@ -539,10 +572,8 @@ function renderEstatesPage(el) {
                   <span style="font-size:11px;font-weight:700">${pct(e.plantedHa,e.areaHa)}%</span>
                 </div>
               </td>
-              <td>${healthPill(e.health)}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px">
-                  <button class="icon-btn" onclick="showLinkManagerModal('estate','${e._id}','${e.name}')" title="Link Manager">👤</button>
                   <button class="icon-btn" onclick="showEditEstateModal('${e.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeleteEstate('${e.id}','${e.name}')" title="Delete">🗑</button>
                 </div>
@@ -574,8 +605,8 @@ function renderEstatesPage(el) {
       <table>
         <thead>
           <tr><th>Block Name</th><th>Estate</th><th>Plots</th><th>Total Area</th>
-          <th>Planted</th><th>Utilisation</th><th>Avg Yield</th><th>Season</th>
-          <th>Status</th><th>Actions</th></tr>
+          <th>Planted</th><th>Utilisation</th><th>Avg Yield</th><th>Manager</th>
+          <th>Actions</th></tr>
         </thead>
         <tbody id="blocks-tbody">
           ${filtered.map(b=>`
@@ -596,11 +627,9 @@ function renderEstatesPage(el) {
                 </div>
               </td>
               <td><strong>${b.avgYield}</strong> t/ac</td>
-              <td>${b.season}</td>
-              <td>${healthPill(b.status)}</td>
+              <td style="text-align:center" onclick="event.stopPropagation()">${managerCellHTML('block', b._uuid, b.name || b.id, b.managerId, b.assignedManagerName, b.assignedManagerAvatarUrl)}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px">
-                  <button class="icon-btn" onclick="showLinkManagerModal('block','${b._uuid}','${b.name || b.id}')" title="Link Manager">👤</button>
                   <button class="icon-btn" onclick="showEditBlockModal('${b.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeleteBlock('${b.id}')" title="Delete">🗑</button>
                 </div>
@@ -661,8 +690,8 @@ function renderEstatesPage(el) {
               <td>${p.planted||'—'}</td>
               <td>${p.expectedHarvest||'—'}</td>
               <td onclick="event.stopPropagation()">
-                <div style="display:flex;gap:4px">
-                  <button class="icon-btn" onclick="showLinkManagerModal('parcel','${p._uuid}','${p.parcelName || p.id}')" title="Link Manager">👤</button>
+                <div style="display:flex;gap:4px;align-items:center">
+                  ${managerCellHTML('parcel', p._uuid, p.parcelName || p.id, p.managerId, p.assignedManagerName, p.assignedManagerAvatarUrl)}
                   <button class="icon-btn" onclick="showEditPlotModal('${p.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeletePlot('${p.id}')" title="Delete">🗑</button>
                 </div>
@@ -686,6 +715,7 @@ function renderEstatesPage(el) {
       ['Current Activity',    p.currentActivity || '—'],
       ['Block',               p.blockName || p.block],
       ['Estate',               p.estate],
+      ['Assigned Manager',    managerCellHTML('parcel', p._uuid, p.parcelName || p.id, p.managerId, p.assignedManagerName, p.assignedManagerAvatarUrl)],
       ['Area (ac)',           fmtHa(p.areaHa)],
       ['Geometry Status',     p.geometryStatus ? titleCaseLocal(p.geometryStatus) : '—'],
       ['Cultivation Status',  p.cultivationStatus ? titleCaseLocal(p.cultivationStatus) : '—'],
@@ -733,7 +763,6 @@ function renderEstatesPage(el) {
       </div>
     </div>
     ${locationCardHTML(`qr-plot-${p._uuid}`, p.mapsLink)}
-    ${managersCardHTML('parcel', p._uuid, p.parcelName || p.id, p.managers)}
     <div class="card">
       <div class="card-header"><div class="card-title">All Plot Attributes</div></div>
       <div class="table-wrap">
@@ -763,8 +792,9 @@ function renderEstatesPage(el) {
       ['Estate ID',         e.id],
       ['District',          e.district || '—'],
       ['Address',           e.location || '—'],
-      ['Manager / Owner',   e.manager || '—'],
-      ['Manager Phone',     e.managerPhone || '—'],
+      ['Assigned Manager',  managerCellHTML('estate', e._id, e.name, e.managerId, e.assignedManagerName, e.assignedManagerAvatarUrl)],
+      ['Owner Name',        e.manager || '—'],
+      ['Owner Phone',       e.managerPhone || '—'],
       ['Total Blocks',      e.blocks],
       ['Total Plots',       e.plots],
       ['Total Area',        fmtHa(e.areaHa)],
@@ -794,7 +824,6 @@ function renderEstatesPage(el) {
       </div>
     </div>
     ${locationCardHTML(`qr-estate-${e.id}`, e.mapsLink)}
-    ${managersCardHTML('estate', e._id, e.name, e.managers)}
     <div class="card" style="margin-bottom:20px">
       <div class="card-header"><div class="card-title">Estate Attributes</div></div>
       <div class="table-wrap">
@@ -852,9 +881,9 @@ function renderEstatesPage(el) {
       ['Fallow Area',        fmtHa(b.areaHa - b.plantedHa)],
       ['Utilisation',        pct(b.plantedHa, b.areaHa) + '%'],
       ['Avg Yield',          b.avgYield + ' t/ac'],
-      ['Season',             b.season || '—'],
-      ['Manager Name',       b.managerName || '—'],
-      ['Manager Phone',      b.managerPhone || '—'],
+      ['Assigned Manager',   managerCellHTML('block', b._uuid, b.name || b.id, b.managerId, b.assignedManagerName, b.assignedManagerAvatarUrl)],
+      ['Manager Name (legacy)',  b.managerName || '—'],
+      ['Manager Phone (legacy)', b.managerPhone || '—'],
       ['Soil Type',          b.soilType || '—'],
       ['Soil pH',            b.soilPh || '—'],
       ['Irrigation Type',    b.irrigationType || '—'],
@@ -890,7 +919,6 @@ function renderEstatesPage(el) {
       </div>
     </div>
     ${locationCardHTML(`qr-block-${b._uuid}`, b.mapsLink)}
-    ${managersCardHTML('block', b._uuid, b.name || b.id, b.managers)}
     <div class="card" style="margin-bottom:20px">
       <div class="card-header"><div class="card-title">Block Attributes</div></div>
       <div class="table-wrap">
@@ -948,7 +976,7 @@ function renderEstatesPage(el) {
   el.innerHTML = `
   <div class="page-header">
     <div>
-      <div class="page-header-title">Estates, Blocks &amp; Plots</div>
+      <div class="page-header-title">Land Management</div>
       <div class="page-header-sub">${DATA.stats.totalEstates} estates · ${DATA.stats.totalBlocks} blocks · ${DATA.stats.totalPlots} plots</div>
     </div>
   </div>
@@ -1138,75 +1166,108 @@ function renderEstatesPage(el) {
     }
   };
 
-  // ── MANAGER LINKING (shared by Estate / Block / Plot — vsl_estate_managers) ──
-  const MANAGER_ROLE_OPTIONS = ['Manager', 'Supervisor', 'Agronomist', 'Field Officer'];
+  // ── MANAGER LINKING ──
+  // Estate / Block / Plot: one manager each, stored as a direct FK
+  // (vsl_estate.manager_id / vsl_blocks.manager_id / vsl_parcels.manager_id
+  // → vsl_profiles). All three scopes share the same assign/remove/view flow.
+  const MANAGER_TABLE_BY_SCOPE = { estate: 'vsl_estate', block: 'vsl_blocks', parcel: 'vsl_parcels' };
+  const MANAGER_MODAL_TITLE_BY_SCOPE = { estate: 'Assign Estate Manager', block: 'Assign Block Manager', parcel: 'Assign Plot Manager' };
 
   window.showLinkManagerModal = function(scopeType, scopeId, scopeLabel) {
     showModal(`
-      <div class="modal-title">Link Manager — ${scopeLabel}</div>
+      <div class="modal-title">${MANAGER_MODAL_TITLE_BY_SCOPE[scopeType] || 'Assign Manager'} — ${scopeLabel}</div>
       <div class="form-group" style="margin-bottom:12px">
         <label class="form-label">User</label>
         <select class="form-input" id="lm-user">
           ${DATA.users.map(u=>`<option value="${u.id}">${u.name} (${u.email})</option>`).join('')}
         </select>
       </div>
-      <div class="form-group" style="margin-bottom:12px">
-        <label class="form-label">Role</label>
-        <select class="form-input" id="lm-role">
-          ${MANAGER_ROLE_OPTIONS.map(r=>`<option value="${r.toLowerCase()}">${r}</option>`).join('')}
-        </select>
-      </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitLinkManager('${scopeType}','${scopeId}')">Link Manager</button>
+        <button class="btn btn-primary" onclick="submitAssignManager('${scopeType}','${scopeId}')">Assign Manager</button>
       </div>`);
   };
 
-  window.submitLinkManager = async function(scopeType, scopeId) {
+  // Estate/Block/Plot: assign (set manager_id), remove (clear manager_id), and
+  // view details of the currently-assigned manager.
+  window.submitAssignManager = async function(scopeType, scopeId) {
     const userId = document.getElementById('lm-user').value;
-    const role = document.getElementById('lm-role').value;
     if (!userId) { showToast('Select a user', 'red'); return; }
     try {
       const client = getSbClient();
-      const payload = { user_id: userId, role };
-      if (scopeType === 'estate') payload.estate_id = scopeId;
-      if (scopeType === 'block') payload.block_id = scopeId;
-      if (scopeType === 'parcel') payload.parcel_id = scopeId;
-      const { error } = await client.from('vsl_estate_managers').insert([payload]);
+      const table = MANAGER_TABLE_BY_SCOPE[scopeType];
+      // .select() so we get the updated row(s) back — an RLS policy blocking
+      // the write doesn't error, it just matches 0 rows, so without this
+      // check a blocked update would silently report "success".
+      const { data, error } = await client.from(table).update({ manager_id: userId }).eq('id', scopeId).select();
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('No record was updated — you may not be signed in, or your account lacks permission to edit this record.');
+      }
       closeModal();
-      showToast('Manager linked successfully');
+      showToast('Manager assigned successfully');
       await retryLiveDataLoad();
       renderTabContent();
     } catch (err) {
       console.error(err);
-      showToast('Failed to link manager: ' + err.message, 'red');
+      showToast('Failed to assign manager: ' + err.message, 'red');
     }
   };
 
-  window.confirmUnlinkManager = function(linkId, managerName) {
+  window.confirmUnassignManager = function(scopeType, scopeId, managerName) {
     showModal(`
-      <div class="modal-title">Unlink Manager</div>
-      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Remove <strong>${managerName}</strong> from this record?</p>
+      <div class="modal-title">Remove Manager</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Remove <strong>${managerName}</strong> as the assigned manager for this ${scopeType}?</p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="submitUnlinkManager('${linkId}')">Yes, Unlink</button>
+        <button class="btn btn-danger" onclick="submitUnassignManager('${scopeType}','${scopeId}')">Yes, Remove</button>
       </div>`);
   };
 
-  window.submitUnlinkManager = async function(linkId) {
+  window.submitUnassignManager = async function(scopeType, scopeId) {
     try {
       const client = getSbClient();
-      const { error } = await client.from('vsl_estate_managers').update({ is_active: false }).eq('id', linkId);
+      const table = MANAGER_TABLE_BY_SCOPE[scopeType];
+      const { data, error } = await client.from(table).update({ manager_id: null }).eq('id', scopeId).select();
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('No record was updated — you may not be signed in, or your account lacks permission to edit this record.');
+      }
       closeModal();
-      showToast('Manager unlinked', 'red');
+      showToast('Manager removed', 'red');
       await retryLiveDataLoad();
       renderTabContent();
     } catch (err) {
       console.error(err);
-      showToast('Failed to unlink manager: ' + err.message, 'red');
+      showToast('Failed to remove manager: ' + err.message, 'red');
     }
+  };
+
+  window.viewManagerDetail = function(scopeType, scopeId) {
+    const scope = scopeType === 'estate'
+      ? DATA.estates.find(x => String(x._id) === String(scopeId))
+      : scopeType === 'block'
+      ? DATA.blocks.find(x => x._uuid === scopeId)
+      : DATA.plots.find(x => x._uuid === scopeId);
+    if (!scope || !scope.managerId) return;
+    const prof = DATA.users.find(u => String(u.id) === String(scope.managerId));
+    const name = prof ? prof.name : (scope.assignedManagerName || 'Unknown user');
+    const avatarUrl = prof ? prof.avatarUrl : scope.assignedManagerAvatarUrl;
+    showModal(`
+      <div class="modal-title" style="display:flex;align-items:center;gap:10px">${avatarHTML(name, avatarUrl, 40, 'square')}<span>Manager — ${name}</span></div>
+      <div class="table-wrap" style="margin-bottom:16px">
+        <table><tbody>
+          <tr><td style="font-weight:600;width:35%">Name</td><td>${name}</td></tr>
+          <tr><td style="font-weight:600">Email</td><td>${prof?.email || scope.assignedManagerEmail || '—'}</td></tr>
+          <tr><td style="font-weight:600">Phone</td><td>${prof?.phone || scope.assignedManagerPhone || '—'}</td></tr>
+          <tr><td style="font-weight:600">Title</td><td>${prof?.title || scope.assignedManagerTitle || '—'}</td></tr>
+          <tr><td style="font-weight:600">Role</td><td>${prof?.role || '—'}</td></tr>
+        </tbody></table>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal();confirmUnassignManager('${scopeType}','${scopeId}','${(name||'').replace(/'/g,"")}')">Remove Manager</button>
+        <button class="btn btn-primary" onclick="closeModal();showLinkManagerModal('${scopeType}','${scopeId}','${(name||'').replace(/'/g,"")}')">Change Manager</button>
+      </div>`);
   };
 
   // ── BLOCK MODALS ──
@@ -2220,6 +2281,12 @@ async function callAdminUsersFn(action, payload) {
 }
 
 function renderUsers(el) {
+  if (viewingUserId) {
+    el.innerHTML = buildUserDetail(viewingUserId);
+    window.clearUserDetail = function() { viewingUserId = null; renderTabIfCurrent('users'); };
+    return;
+  }
+
   el.innerHTML = `
   <div class="page-header">
     <div><div class="page-header-title">User Management</div>
@@ -2249,9 +2316,9 @@ function renderUsers(el) {
         <thead><tr><th>User</th><th>Role</th><th>Title</th><th>Estate</th><th>Status</th><th>Last Login</th><th>Actions</th></tr></thead>
         <tbody id="users-tbody">
           ${DATA.users.map(u=>`
-            <tr data-role="${u.role}">
+            <tr data-role="${u.role}" style="cursor:pointer" onclick="viewUserDetail('${u.id}')">
               <td><div class="user-info">
-                <div class="user-avatar">${u.avatar}</div>
+                ${avatarHTML(u.name, u.avatarUrl, 32)}
                 <div><div class="user-name">${u.name}</div><div class="user-email">${u.email}</div></div>
               </div></td>
               <td>${pill(u.role,ROLE_COLOR_MAP[u.role]||'gray')}</td>
@@ -2259,7 +2326,7 @@ function renderUsers(el) {
               <td>${u.estate}</td>
               <td>${pill(u.status==='active'?'Active':'Inactive',u.status==='active'?'green':'gray')}</td>
               <td style="font-size:12px;color:var(--gray-500)">${u.lastLogin}</td>
-              <td><div style="display:flex;gap:4px;flex-wrap:wrap">
+              <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px;flex-wrap:wrap">
                 <button class="icon-btn" onclick="showEditUserModal('${u.id}')" title="Edit">✎</button>
                 ${u.status==='active'
                   ? `<button class="icon-btn" onclick="toggleUserActive('${u.id}',false)" title="Deactivate">⏸</button>`
@@ -2270,7 +2337,12 @@ function renderUsers(el) {
         </tbody>
       </table>
     </div>
+    <div style="font-size:12px;color:var(--gray-500);margin-top:10px">
+      💡 Click any user row to view full profile details
+    </div>
   </div>`;
+
+  window.viewUserDetail = function(id) { viewingUserId = id; renderTabIfCurrent('users'); };
 
   window.filterUsers = function(val) {
     document.querySelectorAll('#users-tbody tr').forEach(r=>{
@@ -2288,12 +2360,32 @@ function renderUsers(el) {
       DATA.estates.map(e=>`<option value="${e._id}" ${String(e._id)===String(selectedId)?'selected':''}>${e.name}</option>`).join('');
   }
 
+  // Wires a file input's change event to preview the picked image inline
+  // (before it's uploaded — upload only happens on form submit).
+  function wireAvatarPreview(inputId, previewId) {
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    if (!input || !preview) return;
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { preview.src = reader.result; preview.style.display = ''; };
+      reader.readAsDataURL(file);
+    });
+  }
+
   window.showAddUserModal = function() {
     showModal(`
       <div class="modal-title">Add New User</div>
       <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px">
         Creates a real sign-in account and profile. Only admins can do this.
       </p>
+      <div class="form-group" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+        <img id="au-photo-preview" style="width:56px;height:56px;border-radius:50%;object-fit:cover;display:none;flex-shrink:0">
+        <div style="flex:1"><label class="form-label">Profile Photo <span style="font-weight:400;color:var(--gray-500)">(optional)</span></label>
+          <input class="form-input" id="au-photo" type="file" accept="image/*"></div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="au-name" placeholder="e.g. Jane Doe"></div>
         <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="au-email" type="email" placeholder="user@example.com"></div>
@@ -2314,6 +2406,7 @@ function renderUsers(el) {
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="submitAddUser()">Create User</button>
       </div>`);
+    wireAvatarPreview('au-photo', 'au-photo-preview');
   };
 
   window.submitAddUser = async function() {
@@ -2324,10 +2417,12 @@ function renderUsers(el) {
     const title = document.getElementById('au-title').value.trim();
     const phone = document.getElementById('au-phone').value.trim();
     const estate_id = document.getElementById('au-estate').value || null;
+    const photoFile = document.getElementById('au-photo').files[0] || null;
     if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Please enter a valid email','red'); return; }
     if (!password || password.length < 8) { showToast('Password must be at least 8 characters','red'); return; }
     try {
-      await callAdminUsersFn('create', { email, password, role, full_name, phone, title, estate_id });
+      const avatar_url = photoFile ? await uploadAvatarFile(photoFile) : null;
+      await callAdminUsersFn('create', { email, password, role, full_name, phone, title, estate_id, avatar_url });
       closeModal();
       showToast('User created successfully');
       await retryLiveDataLoad();
@@ -2342,6 +2437,11 @@ function renderUsers(el) {
     const u = DATA.users.find(x=>x.id===id); if (!u) return;
     showModal(`
       <div class="modal-title">Edit User — ${u.name}</div>
+      <div class="form-group" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+        <img id="eu-photo-preview" src="${u.avatarUrl || ''}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;${u.avatarUrl ? '' : 'display:none;'}flex-shrink:0">
+        <div style="flex:1"><label class="form-label">Profile Photo</label>
+          <input class="form-input" id="eu-photo" type="file" accept="image/*"></div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="eu-name" value="${u.name}"></div>
         <div class="form-group"><label class="form-label">Role</label>
@@ -2357,6 +2457,7 @@ function renderUsers(el) {
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="submitEditUser('${u.id}')">Save Changes</button>
       </div>`);
+    wireAvatarPreview('eu-photo', 'eu-photo-preview');
   };
 
   window.submitEditUser = async function(id) {
@@ -2365,8 +2466,11 @@ function renderUsers(el) {
     const title = document.getElementById('eu-title').value.trim();
     const phone = document.getElementById('eu-phone').value.trim();
     const estate_id = document.getElementById('eu-estate').value || null;
+    const photoFile = document.getElementById('eu-photo').files[0] || null;
     try {
-      await callAdminUsersFn('update', { id, full_name, role, title, phone, estate_id });
+      const payload = { id, full_name, role, title, phone, estate_id };
+      if (photoFile) payload.avatar_url = await uploadAvatarFile(photoFile);
+      await callAdminUsersFn('update', payload);
       closeModal();
       showToast('User updated successfully');
       await retryLiveDataLoad();
@@ -2411,6 +2515,61 @@ function renderUsers(el) {
       showToast('Failed to delete user: ' + err.message, 'red');
     }
   };
+
+  // ── USER DETAIL VIEW (full-page drill-down, same pattern as Plot/Block/Estate detail) ──
+  function buildUserDetail(userId) {
+    const u = DATA.users.find(x => x.id === userId);
+    if (!u) return '<p>User not found.</p>';
+
+    const attrs = [
+      ['Email',        u.email],
+      ['Role',         pill(u.role, ROLE_COLOR_MAP[u.role] || 'gray')],
+      ['Title / Position', u.title || '—'],
+      ['Phone',        u.phone || '—'],
+      ['Home Estate',  u.estate],
+      ['Status',       pill(u.status==='active'?'Active':'Inactive', u.status==='active'?'green':'gray')],
+      ['Last Login',   u.lastLogin],
+      ['Date Created', u.createdAt ? u.createdAt.replace('T',' ').slice(0,16) : '—'],
+      ['User ID',      u.id],
+    ];
+
+    return `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-outline btn-sm btn-back-accent" onclick="clearUserDetail()">← Back to Users</button>
+      <div style="font-size:13px;color:var(--gray-500)">Full User Profile — <strong>${u.name}</strong></div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">✏ Edit User</button>
+        ${u.status==='active'
+          ? `<button class="btn btn-outline btn-sm" onclick="toggleUserActive('${u.id}',false)">⏸ Deactivate</button>`
+          : `<button class="btn btn-outline btn-sm" onclick="toggleUserActive('${u.id}',true)">▶ Reactivate</button>`}
+        <button class="btn btn-danger btn-sm" onclick="confirmDeleteUser('${u.id}','${(u.name||'').replace(/'/g,"")}')">🗑 Delete</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:16px;padding:8px 4px">
+        ${avatarHTML(u.name, u.avatarUrl, 72)}
+        <div>
+          <div style="font-size:18px;font-weight:700">${u.name}</div>
+          <div style="font-size:13px;color:var(--gray-500)">${u.email}</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">All Profile Attributes</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:40%">Attribute</th><th>Value</th></tr></thead>
+          <tbody>
+            ${attrs.map(([attr,val],i)=>`
+              <tr style="background:${i%2===0?'var(--gray-50)':'var(--white)'}">
+                <td style="font-weight:600;color:var(--gray-700);font-size:12px">${attr}</td>
+                <td style="color:var(--gray-900);font-size:13px">${val}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
 }
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
@@ -3236,6 +3395,27 @@ async function retryLiveDataLoad() {
   await initLiveData();
 }
 
+// Resolves the signed-in admin's own vsl_profiles row (once DATA.users is
+// populated) and renders their photo/initials into the topbar avatar —
+// clicking it jumps straight to their own full user detail page.
+async function refreshTopbarAvatar() {
+  const topbarAvatarEl = document.getElementById('topbar-avatar');
+  if (!topbarAvatarEl) return;
+  try {
+    const client = getSbClient();
+    const { data: sess } = await client.auth.getSession();
+    const uid = sess?.session?.user?.id;
+    if (!uid) return;
+    const me = DATA.users.find(u => String(u.id) === String(uid));
+    if (!me) return;
+    topbarAvatarEl.innerHTML = avatarHTML(me.name, me.avatarUrl, 32);
+    topbarAvatarEl.title = me.name + ' — View my profile';
+    topbarAvatarEl.onclick = () => { openPanel('users', null); if (typeof window.viewUserDetail === 'function') window.viewUserDetail(me.id); };
+  } catch (err) {
+    console.error('Failed to resolve current user for topbar avatar:', err);
+  }
+}
+
 // ══════════════════════════════════════
 //  BOOT
 // ══════════════════════════════════════
@@ -3311,6 +3491,7 @@ document.addEventListener('sugarestate:data-ready', () => {
     const activeNav = document.querySelector('.nav-item.active');
     openPanel(currentPage, activeNav);
   }
+  refreshTopbarAvatar();
   showToast('Live estate data loaded');
 });
 

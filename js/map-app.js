@@ -711,6 +711,236 @@ function setupRecordDetailModal() {
 }
 
 // ---------------------------------------------------------------------------
+// "My Profile" popup (windows/profile-modal.html) — opened by clicking the
+// account button in the top controls (was a plain Sign Out button). Shows the
+// signed-in user's own vsl_profiles record with their photo, and lets them
+// edit their own name/title/phone/photo (a direct client-side update — the
+// "profiles self update" RLS policy already allows id = auth.uid()) or sign
+// out from inside the popup.
+// ---------------------------------------------------------------------------
+function initialsFromName(name) {
+  return (name || "").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+}
+
+function updateProfileButtonAvatar() {
+  const slot = document.getElementById("profileAvatarSlot");
+  if (!slot || !currentProfile || !currentUser || currentUser.id === "guest") return;
+  const name = currentProfile.full_name || currentProfile.email || "Account";
+  logoutBtn.title = name + " — My Profile";
+  if (currentProfile.avatar_url) {
+    slot.innerHTML = `<img src="${currentProfile.avatar_url}" alt="${escapeHtml(name)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0">`;
+  } else {
+    slot.innerHTML = `<span class="vsl-profile-avatar-fallback-sm">${escapeHtml(initialsFromName(name) || "?")}</span>`;
+  }
+}
+
+// Uploads a picked File to the public "Media" Storage bucket under avatars/
+// and returns its public URL — same convention the dashboard uses.
+async function uploadOwnAvatarFile(file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const path = `avatars/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("Media").upload(path, file, { upsert: false, contentType: file.type || undefined });
+  if (error) throw new Error("Photo upload failed: " + error.message);
+  return supabase.storage.from("Media").getPublicUrl(path).data.publicUrl;
+}
+
+// Positions the dropdown fixed under the account button, right-aligned to
+// it (button sits in the top-right controls cluster, so the dropdown should
+// open downward/leftward from there rather than off the edge of the screen).
+function positionProfileDropdown(dropdown) {
+  const rect = logoutBtn.getBoundingClientRect();
+  dropdown.style.top = rect.bottom + 8 + "px";
+  dropdown.style.right = (window.innerWidth - rect.right) + "px";
+  dropdown.style.left = "auto";
+}
+
+function renderProfileDropdownIdentity() {
+  const p = currentProfile || {};
+  const name = p.full_name || p.email || "Unknown";
+  document.getElementById("profileDropdownName").textContent = name;
+  document.getElementById("profileDropdownEmail").textContent = p.email || "";
+  const img = document.getElementById("profileDropdownAvatarImg");
+  const fallback = document.getElementById("profileDropdownAvatarFallback");
+  if (p.avatar_url) {
+    img.src = p.avatar_url;
+    img.style.display = "";
+    fallback.style.display = "none";
+  } else {
+    img.style.display = "none";
+    fallback.style.display = "flex";
+    fallback.textContent = initialsFromName(name) || "?";
+  }
+}
+
+function initProfileModal() {
+  const dropdown = document.getElementById("profileDropdown");
+  const overlay = document.getElementById("profileOverlay");
+  if (!dropdown || !overlay) return;
+  const closeBtn = document.getElementById("profileCloseBtn");
+  const editForm = document.getElementById("profileEditForm");
+  const dropdownEditBtn = document.getElementById("profileDropdownEditBtn");
+  const dropdownLogoutBtn = document.getElementById("profileDropdownLogoutBtn");
+  const cancelBtn = document.getElementById("profileEditCancelBtn");
+  const errorEl = document.getElementById("profileEditError");
+
+  function closeDropdown() {
+    dropdown.hidden = true;
+  }
+
+  window.openProfileModal = function () {
+    if (!currentUser || currentUser.id === "guest") return;
+    // Clicking the account button again toggles the dropdown closed.
+    if (!dropdown.hidden) {
+      closeDropdown();
+      return;
+    }
+    renderProfileDropdownIdentity();
+    dropdown.hidden = false;
+    positionProfileDropdown(dropdown);
+  };
+
+  // Click-outside / Escape closes the dropdown, same as any other popover.
+  document.addEventListener("click", (ev) => {
+    if (!dropdown.hidden && !dropdown.contains(ev.target) && ev.target !== logoutBtn && !logoutBtn.contains(ev.target)) {
+      closeDropdown();
+    }
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      if (!dropdown.hidden) closeDropdown();
+      if (!overlay.hidden) closeEditModal();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!dropdown.hidden) positionProfileDropdown(dropdown);
+  });
+
+  function openEditModal() {
+    closeDropdown();
+    const p = currentProfile || {};
+    document.getElementById("profileEditName").value = p.full_name || "";
+    document.getElementById("profileEditTitle").value = p.title || "";
+    document.getElementById("profileEditPhone").value = p.phone || "";
+    // Email is the auth session's, not vsl_profiles' — that's the actual sign-in
+    // identity; vsl_profiles.email is just a denormalized copy set at creation.
+    document.getElementById("profileEditEmail").value = currentUser?.email || p.email || "";
+    document.getElementById("profileEditPassword").value = "";
+    document.getElementById("profileEditPasswordConfirm").value = "";
+    const preview = document.getElementById("profileEditPreview");
+    if (p.avatar_url) {
+      preview.src = p.avatar_url;
+      preview.style.display = "";
+    } else {
+      preview.style.display = "none";
+    }
+    const photoInput = document.getElementById("profileEditPhoto");
+    if (photoInput) photoInput.value = "";
+    errorEl.hidden = true;
+    overlay.hidden = false;
+  }
+  function closeEditModal() {
+    overlay.hidden = true;
+  }
+
+  dropdownEditBtn?.addEventListener("click", openEditModal);
+  dropdownLogoutBtn?.addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    window.location.href = "./login.html";
+  });
+
+  closeBtn?.addEventListener("click", closeEditModal);
+  cancelBtn?.addEventListener("click", closeEditModal);
+
+  document.getElementById("profileEditPhoto")?.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const preview = document.getElementById("profileEditPreview");
+      preview.src = reader.result;
+      preview.style.display = "";
+    };
+    reader.readAsDataURL(file);
+  });
+
+  editForm?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    errorEl.hidden = true;
+    const submitBtn = editForm.querySelector('button[type="submit"]');
+
+    // vsl_profiles fields (name/title/phone/photo) vs. auth.users fields
+    // (email/password) — two different tables, two different update calls.
+    const full_name = document.getElementById("profileEditName").value.trim();
+    const title = document.getElementById("profileEditTitle").value.trim();
+    const phone = document.getElementById("profileEditPhone").value.trim();
+    const photoFile = document.getElementById("profileEditPhoto").files[0] || null;
+    const newEmail = document.getElementById("profileEditEmail").value.trim();
+    const newPassword = document.getElementById("profileEditPassword").value;
+    const confirmPassword = document.getElementById("profileEditPasswordConfirm").value;
+
+    if (!newEmail || !/^[^@]+@[^@]+\.[^@]+$/.test(newEmail)) {
+      errorEl.textContent = "Please enter a valid email.";
+      errorEl.hidden = false;
+      return;
+    }
+    if (newPassword || confirmPassword) {
+      if (newPassword.length < 8) {
+        errorEl.textContent = "New password must be at least 8 characters.";
+        errorEl.hidden = false;
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        errorEl.textContent = "New password and confirmation don't match.";
+        errorEl.hidden = false;
+        return;
+      }
+    }
+
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      // 1. public.vsl_profiles — direct self-update (RLS: id = auth.uid()).
+      const patch = { full_name: full_name || null, title: title || null, phone: phone || null };
+      if (photoFile) patch.avatar_url = await uploadOwnAvatarFile(photoFile);
+
+      const { data, error } = await supabase
+        .from("vsl_profiles")
+        .update(patch)
+        .eq("id", currentUser.id)
+        .select()
+        .single();
+      if (error) throw error;
+      currentProfile = { ...currentProfile, ...data };
+
+      // 2. auth.users — email and/or password, via supabase-js's own auth API
+      // (not a table update). Email changes are NOT applied immediately: Supabase
+      // sends a confirmation link to the new address and the old email stays
+      // active until it's clicked.
+      const messages = ["Profile updated."];
+      const emailChanged = newEmail && newEmail.toLowerCase() !== (currentUser.email || "").toLowerCase();
+      if (emailChanged || newPassword) {
+        const authPatch = {};
+        if (emailChanged) authPatch.email = newEmail;
+        if (newPassword) authPatch.password = newPassword;
+        const { data: authData, error: authErr } = await supabase.auth.updateUser(authPatch);
+        if (authErr) throw authErr;
+        if (emailChanged) messages.push("Check your new email address for a confirmation link — the change won't take effect until you click it.");
+        if (newPassword) messages.push("Password changed.");
+        if (authData?.user) currentUser = authData.user;
+      }
+
+      updateProfileButtonAvatar();
+      closeEditModal();
+      setStatus(statusEl, messages.join(" "));
+    } catch (err) {
+      errorEl.textContent = err?.message || "Failed to save changes.";
+      errorEl.hidden = false;
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Alerts List modal (windows/alerts-list-modal.html) — opened by clicking a
 // plot's "Alerts(n)" text line directly on the map (see isClickOnAlertsLine
 // in the map click handler). Shows just that one plot's alerts (same
@@ -1096,10 +1326,11 @@ async function buildParcelInfoHtml(parcelId) {
 }
 
 async function buildBlockInfoHtml(blockId) {
-  const [blockRes, parcelsRes, managersRes, mediaRes, docsRes, commentsRes] = await Promise.all([
-    supabase.from("vsl_blocks").select("*, vsl_estate(estate_name)").eq("id", blockId).single(),
+  const [blockRes, parcelsRes, mediaRes, docsRes, commentsRes] = await Promise.all([
+    // vsl_profiles!manager_id embeds the assigned manager's profile straight off
+    // vsl_blocks.manager_id — vsl_estate_managers (the old junction table) was dropped.
+    supabase.from("vsl_blocks").select("*, vsl_estate(estate_name), vsl_profiles!manager_id(email, full_name, phone, title)").eq("id", blockId).single(),
     supabase.from("vsl_parcels").select("id, parcel_name, cultivation_status, ratoon_number, current_activity_name, expected_area_acres").eq("block_id", blockId),
-    supabase.from("vsl_estate_managers").select("*, vsl_profiles(email)").eq("block_id", blockId).eq("is_active", true),
     supabase.from("vsl_media").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("captured_at", { ascending: false }),
     supabase.from("vsl_documents").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("upload_date", { ascending: false }),
     supabase.from("vsl_comments").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("created_at", { ascending: false })
@@ -1175,7 +1406,6 @@ async function buildBlockInfoHtml(blockId) {
   const plotsHarvested = new Set(harvestList.map((h) => h.parcel_id)).size;
   const lastHarvestDate = harvestList.reduce((max, h) => (!max || h.harvest_date > max ? h.harvest_date : max), null);
 
-  const managers = managersRes.data || [];
   const media = mediaRes.data || [];
   const docs = docsRes.data || [];
   const comments = commentsRes.data || [];
@@ -1210,11 +1440,14 @@ async function buildBlockInfoHtml(blockId) {
     ["Last harvest date", fmt(lastHarvestDate)]
   ])));
   groups.push(buildCollapsibleGroup("Top 5 Cane Varieties", buildListTable(["Rank", "Variety", "Number of plots"], varietyRows)));
-  groups.push(buildCollapsibleGroup("Manager", managers.length
-    ? buildListTable(["Email", "Role", "Assigned from", "Status"], managers.map((m) => [
-      fmt(m.vsl_profiles?.email), fmt(m.role), fmt(m.assigned_from), m.is_active ? "Active" : "Inactive"
-    ]))
-    : `<p class="map-popup__empty">No active manager assigned via vsl_estate_managers.</p>`));
+  groups.push(buildCollapsibleGroup("Manager", block.vsl_profiles
+    ? buildKvTable([
+      ["Name", fmt(block.vsl_profiles.full_name)],
+      ["Email", fmt(block.vsl_profiles.email)],
+      ["Phone", fmt(block.vsl_profiles.phone)],
+      ["Title", fmt(block.vsl_profiles.title)]
+    ])
+    : `<p class="map-popup__empty">No manager assigned.</p>`));
   groups.push(buildCollapsibleGroup(`Media (${media.length})`, buildListTable(
     ["Type", "Caption", "Captured", "File"],
     media.map((m) => [fmt(m.media_type), fmt(m.caption), fmt(m.captured_at ? String(m.captured_at).slice(0, 10) : null),
@@ -4529,9 +4762,11 @@ function bindEvents() {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen();
     else document.exitFullscreen();
   });
-  logoutBtn.addEventListener("click", async () => {
-    await supabase.auth.signOut();
-    window.location.href = "./login.html";
+  // Clicking the account button opens the profile popup (view details, edit,
+  // or sign out from there) rather than signing out immediately — see
+  // initProfileModal()/windows/profile-modal.html.
+  logoutBtn.addEventListener("click", () => {
+    if (typeof window.openProfileModal === "function") window.openProfileModal();
   });
 
   window.addEventListener("resize", () => map?.updateSize());
@@ -4557,7 +4792,7 @@ async function initUser() {
   isAuthenticated = true;
   const { data: profile, error } = await supabase
     .from("vsl_profiles")
-    .select("role")
+    .select("id, email, role, full_name, phone, title, avatar_url")
     .eq("id", currentUser.id)
     .single();
   if (error || !profile?.role) {
@@ -4676,6 +4911,8 @@ async function initMap() {
   setupRecordDetailModal();
   setupAlertsListModal();
   setupResolveAlertModal();
+  initProfileModal();
+  updateProfileButtonAvatar();
   bindEvents();
   startBackgroundLocationTracking();
   initPrintComposer({

@@ -106,7 +106,7 @@ async function loadLiveData() {
 
   const [
     estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes,
-    actRes, actCostRes, alertRes, docRes, mediaRes, blkStatsRes, parStatsRes, mgrRes,
+    actRes, actCostRes, alertRes, docRes, mediaRes, blkStatsRes, parStatsRes,
     seasonRes, soilTestRes, harvestHistoryRes,
   ] = await Promise.all([
     client.from('vsl_estate').select('*'),
@@ -123,7 +123,6 @@ async function loadLiveData() {
     client.from('vsl_media').select('*').order('captured_at', { ascending: false }).limit(200),
     client.from('vsl_block_stats').select('block_id, centroid_lat, centroid_lon'),
     client.from('vsl_parcel_stats').select('parcel_id, centroid_lat, centroid_lon'),
-    client.from('vsl_estate_managers').select('*').eq('is_active', true),
     client.from('vsl_parcel_seasons').select('*'),
     client.from('vsl_parcel_soil_tests').select('*').order('sample_date', { ascending: false }),
     client.from('vsl_harvests').select('harvest_date, gross_weight_tonnes'),
@@ -143,7 +142,6 @@ async function loadLiveData() {
   if (mediaRes.error) console.error('Supabase media fetch error:', mediaRes.error);
   if (blkStatsRes.error) console.error('Supabase block stats fetch error:', blkStatsRes.error);
   if (parStatsRes.error) console.error('Supabase parcel stats fetch error:', parStatsRes.error);
-  if (mgrRes.error) console.error('Supabase estate_managers fetch error:', mgrRes.error);
   if (seasonRes.error) console.error('Supabase parcel_seasons fetch error:', seasonRes.error);
   if (soilTestRes.error) console.error('Supabase parcel_soil_tests fetch error:', soilTestRes.error);
   if (harvestHistoryRes.error) console.error('Supabase harvests history fetch error:', harvestHistoryRes.error);
@@ -158,7 +156,6 @@ async function loadLiveData() {
   const rawAlerts = alertRes.data || [];
   const rawDocuments = docRes.data || [];
   const rawMedia = mediaRes.data || [];
-  const rawManagerLinks = mgrRes.data || [];
   const rawSeasons = seasonRes.data || [];
   const rawSoilTests = soilTestRes.data || [];
   const rawHarvestHistory = harvestHistoryRes.data || [];
@@ -182,6 +179,10 @@ async function loadLiveData() {
   const blockHarvestById = new Map((blkHarvestRes.data || []).map(h => [h.block_id, h]));
   const parcelHarvestById = new Map((parHarvestRes.data || []).map(h => [h.parcel_id, h]));
 
+  // Profile lookup — used to resolve the direct manager_id FK on vsl_estate/
+  // vsl_blocks/vsl_parcels (one manager per record) into a display-ready record.
+  const profileByIdForManagers = new Map(rawProfiles.map(p => [p.id, p]));
+
   // ── BLOCKS reshaped first (estates roll up from blocks) ──
   const blocks = rawBlocks.map(b => {
     const parcelsInBlock = rawParcels.filter(p => p.block_id === b.id);
@@ -194,6 +195,7 @@ async function loadLiveData() {
     const harvest = blockHarvestById.get(b.id);
     const harvestTonnes = harvest?.harvest_tonnes ?? null;
     const blockStats = blockStatsById.get(b.id);
+    const assignedManager = b.manager_id ? profileByIdForManagers.get(b.manager_id) : null;
     return {
       id: b.block_code || b.id,
       name: b.block_name || b.block_code || b.id,
@@ -208,8 +210,16 @@ async function loadLiveData() {
             : 'active',
       avgYield: harvestTonnes && areaHa ? Number((harvestTonnes / (areaHa * 2.47105)).toFixed(2)) : Number(((6.5 + (seed % 30) / 10) / 2.47105).toFixed(2)), // t/acre; placeholder if no harvest yet
       season: '2024-B',
+      // Legacy plain-text columns (kept for reference, not the assigned-manager source of truth anymore).
       managerName: b.manager_name || '—',
       managerPhone: b.manager_phone || '—',
+      // Assigned manager — direct vsl_blocks.manager_id → vsl_profiles (one manager per block).
+      managerId: b.manager_id || null,
+      assignedManagerName:  assignedManager ? (assignedManager.full_name || assignedManager.email) : null,
+      assignedManagerEmail: assignedManager ? assignedManager.email : null,
+      assignedManagerPhone: assignedManager ? assignedManager.phone : null,
+      assignedManagerTitle: assignedManager ? assignedManager.title : null,
+      assignedManagerAvatarUrl: assignedManager ? assignedManager.avatar_url : null,
       soilType: b.soil_type || null,
       irrigationType: b.irrigation_type || null,
       soilPh: b.soil_ph ?? null,
@@ -241,6 +251,7 @@ async function loadLiveData() {
       || rawSeasons.filter(s => s.parcel_id === p.id).sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0]
       || null;
     const soilTest = latestSoilTestByParcel.get(p.id) || null;
+    const assignedManager = p.manager_id ? profileByIdForManagers.get(p.manager_id) : null;
     return {
       id: p.parcel_code || p.parcel_name || p.id,
       _uuid: p.id,
@@ -250,6 +261,14 @@ async function loadLiveData() {
       estate: parentBlock ? (estateNameById.get(parentBlock.estate_id) || 'Unassigned') : 'Unassigned',
       mapsLink: buildGoogleMapsLink(parcelStats?.centroid_lat, parcelStats?.centroid_lon) || null,
       areaHa: Number(areaHa.toFixed(2)),
+      // Assigned manager — direct vsl_parcels.manager_id → vsl_profiles (one manager per plot,
+      // same pattern as vsl_estate.manager_id / vsl_blocks.manager_id).
+      managerId: p.manager_id || null,
+      assignedManagerName:  assignedManager ? (assignedManager.full_name || assignedManager.email) : null,
+      assignedManagerEmail: assignedManager ? assignedManager.email : null,
+      assignedManagerPhone: assignedManager ? assignedManager.phone : null,
+      assignedManagerTitle: assignedManager ? assignedManager.title : null,
+      assignedManagerAvatarUrl: assignedManager ? assignedManager.avatar_url : null,
       variety: currentSeason?.cane_variety || null, // real value from vsl_parcel_seasons; '—' in the UI if this parcel has no season history yet
       stage: stageFromCultivationStatus(p.cultivation_status),
       ratoon: p.ratoon_number ?? 0,
@@ -293,6 +312,7 @@ async function loadLiveData() {
     const totalPlots = estBlocks.reduce((s, b) => s + b.plots, 0);
     const alertBlocks = estBlocks.filter(b => b.status === 'alert').length;
     const watchBlocks = estBlocks.filter(b => b.status === 'watch').length;
+    const assignedManager = e.manager_id ? profileByIdForManagers.get(e.manager_id) : null;
     return {
       id: 'E' + String(e.id).padStart(3, '0'),
       _id: e.id,
@@ -306,43 +326,19 @@ async function loadLiveData() {
       plantedHa: Number(plantedHa.toFixed(2)),
       status: 'active',
       health: alertBlocks > 0 ? 'alert' : watchBlocks > estBlocks.length / 2 ? 'watch' : 'good',
+      // Owner (legacy field — separate concept from the assigned staff manager below).
       manager: e.owner_name || '—',
       managerPhone: e.owner_contact_phone || '—',
+      // Assigned manager — direct vsl_estate.manager_id → vsl_profiles (one manager per estate).
+      managerId: e.manager_id || null,
+      assignedManagerName:  assignedManager ? (assignedManager.full_name || assignedManager.email) : null,
+      assignedManagerEmail: assignedManager ? assignedManager.email : null,
+      assignedManagerPhone: assignedManager ? assignedManager.phone : null,
+      assignedManagerTitle: assignedManager ? assignedManager.title : null,
+      assignedManagerAvatarUrl: assignedManager ? assignedManager.avatar_url : null,
       createdAt: e.created_at,
     };
   });
-
-  // ── MANAGER LINKS (vsl_estate_managers) — resolve to display names and attach to each level ──
-  const profileByIdForManagers = new Map(rawProfiles.map(p => [p.id, p]));
-  function managerLabel(m) {
-    const prof = profileByIdForManagers.get(m.user_id);
-    return {
-      linkId: m.id,
-      userId: m.user_id,
-      name: prof ? (prof.full_name || prof.email) : 'Unknown user',
-      role: m.role || 'manager',
-      assignedFrom: m.assigned_from,
-    };
-  }
-  const managersByEstate = new Map();
-  const managersByBlock = new Map();
-  const managersByParcel = new Map();
-  rawManagerLinks.forEach(m => {
-    const label = managerLabel(m);
-    if (m.parcel_id) {
-      if (!managersByParcel.has(m.parcel_id)) managersByParcel.set(m.parcel_id, []);
-      managersByParcel.get(m.parcel_id).push(label);
-    } else if (m.block_id) {
-      if (!managersByBlock.has(m.block_id)) managersByBlock.set(m.block_id, []);
-      managersByBlock.get(m.block_id).push(label);
-    } else if (m.estate_id) {
-      if (!managersByEstate.has(m.estate_id)) managersByEstate.set(m.estate_id, []);
-      managersByEstate.get(m.estate_id).push(label);
-    }
-  });
-  estates.forEach(e => { e.managers = managersByEstate.get(e._id) || []; });
-  blocks.forEach(b => { b.managers = managersByBlock.get(b._uuid) || []; });
-  plots.forEach(p => { p.managers = managersByParcel.get(p._uuid) || []; });
 
   // ── USERS (profiles) reshaped ──
   const ROLE_LABELS = {
@@ -367,6 +363,7 @@ async function loadLiveData() {
       status: p.is_active === false ? 'inactive' : 'active',
       lastLogin: p.last_login_at ? p.last_login_at.replace('T', ' ').slice(0, 16) : '—',
       avatar: initials || '??',
+      avatarUrl: p.avatar_url || null,
       createdAt: p.created_at,
     };
   });

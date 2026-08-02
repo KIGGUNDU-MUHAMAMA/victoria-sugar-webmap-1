@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
     if (action === "list") {
       const { data, error } = await admin
         .from("vsl_profiles")
-        .select("id, email, role, full_name, phone, title, estate_id, is_active, last_login_at, created_at, updated_at")
+        .select("id, email, role, full_name, phone, title, estate_id, is_active, last_login_at, created_at, updated_at, avatar_url")
         .order("created_at", { ascending: true });
       if (error) throw error;
       return ok({ users: data });
@@ -108,6 +108,7 @@ Deno.serve(async (req: Request) => {
           phone: body.phone ? String(body.phone) : null,
           title: body.title ? String(body.title) : null,
           estate_id: body.estate_id ?? null,
+          avatar_url: body.avatar_url ? String(body.avatar_url) : null,
         })
         .eq("id", newId);
       if (updErr) throw updErr;
@@ -128,6 +129,7 @@ Deno.serve(async (req: Request) => {
       if (body.title !== undefined) patch.title = body.title || null;
       if (body.estate_id !== undefined) patch.estate_id = body.estate_id || null;
       if (body.is_active !== undefined) patch.is_active = !!body.is_active;
+      if (body.avatar_url !== undefined) patch.avatar_url = body.avatar_url || null;
 
       const { error } = await admin.from("vsl_profiles").update(patch).eq("id", id);
       if (error) throw error;

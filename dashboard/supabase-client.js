@@ -37,6 +37,15 @@ const DATA = {
   media: [],
   alerts: [],
   recentActivity: [],
+  // Activity catalog — names + per-activity extra property defs, fetched
+  // from vsl_activity_types / vsl_activity_type_properties /
+  // vsl_activity_common_fields (see loadLiveData below). This used to be a
+  // hardcoded ACTIVITY_TYPES array here, duplicated separately in the
+  // webmap's map-app.js, which is what let the two apps drift out of sync
+  // (e.g. different Completion widgets). Both now read the same tables.
+  activityTypes: [],
+  activityPropertyDefs: {},
+  activityCommonFields: [],
 };
 
 const SUPABASE_URL      = "https://knhgliyghacvkeeptsfl.supabase.co";
@@ -119,6 +128,12 @@ function stageFromCultivationStatus(status) {
   return map[status] || 'Fallow';
 }
 
+// Last-resort fallback if vsl_activity_types comes back empty (e.g. before
+// the activity-catalog migration has been run against this project yet).
+const ACTIVITY_TYPES_FALLBACK = ['Bush Clearing','Ploughing','Harrow','Ripping','Ridging','Furrowing',
+  'Lime Application','Planting','Manuring','Fertilization','Weeding','Spraying','Irrigation',
+  'Harvesting','Loading','Trash Lining','Trash Collection'];
+
 function titleCase(str) {
   if (!str) return str;
   return str.replace(/_/g, ' ').replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
@@ -135,6 +150,7 @@ async function loadLiveData() {
     estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes,
     actRes, actCostRes, alertRes, docRes, mediaRes, blkStatsRes, parStatsRes,
     seasonRes, soilTestRes, harvestHistoryRes,
+    actTypeRes, actTypePropRes, actCommonFieldRes,
   ] = await Promise.all([
     client.from('vsl_estate').select('*'),
     client.from('vsl_blocks').select('*'),
@@ -157,6 +173,10 @@ async function loadLiveData() {
     // for the harvest detail view. Ordered so the first row per parcel_id is the latest.
     client.from('vsl_harvests').select('id, parcel_id, harvest_date, gross_weight_tonnes, ratoon_at_harvest, created_by, created_at')
       .order('harvest_date', { ascending: false }).order('created_at', { ascending: false }),
+    // Activity catalog — see comment on DATA.activityTypes above.
+    client.from('vsl_activity_types').select('*').eq('is_active', true).order('sort_order'),
+    client.from('vsl_activity_type_properties').select('*').order('sort_order'),
+    client.from('vsl_activity_common_fields').select('*').order('sort_order'),
   ]);
 
   if (estRes.error) console.error('Supabase estate fetch error:', estRes.error);
@@ -176,6 +196,31 @@ async function loadLiveData() {
   if (seasonRes.error) console.error('Supabase parcel_seasons fetch error:', seasonRes.error);
   if (soilTestRes.error) console.error('Supabase parcel_soil_tests fetch error:', soilTestRes.error);
   if (harvestHistoryRes.error) console.error('Supabase harvests history fetch error:', harvestHistoryRes.error);
+  if (actTypeRes.error) console.error('Supabase activity_types fetch error:', actTypeRes.error);
+  if (actTypePropRes.error) console.error('Supabase activity_type_properties fetch error:', actTypePropRes.error);
+  if (actCommonFieldRes.error) console.error('Supabase activity_common_fields fetch error:', actCommonFieldRes.error);
+
+  // ── Activity catalog — activity names + their extra property defs ──
+  // Falls back to the pre-existing hardcoded 17-name list (kept below,
+  // ACTIVITY_TYPES_FALLBACK) if the catalog tables come back empty, so the
+  // Activities page still works even before this migration has been run.
+  const rawActivityTypes = actTypeRes.data || [];
+  const activityTypeNameById = new Map(rawActivityTypes.map(t => [t.id, t.name]));
+  const activityTypes = rawActivityTypes.length ? rawActivityTypes.map(t => t.name) : ACTIVITY_TYPES_FALLBACK;
+  const activityPropertyDefs = {};
+  activityTypes.forEach(name => { activityPropertyDefs[name] = []; });
+  (actTypePropRes.data || []).forEach(p => {
+    const name = activityTypeNameById.get(p.activity_type_id);
+    if (!name || !activityPropertyDefs[name]) return;
+    activityPropertyDefs[name].push({
+      key: p.key, label: p.label, type: p.data_type,
+      options: p.options || null, optionLabels: p.option_labels || null, showWhen: p.show_when || null,
+    });
+  });
+  const activityCommonFields = (actCommonFieldRes.data || []).map(f => ({
+    key: f.key, label: f.label, type: f.data_type,
+    options: f.options || null, optionLabels: f.option_labels || null, showWhen: f.show_when || null,
+  }));
 
   const rawEstates = estRes.data || [];
   const rawBlocks  = blkRes.data || [];
@@ -518,6 +563,7 @@ async function loadLiveData() {
       teamSize: a.team_size,
       machines: a.number_of_machines,
       completionValue: a.completion_value,
+      areaCoveredAcres: a.area_covered_acres,
       challenges: a.challenges,
       comments: a.comments,
       properties: a.activity_properties || {},
@@ -717,6 +763,9 @@ async function loadLiveData() {
     costs,
     documents,
     media,
+    activityTypes,
+    activityPropertyDefs,
+    activityCommonFields,
     alerts: dbAlerts.length ? dbAlerts : buildAlertsFromLiveData(estates, blocks, plots),
     recentActivity: activities.length
       ? activities.slice(0, 8).map(a => ({

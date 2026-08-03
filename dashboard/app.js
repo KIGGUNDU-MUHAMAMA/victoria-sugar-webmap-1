@@ -2361,9 +2361,21 @@ function renderSeasons(el) {
 //  PAGE: ACTIVITIES
 // ══════════════════════════════════════
 
-const ACTIVITY_TYPES = ['Bush Clearing','Ploughing','Harrow','Ripping','Ridging','Furrowing',
-  'Lime Application','Planting','Manuring','Fertilization','Weeding','Spraying','Irrigation',
-  'Harvesting','Loading','Trash Lining','Trash Collection'];
+// Activity names + Completion enum are now fetched from the DB catalog
+// (vsl_activity_types / vsl_activity_common_fields, see supabase-client.js
+// loadLiveData) instead of being hardcoded here — this used to be its own
+// separate 17-name array that had drifted from the webmap's copy in
+// map-app.js (e.g. Completion was a free 0-100 number here vs. an enum
+// there). ACTIVITY_TYPES() below always reflects whatever's live in DATA.
+function ACTIVITY_TYPES() { return DATA.activityTypes && DATA.activityTypes.length ? DATA.activityTypes : ['Bush Clearing','Ploughing','Harrow','Ripping','Ridging','Furrowing','Lime Application','Planting','Manuring','Fertilization','Weeding','Spraying','Irrigation','Harvesting','Loading','Trash Lining','Trash Collection']; }
+
+// Completion enum + labels — falls back to this if vsl_activity_common_fields
+// hasn't been seeded yet (see DATA.activityCommonFields).
+const COMPLETION_OPTIONS_FALLBACK = { options: ['0','20','50','75','100'], optionLabels: ['0%','20%','50%','75%','100%'] };
+function completionOptions() {
+  const f = (DATA.activityCommonFields || []).find(f => f.key === 'completion_value');
+  return f && f.options ? { options: f.options, optionLabels: f.optionLabels || f.options.map(o => o + '%') } : COMPLETION_OPTIONS_FALLBACK;
+}
 
 function renderActivities(el) {
   let estFilter = '';
@@ -2430,7 +2442,7 @@ function renderActivities(el) {
   <div class="grid-4">
     <div class="stat-card green"><div class="stat-label">Total Logged</div><div class="stat-value">${DATA.activities.length}</div></div>
     <div class="stat-card blue"><div class="stat-label">Last 7 Days</div><div class="stat-value">${thisWeek}</div></div>
-    <div class="stat-card amber"><div class="stat-label">Activity Types Used</div><div class="stat-value">${distinctTypes}</div><div class="stat-meta">of ${ACTIVITY_TYPES.length} defined</div></div>
+    <div class="stat-card amber"><div class="stat-label">Activity Types Used</div><div class="stat-value">${distinctTypes}</div><div class="stat-meta">of ${ACTIVITY_TYPES().length} defined</div></div>
     <div class="stat-card green"><div class="stat-label">Linked Cost</div><div class="stat-value" style="font-size:20px">${fmtUGX(linkedCost)}</div></div>
   </div>
   <div class="card"><div class="card-header"><div class="card-title">Activity Log</div></div>
@@ -2451,11 +2463,27 @@ function renderActivities(el) {
       ['Team Size', a.teamSize ?? '—'],
       ['Machines', a.machines ?? '—'],
       ['Completion', a.completionValue != null ? a.completionValue + '%' : '—'],
+      ['Area Covered (ac)', a.areaCoveredAcres ?? '—'],
       ['Challenges', a.challenges || '—'],
       ['Comments', a.comments || '—'],
       ['Logged By', a.createdByName || '—'],
       ['Logged', a.createdAt ? a.createdAt.replace('T',' ').slice(0,16) : '—'],
     ];
+    // Flatten activity_properties (vsl_activities.activity_properties jsonb)
+    // using the labels from the same catalog the Log Activity form itself
+    // reads (DATA.activityPropertyDefs) — this used to just be dropped on
+    // the floor here even though it was already being fetched into
+    // a.properties, so anything logged beyond the shared columns (variety,
+    // fuel used, weather condition, yield, etc) was invisible in this modal.
+    const defs = (DATA.activityPropertyDefs && DATA.activityPropertyDefs[a.name]) || [];
+    const labelByKey = {};
+    defs.forEach(d => { labelByKey[d.key] = d.label; });
+    labelByKey.ratoon_number = labelByKey.ratoon_number || 'Ratoon Number';
+    labelByKey.expected_germination_date = labelByKey.expected_germination_date || 'Expected Germination Date';
+    Object.entries(a.properties || {}).forEach(([key, value]) => {
+      if (value === '' || value == null) return;
+      attrs.push([labelByKey[key] || titleCase(key), value]);
+    });
     showModal(`
       <div class="modal-title">Activity — ${a.name}</div>
       <div class="table-wrap">
@@ -2476,42 +2504,153 @@ function renderActivities(el) {
       </div>`);
   };
 
-  function scopePickerHTML(prefix, blockVal, parcelVal) {
+  // Estate → Block → Plot cascade, same pattern as the Log Harvest modal.
+  // This used to be Block-only — with no Estate field at all, the only way
+  // to scope an activity to an estate (with no specific block) was to leave
+  // Block on "— None (estate-level) —", which then had no estate to attach
+  // to either (submitAddActivity derived estate_id purely from the chosen
+  // block, so "estate-level" logging silently saved with a null estate_id).
+  // Estate is now the primary filter: it narrows the Block list, and
+  // provides the estate on its own even when no block is picked.
+  function scopePickerHTML(prefix, estateVal, blockVal, parcelVal) {
     return `
-      <div class="form-group"><label class="form-label">Block</label>
-        <select class="form-input" id="${prefix}-block" onchange="onActivityBlockChange('${prefix}')">
-          <option value="">— None (estate-level) —</option>
-          ${DATA.blocks.map(b=>`<option value="${b._uuid}" ${b._uuid===blockVal?'selected':''}>${b.name || b.id} (${b.estate})</option>`).join('')}
-        </select></div>
-      <div class="form-group"><label class="form-label">Plot (optional)</label>
-        <select class="form-input" id="${prefix}-parcel">
-          <option value="">— Whole block —</option>
-          ${DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}" ${p._uuid===parcelVal?'selected':''}>${p.parcelName || p.id}</option>`).join('')}
-        </select></div>`;
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Estate</label>
+          <select class="form-input" id="${prefix}-estate" onchange="onActivityEstateChange('${prefix}')">
+            <option value="">— All Estates —</option>
+            ${DATA.estates.map(e=>`<option value="${e.name}" ${e.name===estateVal?'selected':''}>${e.name}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Block</label>
+          <select class="form-input" id="${prefix}-block" onchange="onActivityBlockChange('${prefix}')">
+            <option value="">— None (estate-level) —</option>
+            ${DATA.blocks.filter(b=>!estateVal || b.estate===estateVal).map(b=>`<option value="${b._uuid}" ${b._uuid===blockVal?'selected':''}>${b.name || b.id}${estateVal?'':' ('+b.estate+')'}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Plot (optional)</label>
+          <select class="form-input" id="${prefix}-parcel">
+            <option value="">— Whole block —</option>
+            ${DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}" ${p._uuid===parcelVal?'selected':''}>${p.parcelName || p.id}</option>`).join('')}
+          </select></div>
+      </div>`;
   }
+  window.onActivityEstateChange = function(prefix) {
+    const estName = document.getElementById(`${prefix}-estate`).value;
+    const blockSel = document.getElementById(`${prefix}-block`);
+    blockSel.innerHTML = `<option value="">— None (estate-level) —</option>` +
+      DATA.blocks.filter(b => !estName || b.estate === estName).map(b=>`<option value="${b._uuid}">${b.name || b.id}${estName?'':' ('+b.estate+')'}</option>`).join('');
+    document.getElementById(`${prefix}-parcel`).innerHTML = `<option value="">— Whole block —</option>`;
+  };
   window.onActivityBlockChange = function(prefix) {
     const blockVal = document.getElementById(`${prefix}-block`).value;
     const parcelSel = document.getElementById(`${prefix}-parcel`);
     parcelSel.innerHTML = `<option value="">— Whole block —</option>` +
       DATA.plots.filter(p=>p._blockUuid===blockVal).map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
+    // Keep the Estate filter in sync if a block was picked directly without
+    // an estate chosen first (block list falls back to showing every block
+    // with its estate in parentheses when Estate is blank — see above).
+    const estateSel = document.getElementById(`${prefix}-estate`);
+    if (estateSel && !estateSel.value && blockVal) {
+      const block = DATA.blocks.find(b => b._uuid === blockVal);
+      if (block) estateSel.value = block.estate;
+    }
   };
 
+  // Completion + Area Covered share the same enum/behaviour as the webmap's
+  // Log Activity form: Progress is picked from the fixed 0/20/50/75/100
+  // options (DATA.activityCommonFields / completionOptions() above), and
+  // Area Covered only makes sense — so is only shown — while Progress isn't
+  // 100%. `prefix` is 'aa' (add) or 'ea' (edit).
+  function completionFieldHTML(prefix, completionVal, areaVal) {
+    const { options, optionLabels } = completionOptions();
+    return `
+        <div class="form-group"><label class="form-label">Completion (%)</label>
+          <select class="form-input" id="${prefix}-completion" onchange="onActivityCompletionChange('${prefix}')">
+            <option value="">—</option>
+            ${options.map((o,i)=>`<option value="${o}" ${String(completionVal ?? '')===o?'selected':''}>${optionLabels[i]}</option>`).join('')}
+          </select></div>
+        <div class="form-group" id="${prefix}-area-wrap" ${String(completionVal ?? '')==='100'?'hidden':''}>
+          <label class="form-label">Area Covered (ac)</label>
+          <input class="form-input" id="${prefix}-area" type="number" min="0" step="0.01" value="${areaVal ?? ''}"></div>`;
+  }
+  window.onActivityCompletionChange = function(prefix) {
+    const val = document.getElementById(`${prefix}-completion`).value;
+    const wrap = document.getElementById(`${prefix}-area-wrap`);
+    if (wrap) wrap.hidden = (val === '100');
+  };
+
+  // ── Activity-specific property fields ──
+  // Log/Edit Activity used to only ever show the columns every activity
+  // shares (team size, completion, challenges, comments) — none of the
+  // per-activity extras (e.g. Bush Clearing's vegetation density/disposal
+  // method, Harvesting's yield/brix, Spraying's chemical type, etc) had
+  // anywhere to be entered from the dashboard at all, even though the
+  // webmap's Log Activity form has always collected them into
+  // activity_properties. These now render from the same DB-driven catalog
+  // (DATA.activityPropertyDefs, keyed by activity name) the webmap reads,
+  // and re-render whenever the Activity Type dropdown changes.
+  function activityPropFieldHTML(def, value) {
+    const val = value != null ? String(value) : '';
+    const escVal = escapeActivityPropVal(val);
+    if (def.type === 'select') {
+      const opts = (def.options || []).map((o, i) => {
+        const label = def.optionLabels ? def.optionLabels[i] : o;
+        return `<option value="${o}" ${val === o ? 'selected' : ''}>${label}</option>`;
+      }).join('');
+      return `<div class="form-group"><label class="form-label">${def.label}</label>
+        <select class="form-input" data-prop-key="${def.key}"><option value="">—</option>${opts}</select></div>`;
+    }
+    if (def.type === 'textarea') {
+      return `<div class="form-group"><label class="form-label">${def.label}</label>
+        <textarea class="form-input" data-prop-key="${def.key}" rows="2">${escVal}</textarea></div>`;
+    }
+    const inputType = def.type === 'number' ? 'number' : (def.type === 'date' ? 'date' : 'text');
+    return `<div class="form-group"><label class="form-label">${def.label}</label>
+      <input class="form-input" data-prop-key="${def.key}" type="${inputType}" ${inputType === 'number' ? 'min="0"' : ''} value="${escVal}"></div>`;
+  }
+  function escapeActivityPropVal(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+  function activityPropsSectionHTML(prefix, activityName, existingProps) {
+    const defs = (DATA.activityPropertyDefs && DATA.activityPropertyDefs[activityName]) || [];
+    if (!defs.length) return `<div id="${prefix}-props-wrap"></div>`;
+    return `<div id="${prefix}-props-wrap">
+      <div class="form-label" style="margin:4px 0 8px;font-weight:700">${activityName} — activity-specific details</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        ${defs.map(d => activityPropFieldHTML(d, existingProps ? existingProps[d.key] : null)).join('')}
+      </div>
+    </div>`;
+  }
+  window.onActivityTypeChange = function(prefix) {
+    const name = document.getElementById(`${prefix}-name`).value;
+    const wrap = document.getElementById(`${prefix}-props-wrap`);
+    if (wrap) wrap.outerHTML = activityPropsSectionHTML(prefix, name, null);
+  };
+  function readActivityPropsFromForm(prefix) {
+    const props = {};
+    document.querySelectorAll(`#${prefix}-props-wrap [data-prop-key]`).forEach(el => {
+      const v = (el.value ?? '').trim();
+      if (v !== '') props[el.dataset.propKey] = v;
+    });
+    return props;
+  }
+
   window.showAddActivityModal = function() {
+    const firstType = ACTIVITY_TYPES()[0];
     showModal(`
       <div class="modal-title">Log New Activity</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Activity Type</label>
-          <select class="form-input" id="aa-name">${ACTIVITY_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+          <select class="form-input" id="aa-name" onchange="onActivityTypeChange('aa')">${ACTIVITY_TYPES().map(t=>`<option>${t}</option>`).join('')}</select></div>
         <div class="form-group"><label class="form-label">Date</label>
           <input class="form-input" id="aa-date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        ${scopePickerHTML('aa','','')}
-      </div>
+      ${scopePickerHTML('aa','','','')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="aa-team" type="number" min="0"></div>
-        <div class="form-group"><label class="form-label">Completion (%)</label><input class="form-input" id="aa-completion" type="number" min="0" max="100" step="1"></div>
+        ${completionFieldHTML('aa', null, null)}
       </div>
+      ${activityPropsSectionHTML('aa', firstType, null)}
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Challenges</label><textarea class="form-input" id="aa-challenges" rows="2"></textarea></div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="aa-comments" rows="2"></textarea></div>
       <div class="modal-actions">
@@ -2523,22 +2662,33 @@ function renderActivities(el) {
   window.submitAddActivity = async function() {
     const name = document.getElementById('aa-name').value;
     const date = document.getElementById('aa-date').value || null;
+    const estateName = document.getElementById('aa-estate').value || null;
     const blockId = document.getElementById('aa-block').value || null;
     const parcelId = document.getElementById('aa-parcel').value || null;
     const team = document.getElementById('aa-team').value;
     const completion = document.getElementById('aa-completion').value;
+    const areaCovered = completion !== '100' ? document.getElementById('aa-area').value : '';
     const challenges = document.getElementById('aa-challenges').value.trim();
     const comments = document.getElementById('aa-comments').value.trim();
+    const properties = readActivityPropsFromForm('aa');
     try {
       const client = getSbClient();
+      // Estate is the primary source of estate_id now — it's picked
+      // directly, not just inferred from a block — but fall back to the
+      // block's own estate if for some reason a block was set without one
+      // (e.g. programmatically) so estate_id is never silently left null
+      // while a block is attached.
       const block = DATA.blocks.find(b => b._uuid === blockId);
-      const estateRow = block ? DATA.estates.find(e => e.name === block.estate) : null;
+      const estateRow = DATA.estates.find(e => e.name === estateName)
+        || (block ? DATA.estates.find(e => e.name === block.estate) : null);
       const uid = await getCurrentUserId();
       const { error } = await client.from('vsl_activities').insert([{
         activity_name: name, activity_date: date,
         block_id: blockId, parcel_id: parcelId, estate_id: estateRow ? estateRow._id : null,
         team_size: team || null, completion_value: completion || null,
+        area_covered_acres: areaCovered || null,
         challenges: challenges || null, comments: comments || null,
+        activity_properties: properties,
         created_by: uid,
       }]);
       if (error) throw error;
@@ -2559,13 +2709,14 @@ function renderActivities(el) {
       <div class="modal-title">Edit Activity — ${a.name}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Activity Type</label>
-          <select class="form-input" id="ea-name">${ACTIVITY_TYPES.map(t=>`<option ${t===a.name?'selected':''}>${t}</option>`).join('')}</select></div>
+          <select class="form-input" id="ea-name" onchange="onActivityTypeChange('ea')">${ACTIVITY_TYPES().map(t=>`<option ${t===a.name?'selected':''}>${t}</option>`).join('')}</select></div>
         <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="ea-date" type="date" value="${a.date||''}"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="ea-team" type="number" value="${a.teamSize ?? ''}"></div>
-        <div class="form-group"><label class="form-label">Completion</label><input class="form-input" id="ea-completion" type="number" step="0.01" value="${a.completionValue ?? ''}"></div>
+        ${completionFieldHTML('ea', a.completionValue, a.areaCoveredAcres)}
       </div>
+      ${activityPropsSectionHTML('ea', a.name, a.properties)}
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Challenges</label><textarea class="form-input" id="ea-challenges" rows="2">${a.challenges||''}</textarea></div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="ea-comments" rows="2">${a.comments||''}</textarea></div>
       <div class="modal-actions">
@@ -2575,17 +2726,32 @@ function renderActivities(el) {
   };
 
   window.submitEditActivity = async function(id) {
+    const a = DATA.activities.find(x => x.id === id);
     const name = document.getElementById('ea-name').value;
     const date = document.getElementById('ea-date').value || null;
     const team = document.getElementById('ea-team').value;
     const completion = document.getElementById('ea-completion').value;
+    const areaCovered = completion !== '100' ? document.getElementById('ea-area').value : '';
     const challenges = document.getElementById('ea-challenges').value.trim();
     const comments = document.getElementById('ea-comments').value.trim();
+    // Merge onto the existing activity_properties rather than replacing it
+    // outright — anything computed elsewhere and not rendered as a form
+    // field here (e.g. ratoon_number/expected_germination_date, stamped in
+    // by the webmap's Planting/Harvesting write-back) should survive an
+    // edit made from the dashboard.
+    const properties = { ...((a && a.properties) || {}) };
+    document.querySelectorAll('#ea-props-wrap [data-prop-key]').forEach(el => {
+      const key = el.dataset.propKey;
+      const v = (el.value ?? '').trim();
+      if (v !== '') properties[key] = v; else delete properties[key];
+    });
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_activities').update({
         activity_name: name, activity_date: date, team_size: team || null,
-        completion_value: completion || null, challenges: challenges || null, comments: comments || null,
+        completion_value: completion || null, area_covered_acres: areaCovered || null,
+        challenges: challenges || null, comments: comments || null,
+        activity_properties: properties,
       }).eq('id', id);
       if (error) throw error;
       closeModal();

@@ -229,12 +229,22 @@ function escapeHtml(s) {
 const FEATURE_INFO_BADGE = { PARCELS: "Parcel", BLOCKS: "Block" };
 
 // ---------------------------------------------------------------------------
-// Log Activity — the 18 vsl_activities.activity_name values, the fields that
+// Log Activity — the vsl_activities.activity_name values, the fields that
 // are real shared columns on every row (LOG_ACTIVITY_COMMON_FIELDS), and the
 // extra per-activity properties that get stored in activity_properties jsonb
-// (ACTIVITY_PROPERTY_DEFS). See docs/activities.md for the source list.
+// (ACTIVITY_PROPERTY_DEFS).
+//
+// This used to be hardcoded here (and, separately, in the dashboard's own
+// app.js — the two copies drifting apart is exactly what caused the webmap
+// and dashboard to get out of sync). The real source of truth is now the
+// vsl_activity_types / vsl_activity_type_properties / vsl_activity_common_fields
+// tables, fetched by loadActivityCatalogFromDb() at startup (see start()),
+// which overwrites the `let` bindings below in place. The literal values
+// here only serve as a fallback so the form still works if that fetch ever
+// fails (offline, RLS misconfigured, etc) — see docs/activities.md for the
+// same list kept as human-readable reference documentation.
 // ---------------------------------------------------------------------------
-const ACTIVITY_NAMES = [
+let ACTIVITY_NAMES = [
   "Bush Clearing", "Ploughing", "Harrow", "Ripping", "Ridging", "Furrowing",
   "Lime Application", "Planting", "Manuring", "Fertilization", "Weeding",
   "Spraying", "Irrigation", "Harvesting", "Loading",
@@ -257,17 +267,18 @@ const WEATHER_CONDITION_FIELD = {
 // machines/progress/comments/challenges are the only fields shown for every
 // activity regardless of which one is picked.
 //
-// Progress is an enum (0%, 10%, ... 100%), not free numeric input. When it's
-// anything other than 100%, an extra "Area covered" field appears (see
-// showWhen below) so a partially-done activity can record how much of the
-// plot's area was actually covered so far; that value is capped client-side
-// at the plot's own expected area + 5 (see renderLogActivityFields /
-// saveLogActivityForm) and stored in activity_properties (not a real
-// column) since it isn't part of the fixed vsl_activities schema.
-const PROGRESS_OPTIONS = Array.from({ length: 11 }, (_, i) => String(i * 10));
-const PROGRESS_OPTION_LABELS = PROGRESS_OPTIONS.map((v) => `${v}%`);
+// Progress is an enum (0%, 20%, 50%, 75%, 100%), not free numeric input.
+// When it's anything other than 100%, an extra "Area covered" field appears
+// (see showWhen below) so a partially-done activity can record how much of
+// the plot's area was actually covered so far; that value is capped
+// client-side at the plot's own expected area + 5 (see
+// renderLogActivityFields / saveLogActivityForm) and is written to its own
+// vsl_activities.area_covered_acres column (promoted out of
+// activity_properties so it can actually be queried/reported on).
+let PROGRESS_OPTIONS = ["0", "20", "50", "75", "100"];
+let PROGRESS_OPTION_LABELS = PROGRESS_OPTIONS.map((v) => `${v}%`);
 
-const LOG_ACTIVITY_COMMON_FIELDS = [
+let LOG_ACTIVITY_COMMON_FIELDS = [
   { key: "team_size", label: "Team size", type: "number" },
   { key: "number_of_machines", label: "Number of machines", type: "number" },
   { key: "completion_value", label: "Progress (%)", type: "select", options: PROGRESS_OPTIONS, optionLabels: PROGRESS_OPTION_LABELS },
@@ -276,7 +287,7 @@ const LOG_ACTIVITY_COMMON_FIELDS = [
   { key: "challenges", label: "Challenges", type: "textarea" }
 ];
 
-const ACTIVITY_PROPERTY_DEFS = {
+let ACTIVITY_PROPERTY_DEFS = {
   "Bush Clearing": [
     { key: "vegetation_density", label: "Vegetation density", type: "select", options: ["Light", "Medium", "Heavy"] },
     { key: "clearing_depth", label: "Clearing depth", type: "select", options: ["Surface clearing only", "Includes stump & root removal"] },
@@ -404,6 +415,63 @@ const ACTIVITY_PROPERTY_DEFS = {
     { key: "transport_vehicle", label: "Transport vehicle (if removed)", type: "text" }
   ]
 };
+
+/** Fetches the activity catalog (activity types, their extra properties, and
+ *  the fields shared by every activity) from the database and overwrites
+ *  ACTIVITY_NAMES / ACTIVITY_PROPERTY_DEFS / LOG_ACTIVITY_COMMON_FIELDS in
+ *  place. This is what makes the Log Activity form (and, via
+ *  buildRecordDetailRows, the record detail drill-down) data-driven instead
+ *  of hardcoded — the dashboard's Activities page reads the exact same
+ *  tables, so the two apps can no longer drift apart. Called once from
+ *  start(), before the user can interact with the map; on any failure the
+ *  hardcoded fallback values defined above are left in place so the form
+ *  keeps working. */
+async function loadActivityCatalogFromDb() {
+  try {
+    const [typesRes, propsRes, commonRes] = await Promise.all([
+      supabase.from("vsl_activity_types").select("*").eq("is_active", true).order("sort_order"),
+      supabase.from("vsl_activity_type_properties").select("*").order("sort_order"),
+      supabase.from("vsl_activity_common_fields").select("*").order("sort_order"),
+    ]);
+    if (typesRes.error) throw typesRes.error;
+    if (propsRes.error) throw propsRes.error;
+    if (commonRes.error) throw commonRes.error;
+
+    const types = typesRes.data || [];
+    if (!types.length) return; // empty catalog — keep the built-in fallback rather than showing nothing
+
+    const nameById = new Map(types.map((t) => [t.id, t.name]));
+    const defs = {};
+    types.forEach((t) => { defs[t.name] = []; });
+    (propsRes.data || []).forEach((p) => {
+      const activityName = nameById.get(p.activity_type_id);
+      if (!activityName) return;
+      defs[activityName].push({
+        key: p.key,
+        label: p.label,
+        type: p.data_type,
+        options: p.options || undefined,
+        optionLabels: p.option_labels || undefined,
+        showWhen: p.show_when || undefined,
+      });
+    });
+
+    const common = (commonRes.data || []).map((f) => ({
+      key: f.key,
+      label: f.label,
+      type: f.data_type,
+      options: f.options || undefined,
+      optionLabels: f.option_labels || undefined,
+      showWhen: f.show_when || undefined,
+    }));
+
+    ACTIVITY_NAMES = types.map((t) => t.name);
+    ACTIVITY_PROPERTY_DEFS = defs;
+    if (common.length) LOG_ACTIVITY_COMMON_FIELDS = common;
+  } catch (err) {
+    console.error("[Victoria] Failed to load activity catalog from the database — falling back to the built-in list:", err);
+  }
+}
 
 /** Renders one <tr><th>label</th><td><input/></td></tr> row for a field def
  *  ({key, label, type: text|number|date|select|textarea, options?, optionLabels?,
@@ -603,7 +671,7 @@ const RECORD_DETAIL_SKIP_KEYS = new Set(["id", "parcel_id", "block_id", "target_
 
 const RECORD_DETAIL_LABELS = {
   alert: { alert_name: "Alert name", note: "Description", status: "Status", severity: "Severity", created_at: "Logged", resolved_at: "Resolved at", created_by: "Logged by", resolved_by: "Resolved by" },
-  activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", completion_value: "Progress (%)", challenges: "Challenges", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
+  activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", completion_value: "Progress (%)", area_covered_acres: "Area covered (ac)", challenges: "Challenges", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
   harvest: { harvest_date: "Harvest date", gross_weight_tonnes: "Yield (tonnes)", ratoon_at_harvest: "Ratoon", created_at: "Logged at", created_by: "Logged by" },
   media: { media_type: "Type", caption: "Caption", captured_at: "Captured", file_url: "File", created_at: "Uploaded at", created_by: "Uploaded by" },
   comment: { comment_type: "Type", comment_text: "Comment", is_resolved: "Resolved", created_at: "Date", created_by: "Author" }
@@ -627,6 +695,7 @@ function buildRecordDetailRows(kind, record) {
     if (kind === "alert" && key === "severity") display = fmt(SEVERITY_LABELS[value] || value);
     else if (key === "is_resolved") display = value ? "Resolved" : "Open";
     else if (key === "file_url" && value) display = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener">Open</a>`;
+    else if (key === "completion_value" && value != null) display = `${escapeHtml(value)}%`;
     else if (value != null && /(_at|_date)$/.test(key)) display = fmt(String(value).length > 10 ? String(value).slice(0, 16).replace("T", " ") : value);
     else display = fmt(value);
 
@@ -637,10 +706,9 @@ function buildRecordDetailRows(kind, record) {
     const defs = ACTIVITY_PROPERTY_DEFS[record.activity_name] || [];
     const labelByKey = {};
     defs.forEach((d) => { labelByKey[d.key] = d.label; });
-    // These aren't in ACTIVITY_PROPERTY_DEFS (area_covered_acres is a common
-    // field; ratoon_number/expected_germination_date are auto-filled by the
-    // write-back logic, never shown as inputs) but still deserve a label.
-    labelByKey.area_covered_acres = labelByKey.area_covered_acres || "Area covered (ac)";
+    // Not in ACTIVITY_PROPERTY_DEFS — ratoon_number/expected_germination_date
+    // are auto-filled by the write-back logic (never shown as inputs) but
+    // still deserve a readable label when they show up in the drill-down.
     labelByKey.ratoon_number = labelByKey.ratoon_number || "Ratoon number";
     labelByKey.expected_germination_date = labelByKey.expected_germination_date || "Expected germination date";
 
@@ -2765,7 +2833,10 @@ async function saveLogActivityForm(event) {
 
     // Area covered only applies (and is only visible) while progress isn't
     // 100% — ignore any stale value if progress got set back to 100 without
-    // the field being cleared, and cap it at the plot's own area + 5.
+    // the field being cleared, and cap it at the plot's own area + 5. Lives
+    // in its own vsl_activities.area_covered_acres column (not
+    // activity_properties) so it can be queried/reported on directly.
+    let areaCoveredAcres = null;
     if (common.completion_value !== "100" && common.area_covered_acres !== "") {
       const areaCovered = numOrNull(common.area_covered_acres);
       if (areaCovered != null) {
@@ -2773,7 +2844,7 @@ async function saveLogActivityForm(event) {
         if (Number.isFinite(ownArea) && areaCovered > ownArea + 5) {
           throw new Error(`Area covered can't exceed the plot's area + 5 (max ${(ownArea + 5).toFixed(2)} ac).`);
         }
-        properties.area_covered_acres = areaCovered;
+        areaCoveredAcres = areaCovered;
       }
     }
 
@@ -2812,6 +2883,7 @@ async function saveLogActivityForm(event) {
       team_size: numOrNull(common.team_size),
       number_of_machines: numOrNull(common.number_of_machines),
       completion_value: numOrNull(common.completion_value),
+      area_covered_acres: areaCoveredAcres,
       challenges: common.challenges || null,
       comments: common.comments || null,
       activity_date: new Date().toISOString().slice(0, 10),
@@ -5067,7 +5139,10 @@ async function start() {
   clearStatus(statusEl);
   const ok = await initUser();
   if (!ok) return;
-  await initMap();
+  // Activity catalog fetch runs alongside the map init — it's needed before
+  // Log Activity/record-detail can be opened, but doesn't block anything
+  // map-related, so there's no reason to serialize it after initMap().
+  await Promise.all([initMap(), loadActivityCatalogFromDb()]);
   if (isAuthenticated) {
     setStatus(statusEl, `Signed in as ${currentProfile.role}. Ready.`);
   } else if (cfg.ALLOW_GUEST_PREVIEW) {

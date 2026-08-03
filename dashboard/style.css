@@ -592,9 +592,17 @@ input.form-input:focus, select.form-input:focus {
   }
   .sidebar .brand-text,
   .sidebar .nav-label,
-  .sidebar .nav-section-label { opacity: 0; pointer-events: none; }
+  .sidebar .nav-section-label { display: none; }
   .sidebar .sidebar-brand { justify-content: center; padding: 12px 0; }
-  .sidebar .nav-item { justify-content: center; padding: 11px 0; }
+  .sidebar .nav-item { justify-content: center; padding: 13px 0; }
+
+  /* Icons were small (15px) and dim (.85 opacity) — fine next to a label,
+     but as the ONLY thing left in the collapsed rail they read as barely
+     visible. display:none above (instead of opacity:0) also lets
+     justify-content:center on .nav-item actually center the lone icon,
+     since the still-present-but-invisible label was previously holding
+     layout width and pushing it off-center. */
+  .sidebar .nav-icon { font-size: 22px; opacity: 1; }
 
   /* Content sits beside the icon rail */
   .panel { margin-left: var(--sidebar-w-collapsed); }

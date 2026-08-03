@@ -1,5 +1,15 @@
 # Activity Log — Activities & Properties (draft, for pruning)
 
+> **Superseded as of the activity-catalog migration.** The 17 activities actually
+> live in vsl_activities, their extra properties in vsl_activity_type_properties
+> is the current source of truth for what's actually implemented — both the
+> webmap's Log Activity form and the dashboard's Add/Edit Activity forms read
+> the catalog from those tables, not from this file. This document is kept only
+> as historical/design context; several fields mentioned below (completion_unit,
+> an 18th "Cultivator" activity, per-property cost fields, etc.) were never
+> implemented and don't exist in the live schema — see the "Implementation
+> notes" section right below for what's actually live.
+
 Source: Appendix A of `VSL_System_Schema_and_Features_v4.md` (18 finalized `plot_tasks.task_type` values), expanded with your supplied base properties plus additional candidate properties per activity. Auto-captured fields (date/time logged, logged-by user, plot/block/estate context) are excluded, as you noted.
 
 Every activity shares four properties by default — Team size, Completion, Challenges, Comments — plus Completion always works the same way: a dropdown for unit (**Acres** / **%**) and a numeric input for the value. These are repeated per activity below so each one reads standalone; delete the ones you don't want per activity.

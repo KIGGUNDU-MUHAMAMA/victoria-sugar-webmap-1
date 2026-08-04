@@ -4856,8 +4856,8 @@ select.search-panel__input {
 }
 
 /* Toolbar-style tab-switcher band — mirrors the dashboard's .tab-bar/.tab-btn
-   look (flat, white, underline-on-active) instead of the old segmented-pill
-   style, so windows in the webmap and the dashboard read as the same design
+   look (filled pill on the active tab, underline in the accent colour)
+   so windows in the webmap and the dashboard read as the same design
    language. */
 .popWinTabs {
   display: flex;
@@ -4871,8 +4871,8 @@ select.search-panel__input {
   display: none;
 }
 /* .search-tab pills default to muted-on-light styling elsewhere — restyle
-   them here to underline-style tabs, without touching the shared base
-   .search-tab rule other (unconverted) windows still rely on. */
+   them here to match the dashboard's .tab-btn look, without touching the
+   shared base .search-tab rule other (unconverted) windows still rely on. */
 .popWinTabs .search-tab {
   flex: 0 1 auto;
   padding: 0.55rem 1rem;
@@ -4880,8 +4880,8 @@ select.search-panel__input {
   color: var(--muted);
   background: none;
   border: none;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  border-bottom: 3px solid transparent;
   margin-bottom: -2px;
 }
 .popWinTabs .search-tab:hover {
@@ -4890,9 +4890,10 @@ select.search-panel__input {
   box-shadow: none;
 }
 .popWinTabs .search-tab[aria-selected="true"] {
-  background: none;
-  color: var(--primary-2);
+  background: var(--primary-2);
+  color: #fff;
   border-color: var(--primary-2);
+  border-bottom-color: #D46112;
   box-shadow: none;
 }
 

@@ -2837,7 +2837,8 @@ function renderCosts(el) {
         <option value="">All Estates</option>
         ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
       </select>
-      <button class="btn btn-primary btn-sm" onclick="showAddCostModal()">+ Log Cost</button>
+      <button class="btn btn-outline btn-sm" onclick="showAddCostModal()">+ Log New</button>
+      <button class="btn btn-primary btn-sm" onclick="showAddCostFromActivityModal()">+ Log From Activity</button>
     </div>
   </div>
   <div class="grid-4">
@@ -2850,6 +2851,13 @@ function renderCosts(el) {
 
   window.filterCostsEstate = function(val) { estFilter = val; document.getElementById('costs-table').innerHTML = table(); };
 
+  // "Log New" — a standalone cost entry with no activity/plot link at all
+  // (general estate overheads, admin costs, etc). This used to have an
+  // "optional" Related Activity dropdown bolted on, which mixed two
+  // different workflows into one form; that dropdown moved to its own
+  // "Log From Activity" flow below, which requires an activity and gives
+  // you Estate/Block/Plot filters to find it instead of one flat list of
+  // every activity ever logged.
   window.showAddCostModal = function() {
     showModal(`
       <div class="modal-title">Log New Cost</div>
@@ -2858,11 +2866,6 @@ function renderCosts(el) {
           <select class="form-input" id="ac-type">${COST_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
         <div class="form-group"><label class="form-label">Amount (UGX)</label><input class="form-input" id="ac-amount" type="number" min="0"></div>
       </div>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Related Activity (optional)</label>
-        <select class="form-input" id="ac-activity">
-          <option value="">— No specific activity —</option>
-          ${DATA.activities.map(a=>`<option value="${a.id}">${a.name} — ${a.estate} ${a.date?('· '+a.date):''}</option>`).join('')}
-        </select></div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Description</label><input class="form-input" id="ac-desc" placeholder="Optional note"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2873,12 +2876,106 @@ function renderCosts(el) {
   window.submitAddCost = async function() {
     const costType = document.getElementById('ac-type').value;
     const amount = document.getElementById('ac-amount').value;
-    const activityId = document.getElementById('ac-activity').value || null;
     const desc = document.getElementById('ac-desc').value.trim();
     if (!amount || Number(amount) <= 0) { showToast('Enter a valid amount', 'red'); return; }
     try {
       const client = getSbClient();
-      const activity = activityId ? DATA.activities.find(a => a.id === activityId) : null;
+      const { error } = await client.from('vsl_activity_costs').insert([{
+        activity_id: null, cost_type: costType, amount,
+        description: desc || null, block_id: null, parcel_id: null,
+      }]);
+      if (error) throw error;
+      closeModal();
+      showToast('Cost logged');
+      await retryLiveDataLoad();
+      renderTabIfCurrent('costs');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to log cost: ' + err.message, 'red');
+    }
+  };
+
+  // "Log From Activity" — Estate → Block → Plot narrows down which
+  // activities show up in the Activity dropdown (DATA.activities can run
+  // into the hundreds, so picking straight from one flat list was painful);
+  // an activity is required here, and its block/plot get carried onto the
+  // cost row same as before.
+  window.showAddCostFromActivityModal = function() {
+    showModal(`
+      <div class="modal-title">Log Cost From Activity</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Estate</label>
+          <select class="form-input" id="acfa-estate" onchange="onCostActivityEstateChange()">
+            <option value="">— All Estates —</option>
+            ${DATA.estates.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Block</label>
+          <select class="form-input" id="acfa-block" onchange="onCostActivityBlockChange()">
+            <option value="">— All Blocks —</option>
+            ${DATA.blocks.map(b=>`<option value="${b._uuid}">${b.name || b.id} (${b.estate})</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">Plot</label>
+          <select class="form-input" id="acfa-plot" onchange="onCostActivityFilterChange()">
+            <option value="">— All Plots —</option>
+            ${DATA.plots.map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('')}
+          </select></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Activity *</label>
+        <select class="form-input" id="acfa-activity">${costActivityOptionsHTML()}</select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Cost Type</label>
+          <select class="form-input" id="acfa-type">${COST_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Amount (UGX)</label><input class="form-input" id="acfa-amount" type="number" min="0"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Description</label><input class="form-input" id="acfa-desc" placeholder="Optional note"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitAddCostFromActivity()">Save Cost</button>
+      </div>`);
+  };
+
+  function costActivityOptionsHTML() {
+    const estName = document.getElementById('acfa-estate')?.value || '';
+    const blockId = document.getElementById('acfa-block')?.value || '';
+    const plotId = document.getElementById('acfa-plot')?.value || '';
+    const filtered = DATA.activities.filter(a =>
+      (!estName || a.estate === estName) &&
+      (!blockId || a._blockId === blockId) &&
+      (!plotId || a._parcelId === plotId));
+    if (!filtered.length) return `<option value="">— No matching activities —</option>`;
+    return `<option value="">— Select an activity —</option>` +
+      filtered.map(a=>`<option value="${a.id}">${a.name} — ${a.estate}${a.parcel && a.parcel!=='—' ? ' · '+a.parcel : ''} ${a.date?('· '+a.date):''}</option>`).join('');
+  }
+  window.onCostActivityEstateChange = function() {
+    const estName = document.getElementById('acfa-estate').value;
+    const blockSel = document.getElementById('acfa-block');
+    blockSel.innerHTML = `<option value="">— All Blocks —</option>` +
+      DATA.blocks.filter(b => !estName || b.estate === estName).map(b=>`<option value="${b._uuid}">${b.name || b.id}</option>`).join('');
+    document.getElementById('acfa-plot').innerHTML = `<option value="">— All Plots —</option>` +
+      DATA.plots.filter(p => !estName || p.estate === estName).map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
+    onCostActivityFilterChange();
+  };
+  window.onCostActivityBlockChange = function() {
+    const blockId = document.getElementById('acfa-block').value;
+    document.getElementById('acfa-plot').innerHTML = `<option value="">— All Plots —</option>` +
+      DATA.plots.filter(p => !blockId || p._blockUuid === blockId).map(p=>`<option value="${p._uuid}">${p.parcelName || p.id}</option>`).join('');
+    onCostActivityFilterChange();
+  };
+  window.onCostActivityFilterChange = function() {
+    const activitySel = document.getElementById('acfa-activity');
+    if (activitySel) activitySel.innerHTML = costActivityOptionsHTML();
+  };
+
+  window.submitAddCostFromActivity = async function() {
+    const activityId = document.getElementById('acfa-activity').value;
+    const costType = document.getElementById('acfa-type').value;
+    const amount = document.getElementById('acfa-amount').value;
+    const desc = document.getElementById('acfa-desc').value.trim();
+    if (!activityId) { showToast('Select an activity', 'red'); return; }
+    if (!amount || Number(amount) <= 0) { showToast('Enter a valid amount', 'red'); return; }
+    try {
+      const client = getSbClient();
+      const activity = DATA.activities.find(a => a.id === activityId);
       const { error } = await client.from('vsl_activity_costs').insert([{
         activity_id: activityId, cost_type: costType, amount,
         description: desc || null,
@@ -3285,21 +3382,22 @@ function renderUsers(el) {
           <input class="form-input" id="au-photo" type="file" accept="image/*"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="au-name" placeholder="e.g. Jane Doe"></div>
-        <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="au-email" type="email" placeholder="user@example.com"></div>
+        <div class="form-group"><label class="form-label">Full Name *</label><input class="form-input" id="au-name" placeholder="e.g. Jane Doe" required></div>
+        <div class="form-group"><label class="form-label">Email *</label><input class="form-input" id="au-email" type="email" placeholder="user@example.com" required></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Temporary Password</label><input class="form-input" id="au-password" type="text" placeholder="At least 8 characters"></div>
-        <div class="form-group"><label class="form-label">Role</label>
+        <div class="form-group"><label class="form-label">Temporary Password *</label><input class="form-input" id="au-password" type="text" placeholder="At least 8 characters" required></div>
+        <div class="form-group"><label class="form-label">Role *</label>
           <select class="form-input" id="au-role">${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Title / Position <span style="font-weight:400;color:var(--gray-500)">(display only)</span></label>
           <input class="form-input" id="au-title" placeholder="e.g. Field Officer, Agronomist"></div>
-        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="au-phone" placeholder="07XXXXXXXX"></div>
+        <div class="form-group"><label class="form-label">Phone *</label><input class="form-input" id="au-phone" placeholder="07XXXXXXXX" required></div>
       </div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Home Estate</label>
         <select class="form-input" id="au-estate">${estateOptions('')}</select></div>
+      <p style="font-size:11px;color:var(--gray-500);margin-bottom:12px">* Required</p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="submitAddUser()">Create User</button>
@@ -3316,8 +3414,14 @@ function renderUsers(el) {
     const phone = document.getElementById('au-phone').value.trim();
     const estate_id = document.getElementById('au-estate').value || null;
     const photoFile = document.getElementById('au-photo').files[0] || null;
+    // Full Name, Email, Temporary Password, Role, and Phone are all required —
+    // this used to only check email format and password length, silently
+    // accepting a blank name or phone.
+    if (!full_name) { showToast('Full Name is required','red'); return; }
     if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Please enter a valid email','red'); return; }
     if (!password || password.length < 8) { showToast('Password must be at least 8 characters','red'); return; }
+    if (!role) { showToast('Role is required','red'); return; }
+    if (!phone) { showToast('Phone is required','red'); return; }
     try {
       const avatar_url = photoFile ? await uploadAvatarFile(photoFile) : null;
       await callAdminUsersFn('create', { email, password, role, full_name, phone, title, estate_id, avatar_url });
@@ -3490,7 +3594,7 @@ function renderNotifications(el) {
         </div>
         <div style="font-size:11px;min-width:80px">${pill(s.frequency,s.frequency==='Weekly'?'blue':s.frequency==='Monthly'?'green':'amber')}</div>
         <div style="font-size:11px;color:var(--gray-500);min-width:100px">${s.estate||'All Estates'}</div>
-        <div style="font-size:11px;color:var(--gray-500);min-width:110px">${s.reportType||'Season Summary'}</div>
+        <div style="font-size:11px;color:var(--gray-500);min-width:140px">${(s.reportTypes && s.reportTypes.length) ? s.reportTypes.join(', ') : 'Summary Report'}</div>
         <div style="font-size:11px;color:var(--gray-500);min-width:90px">Sent: ${s.lastSent}</div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="icon-btn" onclick="showEditSubscriberModal('${s.id}')" title="Edit">\u270e</button>
@@ -3500,9 +3604,10 @@ function renderNotifications(el) {
       </div>`).join('');
   }
 
-  const REPORT_TYPES = ['Season Summary Report','Weekly Field Update','Financial Dashboard','Harvest Log','Agronomic Scouting Report','Quarterly Investor Briefing'];
+  const REPORT_TYPES = ['Land Status Reports','Activity Reports','Harvests Reports','Summary Report'];
 
   function subscriberFormFields(prefix, s) {
+    const selectedTypes = (s?.reportTypes && s.reportTypes.length) ? s.reportTypes : (s ? [] : ['Summary Report']);
     return `
       <div class="form-group" style="margin-bottom:12px">
         <label class="form-label">Select Existing User (optional)</label>
@@ -3528,10 +3633,17 @@ function renderNotifications(el) {
             ${DATA.estates.map(e=>`<option ${s?.estate===e.name?'selected':''}>${e.name}</option>`).join('')}
           </select></div>
       </div>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Report Type</label>
-        <select class="form-input" id="${prefix}-type">
-          ${REPORT_TYPES.map(t=>`<option ${s?.reportType===t?'selected':''}>${t}</option>`).join('')}
-        </select></div>`;
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Report Types <span style="font-weight:400;color:var(--gray-500)">(select one or more)</span></label>
+        <div id="${prefix}-types" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">
+          ${REPORT_TYPES.map((t,i)=>`
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer">
+              <input type="checkbox" value="${t}" ${selectedTypes.includes(t)?'checked':''}> ${t}
+            </label>`).join('')}
+        </div></div>`;
+  }
+  function readSelectedReportTypes(prefix) {
+    return Array.from(document.querySelectorAll(`#${prefix}-types input[type="checkbox"]:checked`)).map(cb => cb.value);
   }
 
   window.onSubscriberUserPick = function(prefix) {
@@ -3565,16 +3677,17 @@ function renderNotifications(el) {
   };
 
   window.submitEditSubscriber = async function(id) {
-    const name       = document.getElementById('esub-name').value.trim();
-    const email      = document.getElementById('esub-email').value.trim();
-    const freq       = document.getElementById('esub-freq').value;
-    const estate     = document.getElementById('esub-estate').value;
-    const reportType = document.getElementById('esub-type').value;
+    const name        = document.getElementById('esub-name').value.trim();
+    const email       = document.getElementById('esub-email').value.trim();
+    const freq        = document.getElementById('esub-freq').value;
+    const estate      = document.getElementById('esub-estate').value;
+    const reportTypes = readSelectedReportTypes('esub');
     if (!name || !email) { showToast('Please fill in name and email','red'); return; }
+    if (!reportTypes.length) { showToast('Select at least one report type','red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_report_recipients').update({
-        name, email, freq, estate: estate || 'All Estates', report_type: reportType || 'Season Summary Report',
+        name, email, freq, estate: estate || 'All Estates', report_types: reportTypes,
       }).eq('id', id);
       if (error) throw error;
       closeModal();
@@ -3587,6 +3700,65 @@ function renderNotifications(el) {
     } catch (err) {
       console.error(err);
       showToast('Failed to update subscriber: ' + err.message, 'red');
+    }
+  };
+
+  // The old version of the Schedule Settings card below was six toggles
+  // with fixed, made-up copy ("Sent every Monday 07:00 AM...") that weren't
+  // wired to anything \u2014 flipping one just showed a toast and forgot itself
+  // on reload. This is now driven by DATA.reportScheduleSettings
+  // (vsl_report_schedule_settings, one persisted row per subscription
+  // Frequency), and actually lets an admin set the day/time each frequency
+  // dispatches on. Declared here (before el.innerHTML below, which calls
+  // scheduleSettingsRowsHTML() immediately) since `const`/function-expression
+  // bindings inside this closure aren't available until this point is
+  // reached \u2014 a plain function *declaration* would hoist, but DOW_LABELS
+  // itself is a const and was tripping the temporal-dead-zone check.
+  const DOW_LABELS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function scheduleSettingsRowsHTML() {
+    const rows = ['Daily','Weekly','Monthly'].map(freq =>
+      DATA.reportScheduleSettings.find(r => r.frequency === freq) || { frequency: freq, enabled: true, dayOfWeek: 1, dayOfMonth: 1, timeOfDay: '07:00' });
+    return rows.map(r => `
+      <div class="settings-row" style="align-items:center;flex-wrap:wrap;gap:10px">
+        <div style="min-width:140px"><div class="settings-label">${r.frequency}</div>
+          <div class="settings-desc">Subscribers on "${r.frequency}" frequency</div></div>
+        ${r.frequency === 'Weekly' ? `
+          <select class="form-input" style="width:130px" id="sched-${r.frequency}-day">
+            ${DOW_LABELS.map((d,i)=>`<option value="${i}" ${i===r.dayOfWeek?'selected':''}>${d}</option>`).join('')}
+          </select>` : r.frequency === 'Monthly' ? `
+          <select class="form-input" style="width:110px" id="sched-${r.frequency}-day">
+            ${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${d===r.dayOfMonth?'selected':''}>Day ${d}</option>`).join('')}
+          </select>` : `<div style="width:110px"></div>`}
+        <input class="form-input" style="width:110px" type="time" id="sched-${r.frequency}-time" value="${r.timeOfDay}">
+        <label class="toggle-switch">
+          <input type="checkbox" id="sched-${r.frequency}-enabled" ${r.enabled?'checked':''}>
+          <span class="toggle-slider"></span>
+        </label>
+        <button class="btn btn-outline btn-sm" onclick="saveReportSchedule('${r.frequency}')">Save</button>
+      </div>`).join('');
+  }
+  window.saveReportSchedule = async function(freq) {
+    const enabled = document.getElementById(`sched-${freq}-enabled`).checked;
+    const timeOfDay = document.getElementById(`sched-${freq}-time`).value || '07:00';
+    const dayEl = document.getElementById(`sched-${freq}-day`);
+    const dayVal = dayEl ? Number(dayEl.value) : null;
+    try {
+      const client = getSbClient();
+      const uid = await getCurrentUserId();
+      const { error } = await client.from('vsl_report_schedule_settings').update({
+        enabled, time_of_day: timeOfDay,
+        day_of_week: freq === 'Weekly' ? dayVal : null,
+        day_of_month: freq === 'Monthly' ? dayVal : null,
+        updated_at: new Date().toISOString(), updated_by: uid,
+      }).eq('frequency', freq);
+      if (error) throw error;
+      showToast(`${freq} schedule updated`);
+      await retryLiveDataLoad();
+      const wrap = document.getElementById('schedule-settings-rows');
+      if (wrap) wrap.innerHTML = scheduleSettingsRowsHTML();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update schedule: ' + err.message, 'red');
     }
   };
 
@@ -3630,32 +3802,20 @@ function renderNotifications(el) {
 
   <!-- SCHEDULE SETTINGS -->
   <div class="card">
-    <div class="card-header"><div class="card-title">Automated Schedule Settings</div></div>
-    ${[
-      ['Weekly Field Update','Sent every Monday 07:00 AM to field officers','wt',true],
-      ['Monthly Estate Summary','Sent 1st of each month to land managers','mt',true],
-      ['Harvest Alert Report','Sent immediately when a harvest is recorded','ht',true],
-      ['Low Yield Alert','Sent when yield drops 15% below target','yt',false],
-      ['Quarterly Investor Report','Sent quarterly to investors only','qt',true],
-      ['Pest & Disease Alert','Sent when scouting flags high-severity issue','pt',true],
-    ].map(([l,d,id,on])=>`
-      <div class="settings-row">
-        <div><div class="settings-label">${l}</div><div class="settings-desc">${d}</div></div>
-        <label class="toggle-switch">
-          <input type="checkbox" id="${id}" ${on?'checked':''} onchange="showToast('Schedule updated')">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>`).join('')}
+    <div class="card-header"><div class="card-title">Automated Schedule Settings</div>
+      <div style="font-size:12px;color:var(--gray-500)">When each subscription frequency actually goes out</div></div>
+    <div id="schedule-settings-rows">${scheduleSettingsRowsHTML()}</div>
   </div>`;
 
   window.addSubscriber = async function() {
-    const name       = document.getElementById('nsub-name').value.trim();
-    const email      = document.getElementById('nsub-email').value.trim();
-    const freq       = document.getElementById('nsub-freq').value;
-    const estate     = document.getElementById('nsub-estate').value;
-    const reportType = document.getElementById('nsub-type').value;
+    const name        = document.getElementById('nsub-name').value.trim();
+    const email       = document.getElementById('nsub-email').value.trim();
+    const freq        = document.getElementById('nsub-freq').value;
+    const estate      = document.getElementById('nsub-estate').value;
+    const reportTypes = readSelectedReportTypes('nsub');
     if (!name || !email) { showToast('Please fill in name and email','red'); return; }
     if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Invalid email address','red'); return; }
+    if (!reportTypes.length) { showToast('Select at least one report type','red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_report_recipients').insert([{
@@ -3663,7 +3823,7 @@ function renderNotifications(el) {
         name,
         freq, // 'Daily' | 'Weekly' | 'Monthly' — matches the vsl_report_recipients.freq enum's Title Case labels
         estate: estate || 'All Estates',
-        report_type: reportType || 'Season Summary Report',
+        report_types: reportTypes,
       }]);
       if (error) throw error;
       closeModal();
@@ -3784,6 +3944,7 @@ function renderAlerts(el) {
           <td onclick="event.stopPropagation()">
             <div style="display:flex;gap:4px">
               <button class="icon-btn" onclick="viewAlertDetail('${a.id}')" title="View">\ud83d\udc41</button>
+              <button class="icon-btn primary" onclick="confirmReopenAlert('${a.id}')" title="Raise Again">\u21ba</button>
               <button class="icon-btn danger" onclick="confirmDeleteAlert('${a.id}')" title="Delete">\ud83d\uddd1</button>
             </div></td>
         </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:24px">No resolved alerts yet</td></tr>`}
@@ -3825,8 +3986,13 @@ function renderAlerts(el) {
       ['Scope', a.estate + (a.layerType ? ' · ' + titleCaseLocal(a.layerType) : '')],
       ['Note', a.desc || '—'],
       ['Raised', a.time],
+      ['Logged By', a.createdByName || '—'],
       ['Status', isResolved ? 'Resolved' : 'Open'],
-      ...(isResolved ? [['Resolution', a.resolutionNote || '—'], ['Resolved', a.resolvedTime || '—']] : []),
+      ...(isResolved ? [
+        ['Resolution', a.resolutionNote || '—'],
+        ['Resolved', a.resolvedTime || '—'],
+        ['Resolved By', a.resolvedByName || '—'],
+      ] : []),
     ];
     showModal(`
       <div class="modal-title">${severityIcon(a.type)} ${a.title}</div>
@@ -3848,8 +4014,38 @@ function renderAlerts(el) {
         <button class="btn btn-danger" onclick="closeModal();confirmDeleteAlert('${a.id}')">🗑 Delete</button>
       </div>` : a.isReal ? `
       <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal();confirmReopenAlert('${a.id}')">↺ Raise Again</button>
         <button class="btn btn-danger" onclick="closeModal();confirmDeleteAlert('${a.id}')">🗑 Delete</button>
       </div>` : ''}`);
+  };
+
+  window.confirmReopenAlert = function(id) {
+    const a = DATA.alerts.find(x => x.id === id);
+    if (!a) return;
+    showModal(`
+      <div class="modal-title">Raise Alert Again</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">Re-open "${a.title}"? It will move back to Open Alerts and its resolution note will be cleared.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitReopenAlert('${id}')">Yes, Raise Again</button>
+      </div>`);
+  };
+
+  window.submitReopenAlert = async function(id) {
+    try {
+      const client = getSbClient();
+      const { error } = await client.from('vsl_alerts').update({
+        status: 'open', resolved_at: null, resolved_by: null, resolution_note: null,
+      }).eq('id', id);
+      if (error) throw error;
+      closeModal();
+      showToast('Alert raised again');
+      await retryLiveDataLoad();
+      refresh();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to raise alert: ' + err.message, 'red');
+    }
   };
 
   function scopePickerHTML() {

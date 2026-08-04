@@ -46,6 +46,12 @@ const DATA = {
   activityTypes: [],
   activityPropertyDefs: {},
   activityCommonFields: [],
+  // Replaces the old hardcoded, non-persisted "Automated Schedule Settings"
+  // toggle list on the Reports page — one real row per subscription
+  // frequency (Daily/Weekly/Monthly), each with an enabled flag, a
+  // day-of-week or day-of-month, and a time-of-day. See
+  // vsl_report_schedule_settings.
+  reportScheduleSettings: [],
 };
 
 const SUPABASE_URL      = "https://knhgliyghacvkeeptsfl.supabase.co";
@@ -150,7 +156,7 @@ async function loadLiveData() {
     estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes,
     actRes, actCostRes, alertRes, docRes, mediaRes, blkStatsRes, parStatsRes,
     seasonRes, soilTestRes, harvestHistoryRes,
-    actTypeRes, actTypePropRes, actCommonFieldRes,
+    actTypeRes, actTypePropRes, actCommonFieldRes, reportScheduleRes,
   ] = await Promise.all([
     client.from('vsl_estate').select('*'),
     client.from('vsl_blocks').select('*'),
@@ -177,6 +183,7 @@ async function loadLiveData() {
     client.from('vsl_activity_types').select('*').eq('is_active', true).order('sort_order'),
     client.from('vsl_activity_type_properties').select('*').order('sort_order'),
     client.from('vsl_activity_common_fields').select('*').order('sort_order'),
+    client.from('vsl_report_schedule_settings').select('*'),
   ]);
 
   if (estRes.error) console.error('Supabase estate fetch error:', estRes.error);
@@ -199,6 +206,13 @@ async function loadLiveData() {
   if (actTypeRes.error) console.error('Supabase activity_types fetch error:', actTypeRes.error);
   if (actTypePropRes.error) console.error('Supabase activity_type_properties fetch error:', actTypePropRes.error);
   if (actCommonFieldRes.error) console.error('Supabase activity_common_fields fetch error:', actCommonFieldRes.error);
+  if (reportScheduleRes.error) console.error('Supabase report_schedule_settings fetch error:', reportScheduleRes.error);
+
+  const reportScheduleSettings = (reportScheduleRes.data || []).map(r => ({
+    frequency: r.frequency, enabled: r.enabled,
+    dayOfWeek: r.day_of_week, dayOfMonth: r.day_of_month,
+    timeOfDay: r.time_of_day ? r.time_of_day.slice(0, 5) : '07:00',
+  }));
 
   // ── Activity catalog — activity names + their extra property defs ──
   // Falls back to the pre-existing hardcoded 17-name list (kept below,
@@ -521,13 +535,17 @@ async function loadLiveData() {
   });
 
   // ── EMAIL SUBSCRIBERS (report recipients) reshaped ──
+  // reportTypes is an array now (subscriber can pick more than one of Land
+  // Status / Activity / Harvests / Summary Reports via checkboxes) — falls
+  // back to the old single report_type column for any pre-migration row
+  // that somehow still has an empty report_types array.
   const emailSubscribers = rawRecipients.map(r => ({
     id: r.id,
     email: r.email,
     name: r.name || r.email.split('@')[0],
     frequency: r.freq ? titleCase(r.freq) : 'Weekly',
     estate: r.estate || 'All Estates',
-    reportType: r.report_type || 'Season Summary Report',
+    reportTypes: (r.report_types && r.report_types.length) ? r.report_types : (r.report_type ? [r.report_type] : ['Summary Report']),
     lastSent: r.last_sent ? new Date(r.last_sent).toLocaleDateString() : '—',
     status: 'active',
     createdBy: r.created_by,
@@ -614,22 +632,28 @@ async function loadLiveData() {
     }
     return 'All Estates';
   }
-  const dbAlerts = rawAlerts.map(a => ({
-    id: a.id,
-    type: a.severity === 'critical' ? 'critical' : a.severity === 'warning' ? 'warning' : 'info',
-    title: a.alert_name || titleCase(a.layer_type) + ' alert',
-    desc: a.note || '',
-    layerType: a.layer_type,
-    targetId: a.target_id,
-    estate: resolveAlertScope(a),
-    status: a.status,
-    time: a.created_at ? new Date(a.created_at).toLocaleString() : '—',
-    createdAt: a.created_at,
-    resolvedAt: a.resolved_at,
-    resolvedTime: a.resolved_at ? new Date(a.resolved_at).toLocaleString() : '',
-    resolutionNote: a.resolution_note || '',
-    isReal: true,
-  }));
+  const dbAlerts = rawAlerts.map(a => {
+    const loggedByProfile = a.created_by ? profileByIdForManagers.get(a.created_by) : null;
+    const resolvedByProfile = a.resolved_by ? profileByIdForManagers.get(a.resolved_by) : null;
+    return {
+      id: a.id,
+      type: a.severity === 'critical' ? 'critical' : a.severity === 'warning' ? 'warning' : 'info',
+      title: a.alert_name || titleCase(a.layer_type) + ' alert',
+      desc: a.note || '',
+      layerType: a.layer_type,
+      targetId: a.target_id,
+      estate: resolveAlertScope(a),
+      status: a.status,
+      time: a.created_at ? new Date(a.created_at).toLocaleString() : '—',
+      createdAt: a.created_at,
+      createdByName: loggedByProfile ? (loggedByProfile.full_name || loggedByProfile.email) : null,
+      resolvedAt: a.resolved_at,
+      resolvedTime: a.resolved_at ? new Date(a.resolved_at).toLocaleString() : '',
+      resolvedByName: resolvedByProfile ? (resolvedByProfile.full_name || resolvedByProfile.email) : null,
+      resolutionNote: a.resolution_note || '',
+      isReal: true,
+    };
+  });
 
   // ── DOCUMENTS & MEDIA reshaped ──
   function resolveEntityLabel(entity_type, entity_id) {
@@ -766,6 +790,7 @@ async function loadLiveData() {
     activityTypes,
     activityPropertyDefs,
     activityCommonFields,
+    reportScheduleSettings,
     alerts: dbAlerts.length ? dbAlerts : buildAlertsFromLiveData(estates, blocks, plots),
     recentActivity: activities.length
       ? activities.slice(0, 8).map(a => ({

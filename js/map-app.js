@@ -3787,6 +3787,7 @@ function closeParcelSearchPopover(options = {}) {
 }
 
 async function runLocateParcelFromPopover() {
+  const estateSelect = document.getElementById("searchEstateSelect");
   const blockSelect = document.getElementById("searchBlockSelect");
   const parcelSelect = document.getElementById("searchParcelSelect");
 
@@ -3795,14 +3796,21 @@ async function runLocateParcelFromPopover() {
   const goBtn = document.getElementById("parcelSearchGoBtn");
   const cancelBtn = document.getElementById("parcelSearchPopoverCancelBtn");
 
-  // Read block code (prioritize dropdown, fallback to text input)
+  // Block dropdown option values are the block's UUID (unique across every
+  // estate) — prefer that so blocks that share a code/name across different
+  // estates (e.g. two "BLOCK1"s) can never resolve to the wrong one.
+  let blockId = "";
   let blockQ = "";
-  if (blockSelect && blockSelect.selectedIndex >= 0) {
-    const opt = blockSelect.options[blockSelect.selectedIndex];
-    blockQ = opt.dataset.code || opt.value || "";
+  let estateId = "";
+  if (blockSelect && blockSelect.value) {
+    blockId = blockSelect.value;
   }
-  if (!blockQ) {
+  if (!blockId) {
+    // Legacy free-text fallback (no dropdown selection made) — scope by the
+    // selected estate too, when we have one, so a duplicate code/name in a
+    // different estate can't be picked instead.
     blockQ = blockInput?.value?.trim() ?? "";
+    estateId = estateSelect?.value || "";
   }
 
   // Read plot/parcel number (prioritize dropdown, fallback to text input)
@@ -3820,8 +3828,8 @@ async function runLocateParcelFromPopover() {
   }
 
   setParcelSearchPopoverError("");
-  if (!blockQ) {
-    setParcelSearchPopoverError("Enter a block code or block name.");
+  if (!blockId && !blockQ) {
+    setParcelSearchPopoverError("Select a block, or enter a block code or block name.");
     return;
   }
 
@@ -3829,8 +3837,10 @@ async function runLocateParcelFromPopover() {
   if (cancelBtn) cancelBtn.disabled = true;
 
   const { data, error } = await supabase.rpc("vsl_locate_parcel", {
-    p_block_query: blockQ,
-    p_parcel_code: parcelCode
+    p_block_query: blockQ || null,
+    p_parcel_code: parcelCode,
+    p_block_id: blockId || null,
+    p_estate_id: estateId ? Number(estateId) : null
   });
 
   if (error) {
@@ -3977,7 +3987,7 @@ function setupParcelSearchPopover() {
         const o = document.createElement("option");
         o.value = b.id;
         o.dataset.code = b.block_code;
-        o.textContent = `Block ${b.block_code}${b.block_name ? " – "+b.block_name : ""}`;
+        o.textContent = b.block_name || `Block ${b.block_code}`;
         blockSelect.appendChild(o);
       });
       blockSelect.disabled = false;
@@ -4004,7 +4014,7 @@ function setupParcelSearchPopover() {
       data.forEach(p => {
         const o = document.createElement("option");
         o.value = p.parcel_code;
-        o.textContent = p.parcel_name ? `Plot ${p.parcel_code} – ${p.parcel_name}` : `Plot ${p.parcel_code}`;
+        o.textContent = p.parcel_name || `Plot ${p.parcel_code}`;
         parcelSelect.appendChild(o);
       });
       parcelSelect.disabled = false;

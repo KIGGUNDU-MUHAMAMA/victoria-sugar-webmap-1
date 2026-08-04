@@ -5043,15 +5043,21 @@ select.search-panel__input {
   width: 100%;
   border: none;
   background: transparent;
-  color: #fff;
+  color: var(--text);
   font: inherit;
   font-weight: 600;
   padding: 0.6rem 0.85rem;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.2rem;
 }
 .popWinTabs__select:focus {
-  outline: 2px solid rgba(255, 255, 255, 0.6);
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--primary-2);
 }
 .popWinTabs__select option {
   color: var(--text);
@@ -5138,51 +5144,242 @@ select.search-panel__input {
   }
 }
 
+/* Vertical, dashboard-style field layout for the Log Activity / Log Alert
+   modals — label above a full-width, rounded input, with breathing room
+   between fields (mirrors the dashboard's own .form-group/.form-input look
+   and the webmap's .search-panel__label/.search-panel__input pattern).
+   The underlying markup is still a <table> of
+   <tr><th><label></th><td><input></td></tr> rows built by
+   buildPropFieldRow() in map-app.js — nothing there changes, only the
+   display mode flips from table to block so each row reads as a stacked
+   form field instead of a cramped two-column table. */
 .vsl-prop-table {
-  margin-bottom: 0.65rem;
+  display: block;
+  width: 100%;
+  border: none;
+  border-collapse: separate;
+  background: none;
+  margin-bottom: 1.1rem;
+}
+.vsl-prop-table[hidden] {
+  display: none !important;
 }
 .vsl-prop-table:last-child {
   margin-bottom: 0;
 }
-.vsl-prop-table th {
-  width: 46%;
-  /* Reasonable label padding — was inheriting .map-popup__table's generic
-     0.45rem/0.55rem, which read as oversized next to the zero-padding
-     input cells below. */
-  padding: 0.4rem 0.5rem;
+.vsl-prop-table tbody {
+  display: block;
 }
-/* Input cells get NO padding at all — the input/select/textarea fills the
-   cell edge-to-edge with no visible gap between it and the cell border
-   (previously the td kept .map-popup__table's padding while the control
-   inside had its own padding too, doubling up into a visible gap). */
+.vsl-prop-table tr {
+  display: block;
+  margin-bottom: 0.85rem;
+}
+.vsl-prop-table tr:last-child {
+  margin-bottom: 0;
+}
+.vsl-prop-table th {
+  display: block;
+  width: auto;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.vsl-prop-table th label {
+  display: block;
+}
 .vsl-prop-table td {
-  background: #ffffff;
+  display: block;
+  border: none;
+  background: none;
   padding: 0;
+  /* Anchors .vsl-field-warning (see below), which sits absolutely
+     positioned right on the input's top border. */
+  position: relative;
 }
 .vsl-prop-table input,
 .vsl-prop-table select,
 .vsl-prop-table textarea {
   display: block;
   width: 100%;
-  height: 100%;
-  min-height: 2.2em;
-  padding: 6px 8px;
-  border: none;
-  border-radius: 0;
+  height: auto;
+  min-height: 2.5em;
+  padding: 0.58rem 0.65rem;
+  /* Same border colour as the Log Activity modal's fields (dashboard's
+     #c8d0ce/#4a9e6e) — layout/spacing here stays as-is, only the colours
+     were asked to match. */
+  border: 1px solid #c8d0ce;
+  border-radius: 10px;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   background: #fff;
   color: var(--text);
   box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+/* Locked/auto-filled fields (e.g. Area covered at 100% progress) — read
+   clearly as non-editable rather than looking like a normal empty/typeable
+   box. */
+.vsl-prop-table input:disabled,
+.vsl-prop-table select:disabled,
+.vsl-prop-table textarea:disabled {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--muted);
+  cursor: not-allowed;
 }
 .vsl-prop-table input:focus,
 .vsl-prop-table select:focus,
 .vsl-prop-table textarea:focus {
-  outline: 2px solid var(--vsl-primary, #2e7d32);
-  outline-offset: -2px;
+  outline: none;
+  border-color: #4a9e6e;
+  box-shadow: 0 0 0 3px rgba(74, 158, 110, 0.12);
+}
+.vsl-prop-table select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  cursor: pointer;
 }
 .vsl-prop-table textarea {
   resize: vertical;
+  min-height: 4.5em;
+}
+
+/* Soft, non-blocking field warning (e.g. Area covered out of range on
+   blur) — a notched-outline label sitting exactly ON the input's top
+   border line (like a Material-style outlined field legend), with the
+   input pushed down by the same amount to make room for it. Amber, not
+   red, since this never blocks saving. The 14px used for both the label's
+   `top` and the input's `margin-top` must stay equal — that's what lines
+   the label's vertical centre up with the input's (shifted-down) top edge. */
+.vsl-field-warning {
+  position: absolute;
+  top: 14px;
+  left: 10px;
+  transform: translateY(-50%);
+  z-index: 1;
+  background: #fff;
+  padding: 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #d97706;
+  white-space: nowrap;
+}
+.vsl-field-warning[hidden] {
+  display: none !important;
+}
+.vsl-prop-table input.vsl-field-warn {
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+  margin-top: 14px;
+}
+
+/* Log Activity only (Log Alert keeps the stacked single-column layout
+   above) — mirrors the dashboard's own Log New Activity modal: same
+   460px-wide card, fields paired two-per-row in a grid (label tight above
+   input in each, 10px gaps), with textareas (Comments, Challenges)
+   spanning the full width. Colours/sizes below are the dashboard's own
+   (dashboard/style.css .modal-box / .form-group / .form-label /
+   .form-input — hardcoded here rather than via var() since those tokens
+   only exist in the dashboard's stylesheet, not this one) so the two
+   windows render identically. Scoped to #logActivityModal so
+   .vsl-prop-table's shared rules above still apply as-is everywhere else
+   (Log Alert). The activity picker bar above the form
+   (.popWinTabs__select) and its "nothing shows until you pick one" gating
+   are unchanged in behaviour — only restyled to match below. */
+#logActivityModal .vsl-modal-card--wide {
+  max-width: 460px;
+}
+#logActivityModal .vsl-prop-table {
+  margin-bottom: 0;
+}
+#logActivityModal .vsl-prop-table + .vsl-prop-table {
+  margin-top: 10px;
+}
+#logActivityModal .vsl-prop-table tbody {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+#logActivityModal .vsl-prop-table tr {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 0;
+}
+#logActivityModal .vsl-prop-table tr[hidden] {
+  display: none !important;
+}
+/* Textareas (Comments, Challenges) read cramped at half-width — span both
+   grid columns, same as the dashboard's own full-width form-groups. */
+#logActivityModal .vsl-prop-table tr:has(textarea) {
+  grid-column: 1 / -1;
+}
+#logActivityModal .vsl-prop-table th {
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374140;
+}
+#logActivityModal .vsl-prop-table input,
+#logActivityModal .vsl-prop-table select,
+#logActivityModal .vsl-prop-table textarea {
+  min-height: 0;
+  padding: 8px 12px;
+  border: 1px solid #c8d0ce;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1c1f1e;
+}
+#logActivityModal .vsl-prop-table input:focus,
+#logActivityModal .vsl-prop-table select:focus,
+#logActivityModal .vsl-prop-table textarea:focus {
+  border-color: #4a9e6e;
+  box-shadow: 0 0 0 3px rgba(74, 158, 110, 0.12);
+}
+#logActivityModal .vsl-prop-table select {
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23374140' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* Activity Type / Severity pickers (the .popWinTabs bar at the top of
+   Log Activity and Log Alert) — styled as their own light-filled dropdown
+   button, using the same border/radius/focus colours as the fields below,
+   so every control in these windows reads as one consistent set. Scoped to
+   these two modal IDs so the Search window's own .popWinTabs (tab pills,
+   not a select) is untouched. */
+#logActivityModal .popWinTabs,
+#logAlertModal .popWinTabs {
+  background: var(--green-50, #edf7f2);
+  border-bottom: 1px solid #c8d0ce;
+  padding: 10px 16px;
+}
+#logActivityModal .popWinTabs__select,
+#logAlertModal .popWinTabs__select {
+  background-color: #ffffff;
+  background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23285f28' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-position: right 14px center;
+  border: 2px solid #285f28;
+  border-radius: 8px;
+  padding: 10px 40px 10px 14px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #1c1f1e;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+#logActivityModal .popWinTabs__select:focus,
+#logAlertModal .popWinTabs__select:focus {
+  outline: none;
+  border-color: #285f28;
+  box-shadow: 0 0 0 3px rgba(40, 95, 40, 0.2);
 }
 
 /* =============================================================

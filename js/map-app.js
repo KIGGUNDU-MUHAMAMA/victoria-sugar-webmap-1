@@ -282,7 +282,10 @@ let LOG_ACTIVITY_COMMON_FIELDS = [
   { key: "team_size", label: "Team size", type: "number" },
   { key: "number_of_machines", label: "Number of machines", type: "number" },
   { key: "completion_value", label: "Progress (%)", type: "select", options: PROGRESS_OPTIONS, optionLabels: PROGRESS_OPTION_LABELS },
-  { key: "area_covered_acres", label: "Area covered (ac)", type: "number", showWhen: { key: "completion_value", notEquals: "100" } },
+  // Always visible now (used to hide at 100% via showWhen) — at 100% it's
+  // auto-filled with the selected plot/block's own area and locked instead;
+  // see applyAreaCoveredLock() in renderLogActivityFields.
+  { key: "area_covered_acres", label: "Area covered (ac)", type: "number" },
   { key: "comments", label: "Comments", type: "textarea" },
   { key: "challenges", label: "Challenges", type: "textarea" }
 ];
@@ -2749,6 +2752,57 @@ function renderLogActivityFields(activityName) {
     } else {
       areaCoveredInput.removeAttribute("max");
     }
+
+    // Soft warning (not a blocking error/popup) — flagged on blur when the
+    // typed value is negative or exceeds the plot/block's own database area.
+    // Saving still just caps at area + 5 (see saveLogActivityForm); this is
+    // purely a heads-up shown between the label and the input, with the
+    // input's border highlighted.
+    let areaCoveredWarning = areaCoveredInput.parentElement?.querySelector(".vsl-field-warning");
+    if (!areaCoveredWarning) {
+      areaCoveredWarning = document.createElement("div");
+      areaCoveredWarning.className = "vsl-field-warning";
+      areaCoveredWarning.hidden = true;
+      areaCoveredWarning.textContent = "Area out of range";
+      areaCoveredInput.parentElement?.insertBefore(areaCoveredWarning, areaCoveredInput);
+    }
+    const clearAreaCoveredWarning = () => {
+      areaCoveredWarning.hidden = true;
+      areaCoveredInput.classList.remove("vsl-field-warn");
+    };
+    areaCoveredInput.addEventListener("blur", () => {
+      const val = areaCoveredInput.value.trim();
+      if (val === "") { clearAreaCoveredWarning(); return; }
+      const num = Number(val);
+      const tooLow = Number.isFinite(num) && num < 0;
+      const tooHigh = Number.isFinite(num) && Number.isFinite(ownArea) && num > ownArea;
+      if (tooLow || tooHigh) {
+        areaCoveredWarning.hidden = false;
+        areaCoveredInput.classList.add("vsl-field-warn");
+      } else {
+        clearAreaCoveredWarning();
+      }
+    });
+
+    // At 100% complete, the whole plot/block was covered — auto-fill Area
+    // covered with its own area and lock it instead of leaving it for
+    // manual entry (a completed job can't have covered anything less than
+    // the full area). Any other progress value releases the lock again.
+    const completionSelect = commonBody.querySelector('[data-key="completion_value"]');
+    const applyAreaCoveredLock = () => {
+      clearAreaCoveredWarning();
+      if (completionSelect?.value === "100") {
+        areaCoveredInput.value = Number.isFinite(ownArea) ? String(Math.round(ownArea * 100) / 100) : "";
+        areaCoveredInput.disabled = true;
+      } else if (areaCoveredInput.disabled) {
+        // Was locked at 100% — clear the auto-filled value now that it's
+        // editable again rather than leaving a stale number behind.
+        areaCoveredInput.value = "";
+        areaCoveredInput.disabled = false;
+      }
+    };
+    completionSelect?.addEventListener("change", applyAreaCoveredLock);
+    applyAreaCoveredLock();
   }
 
   const extra = ACTIVITY_PROPERTY_DEFS[activityName] || [];
@@ -2831,13 +2885,14 @@ async function saveLogActivityForm(event) {
       if (v !== "") properties[el.dataset.key] = v;
     });
 
-    // Area covered only applies (and is only visible) while progress isn't
-    // 100% — ignore any stale value if progress got set back to 100 without
-    // the field being cleared, and cap it at the plot's own area + 5. Lives
-    // in its own vsl_activities.area_covered_acres column (not
-    // activity_properties) so it can be queried/reported on directly.
+    // Area covered — at 100% it was auto-filled with the plot/block's own
+    // area and locked (see applyAreaCoveredLock in renderLogActivityFields),
+    // so that value is read and saved here just like a manually-typed one.
+    // Still capped at the plot's own area + 5 either way. Lives in its own
+    // vsl_activities.area_covered_acres column (not activity_properties) so
+    // it can be queried/reported on directly.
     let areaCoveredAcres = null;
-    if (common.completion_value !== "100" && common.area_covered_acres !== "") {
+    if (common.area_covered_acres !== "") {
       const areaCovered = numOrNull(common.area_covered_acres);
       if (areaCovered != null) {
         const ownArea = Number(feature.get("expected_area_acres"));

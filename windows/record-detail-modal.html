@@ -2,9 +2,17 @@
      row in any of the parcel info panel's repeating groups (Alerts, Activity
      History, Harvest History, Media, Comments). Shows every field of that
      one record. Generic across all five record kinds; see
-     openRecordDetailModal/buildRecordDetailRows in js/map-app.js. No tabs,
-     no footer actions — this is a pure read-only view, closed via the
-     header X (or Escape) like the other non-form popups. -->
+     openRecordDetailModal/buildRecordDetailRows in js/map-app.js. Read-only
+     by default, closed via the header X (or Escape) like the other
+     non-form popups — EXCEPT for Activity records, which get an Edit
+     button in the footer (only shown when the signed-in user is an admin
+     or the person who logged that activity; see
+     canEditRecordDetail/setupRecordDetailModal). Edit swaps the read-only
+     table for the same field inputs the Log Activity form uses, prefilled
+     with the record's current values. Just two buttons, never three: Edit
+     itself turns into Save once clicked (same button, see
+     setRecordDetailEditMode), with Cancel appearing alongside it only in
+     edit mode. -->
 <div id="recordDetailOverlay" class="vsl-modal-overlay" hidden>
   <section id="recordDetailPanel" class="vsl-modal-card vsl-modal-card--wide popWinMain" role="region" aria-label="Record details">
     <header class="popWinHead">
@@ -18,5 +26,12 @@
     </header>
 
     <div id="recordDetailInner" class="popWinBody"></div>
+
+    <p id="recordDetailError" class="search-panel__error" role="alert" hidden></p>
+
+    <div class="popWinActionBtns" id="recordDetailActionBtns" hidden>
+      <button type="button" id="recordDetailCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad" hidden>Cancel</button>
+      <button type="button" id="recordDetailEditBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Edit</button>
+    </div>
   </section>
 </div>

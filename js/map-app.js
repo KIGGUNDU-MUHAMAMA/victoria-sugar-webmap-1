@@ -9,6 +9,7 @@ import { initFarmReports } from "./farm-reports.js";
 import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
 import { initDroneImageModule } from "./drone-image.js?v=1.6";
 import { initExportTools } from "./export-tools.js";
+import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -226,7 +227,7 @@ function escapeHtml(s) {
 }
 
 // Badge/icon text shown in the panel's static popWinHead.
-const FEATURE_INFO_BADGE = { PARCELS: "Parcel", BLOCKS: "Block" };
+const FEATURE_INFO_BADGE = { PARCELS: "Parcel", BLOCKS: "Block", ESTATE: "Estate" };
 
 // ---------------------------------------------------------------------------
 // Log Activity — the vsl_activities.activity_name values, the fields that
@@ -557,6 +558,18 @@ function fmt(val, opts = {}) {
   return escapeHtml(val);
 }
 
+/** Same placeholder-aware fallback as fmt(), but WITHOUT HTML-escaping —
+ *  for building the plain-text export sections (see
+ *  buildParcelExportSections/buildBlockExportSections) that feed
+ *  js/feature-export.js's CSV/PDF output. Using fmt() there would leave
+ *  literal "&amp;" etc. in the downloaded file instead of the real
+ *  character, since escaping is only needed when a value ends up inside
+ *  live HTML. */
+function fmtPlain(val, opts = {}) {
+  if (val == null || val === "") return opts.fallback ?? "—";
+  return String(val);
+}
+
 function buildCollapsibleGroup(title, innerHtml, { open = false } = {}) {
   return `
     <details class="info-group"${open ? " open" : ""}>
@@ -590,6 +603,11 @@ function buildListTable(headers, rows, emptyMsg = "No records yet.", colWidths =
 }
 
 const THREE_COL_WIDTHS = [40, 30, 30];
+// Estate's Blocks table and Block's Plots table are both 4 evenly-important
+// columns (no single column that should dominate like a name/title column
+// elsewhere), so split evenly rather than leaving column widths to the
+// browser's default auto-sizing.
+const FOUR_COL_EQUAL_WIDTHS = [25, 25, 25, 25];
 
 /** Builds the Name/Status/Severity alerts table — shared by the parcel info
  *  panel's "Alerts" group and the standalone Alerts List modal (opened by
@@ -651,6 +669,22 @@ let infoPanelRecords = {};
 const RECORD_LIST_KEY = { alert: "alerts", activity: "activities", harvest: "harvests", media: "media", comment: "comments" };
 const RECORD_DETAIL_TITLES = { alert: "Alert details", activity: "Activity details", harvest: "Harvest details", media: "Media details", comment: "Comment details" };
 const RECORD_DETAIL_ICONS = { alert: "fa-triangle-exclamation", activity: "fa-list-check", harvest: "fa-wheat-awn", media: "fa-image", comment: "fa-comment" };
+const RECORD_TABLE_BY_KIND = { alert: "vsl_alerts", activity: "vsl_activities", harvest: "vsl_harvests", media: "vsl_media", comment: "vsl_comments" };
+
+// The real "who did this" column(s) per record kind (created_by isn't even
+// the actual column name on every table — vsl_media uses captured_by,
+// vsl_comments uses user_id). Used by buildParcelInfoHtml to resolve these
+// raw user ids into readable names for the drill-down view (see
+// buildRecordDetailRows) without overwriting the id itself, which
+// canEditRecordDetail still needs for the "is this the person who logged
+// it" permission check.
+const RECORD_WHO_COLUMNS = {
+  activity: ["created_by"],
+  alert: ["created_by", "resolved_by"],
+  harvest: ["created_by"],
+  media: ["captured_by"],
+  comment: ["user_id", "resolved_by"]
+};
 
 /** Wraps a table cell's text in a link that opens the drill-down detail
  *  modal for that specific record — used for the first column of every
@@ -676,8 +710,10 @@ const RECORD_DETAIL_LABELS = {
   alert: { alert_name: "Alert name", note: "Description", status: "Status", severity: "Severity", created_at: "Logged", resolved_at: "Resolved at", created_by: "Logged by", resolved_by: "Resolved by" },
   activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", completion_value: "Progress (%)", area_covered_acres: "Area covered (ac)", challenges: "Challenges", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
   harvest: { harvest_date: "Harvest date", gross_weight_tonnes: "Yield (tonnes)", ratoon_at_harvest: "Ratoon", created_at: "Logged at", created_by: "Logged by" },
-  media: { media_type: "Type", caption: "Caption", captured_at: "Captured", file_url: "File", created_at: "Uploaded at", created_by: "Uploaded by" },
-  comment: { comment_type: "Type", comment_text: "Comment", is_resolved: "Resolved", created_at: "Date", created_by: "Author" }
+  // media/comment's real "who" columns are captured_by/user_id, not
+  // created_by — see RECORD_WHO_COLUMNS above.
+  media: { media_type: "Type", caption: "Caption", captured_at: "Captured", file_url: "File", created_at: "Uploaded at", captured_by: "Uploaded by" },
+  comment: { comment_type: "Type", comment_text: "Comment", is_resolved: "Resolved", created_at: "Date", user_id: "Author", resolved_by: "Resolved by" }
 };
 
 /** Builds the [[label, valueHtml], ...] rows for the drill-down detail
@@ -688,14 +724,21 @@ const RECORD_DETAIL_LABELS = {
  *  whatever was actually logged is visible, not just the shared columns. */
 function buildRecordDetailRows(kind, record) {
   const labels = RECORD_DETAIL_LABELS[kind] || {};
+  const whoCols = RECORD_WHO_COLUMNS[kind] || [];
   const rows = [];
 
   for (const [key, value] of Object.entries(record)) {
-    if (RECORD_DETAIL_SKIP_KEYS.has(key)) continue;
+    // "_"-prefixed keys are bookkeeping we attached ourselves (e.g.
+    // _whoNames, see buildParcelInfoHtml) — never a real DB column.
+    if (RECORD_DETAIL_SKIP_KEYS.has(key) || key.startsWith("_")) continue;
     const label = labels[key] || humanizeKey(key);
 
     let display;
-    if (kind === "alert" && key === "severity") display = fmt(SEVERITY_LABELS[value] || value);
+    // Show the resolved name (fetched in buildParcelInfoHtml) instead of
+    // the raw user id — falls back to the id itself if no matching
+    // profile was found (e.g. a deleted account).
+    if (whoCols.includes(key)) display = record._whoNames?.[key] ? escapeHtml(record._whoNames[key]) : fmt(value);
+    else if (kind === "alert" && key === "severity") display = fmt(SEVERITY_LABELS[value] || value);
     else if (key === "is_resolved") display = value ? "Resolved" : "Open";
     else if (key === "file_url" && value) display = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener">Open</a>`;
     else if (key === "completion_value" && value != null) display = `${escapeHtml(value)}%`;
@@ -724,21 +767,158 @@ function buildRecordDetailRows(kind, record) {
   return rows;
 }
 
+// Record detail — edit mode (Activity only for now). Tracks which
+// kind/record the modal is currently showing, and whether it's currently
+// in edit mode, so the Edit/Cancel button handlers (wired once in
+// setupRecordDetailModal) know what to act on without re-querying the DOM
+// for it. Only two buttons ever show at once: Edit doubles as Save (same
+// button, its label/action just change) once clicked, with Cancel
+// appearing alongside it only while editing.
+const recordDetailState = { kind: null, record: null, editing: false };
+
+/** Edit is only offered for Activity records right now (that's what was
+ *  asked for), and only to an ADMIN or the person who originally logged
+ *  that activity — same rule as the rest of the app's admin-gated actions
+ *  (see resolveAlert's canResolve). */
+function canEditRecordDetail(kind, record) {
+  if (kind !== "activity" || !record) return false;
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") return false;
+  if (currentProfile?.role === "ADMIN") return true;
+  return currentUser.id === record.created_by;
+}
+
+function renderRecordDetailReadOnly(kind, record) {
+  const inner = document.getElementById("recordDetailInner");
+  if (inner) inner.innerHTML = buildKvTable(buildRecordDetailRows(kind, record));
+}
+
+/** Builds the editable form for an Activity record — same field defs (and
+ *  same buildPropFieldRow markup/classes) as the Log Activity form itself,
+ *  just prefilled with this record's current values instead of blank. */
+function renderRecordDetailEditForm(record) {
+  const inner = document.getElementById("recordDetailInner");
+  if (!inner) return;
+
+  const commonDefs = LOG_ACTIVITY_COMMON_FIELDS.map((d) => ({
+    ...d,
+    default: record[d.key] != null ? String(record[d.key]) : (d.default || "")
+  }));
+  const propDefs = (ACTIVITY_PROPERTY_DEFS[record.activity_name] || []).map((d) => ({
+    ...d,
+    default: record.activity_properties?.[d.key] != null ? String(record.activity_properties[d.key]) : (d.default || "")
+  }));
+
+  inner.innerHTML = `
+    <table class="map-popup__table vsl-prop-table" id="recordDetailEditCommon">
+      <tbody>${commonDefs.map(buildPropFieldRow).join("")}</tbody>
+    </table>
+    ${propDefs.length ? `
+    <table class="map-popup__table vsl-prop-table" id="recordDetailEditProps">
+      <tbody>${propDefs.map(buildPropFieldRow).join("")}</tbody>
+    </table>` : ""}
+  `;
+  wireConditionalFieldVisibility(document.getElementById("recordDetailEditCommon"));
+  const propsEl = document.getElementById("recordDetailEditProps");
+  if (propsEl) wireConditionalFieldVisibility(propsEl);
+}
+
+function setRecordDetailEditMode(isEditing) {
+  const editBtn = document.getElementById("recordDetailEditBtn");
+  const cancelBtn = document.getElementById("recordDetailCancelBtn");
+  const errorEl = document.getElementById("recordDetailError");
+  if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+
+  recordDetailState.editing = isEditing;
+  if (editBtn) editBtn.textContent = isEditing ? "Save changes" : "Edit";
+  if (cancelBtn) cancelBtn.hidden = !isEditing;
+
+  const { kind, record } = recordDetailState;
+  if (isEditing && kind === "activity" && record) renderRecordDetailEditForm(record);
+  else if (kind && record) renderRecordDetailReadOnly(kind, record);
+}
+
+async function saveRecordDetailEdit() {
+  const { kind, record } = recordDetailState;
+  const errorEl = document.getElementById("recordDetailError");
+  const editBtn = document.getElementById("recordDetailEditBtn");
+  if (kind !== "activity" || !record) return;
+
+  if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+  if (editBtn) editBtn.disabled = true;
+
+  try {
+    const common = {};
+    document.querySelectorAll("#recordDetailEditCommon [data-key]").forEach((el) => {
+      common[el.dataset.key] = (el.value ?? "").trim();
+    });
+    const properties = {};
+    document.querySelectorAll("#recordDetailEditProps [data-key]").forEach((el) => {
+      const v = (el.value ?? "").trim();
+      if (v !== "") properties[el.dataset.key] = v;
+    });
+
+    const payload = {
+      team_size: numOrNull(common.team_size),
+      number_of_machines: numOrNull(common.number_of_machines),
+      completion_value: numOrNull(common.completion_value),
+      area_covered_acres: common.area_covered_acres !== "" ? numOrNull(common.area_covered_acres) : null,
+      challenges: common.challenges || null,
+      comments: common.comments || null,
+      activity_properties: properties
+    };
+
+    const { error } = await supabase.from(RECORD_TABLE_BY_KIND.activity).update(payload).eq("id", record.id);
+    if (error) throw error;
+
+    // Reflect the change immediately in this same object — it's the exact
+    // instance sitting in infoPanelRecords[...].activities[i] too, so the
+    // parcel info panel's Activity History table (and this modal, if
+    // reopened) picks it up without a full reload.
+    Object.assign(record, payload);
+
+    setRecordDetailEditMode(false);
+
+    // Also refresh the info panel behind this modal so its Activity
+    // History row (progress/date column) reflects the edit right away.
+    if (selectedFeature && selectedLayerType) openFeatureInfoPanel(selectedFeature, selectedLayerType);
+  } catch (err) {
+    if (errorEl) { errorEl.textContent = err?.message || "Failed to save changes."; errorEl.hidden = false; }
+  } finally {
+    if (editBtn) editBtn.disabled = false;
+  }
+}
+
 function openRecordDetailModal(kind, record) {
   const overlay = document.getElementById("recordDetailOverlay");
   const inner = document.getElementById("recordDetailInner");
   const titleEl = document.getElementById("recordDetailTitle");
   const iconEl = document.getElementById("recordDetailIcon");
+  const actionBtns = document.getElementById("recordDetailActionBtns");
+  const editBtn = document.getElementById("recordDetailEditBtn");
   if (!overlay || !inner || !record) return;
+
+  recordDetailState.kind = kind;
+  recordDetailState.record = record;
+  recordDetailState.editing = false;
+
   if (titleEl) titleEl.textContent = RECORD_DETAIL_TITLES[kind] || "Record details";
   if (iconEl) iconEl.innerHTML = `<i class="fas ${RECORD_DETAIL_ICONS[kind] || "fa-circle-info"}" aria-hidden="true"></i>`;
-  inner.innerHTML = buildKvTable(buildRecordDetailRows(kind, record));
+
+  const editable = canEditRecordDetail(kind, record);
+  if (actionBtns) actionBtns.hidden = !editable;
+  if (editBtn) { editBtn.textContent = "Edit"; editBtn.disabled = false; }
+  const cancelBtn = document.getElementById("recordDetailCancelBtn");
+  if (cancelBtn) cancelBtn.hidden = true;
+
+  renderRecordDetailReadOnly(kind, record);
   overlay.hidden = false;
 }
 
 function closeRecordDetailModal() {
   const overlay = document.getElementById("recordDetailOverlay");
   if (overlay) overlay.hidden = true;
+  recordDetailState.kind = null;
+  recordDetailState.record = null;
 }
 
 /** Delegated click listener lives on #featureInfoPanelInner (the info
@@ -774,6 +954,13 @@ function setupRecordDetailModal() {
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && !overlay.hidden) closeRecordDetailModal();
   });
+
+  // Edit doubles as Save once clicked — see recordDetailState.editing.
+  document.getElementById("recordDetailEditBtn")?.addEventListener("click", () => {
+    if (recordDetailState.editing) saveRecordDetailEdit();
+    else setRecordDetailEditMode(true);
+  });
+  document.getElementById("recordDetailCancelBtn")?.addEventListener("click", () => setRecordDetailEditMode(false));
 
   wireRecordLinkClicks(
     document.getElementById("featureInfoPanelInner"),
@@ -1289,7 +1476,7 @@ async function buildParcelInfoHtml(parcelId) {
 
   let blockRow = null;
   try {
-    const { data } = await supabase.from("vsl_blocks").select("block_code, block_name, vsl_estate(estate_name)").eq("id", parcel.block_id).single();
+    const { data } = await supabase.from("vsl_blocks").select("estate_id, block_code, block_name, vsl_estate(estate_name)").eq("id", parcel.block_id).single();
     blockRow = data;
   } catch {}
 
@@ -1302,6 +1489,37 @@ async function buildParcelInfoHtml(parcelId) {
   const docs = docsRes.data || [];
   const comments = commentsRes.data || [];
   const currentSeason = seasons[0] || null;
+
+  // Resolve "who did this" user ids (created_by/resolved_by/captured_by/
+  // user_id — see RECORD_WHO_COLUMNS) into readable names for the
+  // record-detail drill-down (buildRecordDetailRows), in one batched
+  // lookup rather than a query per record. Names are attached as
+  // record._whoNames[column] — the raw id columns themselves are left
+  // untouched (canEditRecordDetail still needs them for permission checks).
+  const whoIds = new Set();
+  const collectWhoIds = (list, cols) => { for (const r of list) for (const c of cols) if (r[c]) whoIds.add(r[c]); };
+  collectWhoIds(alerts, RECORD_WHO_COLUMNS.alert);
+  collectWhoIds(activities, RECORD_WHO_COLUMNS.activity);
+  collectWhoIds(harvests, RECORD_WHO_COLUMNS.harvest);
+  collectWhoIds(media, RECORD_WHO_COLUMNS.media);
+  collectWhoIds(comments, RECORD_WHO_COLUMNS.comment);
+
+  let nameById = new Map();
+  if (whoIds.size) {
+    const { data: whoProfiles } = await supabase.from("vsl_profiles").select("id, full_name").in("id", Array.from(whoIds));
+    nameById = new Map((whoProfiles || []).map((p) => [p.id, p.full_name]));
+  }
+  const attachWhoNames = (list, cols) => {
+    for (const r of list) {
+      r._whoNames = {};
+      for (const c of cols) if (r[c]) r._whoNames[c] = nameById.get(r[c]) || null;
+    }
+  };
+  attachWhoNames(alerts, RECORD_WHO_COLUMNS.alert);
+  attachWhoNames(activities, RECORD_WHO_COLUMNS.activity);
+  attachWhoNames(harvests, RECORD_WHO_COLUMNS.harvest);
+  attachWhoNames(media, RECORD_WHO_COLUMNS.media);
+  attachWhoNames(comments, RECORD_WHO_COLUMNS.comment);
 
   const groups = [];
 
@@ -1393,7 +1611,90 @@ async function buildParcelInfoHtml(parcelId) {
   // in these same arrays by index.
   infoPanelRecords = { alerts, activities, harvests, media, comments };
 
-  return groups.join("");
+  const exportSections = buildParcelExportSections({
+    parcel, blockRow, alerts, currentSeason, activities, harvests, soilTests, media, docs, comments
+  });
+
+  return {
+    html: groups.join(""),
+    exportSections,
+    title: parcel.parcel_name || parcel.parcel_code || "Plot",
+    estateId: blockRow?.estate_id ?? null,
+    blockId: parcel.block_id ?? null,
+    parcelId: parcel.id,
+    estateName: blockRow?.vsl_estate?.estate_name || null,
+    blockName: blockRow?.block_name || null,
+    parcelName: parcel.parcel_name || parcel.parcel_code || null,
+    expectedAreaAcres: parcel.expected_area_acres ?? null
+  };
+}
+
+/** Plain-text mirror of buildParcelInfoHtml's groups — same data, same
+ *  section titles/order, just {label,value} pairs (or header+row tables)
+ *  instead of HTML, for js/feature-export.js's CSV/PDF output. Kept as a
+ *  separate function rather than threading export rows through the HTML
+ *  builder above so the two stay easy to read independently; if you add a
+ *  group up there, add its export equivalent here too. */
+function buildParcelExportSections({ parcel, blockRow, alerts, currentSeason, activities, harvests, soilTests, media, docs, comments }) {
+  const sections = [];
+
+  sections.push({ title: "Details", type: "kv", rows: [
+    ["Plot code", fmtPlain(parcel.parcel_code)],
+    ["Plot name", fmtPlain(parcel.parcel_name)],
+    ["Block name", fmtPlain(blockRow?.block_name)],
+    ["Estate name", fmtPlain(blockRow?.vsl_estate?.estate_name)],
+    ["Current activity", fmtPlain(parcel.current_activity_name)],
+    ["Cultivation status", fmtPlain(CULTIVATION_STATUS_LABELS[parcel.cultivation_status] || parcel.cultivation_status)],
+    ["Expected area", parcel.expected_area_acres != null ? `${Number(parcel.expected_area_acres).toFixed(2)} ac` : "—"],
+    ["Geometry status", fmtPlain(parcel.geometry_status)],
+    ["Notes", fmtPlain(parcel.cultivation_notes)],
+    ["Last updated", fmtPlain(parcel.cultivation_updated_at ? String(parcel.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
+  ] });
+
+  sections.push({ title: `Alerts (${alerts.length})`, type: "table", headers: ["Alert", "Status", "Severity"], rows: alerts.map((a) => [
+    fmtPlain(a.alert_name), fmtPlain(a.status), fmtPlain(SEVERITY_LABELS[a.severity] || a.severity)
+  ]) });
+
+  sections.push({ title: "Current Crop Cycle", type: "kv", rows: currentSeason ? [
+    ["Season name", fmtPlain(currentSeason.season_name)],
+    ["Cane variety", fmtPlain(currentSeason.cane_variety)],
+    ["Ratoon number", fmtPlain(currentSeason.ratoon_number, { fallback: "0" })],
+    ["Growth stage", fmtPlain(currentSeason.growth_stage)],
+    ["Planting date", fmtPlain(currentSeason.planting_date)],
+    ["Expected harvest date", fmtPlain(currentSeason.expected_harvest_date)],
+    ["Actual harvest date", fmtPlain(currentSeason.actual_harvest_date)],
+    ["Season status", fmtPlain(currentSeason.season_status)],
+    ["Target yield (t)", fmtPlain(currentSeason.target_yield_tonnes)],
+    ["Actual yield (t)", fmtPlain(currentSeason.actual_yield_tonnes)],
+    ["Yield per hectare", fmtPlain(currentSeason.yield_per_hectare)]
+  ] : [["Status", "No crop cycle recorded yet."]] });
+
+  sections.push({ title: `Activity History (${activities.length})`, type: "table", headers: ["Activity", "Progress", "Date"], rows: activities.map((a) => [
+    fmtPlain(a.activity_name), a.completion_value != null ? `${a.completion_value}%` : "—", fmtPlain(a.activity_date)
+  ]) });
+
+  sections.push({ title: `Harvest History (${harvests.length})`, type: "table", headers: ["Date", "Gross weight", "Ratoon"], rows: harvests.map((h) => [
+    fmtPlain(h.harvest_date), h.gross_weight_tonnes != null ? `${h.gross_weight_tonnes} t` : "—", fmtPlain(h.ratoon_at_harvest, { fallback: "0" })
+  ]) });
+
+  sections.push({ title: `Soil & Land (${soilTests.length})`, type: "table", headers: ["Sampled", "pH", "N", "P", "K", "Organic matter", "Texture", "Lab"], rows: soilTests.map((s) => [
+    fmtPlain(s.sample_date), fmtPlain(s.soil_ph), fmtPlain(s.nitrogen), fmtPlain(s.phosphorus), fmtPlain(s.potassium),
+    s.organic_matter_pct != null ? `${s.organic_matter_pct}%` : "—", fmtPlain(s.texture), fmtPlain(s.lab_name)
+  ]) });
+
+  sections.push({ title: `Media (${media.length})`, type: "table", headers: ["Type", "Caption", "Captured", "File"], rows: media.map((m) => [
+    fmtPlain(m.media_type), fmtPlain(m.caption), fmtPlain(m.captured_at ? String(m.captured_at).slice(0, 10) : null), m.file_url || "—"
+  ]) });
+
+  sections.push({ title: `Documents (${docs.length})`, type: "table", headers: ["Type", "Title", "Uploaded", "File"], rows: docs.map((d) => [
+    fmtPlain(d.doc_type), fmtPlain(d.document_title), fmtPlain(d.upload_date), d.file_url || "—"
+  ]) });
+
+  sections.push({ title: `Comments (${comments.length})`, type: "table", headers: ["Type", "Comment", "Status", "Date"], rows: comments.map((c) => [
+    fmtPlain(c.comment_type), fmtPlain(c.comment_text), c.is_resolved ? "Resolved" : "Open", fmtPlain(c.created_at ? String(c.created_at).slice(0, 10) : null)
+  ]) });
+
+  return sections;
 }
 
 async function buildBlockInfoHtml(blockId) {
@@ -1472,6 +1773,18 @@ async function buildBlockInfoHtml(blockId) {
   const varietyRows = Object.entries(varietyCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)
     .map(([k, v], i) => [String(i + 1), k, String(v)]);
 
+  // Per-plot table (name, area, ratoon, cane variety) — reuses
+  // latestSeasonByParcel just above rather than re-querying seasons.
+  const plotRows = parcels
+    .slice()
+    .sort((a, b) => String(a.parcel_name ?? "").localeCompare(String(b.parcel_name ?? ""), undefined, { numeric: true }))
+    .map((p) => [
+      p.parcel_name || "Plot",
+      p.expected_area_acres != null ? `${Number(p.expected_area_acres).toFixed(2)} ac` : "—",
+      p.ratoon_number != null ? String(p.ratoon_number) : "0",
+      latestSeasonByParcel.get(p.id)?.cane_variety || "—"
+    ]);
+
   const harvestList = harvestsRes.data || [];
   const totalGross = harvestList.reduce((s, h) => s + (Number(h.gross_weight_tonnes) || 0), 0);
   const plotsHarvested = new Set(harvestList.map((h) => h.parcel_id)).size;
@@ -1499,6 +1812,10 @@ async function buildBlockInfoHtml(blockId) {
     ["Notes", fmt(block.cultivation_notes)],
     ["Last updated", fmt(block.cultivation_updated_at ? String(block.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
   ]), { open: true }));
+
+  groups.push(buildCollapsibleGroup(`Plots (${plotRows.length})`, buildListTable(
+    ["Plot", "Area", "Ratoon", "Cane variety"], plotRows, "No plots in this block yet.", FOUR_COL_EQUAL_WIDTHS
+  )));
 
   groups.push(buildCollapsibleGroup("Status", buildListTable(["Status", "Number of plots"], statusRows)));
   groups.push(buildCollapsibleGroup("Ratoon Number", buildListTable(["Ratoon number", "Number of plots"], ratoonRows)));
@@ -1539,30 +1856,583 @@ async function buildBlockInfoHtml(blockId) {
   // read this — reset it anyway so a stale parcel's records can't linger.
   infoPanelRecords = {};
 
-  return groups.join("");
+  const exportSections = buildBlockExportSections({
+    block, totalPlots, totalArea, avgPlotSize, plotRows, statusRows, ratoonRows, activityRows, alertRows,
+    harvestList, plotsHarvested, totalGross, lastHarvestDate, varietyRows, media, docs, comments
+  });
+
+  return {
+    html: groups.join(""),
+    exportSections,
+    title: block.block_name || block.block_code || "Block",
+    estateId: block.estate_id ?? null,
+    blockId: block.id,
+    parcelId: null,
+    estateName: block.vsl_estate?.estate_name || null,
+    blockName: block.block_name || block.block_code || null,
+    parcelName: null,
+    expectedAreaAcres: block.expected_area_acres ?? null
+  };
 }
 
-/** Entry point for the toolbar's info button — fetches fresh data from
- *  Supabase every time it's opened (does not reuse the bbox-loaded feature
- *  properties, which are a partial/cached view meant for map styling). */
+/** Plain-text mirror of buildBlockInfoHtml's groups — see
+ *  buildParcelExportSections above for why this is a separate function
+ *  rather than threading export rows through the HTML builder. */
+function buildBlockExportSections({ block, totalPlots, totalArea, avgPlotSize, plotRows, statusRows, ratoonRows, activityRows, alertRows, harvestList, plotsHarvested, totalGross, lastHarvestDate, varietyRows, media, docs, comments }) {
+  const sections = [];
+
+  sections.push({ title: "Details", type: "kv", rows: [
+    ["Block code", fmtPlain(block.block_code)],
+    ["Block name", fmtPlain(block.block_name)],
+    ["Estate name", fmtPlain(block.vsl_estate?.estate_name)],
+    ["Number of plots", String(totalPlots)],
+    ["Total area", `${totalArea.toFixed(2)} ac`],
+    ["Average plot size", `${avgPlotSize.toFixed(2)} ac`],
+    ["Dominant soil type", fmtPlain(block.soil_type)],
+    ["Soil pH", fmtPlain(block.soil_ph)],
+    ["Irrigation type", fmtPlain(block.irrigation_type)],
+    ["Manager (flat field)", fmtPlain(block.manager_name)],
+    ["Manager phone", fmtPlain(block.manager_phone)],
+    ["Cultivation status", fmtPlain(CULTIVATION_STATUS_LABELS[block.cultivation_status] || block.cultivation_status)],
+    ["Notes", fmtPlain(block.cultivation_notes)],
+    ["Last updated", fmtPlain(block.cultivation_updated_at ? String(block.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
+  ] });
+
+  sections.push({ title: `Plots (${plotRows.length})`, type: "table", headers: ["Plot", "Area", "Ratoon", "Cane variety"], rows: plotRows });
+
+  sections.push({ title: "Status", type: "table", headers: ["Status", "Number of plots"], rows: statusRows });
+  sections.push({ title: "Ratoon Number", type: "table", headers: ["Ratoon number", "Number of plots"], rows: ratoonRows });
+  sections.push({ title: "Activities", type: "table", headers: ["Activity", "Number of plots"], rows: activityRows });
+  sections.push({ title: "Alerts (open)", type: "table", headers: ["Severity", "Number of plots"], rows: alertRows });
+
+  sections.push({ title: "Harvest Summary", type: "kv", rows: [
+    ["Total harvests logged", String(harvestList.length)],
+    ["Plots harvested", String(plotsHarvested)],
+    ["Total gross weight", `${totalGross.toFixed(2)} t`],
+    ["Last harvest date", fmtPlain(lastHarvestDate)]
+  ] });
+
+  sections.push({ title: "Top 5 Cane Varieties", type: "table", headers: ["Rank", "Variety", "Number of plots"], rows: varietyRows });
+
+  sections.push({ title: "Manager", type: "kv", rows: block.vsl_profiles ? [
+    ["Name", fmtPlain(block.vsl_profiles.full_name)],
+    ["Email", fmtPlain(block.vsl_profiles.email)],
+    ["Phone", fmtPlain(block.vsl_profiles.phone)],
+    ["Title", fmtPlain(block.vsl_profiles.title)]
+  ] : [["Status", "No manager assigned."]] });
+
+  sections.push({ title: `Media (${media.length})`, type: "table", headers: ["Type", "Caption", "Captured", "File"], rows: media.map((m) => [
+    fmtPlain(m.media_type), fmtPlain(m.caption), fmtPlain(m.captured_at ? String(m.captured_at).slice(0, 10) : null), m.file_url || "—"
+  ]) });
+
+  sections.push({ title: `Documents (${docs.length})`, type: "table", headers: ["Type", "Title", "Uploaded", "File"], rows: docs.map((d) => [
+    fmtPlain(d.doc_type), fmtPlain(d.document_title), fmtPlain(d.upload_date), d.file_url || "—"
+  ]) });
+
+  sections.push({ title: `Comments (${comments.length})`, type: "table", headers: ["Type", "Comment", "Status", "Date"], rows: comments.map((c) => [
+    fmtPlain(c.comment_type), fmtPlain(c.comment_text), c.is_resolved ? "Resolved" : "Open", fmtPlain(c.created_at ? String(c.created_at).slice(0, 10) : null)
+  ]) });
+
+  return sections;
+}
+
+/** Estate-level view (the Feature Info panel's filter bar with only Estate
+ *  picked, no Block/Plot — see setupFeatureInfoFilterBar). Mirrors
+ *  buildParcelInfoHtml/buildBlockInfoHtml's { html, exportSections, title,
+ *  estateId/blockId/parcelId, estateName/blockName/parcelName } shape so it
+ *  slots into the same rendering/export pipeline. "Planted area" (per
+ *  block and estate-wide) is the sum of vsl_parcels.expected_area_acres
+ *  for plots whose cultivation_status is
+ *  anything other than "not_in_cane" — there's no dedicated column for it. */
+async function buildEstateInfoHtml(estateId) {
+  const [estateRes, blocksRes] = await Promise.all([
+    supabase.from("vsl_estate").select("*, vsl_profiles!manager_id(email, full_name, phone, title)").eq("id", estateId).single(),
+    supabase.from("vsl_blocks").select("id, block_code, block_name, expected_area_acres").eq("estate_id", estateId)
+  ]);
+
+  const estate = estateRes.data;
+  if (!estate) throw new Error("Estate not found.");
+  const blocks = blocksRes.data || [];
+  const blockIds = blocks.map((b) => b.id);
+
+  const parcelRowsRes = blockIds.length
+    ? await supabase.from("vsl_parcels").select("block_id, expected_area_acres, cultivation_status").in("block_id", blockIds)
+    : { data: [] };
+  const parcelRows = parcelRowsRes.data || [];
+
+  const perBlock = new Map();
+  for (const b of blocks) perBlock.set(b.id, { plots: 0, plantedArea: 0 });
+  for (const p of parcelRows) {
+    const agg = perBlock.get(p.block_id);
+    if (!agg) continue;
+    agg.plots += 1;
+    if (p.cultivation_status && p.cultivation_status !== "not_in_cane") {
+      agg.plantedArea += Number(p.expected_area_acres) || 0;
+    }
+  }
+
+  const blockRows = blocks
+    .slice()
+    .sort((a, b) => {
+      const na = Number(a.block_code), nb = Number(b.block_code);
+      return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : String(a.block_code).localeCompare(String(b.block_code), undefined, { numeric: true });
+    })
+    .map((b) => {
+      const agg = perBlock.get(b.id) || { plots: 0, plantedArea: 0 };
+      return {
+        name: b.block_name || b.block_code || "Block",
+        area: Number(b.expected_area_acres) || 0,
+        plots: agg.plots,
+        plantedArea: agg.plantedArea
+      };
+    });
+
+  const totalArea = blockRows.reduce((s, r) => s + r.area, 0);
+  const totalPlots = blockRows.reduce((s, r) => s + r.plots, 0);
+  const totalPlantedArea = blockRows.reduce((s, r) => s + r.plantedArea, 0);
+
+  const groups = [];
+
+  groups.push(buildCollapsibleGroup("Details", buildKvTable([
+    ["Estate code", fmt(estate.estate_code)],
+    ["Estate name", fmt(estate.estate_name)],
+    ["Region", fmt(estate.region)],
+    ["District", fmt(estate.district)],
+    ["Country", fmt(estate.country)],
+    ["Address", fmt(estate.address)],
+    ["Number of blocks", String(blockRows.length)],
+    ["Total area", `${totalArea.toFixed(2)} ac`],
+    ["Number of plots", String(totalPlots)],
+    ["Total planted area", `${totalPlantedArea.toFixed(2)} ac`],
+    ["Primary soil type", fmt(estate.primary_soil_type)],
+    ["Average rainfall", estate.average_rainfall_mm != null ? `${estate.average_rainfall_mm} mm` : "—"],
+    ["Elevation range", (estate.elevation_min_m != null || estate.elevation_max_m != null) ? `${fmt(estate.elevation_min_m)}–${fmt(estate.elevation_max_m)} m` : "—"],
+    ["Ownership type", fmt(estate.ownership_type)],
+    ["Owner", fmt(estate.owner_name)],
+    ["Owner phone", fmt(estate.owner_contact_phone)],
+    ["Owner email", fmt(estate.owner_contact_email)],
+    ["Established", fmt(estate.established_date)],
+    ["Status", fmt(estate.status)],
+    ["Yield per acre (t)", fmt(estate.yield_per_acre_tons)],
+    ["Notes", fmt(estate.notes)]
+  ]), { open: true }));
+
+  groups.push(buildCollapsibleGroup(`Blocks (${blockRows.length})`, buildListTable(
+    ["Block", "Area", "Plots", "Planted area"],
+    blockRows.map((r) => [r.name, `${r.area.toFixed(2)} ac`, String(r.plots), `${r.plantedArea.toFixed(2)} ac`]),
+    "No blocks in this estate yet.",
+    FOUR_COL_EQUAL_WIDTHS
+  )));
+
+  groups.push(buildCollapsibleGroup("Manager", estate.vsl_profiles
+    ? buildKvTable([
+      ["Name", fmt(estate.vsl_profiles.full_name)],
+      ["Email", fmt(estate.vsl_profiles.email)],
+      ["Phone", fmt(estate.vsl_profiles.phone)],
+      ["Title", fmt(estate.vsl_profiles.title)]
+    ])
+    : `<p class="map-popup__empty">No manager assigned.</p>`));
+
+  // Estate view has no per-row drill-down links (unlike the parcel view) —
+  // reset it anyway so a stale parcel's records can't linger.
+  infoPanelRecords = {};
+
+  const exportSections = buildEstateExportSections({ estate, blockRows, totalArea, totalPlots, totalPlantedArea });
+
+  return {
+    html: groups.join(""),
+    exportSections,
+    title: estate.estate_name || "Estate",
+    estateId: estate.id,
+    blockId: null,
+    parcelId: null,
+    estateName: estate.estate_name || null,
+    blockName: null,
+    parcelName: null
+  };
+}
+
+/** Plain-text mirror of buildEstateInfoHtml's groups — see
+ *  buildParcelExportSections above for why this is a separate function. */
+function buildEstateExportSections({ estate, blockRows, totalArea, totalPlots, totalPlantedArea }) {
+  const sections = [];
+
+  sections.push({ title: "Details", type: "kv", rows: [
+    ["Estate code", fmtPlain(estate.estate_code)],
+    ["Estate name", fmtPlain(estate.estate_name)],
+    ["Region", fmtPlain(estate.region)],
+    ["District", fmtPlain(estate.district)],
+    ["Country", fmtPlain(estate.country)],
+    ["Address", fmtPlain(estate.address)],
+    ["Number of blocks", String(blockRows.length)],
+    ["Total area", `${totalArea.toFixed(2)} ac`],
+    ["Number of plots", String(totalPlots)],
+    ["Total planted area", `${totalPlantedArea.toFixed(2)} ac`],
+    ["Primary soil type", fmtPlain(estate.primary_soil_type)],
+    ["Average rainfall", estate.average_rainfall_mm != null ? `${estate.average_rainfall_mm} mm` : "—"],
+    ["Elevation range", (estate.elevation_min_m != null || estate.elevation_max_m != null) ? `${fmtPlain(estate.elevation_min_m)}-${fmtPlain(estate.elevation_max_m)} m` : "—"],
+    ["Ownership type", fmtPlain(estate.ownership_type)],
+    ["Owner", fmtPlain(estate.owner_name)],
+    ["Owner phone", fmtPlain(estate.owner_contact_phone)],
+    ["Owner email", fmtPlain(estate.owner_contact_email)],
+    ["Established", fmtPlain(estate.established_date)],
+    ["Status", fmtPlain(estate.status)],
+    ["Yield per acre (t)", fmtPlain(estate.yield_per_acre_tons)],
+    ["Notes", fmtPlain(estate.notes)]
+  ] });
+
+  sections.push({ title: `Blocks (${blockRows.length})`, type: "table", headers: ["Block", "Area", "Plots", "Planted area"], rows: blockRows.map((r) => [
+    r.name, `${r.area.toFixed(2)} ac`, String(r.plots), `${r.plantedArea.toFixed(2)} ac`
+  ]) });
+
+  sections.push({ title: "Manager", type: "kv", rows: estate.vsl_profiles ? [
+    ["Name", fmtPlain(estate.vsl_profiles.full_name)],
+    ["Email", fmtPlain(estate.vsl_profiles.email)],
+    ["Phone", fmtPlain(estate.vsl_profiles.phone)],
+    ["Title", fmtPlain(estate.vsl_profiles.title)]
+  ] : [["Status", "No manager assigned."]] });
+
+  return sections;
+}
+
+/** Entry point for the toolbar's info button (a real clicked OL feature) —
+ *  resolves to the same central dispatcher (renderFeatureInfoView) the
+ *  filter bar itself uses, so both paths render/export identically; this
+ *  wrapper's only job is turning a clicked feature into the right id. */
 async function openFeatureInfoPanel(feature, layerType) {
+  const overlay = document.getElementById("featureInfoOverlay");
+  if (!overlay || !feature || !layerType) return;
+  overlay.hidden = false;
+  const id = feature.getId();
+  if (layerType === "BLOCKS") await renderFeatureInfoView({ blockId: id });
+  else await renderFeatureInfoView({ parcelId: id });
+}
+
+/** Entry point for the standalone floating info button below
+ *  .dashboard-btn (no feature pre-selected) — opens the panel with an
+ *  empty filter bar so the person can browse to any Estate/Block/Plot. */
+async function openFeatureInfoPanelManual() {
+  const overlay = document.getElementById("featureInfoOverlay");
+  const filterBar = document.getElementById("featureInfoFilterBar");
+  if (!overlay) return;
+  selectedFeature = null;
+  selectedLayerType = null;
+  overlay.hidden = false;
+  if (filterBar) filterBar.hidden = false;
+
+  const { estateSelect, blockSelect, plotSelect } = getFeatureInfoFilterEls();
+  await loadFeatureInfoEstates();
+  suppressFeatureInfoFilterEvents = true;
+  try {
+    if (estateSelect) estateSelect.value = "";
+    if (blockSelect) { blockSelect.innerHTML = '<option value="">— Block (all) —</option>'; blockSelect.disabled = true; }
+    if (plotSelect) { plotSelect.innerHTML = '<option value="">— Plot (all) —</option>'; plotSelect.disabled = true; }
+  } finally {
+    suppressFeatureInfoFilterEvents = false;
+  }
+  renderFeatureInfoEmptyState();
+}
+
+// ---------------------------------------------------------------------------
+// Feature Info panel — Estate/Block/Plot filter bar (points 1 & 4) and the
+// estate/block/parcel view dispatcher (points 5 & 6). See
+// windows/feature-info-panel.html for the markup this wires up.
+// ---------------------------------------------------------------------------
+
+// What the panel is currently showing — read by the footer's Log button (to
+// know what to log against, see setupFeatureInfoActionFooter) and by
+// Download's naming/context. Kept separate from selectedFeature/
+// selectedLayerType (only set for a real clicked OL feature) since a manual
+// filter-bar pick has no OL feature backing it.
+let featureInfoSelection = { estateId: null, blockId: null, parcelId: null, blockName: null, parcelName: null };
+
+let featureInfoFilterBarWired = false;
+let featureInfoEstatesLoaded = false;
+// True only while this module is programmatically writing the selects'
+// values (auto-fill from a map click, or re-sync after a render) — their
+// own change handlers check this and bail out, so our own writes don't
+// trigger a redundant re-render/re-fetch of the view we just rendered.
+let suppressFeatureInfoFilterEvents = false;
+
+function getFeatureInfoFilterEls() {
+  return {
+    estateSelect: document.getElementById("featureInfoEstateSelect"),
+    blockSelect: document.getElementById("featureInfoBlockSelect"),
+    plotSelect: document.getElementById("featureInfoPlotSelect")
+  };
+}
+
+async function loadFeatureInfoEstates(force = false) {
+  const { estateSelect } = getFeatureInfoFilterEls();
+  if (!estateSelect) return;
+  if (featureInfoEstatesLoaded && !force) return;
+  const { data } = await supabase.from("vsl_estate").select("id, estate_name").order("estate_name", { ascending: true });
+  estateSelect.innerHTML = '<option value="">— Estate —</option>';
+  for (const e of data || []) {
+    const o = document.createElement("option");
+    o.value = e.id;
+    o.textContent = e.estate_name;
+    estateSelect.appendChild(o);
+  }
+  featureInfoEstatesLoaded = true;
+}
+
+async function loadFeatureInfoBlocks(estateId) {
+  const { blockSelect, plotSelect } = getFeatureInfoFilterEls();
+  if (!blockSelect || !plotSelect) return;
+  plotSelect.innerHTML = '<option value="">— Plot (all) —</option>';
+  plotSelect.disabled = true;
+  if (!estateId) {
+    blockSelect.innerHTML = '<option value="">— Block (all) —</option>';
+    blockSelect.disabled = true;
+    return;
+  }
+  blockSelect.innerHTML = '<option value="">Loading…</option>';
+  blockSelect.disabled = true;
+  const { data } = await supabase.from("vsl_blocks").select("id, block_code, block_name").eq("estate_id", estateId);
+  const rows = (data || []).slice().sort((a, b) => {
+    const na = Number(a.block_code), nb = Number(b.block_code);
+    return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : String(a.block_code).localeCompare(String(b.block_code), undefined, { numeric: true });
+  });
+  blockSelect.innerHTML = '<option value="">— Block (all) —</option>';
+  for (const b of rows) {
+    const o = document.createElement("option");
+    o.value = b.id;
+    o.textContent = b.block_name || `Block ${b.block_code}`;
+    blockSelect.appendChild(o);
+  }
+  blockSelect.disabled = false;
+}
+
+async function loadFeatureInfoPlots(blockId) {
+  const { plotSelect } = getFeatureInfoFilterEls();
+  if (!plotSelect) return;
+  if (!blockId) {
+    plotSelect.innerHTML = '<option value="">— Plot (all) —</option>';
+    plotSelect.disabled = true;
+    return;
+  }
+  plotSelect.innerHTML = '<option value="">Loading…</option>';
+  plotSelect.disabled = true;
+  const { data } = await supabase.from("vsl_parcels").select("id, parcel_code, parcel_name").eq("block_id", blockId);
+  const rows = (data || []).slice().sort((a, b) => {
+    const na = Number(a.parcel_code), nb = Number(b.parcel_code);
+    return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : String(a.parcel_code).localeCompare(String(b.parcel_code), undefined, { numeric: true });
+  });
+  plotSelect.innerHTML = '<option value="">— Plot (all) —</option>';
+  for (const p of rows) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.parcel_name || `Plot ${p.parcel_code}`;
+    plotSelect.appendChild(o);
+  }
+  plotSelect.disabled = false;
+}
+
+function setupFeatureInfoFilterBar() {
+  if (featureInfoFilterBarWired) return;
+  featureInfoFilterBarWired = true;
+  const { estateSelect, blockSelect, plotSelect } = getFeatureInfoFilterEls();
+
+  estateSelect?.addEventListener("change", async () => {
+    if (suppressFeatureInfoFilterEvents) return;
+    const estateId = estateSelect.value || null;
+    await loadFeatureInfoBlocks(estateId);
+    if (estateId) await renderFeatureInfoView({ estateId });
+    else renderFeatureInfoEmptyState();
+  });
+
+  blockSelect?.addEventListener("change", async () => {
+    if (suppressFeatureInfoFilterEvents) return;
+    const estateId = estateSelect?.value || null;
+    const blockId = blockSelect.value || null;
+    await loadFeatureInfoPlots(blockId);
+    if (blockId) await renderFeatureInfoView({ estateId, blockId });
+    else if (estateId) await renderFeatureInfoView({ estateId });
+    else renderFeatureInfoEmptyState();
+  });
+
+  plotSelect?.addEventListener("change", async () => {
+    if (suppressFeatureInfoFilterEvents) return;
+    const estateId = estateSelect?.value || null;
+    const blockId = blockSelect?.value || null;
+    const parcelId = plotSelect.value || null;
+    if (parcelId) await renderFeatureInfoView({ estateId, blockId, parcelId });
+    else if (blockId) await renderFeatureInfoView({ estateId, blockId });
+    else if (estateId) await renderFeatureInfoView({ estateId });
+    else renderFeatureInfoEmptyState();
+  });
+}
+
+function renderFeatureInfoEmptyState() {
+  const inner = document.getElementById("featureInfoPanelInner");
+  const actionBtns = document.getElementById("featureInfoActionBtns");
+  if (inner) inner.innerHTML = `<p class="map-popup__empty">Select an estate to see its details.</p>`;
+  if (actionBtns) actionBtns.hidden = true;
+  clearFeatureExportContext();
+  featureInfoSelection = { estateId: null, blockId: null, parcelId: null, blockName: null, parcelName: null };
+  setFeatureInfoHeader("ESTATE");
+}
+
+/** Central dispatcher for the Feature Info panel — decides which of the
+ *  three detail views to show based on which ids are given (deepest wins:
+ *  parcelId > blockId > estateId), fetches + renders it, feeds the
+ *  footer's Download button, and re-syncs the filter bar's three selects
+ *  to match (so opening from a map click, which only ever knows one id,
+ *  still ends up with all three dropdowns correctly populated). */
+async function renderFeatureInfoView({ estateId = null, blockId = null, parcelId = null }) {
   const inner = document.getElementById("featureInfoPanelInner");
   const overlay = document.getElementById("featureInfoOverlay");
-  if (!inner || !overlay || !feature || !layerType) return;
+  const filterBar = document.getElementById("featureInfoFilterBar");
+  const actionBtns = document.getElementById("featureInfoActionBtns");
+  if (!inner || !overlay) return;
 
-  setFeatureInfoHeader(layerType);
-  inner.innerHTML = `<p class="map-popup__empty">Loading…</p>`;
   overlay.hidden = false;
+  if (filterBar) filterBar.hidden = false;
+  inner.innerHTML = `<p class="map-popup__empty">Loading…</p>`;
+  clearFeatureExportContext();
+  if (actionBtns) actionBtns.hidden = true;
 
   try {
-    const html = layerType === "BLOCKS"
-      ? await buildBlockInfoHtml(feature.getId())
-      : await buildParcelInfoHtml(feature.getId());
-    inner.innerHTML = html;
+    let result;
+    let kind;
+    if (parcelId) {
+      kind = "parcel";
+      result = await buildParcelInfoHtml(parcelId);
+    } else if (blockId) {
+      kind = "block";
+      result = await buildBlockInfoHtml(blockId);
+    } else if (estateId) {
+      kind = "estate";
+      result = await buildEstateInfoHtml(estateId);
+    } else {
+      renderFeatureInfoEmptyState();
+      return;
+    }
+
+    inner.innerHTML = result.html;
+    setFeatureInfoHeader(kind === "parcel" ? "PARCELS" : kind === "block" ? "BLOCKS" : "ESTATE");
+
+    featureInfoSelection = {
+      estateId: result.estateId ?? estateId ?? null,
+      blockId: result.blockId ?? blockId ?? null,
+      parcelId: result.parcelId ?? parcelId ?? null,
+      blockName: result.blockName || null,
+      parcelName: result.parcelName || null,
+      expectedAreaAcres: result.expectedAreaAcres ?? null
+    };
+
+    await syncFeatureInfoFilterBar(featureInfoSelection);
+
+    const { extent3857, lonLat } = computeExportGeometry(kind, featureInfoSelection);
+    setFeatureExportContext({
+      kind,
+      title: result.title,
+      estateName: result.estateName,
+      blockName: result.blockName,
+      parcelName: result.parcelName,
+      printedBy: currentProfile?.full_name || currentProfile?.email || null,
+      sections: result.exportSections,
+      extent3857,
+      lonLat
+    });
+
+    if (actionBtns) actionBtns.hidden = false;
+    // Estate-level has no single block/plot to log an activity/alert
+    // against — the Log button only makes sense once a Block (and
+    // optionally Plot) is picked.
+    const logMainBtn = document.getElementById("featureLogMainBtn");
+    if (logMainBtn) logMainBtn.disabled = kind === "estate";
   } catch (err) {
     console.error("[Victoria] Failed to load feature info:", err);
     inner.innerHTML = `<p class="map-popup__empty">Failed to load details: ${escapeHtml(err?.message || "unknown error")}</p>`;
   }
+}
+
+/** Re-populates the three filter selects to match the given ids without
+ *  re-triggering their own change handlers (see
+ *  suppressFeatureInfoFilterEvents above). */
+async function syncFeatureInfoFilterBar({ estateId, blockId, parcelId }) {
+  const { estateSelect, blockSelect, plotSelect } = getFeatureInfoFilterEls();
+  if (!estateSelect) return;
+  suppressFeatureInfoFilterEvents = true;
+  try {
+    await loadFeatureInfoEstates();
+    estateSelect.value = estateId != null ? String(estateId) : "";
+    await loadFeatureInfoBlocks(estateId);
+    if (blockSelect) blockSelect.value = blockId != null ? String(blockId) : "";
+    await loadFeatureInfoPlots(blockId);
+    if (plotSelect) plotSelect.value = parcelId != null ? String(parcelId) : "";
+  } finally {
+    suppressFeatureInfoFilterEvents = false;
+  }
+}
+
+/** Geometry for the currently-shown kind, used by Download's PDF map
+ *  snapshot + QR code. Looked up from whichever OL vector source already
+ *  holds that feature — estatesSource is loaded in full at boot (see
+ *  loadEstateBoundaries), while blocksSource/parcelsSource only hold
+ *  whatever's currently in the map's viewport (see the bbox loader). If
+ *  the feature isn't loaded in that source, the PDF just skips the
+ *  snapshot/QR (see feature-export.js) rather than failing. */
+function computeExportGeometry(kind, { estateId, blockId, parcelId }) {
+  let feature = null;
+  if (kind === "parcel" && parcelId != null) feature = parcelsSource.getFeatureById(parcelId);
+  else if (kind === "block" && blockId != null) feature = blocksSource.getFeatureById(blockId);
+  else if (kind === "estate" && estateId != null) feature = estatesSource.getFeatureById(estateId);
+  const geom = feature?.getGeometry?.();
+  if (!geom) return { extent3857: null, lonLat: null };
+  const extent3857 = geom.getExtent();
+  const lonLat = ol.proj.toLonLat(ol.extent.getCenter(extent3857), "EPSG:3857");
+  return { extent3857, lonLat };
+}
+
+/** Lightweight object standing in for a real OL feature, so the Feature
+ *  Info panel's Log button can open Log Activity/Log Alert against a
+ *  manually-selected (filter-bar) block/plot that isn't necessarily loaded
+ *  in the map's vector source. Both modals' open + save flows only ever
+ *  call .getId() and .get(key) on whatever feature they're given — never
+ *  .getGeometry() — so this covers everything they actually need. */
+function makeFeatureInfoShim(layerType, sel) {
+  const id = layerType === "PARCELS" ? sel.parcelId : sel.blockId;
+  const props = layerType === "PARCELS"
+    ? { parcel_name: sel.parcelName, block_name: sel.blockName, expected_area_acres: sel.expectedAreaAcres }
+    : { block_name: sel.blockName, expected_area_acres: sel.expectedAreaAcres };
+  return {
+    getId: () => id,
+    get: (key) => props[key],
+    getGeometry: () => null
+  };
+}
+
+/** Wires the Feature Info panel's footer "Log" split-button (Activity/Alert
+ *  mode select) — opens the same Log Activity/Log Alert modals the map's
+ *  own selection toolbar uses, targeting whatever block/plot the panel is
+ *  currently showing (featureInfoSelection). Reuses the real clicked OL
+ *  feature when it's the exact same one (so anything else that expects a
+ *  genuine feature keeps working); falls back to makeFeatureInfoShim for a
+ *  manual filter-bar pick. Disabled at estate-level (see
+ *  renderFeatureInfoView) since there's no single block/plot to log
+ *  against. The Download half of this footer is wired by
+ *  js/feature-export.js's initFeatureExport. */
+function setupFeatureInfoActionFooter() {
+  const logMainBtn = document.getElementById("featureLogMainBtn");
+  const logModeSelect = document.getElementById("featureLogModeSelect");
+
+  logMainBtn?.addEventListener("click", () => {
+    const sel = featureInfoSelection;
+    if (!sel.blockId) return;
+
+    const layerType = sel.parcelId ? "PARCELS" : "BLOCKS";
+    const targetId = sel.parcelId || sel.blockId;
+    const feature = (selectedFeature && selectedFeature.getId() === targetId && selectedLayerType === layerType)
+      ? selectedFeature
+      : makeFeatureInfoShim(layerType, sel);
+
+    const mode = logModeSelect?.value === "alert" ? "alert" : "activity";
+    if (mode === "alert") openLogAlertModal(feature, layerType);
+    else openLogActivityModal(feature, layerType);
+  });
 }
 
 function surveyFeatureAreaAcresText(feature) {
@@ -2726,7 +3596,7 @@ function renderLogActivityFields(activityName) {
   const wrap = document.getElementById("logActivityFieldsWrap");
   const emptyHint = document.getElementById("logActivityEmptyHint");
   const commonBody = document.getElementById("logActivityCommonFields");
-  const propsTable = document.getElementById("logActivityPropsTable");
+  const propsSection = document.getElementById("logActivityPropsSection");
   const propsBody = document.getElementById("logActivityPropsFields");
   const saveBtn = document.getElementById("logActivitySaveBtn");
   if (!wrap || !commonBody || !propsBody) return;
@@ -2805,14 +3675,18 @@ function renderLogActivityFields(activityName) {
     applyAreaCoveredLock();
   }
 
+  // "Other Details" — the per-activity extras (Bush Clearing's vegetation
+  // density, Harvesting's yield, etc). Label + table are toggled together
+  // via the shared #logActivityPropsSection wrapper so the section heading
+  // never shows with nothing under it.
   const extra = ACTIVITY_PROPERTY_DEFS[activityName] || [];
   if (extra.length) {
     propsBody.innerHTML = extra.map(buildPropFieldRow).join("");
     wireConditionalFieldVisibility(propsBody);
-    if (propsTable) propsTable.hidden = false;
+    if (propsSection) propsSection.hidden = false;
   } else {
     propsBody.innerHTML = "";
-    if (propsTable) propsTable.hidden = true;
+    if (propsSection) propsSection.hidden = true;
   }
 
   wrap.hidden = false;
@@ -3139,9 +4013,15 @@ function setupLogAlertModal() {
 function closeInfoPopup() {
   const inner = document.getElementById("featureInfoPanelInner");
   const overlay = document.getElementById("featureInfoOverlay");
+  const filterBar = document.getElementById("featureInfoFilterBar");
+  const actionBtns = document.getElementById("featureInfoActionBtns");
   if (inner) inner.innerHTML = "";
   if (overlay) overlay.hidden = true;
+  if (filterBar) filterBar.hidden = true;
+  if (actionBtns) actionBtns.hidden = true;
+  clearFeatureExportContext();
   hideParcelActionToolbar();
+  featureInfoSelection = { estateId: null, blockId: null, parcelId: null, blockName: null, parcelName: null };
 }
 
 /** Rough half-height (in px) of the name/area/ratoon(/alerts) label block
@@ -3233,8 +4113,8 @@ function setupParcelActionToolbar() {
 function setFeatureInfoHeader(layerType) {
   const iconEl = document.querySelector("#featureInfoPanelIcon i");
   const titleEl = document.getElementById("featureInfoPanelTitle");
-  const isParcel = layerType === "PARCELS";
-  if (iconEl) iconEl.className = isParcel ? "fas fa-map" : "fas fa-cubes";
+  const iconClass = layerType === "PARCELS" ? "fas fa-map" : layerType === "BLOCKS" ? "fas fa-cubes" : "fas fa-city";
+  if (iconEl) iconEl.className = iconClass;
   if (titleEl) titleEl.textContent = FEATURE_INFO_BADGE[layerType] || "Feature";
 }
 
@@ -3300,6 +4180,15 @@ function setupInfoPopup() {
       },
       { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 20 }
     );
+  });
+
+  setupFeatureInfoFilterBar();
+  setupFeatureInfoActionFooter();
+
+  // Standalone floating button (below .dashboard-btn) — opens the panel
+  // for manual Estate/Block/Plot browsing, no map click needed.
+  document.getElementById("mapFeatureInfoBtn")?.addEventListener("click", () => {
+    openFeatureInfoPanelManual();
   });
 }
 
@@ -5128,6 +6017,13 @@ async function initMap() {
     setStatus,
     statusEl
   });
+
+  // Feature Info panel's Download button (CSV/PDF) — see
+  // js/feature-export.js. setFeatureExportContext()/clearFeatureExportContext()
+  // (called from openFeatureInfoPanel/closeInfoPopup above) feed it what's
+  // currently shown; this call just wires the button/select once and gives
+  // it the map instance it needs for the PDF's snapshot image.
+  initFeatureExport({ map, setStatus, statusEl });
 
   initDroneImageModule({
     map,

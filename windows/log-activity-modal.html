@@ -31,12 +31,16 @@
         <p id="logActivityEmptyHint" class="map-popup__empty">Select an activity above to log its details.</p>
 
         <div id="logActivityFieldsWrap" hidden>
+          <div class="vsl-section-label">General Details</div>
           <table class="map-popup__table vsl-prop-table">
             <tbody id="logActivityCommonFields"></tbody>
           </table>
-          <table class="map-popup__table vsl-prop-table" id="logActivityPropsTable" hidden>
-            <tbody id="logActivityPropsFields"></tbody>
-          </table>
+          <div id="logActivityPropsSection" hidden>
+            <div class="vsl-section-label vsl-section-label--second">Other Details</div>
+            <table class="map-popup__table vsl-prop-table" id="logActivityPropsTable">
+              <tbody id="logActivityPropsFields"></tbody>
+            </table>
+          </div>
         </div>
 
         <p id="logActivityError" class="search-panel__error" role="alert" hidden></p>

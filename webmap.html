@@ -77,6 +77,15 @@
             <i class="fas fa-bars"></i>
           </button>
       </div>
+      <!-- Floating Feature Info button — opens the Feature Info panel
+           directly (js/map-app.js openFeatureInfoPanelManual), with an empty
+           Estate/Block/Plot filter bar so the person can browse to any
+           estate/block/plot without clicking it on the map first. -->
+      <div class="map-dashboard-btn-wrap map-feature-info-btn-wrap">
+          <button type="button" class="dashboard-btn" id="mapFeatureInfoBtn" title="Feature Info">
+            <i class="fas fa-circle-info"></i>
+          </button>
+      </div>
       <!-- LOCATE ME BUTTON -->
       <div class="map-fab-cluster map-fab-cluster--right">
         <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
@@ -453,3 +462,4 @@
   <script type="module" src="./js/sw-loader.js"></script>
 </body>
 </html>
+

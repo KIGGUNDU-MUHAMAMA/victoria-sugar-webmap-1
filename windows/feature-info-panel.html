@@ -1,17 +1,24 @@
-    <!-- Read-only, grouped/collapsible feature detail view. Opened only via the
-         map selection toolbar's "info" button (see js/map-app.js
-         openFeatureInfoPanel) — no longer auto-opens on plain feature click,
-         and has no edit/modify controls (use the Modify top-toolbar button for
-         that). Previous tabbed Info/Modify version preserved for reference at
+    <!-- Read-only, grouped/collapsible feature detail view. Opened either via
+         the map selection toolbar's "info" button (auto-fills the filter bar
+         below from the clicked feature — see js/map-app.js openFeatureInfoPanel)
+         or via the standalone floating info button below .dashboard-btn
+         (opens with an empty filter bar for manual Estate/Block/Plot
+         browsing — see openFeatureInfoPanelManual). No edit/modify controls
+         (use the Modify top-toolbar button for that). Previous tabbed
+         Info/Modify version preserved for reference at
          windows/old_feature-info-panel.html.
 
-         Built as a centered vsl-modal-overlay (same pattern as
-         edit-details-modal.html / log-activity-modal.html) rather than docked
-         in .map-left-stack, so it isn't caught by the phone-width rule that
-         hides .map-left-stack contents while other panels are active, and so
-         it gets the same "full modal" mobile treatment as the Log Activity
-         window. Toggle visibility on #featureInfoOverlay (the wrapper), not
-         on #featureInfoPanel itself. -->
+         Built as a vsl-modal-overlay (same base pattern as
+         edit-details-modal.html / log-activity-modal.html) rather than
+         docked in .map-left-stack, so it isn't caught by the phone-width
+         rule that hides .map-left-stack contents while other panels are
+         active. On desktop this panel deliberately breaks from the
+         centered/blurred look every other vsl-modal-overlay dialog shares —
+         see the "#featureInfoOverlay — distinct full-height panel" block in
+         styles.css for the (desktop-only) overrides; phones keep the
+         original centered/blurred/short modal treatment untouched. Toggle
+         visibility on #featureInfoOverlay (the wrapper), not on
+         #featureInfoPanel itself. -->
     <div id="featureInfoOverlay" class="vsl-modal-overlay" hidden>
       <section id="featureInfoPanel" class="vsl-modal-card vsl-modal-card--wide popWinMain feature-info-panel" role="region" aria-label="Selected map feature">
         <header class="popWinHead">
@@ -24,6 +31,61 @@
           </button>
         </header>
 
+        <!-- Estate / Block / Plot cascade — lets the person pick a different
+             plot to inspect without leaving the panel. Auto-filled (and left
+             enabled, so they can still change it) when opened from a map
+             click; empty when opened from the standalone info button, so
+             they choose Estate first, then optionally Block, then optionally
+             Plot. Picking only an Estate shows the estate-level view; Estate
+             + Block (no Plot) shows the block-level view; all three shows
+             the plot-level view. See setupFeatureInfoFilterBar() in
+             js/map-app.js. -->
+        <div class="vsl-feature-info-filters" id="featureInfoFilterBar" hidden>
+          <label class="visually-hidden" for="featureInfoEstateSelect">Estate</label>
+          <select id="featureInfoEstateSelect" class="vsl-feature-info-filters__select">
+            <option value="">— Estate —</option>
+          </select>
+          <label class="visually-hidden" for="featureInfoBlockSelect">Block</label>
+          <select id="featureInfoBlockSelect" class="vsl-feature-info-filters__select" disabled>
+            <option value="">— Block (all) —</option>
+          </select>
+          <label class="visually-hidden" for="featureInfoPlotSelect">Plot</label>
+          <select id="featureInfoPlotSelect" class="vsl-feature-info-filters__select" disabled>
+            <option value="">— Plot (all) —</option>
+          </select>
+        </div>
+        <p id="featureExportError" class="search-panel__error" role="alert" hidden></p>
+
         <div id="featureInfoPanelInner" class="popWinBody"></div>
+
+        <!-- Grouped action footer (see js/feature-export.js for Download,
+             and the featureLogModeSelect wiring in js/map-app.js for Log).
+             Each control is a solid "do it" button plus an attached select
+             that only changes the mode/format for the next click — picking
+             a menu option never fires the action by itself. Hidden until a
+             feature/estate/block/plot's details have actually loaded
+             (nothing to log or export before that). -->
+        <footer class="popWinActionBtns" id="featureInfoActionBtns" hidden>
+          <div class="vsl-split-btn vsl-split-btn--log" id="featureLogSplitBtn">
+            <button type="button" class="vsl-split-btn__main vsl-split-btn__main--log" id="featureLogMainBtn">
+              <i class="fas fa-plus" aria-hidden="true"></i> Log
+            </button>
+            <label class="visually-hidden" for="featureLogModeSelect">Log type</label>
+            <select id="featureLogModeSelect" class="vsl-split-btn__select vsl-split-btn__select--log">
+              <option value="activity">Activity</option>
+              <option value="alert">Alert</option>
+            </select>
+          </div>
+          <div class="vsl-split-btn vsl-split-btn--download" id="featureExportSplitBtn">
+            <button type="button" class="vsl-split-btn__main vsl-split-btn__main--download" id="featureExportBtn">
+              <i class="fas fa-download" aria-hidden="true"></i> Export
+            </button>
+            <label class="visually-hidden" for="featureExportFormat">Export format</label>
+            <select id="featureExportFormat" class="vsl-split-btn__select vsl-split-btn__select--download">
+              <option value="pdf">PDF</option>
+              <option value="csv">CSV</option>
+            </select>
+          </div>
+        </footer>
       </section>
     </div>

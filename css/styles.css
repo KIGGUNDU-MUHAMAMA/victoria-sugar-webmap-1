@@ -1479,6 +1479,128 @@ body.print-composer-open {
   padding-bottom: 8px;
 }
 
+/* Feature Info panel's Estate/Block/Plot filter bar — sits between the
+   header and the scrollable details body. Hidden until the panel actually
+   has something to show a filter for (see setupFeatureInfoFilterBar() in
+   js/map-app.js). Same visual band as the old download bar used to be. */
+.vsl-feature-info-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--green-50, #edf7f2);
+  border-bottom: 1px solid #c8d0ce;
+  flex-shrink: 0;
+}
+.vsl-feature-info-filters[hidden] {
+  display: none !important;
+}
+.vsl-feature-info-filters__select {
+  flex: 1 1 140px;
+  min-width: 110px;
+  border: 1px solid #c8d0ce;
+  border-radius: 6px;
+  padding: 6px 28px 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1f1e;
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  appearance: none;
+  cursor: pointer;
+}
+.vsl-feature-info-filters__select:focus {
+  outline: none;
+  border-color: #4a9e6e;
+  box-shadow: 0 0 0 3px rgba(74, 158, 110, 0.12);
+}
+.vsl-feature-info-filters__select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Footer's "solid button + attached dropdown segment" grouped controls
+   (Log Activity/Alert, Export PDF/CSV) — one outlined pill made of a
+   colored action button (left, square on its right edge) and a white
+   select (right, square on its left edge), joined with no gap so the only
+   rounded corners are the two outer ones, per the reference "Download |
+   MP4 360 ▾" control. The whole pill's outline (and the divider between
+   the two halves) is colored to match the button — a plain variant class
+   (--log / --download) picks which existing palette color that is; no new
+   colors introduced. */
+.vsl-split-btn {
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid transparent;
+}
+.vsl-split-btn--log {
+  border-color: var(--accent, #8d6a3a);
+}
+.vsl-split-btn--download {
+  border-color: var(--green-600, #2e6647);
+}
+.vsl-split-btn__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--green-600, #2e6647);
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.vsl-split-btn__main:hover {
+  background: var(--green-700, #234f38);
+}
+.vsl-split-btn__main:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.vsl-split-btn__main--log {
+  background: var(--accent, #8d6a3a);
+}
+.vsl-split-btn__main--log:hover {
+  background: #6f5329;
+}
+.vsl-split-btn__select {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  border-left: 2px solid var(--green-600, #2e6647);
+  padding: 8px 24px 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  appearance: none;
+  cursor: pointer;
+}
+.vsl-split-btn__select--log {
+  border-left-color: var(--accent, #8d6a3a);
+}
+.vsl-split-btn__select:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(74, 158, 110, 0.35);
+}
+.vsl-split-btn[hidden] {
+  display: none !important;
+}
+
 /* Info toolbar help */
 .info-help-popover {
   width: min(360px, calc(100vw - 24px));
@@ -2873,6 +2995,14 @@ select.search-panel__input {
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
+/* Buttons in this app are routinely hidden/shown via the `hidden` attribute
+   (e.g. Log Activity's Save vs. Record Detail's Edit/Cancel toggle) — the
+   base rule's `display: inline-flex` above has equal CSS specificity to
+   the `[hidden]` UA rule and, being an author rule, would otherwise win
+   and keep "hidden" buttons visible. */
+.futuristic-icon-btn[hidden] {
+  display: none !important;
+}
 .futuristic-icon-btn.btn-go,
 .futuristic-icon-btn.btn-add {
   background: linear-gradient(135deg, var(--vsl-primary) 0%, #2e7d32 100%);
@@ -3010,6 +3140,13 @@ select.search-panel__input {
   top: 1rem;
   left: 1rem;
   z-index: 50;
+}
+
+/* Sits directly below .map-dashboard-btn-wrap — same button look
+   (.dashboard-btn), just offset down by that button's rendered height
+   plus a small gap. */
+.map-feature-info-btn-wrap {
+  top: 4.35rem;
 }
 
 /* ── FAB Cluster ── */
@@ -5079,6 +5216,46 @@ select.search-panel__input {
   max-height: min(82vh, 82dvh, 720px);
 }
 
+/* Narrower than the shared .vsl-modal-card--wide default (640px) — the
+   panel doesn't need that much width now that it docks to the left edge
+   instead of centering, and the wide default made it feel oversized.
+   Same scoped-override pattern #logActivityModal uses on this same shared
+   class, further down this file. */
+#featureInfoPanel.vsl-modal-card--wide {
+  max-width: 480px;
+}
+
+/* Feature Info panel — desktop-only exception to every other
+   vsl-modal-overlay dialog: it docks to the left edge, spans the full
+   viewport height, and doesn't dim/blur the map behind it (so the person
+   can still see/refer to the map while it's open), instead of the usual
+   centered + blurred-backdrop treatment. Width is untouched — still
+   .vsl-modal-card--wide's existing 90%/640px. Phones (<=480px, see that
+   media block below) keep the original centered/blurred/short modal as-is.
+   The overlay itself is pointer-events:none so clicks reach the map outside
+   the panel; the panel re-enables pointer events for itself. */
+@media (min-width: 901px) {
+  #featureInfoOverlay {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    justify-content: flex-start;
+    align-items: stretch;
+    padding: 0;
+    pointer-events: none;
+  }
+  #featureInfoOverlay #featureInfoPanel {
+    pointer-events: auto;
+  }
+  #featureInfoPanel.popWinMain {
+    max-height: none;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    margin: 0;
+  }
+}
+
 /* Record detail drill-down — same "cap height, let the body scroll"
    treatment as the info panel above, just a shorter cap since a single
    record's field list is much shorter than the whole grouped info panel. */
@@ -5282,51 +5459,59 @@ select.search-panel__input {
 }
 
 /* Log Activity only (Log Alert keeps the stacked single-column layout
-   above) — mirrors the dashboard's own Log New Activity modal: same
-   460px-wide card, fields paired two-per-row in a grid (label tight above
-   input in each, 10px gaps), with textareas (Comments, Challenges)
-   spanning the full width. Colours/sizes below are the dashboard's own
-   (dashboard/style.css .modal-box / .form-group / .form-label /
-   .form-input — hardcoded here rather than via var() since those tokens
-   only exist in the dashboard's stylesheet, not this one) so the two
-   windows render identically. Scoped to #logActivityModal so
-   .vsl-prop-table's shared rules above still apply as-is everywhere else
-   (Log Alert). The activity picker bar above the form
-   (.popWinTabs__select) and its "nothing shows until you pick one" gating
-   are unchanged in behaviour — only restyled to match below. */
+   above) — approved mockup: label LEFT / input RIGHT for every field except
+   Comments and Challenges (label above, full width), each row divided by a
+   bottom border so it's unambiguous where one field ends and the next
+   begins, grouped under two static section headings ("General Details" /
+   "Other Details" — see .vsl-section-label below and
+   #logActivityPropsSection in windows/log-activity-modal.html). Colours
+   are the dashboard's own (dashboard/style.css .form-label / .form-input —
+   hardcoded here rather than via var() since those tokens only exist in
+   the dashboard's stylesheet, not this one). Scoped to #logActivityModal
+   so .vsl-prop-table's shared rules above still apply as-is everywhere
+   else (Log Alert). popWinHead/popWinActionBtns colours are untouched —
+   only the field area between them is restyled. */
 #logActivityModal .vsl-modal-card--wide {
   max-width: 460px;
 }
 #logActivityModal .vsl-prop-table {
   margin-bottom: 0;
 }
-#logActivityModal .vsl-prop-table + .vsl-prop-table {
-  margin-top: 10px;
-}
-#logActivityModal .vsl-prop-table tbody {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
 #logActivityModal .vsl-prop-table tr {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  align-items: center;
+  gap: 14px;
+  padding: 5px 2px;
   margin-bottom: 0;
+  border-bottom: 1px solid #e4e9e2;
+}
+#logActivityModal .vsl-prop-table tr:last-child {
+  border-bottom: none;
 }
 #logActivityModal .vsl-prop-table tr[hidden] {
   display: none !important;
 }
-/* Textareas (Comments, Challenges) read cramped at half-width — span both
-   grid columns, same as the dashboard's own full-width form-groups. */
-#logActivityModal .vsl-prop-table tr:has(textarea) {
-  grid-column: 1 / -1;
-}
 #logActivityModal .vsl-prop-table th {
+  flex: 0 0 42%;
+  max-width: 42%;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: #374140;
+}
+#logActivityModal .vsl-prop-table td {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Comments / Challenges — the label-above, full-width exception. */
+#logActivityModal .vsl-prop-table tr:has(textarea) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+#logActivityModal .vsl-prop-table tr:has(textarea) th {
+  flex: none;
+  max-width: none;
 }
 #logActivityModal .vsl-prop-table input,
 #logActivityModal .vsl-prop-table select,
@@ -5347,6 +5532,24 @@ select.search-panel__input {
 #logActivityModal .vsl-prop-table select {
   padding-right: 2rem;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23374140' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* Section headings — "General Details" / "Other Details" (see
+   windows/log-activity-modal.html). Small green pill labels, same green
+   used elsewhere for this modal's accents. */
+.vsl-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #285f28;
+  background: var(--green-50, #edf7f2);
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 0 0 4px;
+}
+.vsl-section-label--second {
+  margin-top: 18px;
 }
 
 /* Activity Type / Severity pickers (the .popWinTabs bar at the top of

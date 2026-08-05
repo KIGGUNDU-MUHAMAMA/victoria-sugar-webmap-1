@@ -71,23 +71,33 @@
       <div id="map"></div>
       <div class="map-frame" aria-hidden="true"></div>
       
-      <!-- Floating Stats Button -->
-      <div class="map-dashboard-btn-wrap">
-          <button class="dashboard-btn" Title="Dashboard" onclick="window.location.href='dashboard/'">
-            <i class="fas fa-bars"></i>
-          </button>
+      <!-- Left floating button stack — this outer div is just an invisible,
+           absolutely-positioned anchor (no background/border of its own);
+           the buttons inside are laid out with plain flex + gap instead of
+           each having its own fixed position. That means new buttons can be
+           added/removed/hidden here freely (button.hidden = true) and the
+           rest of the stack packs up to fill the gap automatically — no
+           per-button CSS to update. See .map-btn-stack in styles.css. -->
+      <div class="map-btn-stack map-btn-stack--left" id="mapLeftBtnStack">
+        <button type="button" class="dashboard-btn" title="Dashboard" onclick="window.location.href='dashboard/'">
+          <i class="fas fa-bars"></i>
+        </button>
+        <!-- Opens the Feature Info panel directly (js/map-app.js
+             openFeatureInfoPanelManual), with an empty Estate/Block/Plot
+             filter bar so the person can browse to any estate/block/plot
+             without clicking it on the map first. -->
+        <button type="button" class="dashboard-btn" id="mapFeatureInfoBtn" title="Feature Info">
+          <i class="fas fa-circle-info"></i>
+        </button>
       </div>
-      <!-- Floating Feature Info button — opens the Feature Info panel
-           directly (js/map-app.js openFeatureInfoPanelManual), with an empty
-           Estate/Block/Plot filter bar so the person can browse to any
-           estate/block/plot without clicking it on the map first. -->
-      <div class="map-dashboard-btn-wrap map-feature-info-btn-wrap">
-          <button type="button" class="dashboard-btn" id="mapFeatureInfoBtn" title="Feature Info">
-            <i class="fas fa-circle-info"></i>
-          </button>
-      </div>
-      <!-- LOCATE ME BUTTON -->
-      <div class="map-fab-cluster map-fab-cluster--right">
+
+      <!-- Right floating button stack — same invisible-wrapper/flex-packing
+           pattern as the left one above. The layer switcher control below
+           is reparented into this div via its `target` option (see
+           js/map-app.js, where LayerSwitcherClass is constructed) instead
+           of OpenLayers' default top-right corner, so it and Locate Me
+           pack together the same way. -->
+      <div class="map-fab-cluster map-fab-cluster--right map-btn-stack" id="mapRightBtnStack">
         <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
           <i class="fas fa-location-crosshairs"></i>
         </button>

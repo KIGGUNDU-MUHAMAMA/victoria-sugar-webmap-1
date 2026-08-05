@@ -5899,7 +5899,12 @@ async function initMap() {
       tipLabel: "Layers",
       groupSelectStyle: "children",
       activationMode: "click",
-      startActive: false
+      startActive: false,
+      // Renders into the right floating button stack (alongside Locate Me)
+      // instead of OL's default top-right corner — see .map-btn-stack /
+      // #mapRightBtnStack in styles.css/webmap.html for the packing wrapper
+      // this lets it share.
+      target: document.getElementById("mapRightBtnStack") || undefined
     });
     map.addControl(layerSwitcher);
     if (typeof layerSwitcher.renderPanel === "function") {

@@ -1694,6 +1694,19 @@ body.print-composer-open {
   z-index: 1190;
 }
 
+/* Reparented into #mapRightBtnStack (see the LayerSwitcherClass
+   constructor's `target` option in js/map-app.js) so it packs together
+   with Locate Me instead of floating separately in the map's default
+   top-right corner — un-absolute it so it participates in that wrapper's
+   flex column instead of ol-layerswitcher's own default corner placement. */
+#mapRightBtnStack.layer-switcher,
+#mapRightBtnStack .layer-switcher {
+  position: static;
+  top: auto;
+  right: auto;
+  z-index: auto;
+}
+
 .fallback-switcher {
   position: fixed;
   top: 12px;
@@ -3134,45 +3147,57 @@ select.search-panel__input {
   /* Toast hides itself on mobile via its own media query in toast/toast.css. */
 }
 
-/* ── Floating dashboard button (top-left, over the map) ── */
-.map-dashboard-btn-wrap {
+/* ── Floating button stack (top-left, over the map) ──
+   Generic "invisible wrapper, flex-packed children" shell shared by both
+   floating button clusters (this one and .map-fab-cluster below) — the
+   wrapper itself has no visible background/border, only position + a flex
+   column with a gap. Hiding a child button (button.hidden = true) lets the
+   rest pack together automatically instead of leaving a gap, since nothing
+   inside is individually positioned. */
+.map-btn-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.map-btn-stack--left {
   position: absolute;
   top: 1rem;
   left: 1rem;
   z-index: 50;
 }
 
-/* Sits directly below .map-dashboard-btn-wrap — same button look
-   (.dashboard-btn), just offset down by that button's rendered height
-   plus a small gap. */
-.map-feature-info-btn-wrap {
-  top: 4.35rem;
-}
-
 /* ── FAB Cluster ── */
 .map-fab-cluster {
   position: absolute;
-  bottom: 20px;
+  top: 20px;
+  z-index: 1100;
+  height: 100%;
+}
+
+.map-fab-cluster--left {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  z-index: 1100;
-}
-
-.map-fab-cluster--left {
   left: 20px;
 }
 
 .map-fab-cluster--right {
+  top: 20px;
   right: 20px;
 }
 
+/* ── Floating button ── 
+.floating-btn
+*/
 .floating-btn {
   width: 46px;
   height: 46px;
   border-radius: 50%;
   background: #fff;
+  position: absolute;
+  bottom: 40px;
   color: var(--primary);
   border: 1.5px solid rgba(63,143,63,0.25);
   box-shadow: 0 3px 12px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.1);
@@ -3194,6 +3219,13 @@ select.search-panel__input {
 
 .floating-btn:active {
   transform: scale(0.94);
+}
+
+/* Same [hidden] fix as .dashboard-btn/.futuristic-icon-btn elsewhere in
+   this file — the display: flex above would otherwise beat the browser's
+   default [hidden]{display:none} at equal specificity. */
+.floating-btn[hidden] {
+  display: none !important;
 }
 
 .map-floating-locate {
@@ -4875,12 +4907,20 @@ select.search-panel__input {
   background: var(--green-600);
   color: white;
   border-radius: 5px; border: white 1px solid;
-  font-weight: 700; padding: 0.35rem 0.7rem;
+  font-weight: 700; padding: 0.35rem 0.5rem;
   transition: transform 0.2s, border-radius 0.2s;
   text-transform: uppercase;
   cursor: pointer;
   font-size: 20px;
 
+}
+/* Same fix as .futuristic-icon-btn[hidden] elsewhere in this file — an
+   author rule (display: flex above) beats the browser's default
+   [hidden]{display:none} at equal specificity, so without this, setting
+   .hidden on a .dashboard-btn (e.g. the test stack buttons hiding
+   themselves on click) does nothing visually. */
+.dashboard-btn[hidden] {
+  display: none !important;
 }
 
 /* =============================================================

@@ -7,7 +7,6 @@ import { initPrintComposer } from "./print-composer.js";
 import { initSentinelAnalytics } from "./sentinel-analytics.js?v=1.1";
 import { initFarmReports } from "./farm-reports.js";
 import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
-import { initDroneImageModule } from "./drone-image.js?v=1.6";
 import { initExportTools } from "./export-tools.js";
 import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
 
@@ -2471,7 +2470,7 @@ function surveyFeatureAreaAcresText(feature) {
 // corner. Loaded once at boot from v_estate_boundaries (see loadEstateBoundaries()),
 // not refetched on every pan/zoom like blocks/parcels — estate boundaries rarely change.
 const estatesLayer = new ol.layer.Vector({
-  title: "ESTATES",
+  title: "Estates",
   visible: true,
   declutter: false,
   source: estatesSource,
@@ -2532,7 +2531,7 @@ async function loadEstateBoundaries() {
 }
 
 const blocksLayer = new ol.layer.Vector({
-  title: "BLOCKS",
+  title: "Blocks",
   visible: true,
   declutter: true,
   source: blocksSource,
@@ -2573,7 +2572,7 @@ const blocksLayer = new ol.layer.Vector({
 });
 
 const parcelsLayer = new ol.layer.Vector({
-  title: "PARCELS",
+  title: "Parcels",
   visible: true,
   declutter: true,
   source: parcelsSource,
@@ -2766,8 +2765,13 @@ const parcelsLayer = new ol.layer.Vector({
   }
 });
 
+// No `title` set on purpose — ol-layerswitcher (v4.1.0) only renders a row
+// for a layer/group that HAS a title (checks `lyr.get('title')`); there's no
+// separate "hide from panel" flag in this library version, so the old
+// `displayInLayerSwitcher` property used elsewhere in this file never
+// actually did anything. Leaving title unset is what keeps this out of the
+// Layers panel while the layer itself keeps working normally everywhere else.
 const sketchLayer = new ol.layer.Vector({
-  title: "Draw and Measure",
   visible: true,
   source: editSource,
   style: new ol.style.Style({
@@ -2883,8 +2887,8 @@ function buildAreaMeasureStyles(feature) {
   return styles;
 }
 
+// No `title` — see sketchLayer's comment above for why.
 const measureLayer = new ol.layer.Vector({
-  title: "Measurements",
   visible: true,
   source: measureSource,
   style: (feature) => {
@@ -2895,7 +2899,6 @@ const measureLayer = new ol.layer.Vector({
   }
 });
 measureLayer.setZIndex(930);
-measureLayer.set("displayInLayerSwitcher", false);
 
 function createBasemapLayer(title, source, visible = false) {
   return new ol.layer.Tile({
@@ -2907,15 +2910,11 @@ function createBasemapLayer(title, source, visible = false) {
 }
 
 function buildLayerTree() {
-  const osmBasemap = createBasemapLayer(
-    "OpenStreetMap",
-    new ol.source.OSM()
-  );
-  const googleHybrid = createBasemapLayer("Google Satellite Hybrid", new ol.source.XYZ({
+  const googleHybrid = createBasemapLayer("Google Satellite", new ol.source.XYZ({
     url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     crossOrigin: "anonymous"
   }), false);
-  const esriImagery = createBasemapLayer("Esri World Imagery", new ol.source.XYZ({
+  const esriImagery = createBasemapLayer("Esri Imagery", new ol.source.XYZ({
     url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     crossOrigin: "anonymous"
   }), true);
@@ -2927,21 +2926,36 @@ function buildLayerTree() {
   const baseGroup = new ol.layer.Group({
     title: "Base Maps",
     fold: "open",
-    layers: [osmBasemap, googleHybrid, esriImagery, noBasemap]
+    layers: [googleHybrid, esriImagery, noBasemap]
   });
   baseGroupRef = baseGroup;
 
-  // DRONE IMAGES Group
+  // DRONE IMAGES Group — placeholder subgroup (structured like SENTINEL
+  // below: children with type "base" render as radio buttons, and a group
+  // whose first child is type "base" is treated as a "base group" by
+  // ol-layerswitcher, which is what suppresses the group-level checkbox).
+  // These two sample layers are inert (empty vector sources, never turned
+  // visible, no click handlers) — pure placeholders for the real per-image
+  // layers, which will replace them once drone image loading is
+  // reimplemented (see js/drone-image.js, removed).
+  const droneSample1 = new ol.layer.Vector({
+    title: "Sample 1",
+    type: "base",
+    visible: false,
+    source: new ol.source.Vector()
+  });
+  const droneSample2 = new ol.layer.Vector({
+    title: "Sample 2",
+    type: "base",
+    visible: false,
+    source: new ol.source.Vector()
+  });
   const droneGroup = new ol.layer.Group({
     title: "DRONE IMAGES",
-    type: 'overlay',
-    combine: true,
     fold: "open",
-    layers: [],
-    visible: false,
+    layers: [droneSample1, droneSample2],
     zIndex: 5
   });
-  droneGroup.set("displayInLayerSwitcher", true);
   droneImagesGroupRef = droneGroup;
 
   // SENTINEL Group (Radio buttons via type='base-group')
@@ -2956,27 +2970,27 @@ function buildLayerTree() {
   });
   sentinelGroupRef = sentinelGroup;
 
-  // SURVEY LAYERS Group
+  // LAND LAYERS Group
   const overlaysGroup = new ol.layer.Group({
-    title: "SURVEY LAYERS",
+    title: "LAND LAYERS",
     fold: "open",
     layers: [estatesLayer, blocksLayer, parcelsLayer]
   });
   overlaysGroup.setZIndex(20);
 
-  // ANNOTATIONS Group
-  // Hidden from the Layers panel (per request) — these layers stay active on the
-  // map and the Draw/Measure/Coordinate-marker tools keep working exactly as
-  // before, they just no longer show up as toggleable rows in the switcher.
-  // sketchLayer.set("displayInLayerSwitcher", true);
-  // measureLayer.set("displayInLayerSwitcher", true);
+  // ANNOTATIONS Group — deliberately has no `title`, which is what actually
+  // keeps a group (and, since ol-layerswitcher never recurses into an
+  // untitled group's children, both sketchLayer and measureLayer inside it
+  // too) out of the Layers panel in this library version — see the comment
+  // on sketchLayer's definition above for why the old `displayInLayerSwitcher`
+  // property didn't work. The layers themselves stay active on the map; the
+  // Draw/Measure tools work exactly as before, they just don't show up as
+  // toggleable rows in the switcher.
   const annotationsGroup = new ol.layer.Group({
-    title: "ANNOTATIONS",
     fold: "open",
     layers: [sketchLayer, measureLayer]
   });
   annotationsGroup.setZIndex(30);
-  annotationsGroup.set("displayInLayerSwitcher", false);
   annotationsGroupRef = annotationsGroup;
 
   // Order on map (bottom to top). Layer switcher shows reverse (top to bottom).
@@ -5468,10 +5482,11 @@ function startBackgroundLocationTracking() {
         })
       })
     });
-    // Hidden from the Layers panel (per request) — location tracking keeps
-    // running as before, it just isn't shown as a toggleable row in the switcher.
-    userLocationLayer.set("displayInLayerSwitcher", false);
-    userLocationLayer.set("title", "My Location");
+    // Deliberately no `title` set — see sketchLayer's comment near
+    // buildLayerTree() for why that (not the old, ineffective
+    // displayInLayerSwitcher flag) is what keeps a layer out of the Layers
+    // panel in this ol-layerswitcher version. Location tracking itself keeps
+    // running and stays visible on the map exactly as before either way.
     map.addLayer(userLocationLayer);
   }
 
@@ -5921,16 +5936,16 @@ async function initMap() {
   }
 
   // Google tile fallback in case provider blocks/returns empty.
-  const googleLayer = baseGroupRef?.getLayers()?.getArray()?.find((l) => l.get("title") === "Google Satellite Hybrid");
+  const googleLayer = baseGroupRef?.getLayers()?.getArray()?.find((l) => l.get("title") === "Google Satellite");
   if (googleLayer?.getSource) {
     let errorCount = 0;
     googleLayer.getSource().on("tileloaderror", () => {
       errorCount += 1;
       if (errorCount >= 4 && googleLayer.getVisible()) {
-        setBasemapByTitle("Esri World Imagery");
-        const radio = fallbackLayerSwitcherEl?.querySelector("input[name='fbBasemap'][value='Esri World Imagery']");
+        setBasemapByTitle("Esri Imagery");
+        const radio = fallbackLayerSwitcherEl?.querySelector("input[name='fbBasemap'][value='Esri Imagery']");
         if (radio) radio.checked = true;
-        setStatus(statusEl, "Google Hybrid unavailable. Fell back to Esri World Imagery.", true);
+        setStatus(statusEl, "Google Hybrid unavailable. Fell back to Esri Imagery.", true);
       }
     });
   }
@@ -6029,15 +6044,6 @@ async function initMap() {
   // currently shown; this call just wires the button/select once and gives
   // it the map instance it needs for the PDF's snapshot image.
   initFeatureExport({ map, setStatus, statusEl });
-
-  initDroneImageModule({
-    map,
-    supabase,
-    setStatus,
-    statusEl,
-    getBaseGroup: () => baseGroupRef,
-    droneGroup: droneImagesGroupRef
-  });
 
   initUnifiedMenu({
     map,

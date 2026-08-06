@@ -4,18 +4,14 @@
 
 export const VSL_WMS_LAYER_IDS = [
   "TRUE_COLOR",
-  "NDVI",
   "NDVI_ADVANCED",
-  "NDRE",
   "MOISTURE_STRESS"
 ];
 
 const LAYER_DEFS = [
-  { id: "TRUE_COLOR", title: "TRUE COLOR" },
-  { id: "NDVI", title: "NDVI" },
-  { id: "NDVI_ADVANCED", title: "NDVI ADVANCED" },
-  { id: "NDRE", title: "NDRE" },
-  { id: "MOISTURE_STRESS", title: "MOISTURE AND STRESS" }
+  { id: "TRUE_COLOR", title: "Colour Image" },
+  { id: "NDVI_ADVANCED", title: "NDVI" },
+  { id: "MOISTURE_STRESS", title: "Soil Moisture" }
 ];
 
 function getSentinelWmsAuxParams() {
@@ -42,7 +38,7 @@ export function initSentinelAnalytics(opts) {
 
   // 2. Create sub-layers and add to sentinelGroup in reverse order
   // ol-layerswitcher renders the LAST layer at the TOP of the UI.
-  // We want TRUE COLOR at the top of the UI, so we push it last.
+  // We want Colour Image at the top of the UI, so we push it last.
   const layers = {};
   const sources = {};
   let activeLayerId = null;

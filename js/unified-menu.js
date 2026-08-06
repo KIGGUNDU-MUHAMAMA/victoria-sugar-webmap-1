@@ -98,7 +98,6 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     });
   }
   bindFileLabel("surveyFileInput", "surveyFileName");
-  bindFileLabel("droneFileInput",  "droneFileName");
 
   // Update surveyFileInput to also update accept based on importFormatSelect
   const importFormatSel = document.getElementById("importFormatSelect");

@@ -91,12 +91,7 @@
         </button>
       </div>
 
-      <!-- Right floating button stack — same invisible-wrapper/flex-packing
-           pattern as the left one above. The layer switcher control below
-           is reparented into this div via its `target` option (see
-           js/map-app.js, where LayerSwitcherClass is constructed) instead
-           of OpenLayers' default top-right corner, so it and Locate Me
-           pack together the same way. -->
+      <!-- LOCATE ME BUTTON. -->
       <div class="map-fab-cluster map-fab-cluster--right map-btn-stack" id="mapRightBtnStack">
         <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
           <i class="fas fa-location-crosshairs"></i>
@@ -190,14 +185,13 @@
   <div id="status" class="toast" hidden></div>
 
   <div id="fallbackLayerSwitcher" class="fallback-switcher" hidden>
-    <h4>SURVEY LAYERS</h4>
+    <h4>LAND LAYERS</h4>
     <label><input type="checkbox" id="fbBlocks" checked> BLOCKS</label>
     <label><input type="checkbox" id="fbParcels" checked> PARCELS</label>
     <hr>
     <h4>Base Maps</h4>
-    <label><input type="radio" name="fbBasemap" value="OpenStreetMap"> OpenStreetMap</label>
-    <label><input type="radio" name="fbBasemap" value="Google Satellite Hybrid"> Google Satellite Hybrid</label>
-    <label><input type="radio" name="fbBasemap" value="Esri World Imagery" checked> Esri World Imagery</label>
+    <label><input type="radio" name="fbBasemap" value="Google Satellite"> Google Satellite</label>
+    <label><input type="radio" name="fbBasemap" value="Esri Imagery" checked> Esri Imagery</label>
     <label><input type="radio" name="fbBasemap" value="No Basemap"> No Basemap</label>
   </div>
 

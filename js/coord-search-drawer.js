@@ -70,11 +70,11 @@ export function initCoordSearchDrawer(opts) {
       });
     }
   });
-  markersLayer.set("title", "Coordinate markers");
-  // Hidden from the Layers panel (per request) — the coordinate search/plot
-  // tool keeps working as before, the marker layer just isn't shown as a
-  // toggleable row in the switcher.
-  markersLayer.set("displayInLayerSwitcher", false);
+  // Deliberately no `title` set — ol-layerswitcher (v4.1.0) only renders a
+  // row for a layer/group that HAS a title; there's no separate "hide from
+  // panel" flag in this library version, so the old `displayInLayerSwitcher`
+  // property below never actually worked. The coordinate search/plot tool
+  // keeps working exactly as before either way.
   if (opts && opts.annotationsGroup) {
     opts.annotationsGroup.getLayers().push(markersLayer);
   } else {

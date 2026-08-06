@@ -1,0 +1,26 @@
+    <!-- Map legend — opened from the Legend button below the Layers control
+         (#mapRightBtnStack). Cultivation-status rows are built in JS from
+         CULTIVATION_PALETTE/CULTIVATION_STATUS_LABELS in js/map-app.js
+         (single source of truth, so colours here can never drift from what
+         the map actually draws — see buildLegendList). Future map-element
+         rows (roads, houses, trenches, trees, powerlines, etc.) can be
+         added as additional .legend-panel__section blocks below the
+         cultivation-status one. -->
+    <div id="legendPanel" class="legend-panel popWinMain popWin-mobileDock" hidden>
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-list" aria-hidden="true"></i></span>
+          <h2 class="popWinTitle">Legend</h2>
+        </div>
+        <button type="button" class="popWinCloseBtn" id="legendCloseBtn" aria-label="Close legend">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div class="popWinBody">
+        <div class="legend-panel__section">
+          <h3 class="legend-panel__heading">Cultivation status</h3>
+          <ul id="legendStatusList" class="legend-panel__list"></ul>
+        </div>
+      </div>
+    </div>

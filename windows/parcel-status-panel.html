@@ -9,27 +9,40 @@
         </button>
       </header>
 
-      <div class="popWinTabs" role="tablist" aria-label="Modify layer target">
-        <button type="button" class="search-tab" id="modifyTabParcels" role="tab" aria-selected="true" data-tab="parcels">
-          <i class="fas fa-map" aria-hidden="true"></i> Parcels
-        </button>
-        <button type="button" class="search-tab" id="modifyTabBlocks" role="tab" aria-selected="false" tabindex="-1" data-tab="blocks">
-          <i class="fas fa-cubes" aria-hidden="true"></i> Blocks
-        </button>
-      </div>
-
-      <div class="popWinBody">
-        <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
-          Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
+      <!-- Tabs moved from a horizontal row below popWinHead to a vertical,
+           left-docked column (see .popWinTabs--vertical / .popWinBodyRow in
+           styles.css) so it matches the new Select window's layout. -->
+      <div class="popWinBodyRow">
+        <div class="popWinTabs popWinTabs--vertical" role="tablist" aria-label="Modify layer target">
+          <button type="button" class="search-tab" id="modifyTabParcels" role="tab" aria-selected="true" data-tab="parcels">
+            <i class="fas fa-map" aria-hidden="true"></i> Parcels
+          </button>
+          <button type="button" class="search-tab" id="modifyTabBlocks" role="tab" aria-selected="false" tabindex="-1" data-tab="blocks">
+            <i class="fas fa-cubes" aria-hidden="true"></i> Blocks
+          </button>
         </div>
 
-        <div id="parcelStatusSelectionLabel" class="panel-empty-hint">Select on map</div>
+        <div class="popWinBody">
+          <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
+            Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
+          </div>
 
-        <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
+          <div id="parcelStatusSelectionLabel" class="panel-empty-hint">Select on map</div>
+
+          <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
+        </div>
       </div>
 
+      <!-- Footer buttons now use the same .futuristic-icon-btn(--modal-pad)
+           family as every other .popWinActionBtns footer in the app
+           (search-panel, log-activity-modal, etc.) instead of the generic
+           .btn-primary/.btn-secondary form-input styling, which had no
+           dedicated .btn-primary base rule of its own and was falling back
+           to the plain <button> reset (different padding/margin/radius) —
+           that mismatch was the real cause of this window's padding/height
+           looking inconsistent with the rest of the app's windows. -->
       <div id="parcelStatusActionsRow" class="popWinActionBtns" hidden>
-        <button type="button" id="parcelStatusModifyBtn" class="btn-primary u-flex-1">Modify</button>
-        <button type="button" id="parcelStatusDeleteBtn" class="btn-secondary u-flex-1 btn-secondary--danger"><i class="fas fa-trash-alt"></i> Delete</button>
+        <button type="button" id="parcelStatusModifyBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Modify</button>
+        <button type="button" id="parcelStatusDeleteBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger"><i class="fas fa-trash-alt"></i> Delete</button>
       </div>
     </div>

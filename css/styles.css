@@ -502,6 +502,20 @@ button:hover {
      the end of this file). */
 }
 
+/* .project-brand and .map-top-controls used to be flex siblings here,
+   with .map-top-controls pinned right via `margin-left: auto`. That broke
+   once only one button (the account button) was left in .map-top-controls
+   — a flex item's width comes from `flex-basis: auto`, which falls back
+   to reading the `width` property, and the app's generic
+   `button { width: 100% }` reset (meant for auth-form buttons) meant this
+   lone button's preferred size was "100% of the row". With several
+   buttons competing for space that got shrunk down to something
+   reasonable; with only one left, there was nothing to shrink against, so
+   it stretched to fill the whole toolbar. Rather than patch flex-grow/
+   flex-basis again, .project-brand now just flows normally and
+   .map-top-controls pins itself to the top-right corner via absolute
+   positioning (see below) — completely independent of how many buttons it
+   holds, so this class of bug can't recur here. */
 .project-toolbar {
   position: fixed;
   top: 10px;
@@ -509,20 +523,18 @@ button:hover {
   right: 10px;
   z-index: 1200;
   width: auto;
+  min-height: 60px;
   border: 1px solid rgba(78, 112, 61, 0.35);
   border-radius: 12px;
   background: linear-gradient(160deg, rgba(47, 107, 47, 0.95), rgba(93, 139, 45, 0.92));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 0.55rem 0.65rem;
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .project-brand {
   color: #f3ffe8;
   margin-bottom: 0;
-  min-width: 320px;
+  padding-right: 56px; /* keep clear of the pinned account button */
 }
 
 .project-title-row {
@@ -557,15 +569,18 @@ button:hover {
 }
 
 .map-top-controls {
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  transform: translateY(-50%);
   display: flex;
   flex-wrap: nowrap;
   gap: 5px;
-  overflow-x: auto;
   align-items: center;
-  margin-left: auto;
 }
 
 .control-btn {
+  width: auto; /* overrides the generic button{width:100%} reset — see the .project-toolbar comment above */
   min-width: 44px;
   height: auto;
   border-radius: 8px;
@@ -2239,15 +2254,6 @@ left: 12px;
     grid-template-columns: 1fr;
   }
 
-  .project-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .project-brand {
-    min-width: auto;
-  }
-
   .map-viewport-wrap.map-viewport-wrap--draw-dock {
     padding-left: 0;
   }
@@ -2789,6 +2795,17 @@ select.search-panel__input {
   transform: translateY(-2px) scale(1.08);
   box-shadow: 0 6px 16px rgba(0,0,0,0.08);
 }
+/* Destructive action variant (e.g. Modify window's Delete button) — layers
+   on top of .btn-clear's neutral base so it still gets the shared hover
+   lift, just recoloured red instead of gray. */
+.futuristic-icon-btn--danger {
+  color: var(--danger);
+  border-color: rgba(179, 54, 54, 0.35);
+}
+.futuristic-icon-btn--danger:hover {
+  background: linear-gradient(135deg, #fdeaea 0%, #fbdcdc 100%);
+  box-shadow: 0 6px 16px rgba(179, 54, 54, 0.22);
+}
 /* Rectangular text-label variant used by modal footer actions (Save / Log
    Activity / Log Alert) instead of the round icon-only button. Generous
    min-width + padding so labels like "Log Activity" always fit on one line
@@ -2981,6 +2998,40 @@ select.search-panel__input {
    default [hidden]{display:none} at equal specificity. */
 .floating-btn[hidden] {
   display: none !important;
+}
+
+/* Full Screen — "same position style as Locate Me": .floating-btn's base
+   position: fixed; bottom: 20px; right: 20px stays as-is for Locate Me,
+   Full Screen just stacks directly above it using the same fixed-to-
+   viewport convention (40px button + 10px gap = 70px). Both sit outside
+   #mapRightBtnStack's normal flex flow (that flow only actually contains
+   the Layers control + Legend — see .map-floating-legend below). */
+.floating-btn.map-floating-fullscreen {
+  bottom: 70px;
+}
+
+/* Legend — unlike Full Screen/Locate Me, this one DOES want to sit in
+   #mapRightBtnStack's normal flex column, directly under the Layers
+   control ("below the layers button"), so it un-fixes itself back into
+   the flow and relies on `order` (rather than DOM position) to land after
+   the Layers panel — the layer-switcher control is appended to this same
+   wrapper by OpenLayers at runtime (see LayerSwitcherClass in map-app.js),
+   always after whatever static buttons are already here, so ordering by
+   DOM position alone can't be trusted; `order: 1` guarantees it renders
+   after the Layers control's default `order: 0` regardless of timing. */
+.floating-btn.map-floating-legend {
+  position: static;
+  order: 1;
+}
+
+/* Open/toggled state — only Legend actually toggles a persistent panel
+   from this cluster (Locate Me is momentary, Fullscreen just flips
+   fullscreen state), but scoping this to .floating-btn.active keeps it
+   available for any future toggle-style button here too. */
+.floating-btn.active {
+  background: #d4edcc;
+  color: var(--primary-2);
+  box-shadow: 0 0 0 2px rgba(63, 143, 63, 0.35);
 }
 
 
@@ -4208,49 +4259,21 @@ select.search-panel__input {
   }
 }
 
-/* Mobile Toolbar Adjustments */
+/* Mobile Toolbar Adjustments — .map-top-controls only ever holds the
+   account button now (Search/Survey/Measure/Modify/Select/Full Screen all
+   moved into the map-btn-stacks), so it no longer needs its own
+   flex-column/space-between stacking rules here; it stays pinned to the
+   top-right corner via the absolute positioning set at the base rule
+   above, at every screen size. */
 @media (max-width: 900px) {
   .project-toolbar {
-    flex-direction: column;
     padding: 8px 6px;
-    gap: 8px;
-  }
-  .project-brand {
-    min-width: 0;
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .project-title-row {
-    margin: 0;
   }
   .project-brand p {
     display: none; /* Hide subtitle to save vertical space on mobile */
   }
   .map-top-controls {
-    width: 100%;
-    margin-left: 0;
-    justify-content: space-between;
-    gap: 4px;
-    overflow-x: visible;
-  }
-  .control-btn {
-    min-width: 0;
-    flex: 1;
-    padding: 6px 2px 4px;
-    border-radius: 6px;
-  }
-  .control-btn .btn-label {
-    font-size: 0.5rem;
-    letter-spacing: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-  }
-  .control-btn i {
-    font-size: 14px;
+    right: 6px;
   }
   /* Push map content down slightly since toolbar is now taller */
   .webmap-app.webmap-app--sidebar .map-main {
@@ -4611,6 +4634,18 @@ select.search-panel__input {
   display: none !important;
 }
 
+/* Active/open state for the tool buttons relocated from the old top
+   toolbar into #mapLeftBtnStack (Search, Survey, Measure, Modify, Select)
+   — js/map-app.js toggles a plain `.active` class on these by ID, same as
+   it always did when they lived in .map-top-controls as .control-btn
+   (which had its own `.active` look); .dashboard-btn never needed one
+   before since Dashboard/Feature Info don't get toggled. Scoped to
+   #mapLeftBtnStack so Dashboard/Feature Info's own look is untouched. */
+#mapLeftBtnStack .dashboard-btn.active {
+  background: var(--green-800, #1b5e20);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55) inset, 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
 /* =============================================================
    POPUP WINDOW TEMPLATE
    -------------------------------------------------------------
@@ -4760,6 +4795,109 @@ select.search-panel__input {
   border-color: var(--primary-2);
   border-bottom-color: #D46112;
   box-shadow: none;
+}
+
+/* Vertical, left-docked tab variant — used by the Modify and Select
+   windows (their Plot/Block/Feature tabs), instead of the default
+   horizontal pill row below the header. Requires the window's markup to
+   wrap .popWinTabs and .popWinBody in a .popWinBodyRow flex container (see
+   parcel-status-panel.html / select-panel.html) so the tab column and the
+   body content sit side by side rather than stacked top-to-bottom. */
+.popWinBodyRow {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.popWinTabs--vertical {
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 2px;
+  width: 84px;
+  background: var(--panel);
+  border-bottom: none;
+  border-right: 2px solid var(--border);
+  padding: 0.4rem 0.3rem;
+  overflow-y: auto;
+}
+.popWinTabs--vertical .search-tab {
+  flex: 0 0 auto;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.3rem;
+  border-radius: 6px;
+  border-bottom: none;
+  margin-bottom: 0;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.15;
+}
+.popWinTabs--vertical .search-tab[aria-selected="true"] {
+  border-bottom-color: transparent;
+}
+.popWinBodyRow > .popWinBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Select window — deliberately smaller than Modify. .map-left-stack's
+   `align-items: stretch` would otherwise force it to the same width as
+   every other docked window, so it opts out with its own align-self. */
+.select-panel {
+  align-self: flex-start;
+  width: 260px;
+  max-height: 320px;
+}
+.select-panel__name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.select-panel__meta {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Legend window — smaller than Modify/Search, same align-self opt-out of
+   .map-right-stack's stretch as .select-panel above. */
+.legend-panel {
+  align-self: flex-start;
+  width: 240px;
+  max-height: 360px;
+}
+.legend-panel__section + .legend-panel__section {
+  margin-top: 0.9rem;
+}
+.legend-panel__heading {
+  margin: 0 0 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.legend-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.legend-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+.legend-panel__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
 .popWinBody {

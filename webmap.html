@@ -41,22 +41,11 @@
       </div>
       <p>Land intelligence platform for sugarcane blocks and parcels.</p>
     </div>
+    <!-- Search/Survey/Measure/Modify/Select moved into #mapLeftBtnStack and
+         Full Screen into #mapRightBtnStack (icon-only, next to Locate Me) —
+         see the map-btn-stack blocks below. Only the profile/account button
+         stays in the top toolbar. -->
     <div class="map-top-controls">
-      <button type="button" class="control-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
-        <i class="fas fa-magnifying-glass"></i><span class="btn-label">Search</span>
-      </button>
-      <button type="button" class="control-btn" id="fullscreenBtn" title="Full Screen">
-        <i class="fas fa-expand"></i><span class="btn-label">Full</span>
-      </button>
-      <button type="button" class="control-btn" id="toolsTopBtn" title="Survey">
-        <i class="fas fa-drafting-compass"></i><span class="btn-label">Survey</span>
-      </button>
-      <button type="button" class="control-btn" id="measureTopBtn" title="Measure Tools">
-        <i class="fas fa-ruler-combined"></i><span class="btn-label">Measure</span>
-      </button>
-      <button type="button" class="control-btn" id="parcelStatusBtn" title="Modify parcel/block status">
-        <i class="fas fa-pen-to-square"></i><span class="btn-label">Modify</span>
-      </button>
       <button type="button" class="control-btn control-btn--avatar-only" id="logoutBtn" title="My Profile">
         <span id="profileAvatarSlot" class="vsl-profile-avatar-slot"><i class="fas fa-user"></i></span>
       </button>
@@ -86,12 +75,42 @@
         <button type="button" class="dashboard-btn" id="mapFeatureInfoBtn" title="Feature Info">
           <i class="fas fa-circle-info"></i>
         </button>
+        <!-- Formerly in .map-top-controls (top toolbar) — moved here,
+             icon-only, same IDs so all existing js/map-app.js wiring
+             (getElementById + click handlers) keeps working unchanged. -->
+        <button type="button" class="dashboard-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
+          <i class="fas fa-magnifying-glass"></i>
+        </button>
+        <button type="button" class="dashboard-btn" id="toolsTopBtn" title="Survey">
+          <i class="fas fa-drafting-compass"></i>
+        </button>
+        <button type="button" class="dashboard-btn" id="measureTopBtn" title="Measure Tools">
+          <i class="fas fa-ruler-combined"></i>
+        </button>
+        <button type="button" class="dashboard-btn" id="parcelStatusBtn" title="Modify parcel/block status">
+          <i class="fas fa-pen-to-square"></i>
+        </button>
+        <!-- New: opens windows/select-panel.html (js/map-app.js setupSelectPanel). -->
+        <button type="button" class="dashboard-btn" id="selectPanelBtn" title="Select">
+          <i class="fas fa-vector-square"></i>
+        </button>
       </div>
 
-      <!-- LOCATE ME BUTTON. -->
+      <!-- LOCATE ME BUTTON, FULL SCREEN, LAYERS (reparented via JS target
+           option) and LEGEND — visual order is controlled entirely by CSS
+           `order` on #mapRightBtnStack children (see styles.css), not by
+           DOM position, since the layer-switcher control is appended here
+           by OpenLayers at runtime, after these static buttons. -->
       <div class="map-fab-cluster map-fab-cluster--right map-btn-stack" id="mapRightBtnStack">
+        <button type="button" class="floating-btn map-floating-fullscreen" id="fullscreenBtn" title="Full Screen" aria-label="Full Screen">
+          <i class="fas fa-expand"></i>
+        </button>
         <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
           <i class="fas fa-location-crosshairs"></i>
+        </button>
+        <!-- New: opens windows/legend-panel.html (js/map-app.js setupLegendPanel). -->
+        <button type="button" class="floating-btn map-floating-legend" id="legendBtn" title="Legend" aria-label="Legend" aria-expanded="false">
+          <i class="fas fa-list"></i>
         </button>
       </div>
 

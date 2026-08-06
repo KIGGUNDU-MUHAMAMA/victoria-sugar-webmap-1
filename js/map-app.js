@@ -3433,7 +3433,8 @@ function openParcelStatusPanel() {
   
   // Forcibly close Survey UAM at DOM level (does not depend on window.closeMenu)
   closeUAM();
-  
+  closeSelectPanel();
+
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
   parcelStatusState.panelOpen = true;
@@ -4080,12 +4081,17 @@ function showParcelActionToolbar(feature) {
 
   el.hidden = false;
   parcelActionOverlay.setPosition(anchor);
+  // Keep the (optional, separately-opened) Select window's display in sync
+  // with whatever the map's normal click just selected — see
+  // updateSelectPanelFromSelection.
+  updateSelectPanelFromSelection(feature, selectedLayerType);
 }
 
 function hideParcelActionToolbar() {
   const el = document.getElementById("parcelActionToolbar");
   if (el) el.hidden = true;
   parcelActionOverlay?.setPosition(undefined);
+  updateSelectPanelFromSelection(null, null);
 }
 
 function setupParcelActionToolbar() {
@@ -4118,6 +4124,180 @@ function setupParcelActionToolbar() {
     ev.stopPropagation();
     if (selectedFeature && selectedLayerType) openFeatureInfoPanel(selectedFeature, selectedLayerType);
   });
+}
+
+/**
+ * "Select" window (windows/select-panel.html) — a smaller, dockable
+ * counterpart to the on-map action toolbar above. It intentionally has no
+ * picking-arm state of its own: it just mirrors whatever selectedFeature/
+ * selectedLayerType the map's normal click handler already set (see
+ * showParcelActionToolbar/hideParcelActionToolbar, which call this), so it
+ * only updates while actually open. The Plot/Block/Feature tabs only swap
+ * the empty-state hint text for now — the panel shows whatever got clicked
+ * regardless of which tab is active.
+ */
+function updateSelectPanelFromSelection(feature, layerType) {
+  const panel = document.getElementById("selectPanel");
+  if (!panel || panel.hidden) return;
+
+  const emptyHint = document.getElementById("selectEmptyHint");
+  const summary = document.getElementById("selectSummary");
+  const nameEl = document.getElementById("selectSummaryName");
+  const metaEl = document.getElementById("selectSummaryMeta");
+  const actionsRow = document.getElementById("selectActionsRow");
+
+  if (!feature || !layerType) {
+    if (emptyHint) emptyHint.hidden = false;
+    if (summary) summary.hidden = true;
+    if (actionsRow) actionsRow.hidden = true;
+    return;
+  }
+
+  const isBlocks = layerType === "BLOCKS";
+  const name = isBlocks ? feature.get("block_name") : feature.get("parcel_name");
+  const area = feature.get("expected_area_acres");
+
+  if (emptyHint) emptyHint.hidden = true;
+  if (summary) summary.hidden = false;
+  if (nameEl) nameEl.textContent = name || (isBlocks ? "Block" : "Plot");
+  if (metaEl) {
+    metaEl.textContent = [isBlocks ? "Block" : "Plot", area != null ? `${area} ac` : null]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  if (actionsRow) actionsRow.hidden = false;
+}
+
+function closeSelectPanel() {
+  const panel = document.getElementById("selectPanel");
+  const btn = document.getElementById("selectPanelBtn");
+  if (panel) panel.hidden = true;
+  btn?.classList.remove("active");
+}
+
+function openSelectPanel() {
+  const panel = document.getElementById("selectPanel");
+  const btn = document.getElementById("selectPanelBtn");
+  if (!panel) return;
+  closeInfoHelpPopover();
+  closePlaceSearchCard();
+  const mp = document.getElementById("measurePanel");
+  if (mp) mp.hidden = true;
+  closeUAM();
+  closeParcelStatusPanel();
+  panel.hidden = false;
+  btn?.classList.add("active");
+  updateSelectPanelFromSelection(selectedFeature, selectedLayerType);
+}
+
+function setupSelectPanel() {
+  const toolbarBtn = document.getElementById("selectPanelBtn");
+  const closeBtn = document.getElementById("selectCloseBtn");
+  const logMainBtn = document.getElementById("selectLogMainBtn");
+  const logModeSelect = document.getElementById("selectLogModeSelect");
+  const infoBtn = document.getElementById("selectInfoBtn");
+
+  const tabs = [
+    { id: "selectTabPlot", hint: "Click a plot on the map to select it" },
+    { id: "selectTabBlock", hint: "Click a block on the map to select it" },
+    { id: "selectTabFeature", hint: "Click a plot or block on the map to select it" }
+  ];
+
+  toolbarBtn?.addEventListener("click", () => {
+    const panel = document.getElementById("selectPanel");
+    if (panel && !panel.hidden) closeSelectPanel();
+    else openSelectPanel();
+  });
+  closeBtn?.addEventListener("click", closeSelectPanel);
+
+  tabs.forEach(({ id }) => {
+    document.getElementById(id)?.addEventListener("click", () => {
+      tabs.forEach(({ id: otherId }) => {
+        const tabBtn = document.getElementById(otherId);
+        if (!tabBtn) return;
+        const isActive = otherId === id;
+        tabBtn.setAttribute("aria-selected", isActive ? "true" : "false");
+        tabBtn.tabIndex = isActive ? 0 : -1;
+      });
+      const emptyHint = document.getElementById("selectEmptyHint");
+      const active = tabs.find((t) => t.id === id);
+      if (emptyHint && !selectedFeature) emptyHint.textContent = active?.hint || "";
+    });
+  });
+
+  logMainBtn?.addEventListener("click", () => {
+    if (!selectedFeature || !selectedLayerType) return;
+    const mode = logModeSelect?.value === "alert" ? "alert" : "activity";
+    if (mode === "alert") openLogAlertModal(selectedFeature, selectedLayerType);
+    else openLogActivityModal(selectedFeature, selectedLayerType);
+  });
+  infoBtn?.addEventListener("click", () => {
+    if (selectedFeature && selectedLayerType) openFeatureInfoPanel(selectedFeature, selectedLayerType);
+  });
+}
+
+/**
+ * Legend window (windows/legend-panel.html), opened from the Legend button
+ * next to the Layers control. Rows are built from CULTIVATION_PALETTE +
+ * CULTIVATION_STATUS_LABELS (the same objects the map's own parcel/block
+ * styling reads from — see cultivationKeyFromFeature) rather than
+ * hardcoded in HTML, so the swatches shown here can never drift out of
+ * sync with what's actually drawn on the map. Future rows (roads, houses,
+ * trenches, trees, powerlines, etc. — see the user's request) can be
+ * appended the same way, each as its own .legend-panel__section.
+ */
+function buildLegendList() {
+  const list = document.getElementById("legendStatusList");
+  if (!list) return;
+  list.innerHTML = "";
+  Object.keys(CULTIVATION_STATUS_LABELS).forEach((key) => {
+    const palette = CULTIVATION_PALETTE[key];
+    if (!palette) return;
+    const li = document.createElement("li");
+    li.className = "legend-panel__item";
+
+    const swatch = document.createElement("span");
+    swatch.className = "legend-panel__swatch";
+    swatch.style.background = palette.fill;
+    swatch.style.borderColor = palette.stroke;
+
+    const label = document.createElement("span");
+    label.textContent = CULTIVATION_STATUS_LABELS[key];
+
+    li.appendChild(swatch);
+    li.appendChild(label);
+    list.appendChild(li);
+  });
+}
+
+function closeLegendPanel() {
+  const panel = document.getElementById("legendPanel");
+  const btn = document.getElementById("legendBtn");
+  if (panel) panel.hidden = true;
+  btn?.classList.remove("active");
+  btn?.setAttribute("aria-expanded", "false");
+}
+
+function openLegendPanel() {
+  const panel = document.getElementById("legendPanel");
+  const btn = document.getElementById("legendBtn");
+  if (!panel) return;
+  buildLegendList();
+  panel.hidden = false;
+  btn?.classList.add("active");
+  btn?.setAttribute("aria-expanded", "true");
+}
+
+function setupLegendPanel() {
+  const btn = document.getElementById("legendBtn");
+  const closeBtn = document.getElementById("legendCloseBtn");
+
+  btn?.addEventListener("click", () => {
+    const panel = document.getElementById("legendPanel");
+    if (panel && !panel.hidden) closeLegendPanel();
+    else openLegendPanel();
+  });
+  closeBtn?.addEventListener("click", closeLegendPanel);
 }
 
 // popWinHead's icon/title are static markup, so the layer type needs to be
@@ -5950,6 +6130,8 @@ async function initMap() {
 
   setupInfoPopup();
   setupParcelActionToolbar();
+  setupSelectPanel();
+  setupLegendPanel();
   setupLogActivityModal();
   setupLogAlertModal();
   setupRecordDetailModal();

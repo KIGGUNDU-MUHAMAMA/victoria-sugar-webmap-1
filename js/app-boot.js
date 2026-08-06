@@ -17,12 +17,15 @@
 const WINDOW_FRAGMENTS = [
   // Left-hand tool stack (order matters — mirrors original DOM order).
   { parent: "mapLeftStack", url: "./windows/parcel-status-panel.html" },
+  { parent: "mapLeftStack", url: "./windows/select-panel.html" },
   { parent: "mapLeftStack", url: "./windows/sentinel-analytics-panel.html" },
   { parent: "mapLeftStack", url: "./windows/search-panel.html" },
   { parent: "mapLeftStack", url: "./windows/info-help-popover.html" },
 
   // Right-hand tool stack.
   { parent: "mapRightStack", url: "./windows/measure-panel.html" },
+  // Opened from the Legend button next to the Layers control (#mapRightBtnStack).
+  { parent: "mapRightStack", url: "./windows/legend-panel.html" },
 
   // Body-level overlays/modals (position: fixed, so sibling order doesn't matter).
   { parent: "body", url: "./windows/unified-action-menu.html" },

@@ -983,7 +983,7 @@ function updateProfileButtonAvatar() {
   const name = currentProfile.full_name || currentProfile.email || "Account";
   logoutBtn.title = name + " — My Profile";
   if (currentProfile.avatar_url) {
-    slot.innerHTML = `<img src="${currentProfile.avatar_url}" alt="${escapeHtml(name)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0">`;
+    slot.innerHTML = `<img src="${currentProfile.avatar_url}" alt="${escapeHtml(name)}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;flex-shrink:0">`;
   } else {
     slot.innerHTML = `<span class="vsl-profile-avatar-fallback-sm">${escapeHtml(initialsFromName(name) || "?")}</span>`;
   }

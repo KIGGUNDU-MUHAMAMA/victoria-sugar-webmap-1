@@ -2282,7 +2282,16 @@ left: 12px;
     bottom: 20px;
   }
 
-  .layer-switcher {
+  /* Scoped to `.shown` on purpose: this rule used to apply unconditionally,
+     which meant the panel's box look (border/shadow/rounded corners/280px
+     width) rendered even while COLLAPSED. Since ol-layerswitcher's own
+     collapse toggle only hides the inner .panel's content (display:none),
+     the still-styled OUTER control kept showing as a big bordered/shadowed
+     box on mobile with nothing visibly wrong about it — reading exactly
+     like "the collapse button doesn't work" even though the class (and the
+     actual layer list) toggled correctly. Only apply this box styling while
+     actually open. */
+  .layer-switcher.shown {
     top: 12px;
     right: 12px;
     bottom: auto;

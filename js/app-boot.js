@@ -26,7 +26,6 @@ const WINDOW_FRAGMENTS = [
   { parent: "mapRightStack", url: "./windows/measure-panel.html" },
 
   // Body-level overlays/modals (position: fixed, so sibling order doesn't matter).
-  { parent: "body", url: "./windows/print-composer-modal.html" },
   { parent: "body", url: "./windows/unified-action-menu.html" },
   { parent: "body", url: "./windows/edit-details-modal.html" },
   { parent: "body", url: "./windows/log-activity-modal.html" },

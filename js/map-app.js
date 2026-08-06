@@ -3,7 +3,6 @@ import { clearStatus, parseNum, setStatus, vincentyDistanceMeters, computeUtmCar
 import { initSurveyImport } from "./survey-import.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
-import { initPrintComposer } from "./print-composer.js";
 import { initSentinelAnalytics } from "./sentinel-analytics.js?v=1.1";
 import { initFarmReports } from "./farm-reports.js";
 import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
@@ -36,7 +35,6 @@ const measurePanelCloseBtn = document.getElementById("measurePanelCloseBtn");
 const panelButtons = {}; // draw tools now live in UAM; no legacy panel button needed
 
 const locateBtn = document.getElementById("locateBtn");
-const printBtn = document.getElementById("printBtn");
 const fullscreenBtn = document.getElementById("fullscreenBtn");
 const infoBtn = document.getElementById("infoBtn");
 const logoutBtn = document.getElementById("logoutBtn");
@@ -5961,16 +5959,6 @@ async function initMap() {
   updateProfileButtonAvatar();
   bindEvents();
   startBackgroundLocationTracking();
-  initPrintComposer({
-    getMap: () => map,
-    getBaseGroup: () => baseGroupRef,
-    blocksSource,
-    parcelsSource,
-    blocksLayer,
-    parcelsLayer,
-    setStatus,
-    statusEl
-  });
   const surveyImportHandles = initSurveyImport({
     map,
     cfg,

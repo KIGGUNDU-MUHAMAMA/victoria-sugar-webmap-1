@@ -45,9 +45,6 @@
       <button type="button" class="control-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
         <i class="fas fa-magnifying-glass"></i><span class="btn-label">Search</span>
       </button>
-      <button type="button" class="control-btn" id="printBtn" title="Export map to PDF" hidden>
-        <i class="fas fa-print"></i><span class="btn-label">Print</span>
-      </button>
       <button type="button" class="control-btn" id="fullscreenBtn" title="Full Screen">
         <i class="fas fa-expand"></i><span class="btn-label">Full</span>
       </button>
@@ -206,7 +203,7 @@
   <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
   <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
   <!-- app-boot.js fetches windows/*.html (search panel, sentinel panels, feature
-       info popup, print composer, unified action menu, edit details modal) and
+       info popup, unified action menu, edit details modal) and
        appends each into the DOM position it used to occupy statically, then
        dynamically imports map-app.js so nothing runs before those elements exist. -->
   <script type="module" src="./js/app-boot.js"></script>
@@ -459,8 +456,7 @@
   <script src="./js/rover.js"></script>
   <script type="module" src="./js/rover-crs-init.js"></script>
 
-  <!-- edit-details-modal.html and print-composer-modal.html are also fetched
-       into document.body by js/app-boot.js. -->
+  <!-- edit-details-modal.html is also fetched into document.body by js/app-boot.js. -->
 
   <script type="module" src="js/stats-logic.js?v=2.2.0"></script>
   <script type="module" src="./js/sw-loader.js"></script>

@@ -1398,14 +1398,37 @@ button:hover {
    only the button without shifting its row's own checkbox/label by the same
    amount detaches it from them, which is what reads as "misaligned" — so
    every rule below moves by the same -10px together. */
-
-
-/* .layer-switcher li.group > label {
+.layer-switcher .group button {
+  left: -10px;
+}
+.layer-switcher li.group > input[type="checkbox"] {
+left: 12px;
+  top: 12px;
+}
+.layer-switcher li.group > label {
   padding-left: calc(2.7em - 10px);
 }
 .layer-switcher li.layer-switcher-base-group > label {
   padding-left: calc(1.2em - 10px);
-} */
+}
+
+/* ol-layerswitcher positions every checkbox/radio with
+   `position: absolute; left: 1.2em;` but never sets `top`/`bottom`, so it
+   falls back to each input's "static position" (roughly where it would've
+   sat in normal flow) — which can drift from the label's text baseline.
+   Pinning `bottom: 0` anchors every checkbox/radio to the bottom of its own
+   <li>, flush with the label text sitting there, instead of floating at
+   whatever position the browser happened to compute. Matches selector
+   exactly (equal specificity) but loads after ol-layerswitcher.css, so it
+   wins on cascade order alone — no extra specificity needed for this one. */
+.layer-switcher-fold ul  input {
+  bottom: 0;
+}
+
+.layer-switcher-base-group > label {
+  position:relative;
+  left:10px
+}
 
 /* The library's root <ul> always carries `margin: 1.6em 0.4em` (see
    ol-layerswitcher.css), which used to sit above "My Location"/"ANNOTATIONS"

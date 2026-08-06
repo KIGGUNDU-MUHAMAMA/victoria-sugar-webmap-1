@@ -2501,7 +2501,6 @@ left: 12px;
   background: #fff;
   color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
-  -webkit-appearance: none;
 }
 
 .search-panel__input:focus {
@@ -2975,9 +2974,6 @@ select.search-panel__input {
   display: none !important;
 }
 
-.map-floating-locate {
-  /* inherits .floating-btn */
-}
 
 .map-floating-tools {
   background: linear-gradient(145deg, #2f6b2f, #4a9a4a);

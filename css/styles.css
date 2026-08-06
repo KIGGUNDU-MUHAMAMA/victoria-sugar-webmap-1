@@ -1398,18 +1398,14 @@ button:hover {
    only the button without shifting its row's own checkbox/label by the same
    amount detaches it from them, which is what reads as "misaligned" — so
    every rule below moves by the same -10px together. */
-.layer-switcher .group button {
-  left: -10px;
-}
-.layer-switcher li.group > input[type="checkbox"] {
-  left: calc(1.2em - 10px);
-}
-.layer-switcher li.group > label {
+
+
+/* .layer-switcher li.group > label {
   padding-left: calc(2.7em - 10px);
 }
 .layer-switcher li.layer-switcher-base-group > label {
   padding-left: calc(1.2em - 10px);
-}
+} */
 
 /* The library's root <ul> always carries `margin: 1.6em 0.4em` (see
    ol-layerswitcher.css), which used to sit above "My Location"/"ANNOTATIONS"

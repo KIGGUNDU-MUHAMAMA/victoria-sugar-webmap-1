@@ -1388,15 +1388,27 @@ button:hover {
   z-index: 1190;
 }
 
-/* Group fold/collapse toggle (▾) — ol-layerswitcher's own CSS sets
-   `.layer-switcher .group button { left: 0; }` at the same specificity as
-   any plain override of the same selector, so whichever stylesheet loads
-   LAST wins the tie. A previous attempt at this override lived inside the
-   `@media (max-width: 940px)` block further down, so on wider viewports the
-   media query never matched and the rule never applied at all — it wasn't
-   a specificity problem, it just never ran. This one is unconditional. */
+/* Group fold/collapse toggle (▾), shifted 10px closer to the panel's left
+   edge. ol-layerswitcher lays each group row out with fixed, coordinated
+   offsets: the fold button sits at `left: 0`, the checkbox at
+   `left: 1.2em` (groups with children, e.g. LAND LAYERS), and the label's
+   `padding-left` reserves room for both (2.7em for checkbox groups, 1.2em
+   for "base groups" like SENTINEL/DRONE IMAGES/Base Maps, which have no
+   checkbox of their own — see li.layer-switcher-base-group below). Moving
+   only the button without shifting its row's own checkbox/label by the same
+   amount detaches it from them, which is what reads as "misaligned" — so
+   every rule below moves by the same -10px together. */
 .layer-switcher .group button {
   left: -10px;
+}
+.layer-switcher li.group > input[type="checkbox"] {
+  left: calc(1.2em - 10px);
+}
+.layer-switcher li.group > label {
+  padding-left: calc(2.7em - 10px);
+}
+.layer-switcher li.layer-switcher-base-group > label {
+  padding-left: calc(1.2em - 10px);
 }
 
 /* The library's root <ul> always carries `margin: 1.6em 0.4em` (see
@@ -4229,150 +4241,95 @@ select.search-panel__input {
    padding) is now .popWinMain's job — see the POPUP WINDOW TEMPLATE
    section near the end of this file. */
 
-/* Sleek Sentinel Settings Popup */
-.vsl-sentinel-settings-popup {
-  position: absolute;
-  top: 60px;
-  right: 50px;
-  width: 220px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.4);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0,0,0,0.08);
-  z-index: 1000;
-  font-family: var(--vsl-font-family, "Inter", sans-serif);
-  padding: 12px;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-@media (max-width: 480px) {
-  .vsl-sentinel-settings-popup {
-    top: 60px;
-    right: 10px;
-    width: 200px;
-  }
-}
-
-.vsl-ssp-header {
-  font-size: 13px;
-  font-weight: 700;
-  color: #1e293b;
+/* Inline SENTINEL date row + colour-scale legend, injected directly into
+   the layer-switcher panel below the SENTINEL group's layer list (see
+   js/sentinel-analytics.js) — replaces the old gear-icon-opens-a-popup
+   flow (windows/sentinel-minimal-control.html, deleted). */
+.vsl-sentinel-date-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 8px;
-}
-.vsl-ssp-header i {
-  color: var(--vsl-primary, #1565c0);
+  gap: 0.4em;
+  padding: 0.3em 0 0.3em 1.2em;
 }
 
-.vsl-ssp-close {
-  background: transparent;
-  border: none;
-  font-size: 18px;
-  line-height: 1;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 0;
-  margin: 0;
-  transition: color 0.2s;
-}
-.vsl-ssp-close:hover {
-  color: #ef4444;
+/* `.vsl-sentinel-date-row` sets its own `display: flex` above (an author
+   rule), which beats the browser's default `[hidden] { display: none }`
+   UA-stylesheet rule at equal specificity — author rules always win
+   regardless of order, so setting the `hidden` attribute alone did nothing.
+   (This is the same class of bug fixed earlier for .dashboard-btn/
+   .floating-btn/.control-btn.) The legend row below never hit this because
+   it has no `display` of its own directly on the <li> — only its child
+   .vsl-sentinel-legend-bar does — so [hidden] worked for it unopposed. */
+.vsl-sentinel-date-row[hidden] {
+  display: none !important;
 }
 
-.vsl-ssp-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.vsl-ssp-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.vsl-ssp-row label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.vsl-ssp-select {
-  width: 100%;
-  padding: 6px 8px;
-  font-size: 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background-color: #f8fafc;
-  color: #334155;
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-.vsl-ssp-select:focus {
-  border-color: var(--vsl-primary, #1565c0);
-  box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.1);
-}
-
-.vsl-ssp-slider {
-  width: 100%;
-  accent-color: var(--vsl-primary, #1565c0);
-  cursor: pointer;
-  height: 4px;
-  background: #e2e8f0;
-  border-radius: 2px;
-  appearance: none;
-  -webkit-appearance: none;
-}
-.vsl-ssp-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--vsl-primary, #1565c0);
-  cursor: pointer;
-}
-
-.vsl-ssp-spinner {
-  margin-top: 10px;
-  font-size: 11px;
-  color: #1565c0;
-  text-align: center;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-
-.smc-back-btn {
-  background: #f1f5f9;
+.vsl-sentinel-date-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78em;
+  padding: 2px 4px;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.2s;
+  background-color: #f8fafc;
+  color: #334155;
 }
 
-.smc-back-btn:hover {
-  background: #e2e8f0;
-  color: #1e293b;
+/* ol-layerswitcher's own `.layer-switcher li input { position: absolute;
+   height: 1em; width: 1em; }` is meant for the checkbox/radio inputs on
+   layer rows, but it matches ANY <input> inside ANY <li> in the panel —
+   it doesn't check `type`. Since it never sets those properties on
+   `.vsl-sentinel-date-input` above, there's nothing to lose a specificity
+   fight over — the library's absolute-positioned 1em box just applies
+   unopposed, which is what was squashing the date field down into what
+   looked like a blank checkbox. This selector needs 2 classes to
+   out-specify the library's 1-class-2-element rule, so it actually wins
+   and lets the input lay out (and size) normally again. */
+.layer-switcher .vsl-sentinel-date-row input.vsl-sentinel-date-input {
+  position: static;
+  width: auto;
+  height: auto;
+}
+
+.vsl-sentinel-date-spinner {
+  color: #1565c0;
+  font-size: 0.8em;
+  flex-shrink: 0;
+}
+
+/* Low(red) → High(green) colour-scale legend — only meaningful for the
+   NDVI/Soil Moisture layers (not Colour Image, which is a true-colour photo,
+   not a value scale), so js/sentinel-analytics.js only shows this row while
+   one of those two is the active layer. */
+.vsl-sentinel-legend-row {
+  padding: 0.3em 0.6em 0.5em 1.2em;
+}
+
+.vsl-sentinel-legend-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.vsl-sentinel-legend-bar span {
+  flex: 1;
+}
+
+.vsl-sentinel-legend-bar span:nth-child(1) { background: #d32f2f; }
+.vsl-sentinel-legend-bar span:nth-child(2) { background: #f57c00; }
+.vsl-sentinel-legend-bar span:nth-child(3) { background: #fbc02d; }
+.vsl-sentinel-legend-bar span:nth-child(4) { background: #8bc34a; }
+.vsl-sentinel-legend-bar span:nth-child(5) { background: #43a047; }
+.vsl-sentinel-legend-bar span:nth-child(6) { background: #1b5e20; }
+
+.vsl-sentinel-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-size: 0.72em;
+  font-weight: 600;
+  color: #64748b;
 }
 
 

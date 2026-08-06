@@ -17,7 +17,6 @@
 const WINDOW_FRAGMENTS = [
   // Left-hand tool stack (order matters — mirrors original DOM order).
   { parent: "mapLeftStack", url: "./windows/parcel-status-panel.html" },
-  { parent: "mapLeftStack", url: "./windows/sentinel-minimal-control.html" },
   { parent: "mapLeftStack", url: "./windows/sentinel-analytics-panel.html" },
   { parent: "mapLeftStack", url: "./windows/search-panel.html" },
   { parent: "mapLeftStack", url: "./windows/info-help-popover.html" },

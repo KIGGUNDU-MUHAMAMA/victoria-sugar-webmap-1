@@ -1,24 +1,27 @@
     <div id="parcelStatusPanel" class="parcel-status-panel popWinMain popWin-mobileDock" hidden>
       <header class="popWinHead">
         <div class="popWinHead__inner">
-          <span class="popWinIcon"><i class="fas fa-pen-to-square" aria-hidden="true"></i></span>
-          <h2 id="parcelStatusTitle" class="popWinTitle">Modify status</h2>
+          <span class="popWinIcon"><i class="fas fa-arrow-pointer" aria-hidden="true"></i></span>
+          <h2 id="parcelStatusTitle" class="popWinTitle">Select</h2>
         </div>
-        <button type="button" class="popWinCloseBtn" id="parcelStatusCloseBtn" aria-label="Close modify panel">
+        <button type="button" class="popWinCloseBtn" id="parcelStatusCloseBtn" aria-label="Close select panel">
           <i class="fas fa-times" aria-hidden="true"></i>
         </button>
       </header>
 
       <!-- Tabs moved from a horizontal row below popWinHead to a vertical,
            left-docked column (see .popWinTabs--vertical / .popWinBodyRow in
-           styles.css) so it matches the new Select window's layout. -->
+           styles.css). -->
       <div class="popWinBodyRow">
-        <div class="popWinTabs popWinTabs--vertical" role="tablist" aria-label="Modify layer target">
+        <div class="popWinTabs popWinTabs--vertical" role="tablist" aria-label="Select layer target">
           <button type="button" class="search-tab" id="modifyTabParcels" role="tab" aria-selected="true" data-tab="parcels">
             Plot
           </button>
           <button type="button" class="search-tab" id="modifyTabBlocks" role="tab" aria-selected="false" tabindex="-1" data-tab="blocks">
             Blocks
+          </button>
+          <button type="button" class="search-tab" id="modifyTabFeature" role="tab" aria-selected="false" tabindex="-1" data-tab="feature">
+            Feature
           </button>
         </div>
 
@@ -42,7 +45,7 @@
            that mismatch was the real cause of this window's padding/height
            looking inconsistent with the rest of the app's windows. -->
       <div id="parcelStatusActionsRow" class="popWinActionBtns" hidden>
-        <button type="button" id="parcelStatusModifyBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Modify</button>
-        <button type="button" id="parcelStatusDeleteBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger"><i class="fas fa-trash-alt"></i> Delete</button>
+        <button type="button" id="parcelStatusModifyBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad"><i class="fas fa-pen" aria-hidden="true"></i> Modify</button>
+        <button type="button" id="parcelStatusDeleteBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger"><i class="fas fa-trash-alt" aria-hidden="true"></i> Delete</button>
       </div>
     </div>

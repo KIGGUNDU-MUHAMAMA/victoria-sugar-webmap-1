@@ -183,7 +183,13 @@ const parcelStatusState = {
   panelOpen: false,
   pickArmed: false,
   selectedFeatures: [],
-  selectedLayerType: "PARCELS"
+  selectedLayerType: "PARCELS",
+  // Which tab is active — "PARCELS" | "BLOCKS" | "FEATURE". Kept separate
+  // from selectedLayerType (which tracks the *actual* layer of whatever is
+  // currently selected) so the "Feature" tab can keep accepting clicks on
+  // either layer across multiple picks, instead of locking to whichever
+  // layer got clicked first.
+  tabMode: "PARCELS"
 };
 
 const CULTIVATION_STATUS_LABELS = {
@@ -3173,7 +3179,7 @@ function setupPanels() {
 }
 
 function getParcelStatusLayerMode() {
-  return parcelStatusState.selectedLayerType || "PARCELS";
+  return parcelStatusState.tabMode || "PARCELS";
 }
 
 function setParcelStatusFormError(msg) {
@@ -3433,7 +3439,6 @@ function openParcelStatusPanel() {
   
   // Forcibly close Survey UAM at DOM level (does not depend on window.closeMenu)
   closeUAM();
-  closeSelectPanel();
 
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
@@ -3456,7 +3461,18 @@ function tryParcelStatusMapClick(evt) {
   let layerHit = null;
   const hitOpts = { hitTolerance: 20 };
 
-  if (mode === "PARCELS") {
+  if (mode === "FEATURE") {
+    // "Feature" tab — accept either layer, whichever is actually clicked.
+    map.forEachFeatureAtPixel(
+      evt.pixel,
+      (feature, layer) => {
+        hit = feature;
+        layerHit = layer === blocksLayer ? "BLOCKS" : "PARCELS";
+        return true;
+      },
+      { ...hitOpts, layerFilter: (layer) => layer === parcelsLayer || layer === blocksLayer }
+    );
+  } else if (mode === "PARCELS") {
     map.forEachFeatureAtPixel(
       evt.pixel,
       (feature) => {
@@ -3479,7 +3495,8 @@ function tryParcelStatusMapClick(evt) {
   }
 
   if (!hit) {
-    setStatus(statusEl, `Click a ${mode === "PARCELS" ? "parcel" : "block"} polygon.`, true);
+    const label = mode === "FEATURE" ? "plot or block" : mode === "PARCELS" ? "parcel" : "block";
+    setStatus(statusEl, `Click a ${label} polygon.`, true);
     return true;
   }
   
@@ -3510,6 +3527,7 @@ function setupParcelStatusPanel() {
   
   const tabParcels = document.getElementById("modifyTabParcels");
   const tabBlocks = document.getElementById("modifyTabBlocks");
+  const tabFeature = document.getElementById("modifyTabFeature");
 
   // Cancel button was removed from the footer (see edit-details-modal.html) —
   // the header X close button is the only close/cancel affordance now, to
@@ -3567,28 +3585,29 @@ function setupParcelStatusPanel() {
   
   closeBtn?.addEventListener("click", () => closeParcelStatusPanel());
 
-  tabParcels?.addEventListener("click", () => {
-    tabParcels.classList.add("active");
-    tabParcels.setAttribute("aria-selected", "true");
-    tabBlocks?.classList.remove("active");
-    tabBlocks?.setAttribute("aria-selected", "false");
-    
-    clearParcelStatusSelection();
-    parcelStatusState.selectedLayerType = "PARCELS";
-    parcelStatusState.pickArmed = true;
-    renderParcelStatusPreview();
-  });
+  const modifyTabs = [
+    { el: tabParcels, mode: "PARCELS" },
+    { el: tabBlocks, mode: "BLOCKS" },
+    { el: tabFeature, mode: "FEATURE" }
+  ];
 
-  tabBlocks?.addEventListener("click", () => {
-    tabBlocks.classList.add("active");
-    tabBlocks.setAttribute("aria-selected", "true");
-    tabParcels?.classList.remove("active");
-    tabParcels?.setAttribute("aria-selected", "false");
-    
+  const activateModifyTab = (mode) => {
+    modifyTabs.forEach(({ el, mode: tabModeValue }) => {
+      if (!el) return;
+      const isActive = tabModeValue === mode;
+      el.classList.toggle("active", isActive);
+      el.setAttribute("aria-selected", isActive ? "true" : "false");
+      el.tabIndex = isActive ? 0 : -1;
+    });
+
     clearParcelStatusSelection();
-    parcelStatusState.selectedLayerType = "BLOCKS";
+    parcelStatusState.tabMode = mode;
     parcelStatusState.pickArmed = true;
     renderParcelStatusPreview();
+  };
+
+  modifyTabs.forEach(({ el, mode }) => {
+    el?.addEventListener("click", () => activateModifyTab(mode));
   });
 
   modifyBtn?.addEventListener("click", () => openEditDetailsModal());
@@ -4081,17 +4100,12 @@ function showParcelActionToolbar(feature) {
 
   el.hidden = false;
   parcelActionOverlay.setPosition(anchor);
-  // Keep the (optional, separately-opened) Select window's display in sync
-  // with whatever the map's normal click just selected — see
-  // updateSelectPanelFromSelection.
-  updateSelectPanelFromSelection(feature, selectedLayerType);
 }
 
 function hideParcelActionToolbar() {
   const el = document.getElementById("parcelActionToolbar");
   if (el) el.hidden = true;
   parcelActionOverlay?.setPosition(undefined);
-  updateSelectPanelFromSelection(null, null);
 }
 
 function setupParcelActionToolbar() {
@@ -4122,116 +4136,6 @@ function setupParcelActionToolbar() {
   });
   document.getElementById("parcelActionInfoBtn")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    if (selectedFeature && selectedLayerType) openFeatureInfoPanel(selectedFeature, selectedLayerType);
-  });
-}
-
-/**
- * "Select" window (windows/select-panel.html) — a smaller, dockable
- * counterpart to the on-map action toolbar above. It intentionally has no
- * picking-arm state of its own: it just mirrors whatever selectedFeature/
- * selectedLayerType the map's normal click handler already set (see
- * showParcelActionToolbar/hideParcelActionToolbar, which call this), so it
- * only updates while actually open. The Plot/Block/Feature tabs only swap
- * the empty-state hint text for now — the panel shows whatever got clicked
- * regardless of which tab is active.
- */
-function updateSelectPanelFromSelection(feature, layerType) {
-  const panel = document.getElementById("selectPanel");
-  if (!panel || panel.hidden) return;
-
-  const emptyHint = document.getElementById("selectEmptyHint");
-  const summary = document.getElementById("selectSummary");
-  const nameEl = document.getElementById("selectSummaryName");
-  const metaEl = document.getElementById("selectSummaryMeta");
-  const actionsRow = document.getElementById("selectActionsRow");
-
-  if (!feature || !layerType) {
-    if (emptyHint) emptyHint.hidden = false;
-    if (summary) summary.hidden = true;
-    if (actionsRow) actionsRow.hidden = true;
-    return;
-  }
-
-  const isBlocks = layerType === "BLOCKS";
-  const name = isBlocks ? feature.get("block_name") : feature.get("parcel_name");
-  const area = feature.get("expected_area_acres");
-
-  if (emptyHint) emptyHint.hidden = true;
-  if (summary) summary.hidden = false;
-  if (nameEl) nameEl.textContent = name || (isBlocks ? "Block" : "Plot");
-  if (metaEl) {
-    metaEl.textContent = [isBlocks ? "Block" : "Plot", area != null ? `${area} ac` : null]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  if (actionsRow) actionsRow.hidden = false;
-}
-
-function closeSelectPanel() {
-  const panel = document.getElementById("selectPanel");
-  const btn = document.getElementById("selectPanelBtn");
-  if (panel) panel.hidden = true;
-  btn?.classList.remove("active");
-}
-
-function openSelectPanel() {
-  const panel = document.getElementById("selectPanel");
-  const btn = document.getElementById("selectPanelBtn");
-  if (!panel) return;
-  closeInfoHelpPopover();
-  closePlaceSearchCard();
-  const mp = document.getElementById("measurePanel");
-  if (mp) mp.hidden = true;
-  closeUAM();
-  closeParcelStatusPanel();
-  panel.hidden = false;
-  btn?.classList.add("active");
-  updateSelectPanelFromSelection(selectedFeature, selectedLayerType);
-}
-
-function setupSelectPanel() {
-  const toolbarBtn = document.getElementById("selectPanelBtn");
-  const closeBtn = document.getElementById("selectCloseBtn");
-  const logMainBtn = document.getElementById("selectLogMainBtn");
-  const logModeSelect = document.getElementById("selectLogModeSelect");
-  const infoBtn = document.getElementById("selectInfoBtn");
-
-  const tabs = [
-    { id: "selectTabPlot", hint: "Click a plot on the map to select it" },
-    { id: "selectTabBlock", hint: "Click a block on the map to select it" },
-    { id: "selectTabFeature", hint: "Click a plot or block on the map to select it" }
-  ];
-
-  toolbarBtn?.addEventListener("click", () => {
-    const panel = document.getElementById("selectPanel");
-    if (panel && !panel.hidden) closeSelectPanel();
-    else openSelectPanel();
-  });
-  closeBtn?.addEventListener("click", closeSelectPanel);
-
-  tabs.forEach(({ id }) => {
-    document.getElementById(id)?.addEventListener("click", () => {
-      tabs.forEach(({ id: otherId }) => {
-        const tabBtn = document.getElementById(otherId);
-        if (!tabBtn) return;
-        const isActive = otherId === id;
-        tabBtn.setAttribute("aria-selected", isActive ? "true" : "false");
-        tabBtn.tabIndex = isActive ? 0 : -1;
-      });
-      const emptyHint = document.getElementById("selectEmptyHint");
-      const active = tabs.find((t) => t.id === id);
-      if (emptyHint && !selectedFeature) emptyHint.textContent = active?.hint || "";
-    });
-  });
-
-  logMainBtn?.addEventListener("click", () => {
-    if (!selectedFeature || !selectedLayerType) return;
-    const mode = logModeSelect?.value === "alert" ? "alert" : "activity";
-    if (mode === "alert") openLogAlertModal(selectedFeature, selectedLayerType);
-    else openLogActivityModal(selectedFeature, selectedLayerType);
-  });
-  infoBtn?.addEventListener("click", () => {
     if (selectedFeature && selectedLayerType) openFeatureInfoPanel(selectedFeature, selectedLayerType);
   });
 }
@@ -6130,7 +6034,6 @@ async function initMap() {
 
   setupInfoPopup();
   setupParcelActionToolbar();
-  setupSelectPanel();
   setupLegendPanel();
   setupLogActivityModal();
   setupLogAlertModal();

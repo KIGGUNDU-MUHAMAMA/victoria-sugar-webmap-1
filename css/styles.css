@@ -2805,14 +2805,21 @@ select.search-panel__input {
   transform: translateY(-2px) scale(1.08);
   box-shadow: 0 6px 16px rgba(0,0,0,0.08);
 }
-/* Destructive action variant (e.g. Modify window's Delete button) — layers
+/* Destructive action variant (e.g. Select window's Delete button) — layers
    on top of .btn-clear's neutral base so it still gets the shared hover
-   lift, just recoloured red instead of gray. */
-.futuristic-icon-btn--danger {
+   lift, just recoloured red instead of gray. Border is a solid red (not
+   the faint 0.35-alpha tint this used to be) so it reads clearly as a
+   danger action even before hovering. Selector is bumped to
+   .futuristic-icon-btn.futuristic-icon-btn--danger (2 classes) because
+   .btn-clear above is also 2 classes — at equal specificity the later
+   rule should win, but .futuristic-icon-btn--danger alone (1 class) was
+   actually *losing* to .btn-clear's color/border, which is why the
+   button was still rendering gray instead of red. */
+.futuristic-icon-btn.futuristic-icon-btn--danger {
   color: var(--danger);
-  border-color: rgba(179, 54, 54, 0.35);
+  border: 1px solid var(--danger);
 }
-.futuristic-icon-btn--danger:hover {
+.futuristic-icon-btn.futuristic-icon-btn--danger:hover {
   background: linear-gradient(135deg, #fdeaea 0%, #fbdcdc 100%);
   box-shadow: 0 6px 16px rgba(179, 54, 54, 0.22);
 }
@@ -4812,8 +4819,8 @@ select.search-panel__input {
    windows (their Plot/Block/Feature tabs), instead of the default
    horizontal pill row below the header. Requires the window's markup to
    wrap .popWinTabs and .popWinBody in a .popWinBodyRow flex container (see
-   parcel-status-panel.html / select-panel.html) so the tab column and the
-   body content sit side by side rather than stacked top-to-bottom. */
+   parcel-status-panel.html) so the tab column and the body content sit
+   side by side rather than stacked top-to-bottom. */
 .popWinBodyRow {
   display: flex;
   flex: 1 1 auto;
@@ -4824,7 +4831,10 @@ select.search-panel__input {
   flex-shrink: 0;
   gap: 2px;
   width: 84px;
-  background: var(--panel);
+  /* Light sage tint (not plain white) so the tab column visually reads as
+     its own rail against the white .popWinBody next to it, instead of the
+     two blending into one flat area. */
+  background: #eef4ea;
   border-bottom: none;
   border-right: 2px solid var(--border);
   padding: 0.4rem 0.3rem;
@@ -4859,27 +4869,9 @@ select.search-panel__input {
   width: 120px;
 }
 
-/* Select window — deliberately smaller than Modify. .map-left-stack's
+/* Legend window — smaller than Modify/Search. .map-right-stack's
    `align-items: stretch` would otherwise force it to the same width as
    every other docked window, so it opts out with its own align-self. */
-.select-panel {
-  align-self: flex-start;
-  width: 260px;
-  max-height: 320px;
-}
-.select-panel__name {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text);
-}
-.select-panel__meta {
-  margin-top: 2px;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-/* Legend window — smaller than Modify/Search, same align-self opt-out of
-   .map-right-stack's stretch as .select-panel above. */
 .legend-panel {
   align-self: flex-start;
   width: 240px;
@@ -4966,6 +4958,14 @@ select.search-panel__input {
 }
 .popWinActionBtns .futuristic-icon-btn:hover {
   transform: none;
+}
+
+/* Select window's Modify button reacts on hover with a colour shift only
+   (no lift/scale, per request) — darkens its green gradient a shade via
+   filter instead of the translateY/scale the other footer buttons use
+   (and are blocked from using by the blanket "no transform" rule above). */
+#parcelStatusModifyBtn:hover {
+  filter: brightness(0.9);
 }
 
 /* For windows whose body is a <form> that must stay a descendant of the

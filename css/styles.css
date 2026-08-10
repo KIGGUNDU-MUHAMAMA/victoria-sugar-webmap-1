@@ -140,7 +140,7 @@ select,
 button,
 textarea {
   width: 100%;
-  margin-top: 0.35rem;
+  margin-top: 2px;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.62rem 0.7rem;
@@ -2395,13 +2395,16 @@ left: 12px;
   color: #1565c0;
 }
 
-/* Centered placeholder text shown before a modify/status selection is made. */
+/* Placeholder text shown before a modify/status selection is made — pinned
+   to the top-left of .popWinBody (was centered) with its own padding so it
+   doesn't sit flush against the panel edges. */
 .panel-empty-hint {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--muted);
-  text-align: center;
-  margin: 16px 0;
+  text-align: left;
+  margin: 0;
+  padding: 6px 4px;
 }
 
 .search-panel__title {
@@ -2525,6 +2528,13 @@ left: 12px;
 }
 
 select.search-panel__input {
+  /* Without this, the browser's own native select arrow renders in
+     addition to the custom SVG chevron below — that's the "double
+     dropdown" arrow bug. appearance: none removes the native one so only
+     our chevron shows. */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   padding-right: 2rem;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -4702,7 +4712,7 @@ select.search-panel__input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 16px;
+  padding: 4px 16px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.18);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
@@ -4841,6 +4851,14 @@ select.search-panel__input {
   min-width: 0;
 }
 
+/* Modify window's Plot/Blocks tabs dropped their icons, so the column no
+   longer needs the full 84px reserved for icon+label stacking — narrowing
+   it here (scoped to this panel only, Select's icon tabs keep 84px) hands
+   the freed-up width back to .popWinBody. */
+#parcelStatusPanel .popWinTabs--vertical {
+  width: 120px;
+}
+
 /* Select window — deliberately smaller than Modify. .map-left-stack's
    `align-items: stretch` would otherwise force it to the same width as
    every other docked window, so it opts out with its own align-self. */
@@ -4915,7 +4933,7 @@ select.search-panel__input {
 .popWinActionBtns {
   display: flex;
   gap: 10px;
-  padding: 8px 16px;
+  padding: 6px 16px;
   justify-content: center;
   border-top: 1px solid rgba(0, 0, 0, 0.18);
   box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
@@ -4940,7 +4958,7 @@ select.search-panel__input {
   height: auto;
   min-width: 0;
   min-height: 0;
-  padding: 8px 16px;
+  padding: 5px 12px;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;

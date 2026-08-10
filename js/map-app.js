@@ -1,6 +1,9 @@
 import { createSupabaseClient, getConfig } from "./supabase-client.js";
 import { clearStatus, parseNum, setStatus, vincentyDistanceMeters, computeUtmCartesianAreaAcres } from "./utils.js";
 import { initSurveyImport } from "./survey-import.js";
+import { initSurveyDraw } from "./survey-draw.js";
+import { initManageFeatures } from "./manage-features.js";
+import { initSurveyEdit } from "./survey-edit.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
 import { initSentinelAnalytics } from "./sentinel-analytics.js?v=1.1";
@@ -4697,6 +4700,13 @@ function openSearchPanel(tab = "parcel") {
   vslCloseSentinelPanel();
   closeInfoHelpPopover();
   closePlaceSearchCard();
+  // Survey now docks in the same .map-left-stack column (see
+  // windows/survey-panel.html) instead of floating as its own overlay, so
+  // it needs to be explicitly closed here too or both panels would stack
+  // in the column at once.
+  closeUAM();
+  // Measure moved into the same column too (see app-boot.js) — same reason.
+  if (measurePanel) measurePanel.hidden = true;
   panel.hidden = false;
   btn.classList.add("active");
   btn.setAttribute("aria-expanded", "true");
@@ -6047,14 +6057,49 @@ async function initMap() {
   const surveyImportHandles = initSurveyImport({
     map,
     cfg,
+    supabase,
     setStatus,
     statusEl,
     loadLayersFromDb,
+    // Blocks carry estate_id; a DB trigger recomputes vsl_estate.geom
+    // whenever a block's geom/estate_id changes (see
+    // vsl_recompute_estate_geometry / trg_vsl_blocks_estate_geometry), but
+    // the client's estate-boundary layer was only ever loaded once at boot
+    // — this lets a BLOCKS commit pull the freshly (re)computed bounds in.
+    refreshEstateBoundaries: loadEstateBoundaries,
     getManagementLocked: () => currentProfile?.role === "MANAGMENT",
     blocksSource,
     parcelsSource
   });
   surveyPreviewSnapSources = surveyImportHandles?.getPreviewSnapSources?.() ?? null;
+
+  const surveyDrawHandles = initSurveyDraw({
+    map,
+    cfg,
+    supabase,
+    setStatus,
+    statusEl,
+    loadLayersFromDb,
+    refreshEstateBoundaries: loadEstateBoundaries
+  });
+
+  initManageFeatures({ cfg, supabase, setStatus, statusEl });
+
+  initSurveyEdit({
+    map,
+    cfg,
+    supabase,
+    setStatus,
+    statusEl,
+    blocksLayer,
+    parcelsLayer,
+    blocksSource,
+    parcelsSource,
+    getFeaturesLayer: () => surveyDrawHandles?.getFeaturesLayer?.() ?? null,
+    refreshFeaturesLayer: () => surveyDrawHandles?.refreshFeaturesLayer?.(),
+    loadLayersFromDb,
+    refreshEstateBoundaries: loadEstateBoundaries
+  });
 
   if (sentinelGroupRef) {
     const sentinelCtl = initSentinelAnalytics({
@@ -6195,12 +6240,7 @@ async function start() {
   }
 }
 
-// Expose key references globally for the Rover inline script (non-module context)
-window._vslMap        = () => map;
-window._vslBlocksSrc  = blocksSource;
-window._vslParcelsSrc = parcelsSource;
-window._vslBlocksLyr  = blocksLayer;
-window._vslParcelsLyr = parcelsLayer;
 window.closeParcelStatusPanel = closeParcelStatusPanel;
+window.closeSearchPanel = closeSearchPanel;
 
 start().catch((err) => setStatus(statusEl, err.message, true));

@@ -359,8 +359,8 @@ button:hover {
 
 .webmap-app .map-left-stack {
   position: fixed;
-  left: 12px;
-  top: 96px;
+  left: 60px;
+  top: 80px;
   bottom: 12px;
   z-index: 1150;
   display: flex;
@@ -1795,11 +1795,22 @@ left: 12px;
 }
 
 .survey-summary {
-  margin-top: 0.65rem;
-  padding: 0.55rem 0.65rem;
+  margin-top: 0rem;
+  padding: 0.3rem 0.65rem;
   border-radius: 8px;
   background: #f0f6ec;
   font-size: 0.86rem;
+}
+
+/* Preview summary table (survey-import.js renderSummary) — wider label
+   column than .map-popup__table's shared 42% default, since this panel is
+   narrow and the value column only ever holds a short number. */
+.survey-summary .map-popup__table th {
+  width: 70%;
+}
+
+.survey-summary .map-popup__table td {
+  width: 30%;
 }
 
 .survey-check {
@@ -3070,131 +3081,45 @@ select.search-panel__input {
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
-/* ── Unified Action Menu (UAM) ── */
-.uam-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  padding: 0 0 80px 12px;
-  pointer-events: none;
+/* ── Survey panel (windows/survey-panel.html) ──
+   Now built from the shared .popWinMain/.popWinHead/.popWinBodyRow/
+   .popWinTabs--vertical/.popWinBody/.popWinActionBtns shell (see the
+   POPUP WINDOW TEMPLATE section later in this file) instead of its own
+   bespoke fixed-position overlay — that bespoke positioning is what
+   caused the panel to grow from the wrong edge and overlap the toolbar
+   on short viewports. Only the tab content styling (form controls, draw
+   grid, dropzone, etc.) below is still Survey-specific. */
+#unifiedActionMenu .popWinTabs--vertical {
+  width: 104px;
 }
 
-/* When hidden, UAM must not intercept any clicks at all */
-.uam-overlay[hidden] {
-  display: none !important;
-  pointer-events: none !important;
-}
-
-.uam-shell {
-  display: flex;
-  width: min(350px, calc(100vw - 24px));
-  max-height: min(520px, calc(100vh - 110px));
-  background: #fff;
-  border-radius: 18px;
-  pointer-events: auto;
-  box-shadow:
-    0 20px 60px rgba(0,0,0,0.22),
-    0 4px 12px rgba(0,0,0,0.12),
-    0 0 0 1px rgba(63,143,63,0.15);
-  overflow: hidden;
-  transform: translateY(24px) scale(0.96);
-  opacity: 0;
-  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
-}
-
-.uam-overlay:not([hidden]) .uam-shell {
-  transform: translateY(0) scale(1);
-  opacity: 1;
-}
-
-/* Left navigation */
-.uam-nav {
-  width: 80px;
-  flex-shrink: 0;
-  background: linear-gradient(180deg, #2a5d2a 0%, #1d4a1d 100%);
-  display: flex;
-  flex-direction: column;
-  padding: 12px 0;
-  gap: 4px;
-  overflow-y: auto;
-}
-
-.uam-nav-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 12px 4px;
-  background: transparent;
-  border: none;
-  color: rgba(255,255,255,0.65);
-  font-size: 0.62rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  border-radius: 0;
-  width: 100%;
-  margin: 0;
-  transition: background 0.15s, color 0.15s;
-  border-left: 3px solid transparent;
-}
-
-.uam-nav-btn i {
-  font-size: 1.1rem;
-  margin-bottom: 2px;
-}
-
-.uam-nav-btn:hover {
-  background: rgba(255,255,255,0.1);
-  color: #fff;
-}
-
-.uam-nav-btn[aria-selected="true"] {
-  background: rgba(255,255,255,0.15);
-  color: #fff;
-  border-left-color: #8bc34a;
-}
-
-/* Right content area */
-.uam-content {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  overflow: hidden;
-  background: #fafcf9;
-}
-
-/* uam-close-btn removed from here, now using .uam-nav-close in the nav column */
-.uam-nav-close {
-  margin-top: auto;
-}
-.uam-nav-close__icon {
-  font-size: 1.8rem;
-  color: #f8d7da;
-}
-.uam-nav-close__label {
-  color: #f8d7da;
-}
-
-/* Tabs (right panels) */
+/* Each [data-uam-panel] tab body — .popWinBody (shared) now owns sizing
+   and scrolling for the whole panel, so this is just a plain content
+   column. NOTE: the explicit `display: flex` below is author CSS, which
+   always beats the browser's own default `[hidden] { display: none }`
+   rule regardless of specificity (author > user-agent in the cascade) —
+   so without the !important override just below, every tab would render
+   at once instead of only the active one. */
 .uam-tab {
-  flex: 1;
-  overflow-y: auto;
-  padding: 14px 14px 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-
 .uam-tab[hidden] {
   display: none !important;
+}
+
+/* Footer action-button group — one per tab, swapped by unified-menu.js's
+   switchTab() alongside the tab body above. Nested one level inside the
+   shared .popWinActionBtns row so its buttons still lay out side by side
+   with the same gap every other window's footer uses. */
+.uam-actions-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.uam-actions-group[hidden] {
+  display: none;
 }
 
 /* Form controls inside UAM */
@@ -3227,7 +3152,7 @@ select.search-panel__input {
 
 .uam-field-row {
   display: flex;
-  gap: 6px;
+  gap: 3px;
 }
 
 .uam-inline-label {
@@ -3236,25 +3161,11 @@ select.search-panel__input {
   margin: 0;
 }
 
-.uam-digitize-count {
-  font-size: 0.78rem;
-  color: var(--primary-2);
-  font-weight: 600;
-}
-
 .uam-section-heading {
   margin: 0 0 4px 0;
   font-size: 0.85rem;
   color: var(--muted);
   text-transform: uppercase;
-}
-
-.uam-btn--danger-text {
-  color: var(--danger);
-}
-
-.uam-btn--accent-text {
-  color: var(--accent);
 }
 
 /* File input */
@@ -3270,7 +3181,7 @@ select.search-panel__input {
   color: var(--muted);
   width: 100%;
   background: #fff;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
   margin: 0;
 }
 
@@ -3279,31 +3190,32 @@ select.search-panel__input {
   color: var(--primary);
 }
 
-.uam-file-input {
-  display: none;
-}
-
-/* Dropzone */
-.uam-dropzone {
-  border: 2px dashed var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  display: flex;
-  align-items: center;
+/* Doubles as the dropzone now (see survey-panel.html) — reacts to
+   drag-over the same way the separate .uam-dropzone box used to before it
+   was folded into this. Kept short (no extra padding beyond the base
+   .uam-file-label rule) so it doesn't dominate the tab. */
+.uam-file-label--drop {
+  min-height: 0;
+  padding: 0.4rem 0.65rem;
+  flex-direction: column;
   justify-content: center;
-  color: var(--border);
-  font-size: 1.6rem;
-  transition: border-color 0.15s, color 0.15s;
-  cursor: pointer;
-  min-height: 52px;
-  background: #fff;
+  gap: 3px;
+  font-size: 1.1rem;
+  text-align: center;
 }
 
-.uam-dropzone.dragover,
-.uam-dropzone:hover {
+.uam-file-label--drop span {
+  font-size: 0.78rem;
+}
+
+.uam-file-label--drop.dragover {
   border-color: var(--primary);
   color: var(--primary);
   background: #f4fff4;
+}
+
+.uam-file-input {
+  display: none;
 }
 
 /* Action buttons */
@@ -3350,23 +3262,25 @@ select.search-panel__input {
   border-color: var(--primary);
 }
 
-.uam-btn--large {
-  padding: 0.75rem 1.75rem;
-  font-size: 1rem;
+/* Destructive actions (e.g. Import tab's Clear, next to Preview) — same
+   ghost shape as .uam-btn--ghost, red instead of neutral so it doesn't
+   read as just another equal-weight option. */
+.uam-btn--danger {
+  background: #fdf2f2;
+  color: var(--danger);
+  border: 1.5px solid #f0c8c8;
 }
 
-.uam-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: auto;
-  padding-top: 6px;
+.uam-btn--danger:hover {
+  background: #fbdcdc;
+  border-color: var(--danger);
 }
 
-.uam-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 0;
+/* Toggled on while a tool (e.g. Edit tab's "Select Feature") is armed and
+   waiting for a map click. */
+.uam-btn--active {
+  background: var(--primary-2);
+  color: #fff;
 }
 
 /* Draw grid */
@@ -3407,34 +3321,6 @@ select.search-panel__input {
   box-shadow: 0 2px 8px rgba(63,143,63,0.15);
 }
 
-.uam-draw-btn--danger i { color: var(--danger); }
-.uam-draw-btn--danger:hover { border-color: var(--danger); background: #fff5f5; }
-.uam-draw-btn--warn i { color: var(--accent); }
-.uam-draw-btn--warn:hover { border-color: var(--accent); background: #fffaf4; }
-
-/* Rover launch */
-.uam-rover-launch {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  gap: 18px;
-  padding: 20px;
-}
-
-.uam-rover-icon {
-  font-size: 3.5rem;
-  color: var(--primary);
-  opacity: 0.85;
-}
-
-.uam-status-text {
-  font-size: 0.8rem;
-  color: var(--muted);
-  min-height: 1.2rem;
-}
-
 /* Selection count badge */
 .uam-sel-count {
   font-size: 0.82rem;
@@ -3446,54 +3332,76 @@ select.search-panel__input {
   margin-top: 4px;
 }
 
-/* ── Mobile UAM: full-screen drill-down ── */
+/* Small helper text under a field (e.g. "Accepted formats…",
+   "Default CRS…") — Import tab, after removing the format/CRS dropdowns. */
+.uam-hint {
+  margin: 0px 0 0;
+  font-size: 0.6rem;
+  color: tomato;
+  line-height: 1.35;
+}
+
+/* Preview summary line (survey-import.js renderSummary) — same shape as
+   .uam-hint above, blue instead of tomato so it doesn't read as a warning. */
+.uam-hint--blue {
+  color: #2563eb;
+}
+
+/* "+" button next to an estate <select> (create new estate). Square,
+   matches the select's height, sits flush next to it in a .uam-field-row. */
+.uam-icon-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--primary-2);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  align-self: stretch;
+}
+
+.uam-icon-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #f4fff4;
+}
+
+/* Small spacing/layout utilities used inline in survey-panel.html so the
+   markup doesn't need one-off classes per element. */
+.u-gap-8 { gap: 8px; }
+.u-mb-6 { margin-bottom: 6px; }
+.u-mt-6 { margin-top: 6px; }
+.u-w-100 { width: 100%; }
+.u-flex-1 { flex: 1; }
+.u-hidden { display: none !important; }
+
+/* "Automatic" checkbox row above the estate/block filter in the Draw tab */
+.uam-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+  margin: 2px 0 8px;
+  cursor: pointer;
+}
+
+.uam-checkbox-row input[type="checkbox"] {
+  margin: 0;
+}
+
+/* Survey no longer needs its own mobile drill-down rules here — docked in
+   .map-left-stack now, it gets the same .popWin-mobileDock bottom-sheet
+   treatment as every other panel there (Modify/Select, Search, …) for
+   free. Only these two unrelated FAB-cluster tweaks still live in this
+   breakpoint. */
 @media (max-width: 640px) {
-  .uam-overlay {
-    padding: 0;
-    align-items: flex-end;
-    justify-content: stretch;
-  }
-
-  .uam-shell {
-    width: 100%;
-    max-height: 80vh;
-    border-radius: 20px 20px 0 0;
-    flex-direction: column;
-  }
-
-  .uam-nav {
-    flex-direction: row;
-    width: 100%;
-    height: 64px;
-    padding: 0 4px;
-    gap: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-bottom: 1px solid rgba(255,255,255,0.15);
-  }
-
-  .uam-nav-btn {
-    flex: 1;
-    min-width: 56px;
-    padding: 8px 2px;
-    border-left: none;
-    border-bottom: 3px solid transparent;
-    font-size: 0.58rem;
-  }
-
-  .uam-nav-btn i {
-    font-size: 0.95rem;
-  }
-
-  .uam-nav-btn[aria-selected="true"] {
-    border-left-color: transparent;
-    border-bottom-color: #8bc34a;
-  }
-
-  .uam-content {
-    max-height: calc(80vh - 64px);
-  }
-
   .map-fab-cluster--left {
     left: 12px;
   }
@@ -4934,6 +4842,17 @@ select.search-panel__input {
   display: none;
 }
 
+/* Survey window — fixed height instead of the content-driven flex sizing
+   every other .popWinMain window uses. Its four tabs (Import/Draw/Edit/
+   Export) vary a lot in content length, so letting the whole window grow
+   and shrink as you switch tabs was jarring; a fixed box plus .popWinBody's
+   own overflow-y:auto (set above) scrolls whatever doesn't fit instead. */
+.survey-panel.popWinMain {
+  height: 420px;
+  max-height: 420px;
+  flex: 0 0 420px;
+}
+
 /* Container padding alone isn't enough to match the dashboard's footer
    height — a flex row's rendered height is padding + tallest child, and
    .futuristic-icon-btn (44px circle) / .futuristic-icon-btn--modal-pad
@@ -5525,4 +5444,187 @@ select.search-panel__input {
 }
 .info-group__body .map-popup__table:last-child {
   margin-bottom: 0;
+}
+
+/* ── MANAGE FEATURES MODAL (windows/manage-features-panel.html) ── */
+.mf-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mf-list-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 8px 4px;
+}
+
+.mf-list-group-heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 8px 2px 2px;
+}
+
+.mf-list-group-heading:first-child {
+  margin-top: 0;
+}
+
+.mf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.mf-row__swatch {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.8rem;
+}
+
+.mf-row__name {
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mf-row__badge {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: #f0f4ee;
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.mf-row__edit {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 4px;
+}
+
+.mf-row__edit:hover {
+  color: var(--primary);
+}
+
+.mf-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.mf-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.mf-color-input {
+  width: 100%;
+  height: 34px;
+  padding: 2px;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.mf-icon-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mf-icon-preview__swatch {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-2);
+  background: #fff;
+}
+
+.mf-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fafcf8;
+}
+
+.mf-icon-grid__btn {
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid transparent;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+
+.mf-icon-grid__btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.mf-icon-grid__btn.mf-icon-grid__btn--active {
+  border-color: var(--primary);
+  background: #eaf6ea;
+  color: var(--primary-2);
+}
+
+.mf-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.mf-checkbox-row input[type="checkbox"] {
+  margin: 0;
 }

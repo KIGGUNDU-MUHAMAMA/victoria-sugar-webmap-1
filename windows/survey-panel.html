@@ -1,0 +1,243 @@
+  <!-- Renamed from unified-action-menu.html — now built entirely from the
+       shared .popWinMain/.popWinHead/.popWinBodyRow/.popWinTabs/.popWinBody/
+       .popWinActionBtns shell every other docked window (Search, Modify/
+       Select, Measure, …) uses, instead of the old bespoke .uam-overlay/
+       .uam-shell fixed-position dialog. That bespoke positioning is what
+       caused the "expands from the top" bug — it lived outside
+       .map-left-stack entirely, so it had to reinvent anchoring/scrolling
+       from scratch instead of getting it for free the way every sibling
+       window already does. #toolsTopBtn (Survey) sits in #mapLeftBtnStack
+       right alongside #searchPanelBtn/#parcelStatusBtn, so this now docks
+       exactly like their panels do (see app-boot.js: parent "mapLeftStack"). -->
+  <div id="unifiedActionMenu" class="survey-panel popWinMain popWin-mobileDock" hidden aria-hidden="true">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-drafting-compass" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Survey</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="uamCloseBtn" aria-label="Close survey panel">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinBodyRow">
+      <div class="popWinTabs popWinTabs--vertical" role="tablist" aria-label="Survey tool sections">
+        <button type="button" class="search-tab" data-uam-tab="import" role="tab" aria-selected="true">
+          <i class="fas fa-file-import" aria-hidden="true"></i> Import
+        </button>
+        <button type="button" class="search-tab" data-uam-tab="draw" role="tab" aria-selected="false" tabindex="-1">
+          <i class="fas fa-pencil-ruler" aria-hidden="true"></i> Draw
+        </button>
+        <button type="button" class="search-tab" data-uam-tab="edit" role="tab" aria-selected="false" tabindex="-1">
+          <i class="fas fa-vector-square" aria-hidden="true"></i> Edit
+        </button>
+        <button type="button" class="search-tab" data-uam-tab="export" role="tab" aria-selected="false" tabindex="-1">
+          <i class="fas fa-file-export" aria-hidden="true"></i> Export
+        </button>
+      </div>
+
+      <div class="popWinBody">
+
+        <!-- ── IMPORT TAB ── -->
+        <div class="uam-tab" id="uamTabImport" data-uam-panel="import">
+          <div class="uam-field-row">
+            <select id="surveyLayerSelect" class="uam-select">
+              <option value="">Layer…</option>
+              <option value="BLOCKS">BLOCKS</option>
+              <option value="PARCELS">PLOTS</option>
+            </select>
+          </div>
+
+          <!-- Both estate pickers are real <select>s sourced from vsl_estate
+               (survey-import.js refreshEstateOptions) — was a free-text
+               input w/ datalist for Blocks and a <select> reading a stale
+               vsl_blocks.estate_name column for Plots; neither matches the
+               live schema (estate_id -> vsl_estate) anymore. The "+" button
+               opens a small in-app modal to insert a new estate row without
+               leaving this tab. -->
+          <div id="surveyBlockFields" class="survey-conditional" hidden>
+            <div class="uam-field-row u-gap-8">
+              <select id="surveyBlockEstateSelect" class="uam-select">
+                <option value="">— Select Estate —</option>
+              </select>
+              <button type="button" id="surveyBlockEstateAddBtn" class="uam-icon-btn" title="Add new estate" aria-label="Add new estate">
+                <i class="fas fa-plus" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          <div id="surveyParcelFields" class="survey-conditional" hidden>
+            <div class="uam-field-row u-gap-8 u-mb-6">
+              <select id="surveyParcelEstateSelect" class="uam-select">
+                <option value="">— Select Estate —</option>
+              </select>
+              <button type="button" id="surveyParcelEstateAddBtn" class="uam-icon-btn" title="Add new estate" aria-label="Add new estate">
+                <i class="fas fa-plus" aria-hidden="true"></i>
+              </button>
+            </div>
+            <select id="surveyParentBlockSelect" class="uam-select">
+              <option value="">— Select Estate first —</option>
+            </select>
+          </div>
+
+          <!-- File selector doubles as the dropzone now (taller, and
+               drag/drop lands directly on it) — the separate #surveyDropzone
+               box below it was redundant with this. -->
+          <div class="uam-field-row">
+            <label id="surveyFileLabel" class="uam-file-label uam-file-label--drop">
+              <i class="fas fa-cloud-upload-alt"></i>
+              <!-- Format dropdown removed — handleFile() already branches on
+                   the file's own extension, so a separate format picker was
+                   redundant (and could disagree with the actual file). -->
+              <input id="surveyFileInput" type="file" accept=".csv,.dxf,.kml,.geojson,.json,text/csv" class="uam-file-input">
+              <span id="surveyFileName">Choose a file or drop it here…</span>
+            </label>
+          </div>
+
+          <p class="uam-hint">* Accepted formats: CSV, DXF, KML, GeoJSON  <br>
+            * Accepted CRS: UTM Zone 36N (EPSG:32636)
+          </p>
+
+          <!-- CRS dropdown removed. CSV eastings/northings, and DXF/KML/
+               GeoJSON's own one-off CRS prompt at load time (a separate
+               popup, not this dropdown), all default to UTM Zone 36N —
+               the surveyors' standard projected grid. -->
+
+          <!-- Moved out of .popWinActionBtns — Preview now lives here,
+               right under the hint, instead of in the footer with Save.
+               Clear (new) wipes the plotted preview + resets the file
+               picker so a fresh file can be loaded without leftovers. -->
+          <div class="uam-field-row u-gap-8 u-mt-6">
+            <button type="button" id="surveyPreviewBtn" class="uam-btn uam-btn--primary u-flex-1">
+              <i class="fas fa-eye" aria-hidden="true"></i> Preview
+            </button>
+            <button type="button" id="surveyClearBtn" class="uam-btn uam-btn--danger u-flex-1">
+              <i class="fas fa-eraser" aria-hidden="true"></i> Clear
+            </button>
+          </div>
+
+          <!-- Every renderSummary() call in survey-import.js just sets this
+               <p>'s text — same look every time, no per-call HTML/markup. -->
+          <p id="surveySummary" class="uam-hint uam-hint--blue" hidden></p>
+        </div>
+
+        <!-- ── DRAW TAB ── -->
+        <div class="uam-tab" id="uamTabDraw" data-uam-panel="draw" hidden>
+          <!-- Kept in the DOM (just visually hidden) — map-app.js's
+               readSnapOptions() reads these three IDs for snap-to-existing-
+               geometry behaviour shared with the Measure tool. -->
+          <div class="u-hidden">
+            <input type="checkbox" id="snapBlocksCb" checked>
+            <input type="checkbox" id="snapParcelsCb" checked>
+            <input type="checkbox" id="snapSurveyCb" checked>
+          </div>
+
+          <div class="uam-field-row">
+            <select id="drawEntityTypeSelect" class="uam-select">
+              <option value="point">Point</option>
+              <option value="line">Line</option>
+              <option value="polygon">Polygon</option>
+            </select>
+          </div>
+
+          <div class="uam-field-row u-gap-8">
+            <select id="drawFeatureSelect" class="uam-select">
+              <option value="">Feature…</option>
+            </select>
+            <button type="button" id="drawManageFeaturesBtn" class="uam-icon-btn" title="Manage features" aria-label="Manage features">
+              <i class="fas fa-pen-to-square" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <!-- Only shown when the selected feature is the system Plot or
+               Block type — everything else (trees, boreholes, roads, …)
+               saves straight into vsl_feature with no estate/block link. -->
+          <div id="drawPlotBlockFields" class="survey-conditional" hidden>
+            <label class="uam-checkbox-row">
+              <input type="checkbox" id="drawAutomaticCb">
+              <span>Automatic</span>
+            </label>
+            <div class="uam-field-row u-mb-6">
+              <select id="drawEstateSelect" class="uam-select">
+                <option value="">— Select Estate —</option>
+              </select>
+            </div>
+            <div id="drawBlockFilterRow" class="uam-field-row" hidden>
+              <select id="drawBlockSelect" class="uam-select">
+                <option value="">— Select Block —</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="uam-field-row">
+            <button type="button" id="drawStartBtn" class="uam-btn uam-btn--primary u-w-100">
+              <i class="fas fa-pen-nib"></i> <span id="drawStartBtnLabel">Start Drawing</span>
+            </button>
+          </div>
+
+          <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+        </div>
+
+        <!-- ── EDIT TAB ── -->
+        <div class="uam-tab" id="uamTabEdit" data-uam-panel="edit" hidden>
+          <button type="button" id="editSelectFeatureBtn" class="uam-btn uam-btn--primary u-w-100">
+            <i class="fas fa-hand-pointer"></i> Select Feature to Edit
+          </button>
+          <p class="uam-hint">Click a plot, block, or drawn feature on the map, then drag its nodes to reshape it.</p>
+          <div id="editSelectedInfo" class="survey-summary" hidden></div>
+          <div id="editToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+        </div>
+
+        <!-- ── EXPORT TAB ── -->
+        <div class="uam-tab" id="uamTabExport" data-uam-panel="export" hidden>
+          <!-- CRS dropdown removed — export always reprojects to WGS84
+               (EPSG:4326) now (see export-tools.js). -->
+          <div class="uam-field-row">
+            <select id="exportFormatSelect" class="uam-select">
+              <option value="geojson">GeoJSON</option>
+              <option value="kml">KML</option>
+              <option value="csv">CSV</option>
+              <option value="dxf">DXF</option>
+            </select>
+          </div>
+          <button type="button" id="exportSelectBtn" class="uam-btn uam-btn--ghost u-w-100 u-mt-6">
+            <i class="fas fa-hand-pointer"></i> Select
+          </button>
+          <p class="uam-hint">Click features, or hold Ctrl and drag a box to select many.</p>
+          <div id="exportSelCount" class="uam-sel-count" hidden>0 selected</div>
+        </div>
+
+      </div><!-- .popWinBody -->
+    </div><!-- .popWinBodyRow -->
+
+    <!-- Footer actions — one group per tab, .popWinActionBtns like every
+         other window's footer, swapped by switchTab() in unified-menu.js
+         (same [data-uam-actions] === active-tab pattern the tab panels
+         themselves use) so only the current tab's buttons show. -->
+    <div class="popWinActionBtns">
+      <div class="uam-actions-group" data-uam-actions="import">
+        <button type="button" id="surveySaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+          <i class="fas fa-database" aria-hidden="true"></i> Save
+        </button>
+      </div>
+      <div class="uam-actions-group" data-uam-actions="draw" hidden>
+        <button type="button" id="clearDrawingsBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger">
+          <i class="fas fa-eraser" aria-hidden="true"></i> Clear All
+        </button>
+        <button type="button" id="stopDrawBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">
+          <i class="fas fa-stop-circle" aria-hidden="true"></i> Stop Action
+        </button>
+      </div>
+      <div class="uam-actions-group" data-uam-actions="edit" hidden>
+        <button type="button" id="editCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="button" id="editSaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+          <i class="fas fa-check" aria-hidden="true"></i> Save
+        </button>
+      </div>
+      <div class="uam-actions-group" data-uam-actions="export" hidden>
+        <button type="button" id="exportCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="button" id="exportDoBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+          <i class="fas fa-file-export" aria-hidden="true"></i> Export
+        </button>
+      </div>
+    </div>
+  </div><!-- #unifiedActionMenu -->

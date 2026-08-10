@@ -17,17 +17,25 @@
 const WINDOW_FRAGMENTS = [
   // Left-hand tool stack (order matters — mirrors original DOM order).
   { parent: "mapLeftStack", url: "./windows/parcel-status-panel.html" },
+  // Survey — was a standalone fixed-position overlay (unified-action-menu.html);
+  // now docks here like every other #mapLeftBtnStack panel (#toolsTopBtn
+  // lives in that same button stack), which is what gives it .map-left-stack's
+  // working height/scroll behavior for free.
+  { parent: "mapLeftStack", url: "./windows/survey-panel.html" },
+  // Measure — #measureTopBtn lives in #mapLeftBtnStack alongside Search/
+  // Survey/Modify's own trigger buttons, so this now docks with them
+  // instead of the right-hand stack it used to render in (trigger and
+  // panel are on the same side now).
+  { parent: "mapLeftStack", url: "./windows/measure-panel.html" },
   { parent: "mapLeftStack", url: "./windows/sentinel-analytics-panel.html" },
   { parent: "mapLeftStack", url: "./windows/search-panel.html" },
   { parent: "mapLeftStack", url: "./windows/info-help-popover.html" },
 
   // Right-hand tool stack.
-  { parent: "mapRightStack", url: "./windows/measure-panel.html" },
   // Opened from the Legend button next to the Layers control (#mapRightBtnStack).
   { parent: "mapRightStack", url: "./windows/legend-panel.html" },
 
   // Body-level overlays/modals (position: fixed, so sibling order doesn't matter).
-  { parent: "body", url: "./windows/unified-action-menu.html" },
   { parent: "body", url: "./windows/edit-details-modal.html" },
   { parent: "body", url: "./windows/log-activity-modal.html" },
   { parent: "body", url: "./windows/log-alert-modal.html" },
@@ -43,6 +51,9 @@ const WINDOW_FRAGMENTS = [
   { parent: "body", url: "./windows/resolve-alert-modal.html" },
   // Opened by clicking the account button in the top controls (was a direct Sign Out button).
   { parent: "body", url: "./windows/profile-modal.html" },
+  // Opened from the pencil button next to the Survey window's Draw tab
+  // Feature dropdown (js/survey-draw.js / js/manage-features.js).
+  { parent: "body", url: "./windows/manage-features-panel.html" },
 ];
 
 async function loadWindowFragments() {

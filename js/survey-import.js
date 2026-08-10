@@ -123,12 +123,20 @@ function fitMapToLayerSources(map, blocksSource, parcelsSource) {
   map.getView().fit(extent, { padding: [90, 90, 90, 90], maxZoom: 18, duration: 450 });
 }
 
+// DXF/KML/GeoJSON files still get their own one-off CRS prompt at load time
+// (promptForCrs, below) since those are essentially never in lon/lat — the
+// tab-level CRS dropdown that used to seed its default is gone, so this is
+// now the sole hardcoded fallback.
+const DEFAULT_DXF_CRS = "EPSG:32636";
+
 export function initSurveyImport({
   map,
   cfg,
+  supabase,
   setStatus,
   statusEl,
   loadLayersFromDb,
+  refreshEstateBoundaries,
   getManagementLocked,
   blocksSource,
   parcelsSource
@@ -139,31 +147,31 @@ export function initSurveyImport({
   const layerSelect = document.getElementById("surveyLayerSelect");
   const blockFields = document.getElementById("surveyBlockFields");
   const parcelFields = document.getElementById("surveyParcelFields");
-  const estateNameInput = document.getElementById("surveyEstateName"); // NEW block import estate
-  const surveyEstateNameList = document.getElementById("surveyEstateNameList"); // datalist
-  const surveyParcelEstateSelect = document.getElementById("surveyParcelEstateSelect"); // NEW parcel estate dropdown
+  // Both estate pickers are real <select>s now, sourced from vsl_estate
+  // (refreshEstateOptions) — Blocks used to be a free-text input w/
+  // datalist, Plots used to read a since-dropped vsl_blocks.estate_name
+  // column. Neither matched the live schema (estate_id -> vsl_estate).
+  const blockEstateSelect = document.getElementById("surveyBlockEstateSelect");
+  const blockEstateAddBtn = document.getElementById("surveyBlockEstateAddBtn");
+  const surveyParcelEstateSelect = document.getElementById("surveyParcelEstateSelect");
+  const parcelEstateAddBtn = document.getElementById("surveyParcelEstateAddBtn");
   const parentBlockSelect = document.getElementById("surveyParentBlockSelect");
-  const crsSelect = document.getElementById("surveyCrsSelect");
-  const additionalInfo = document.getElementById("surveyAdditionalInfo");
+  // Module-level (not a dropdown) — set by promptForCrs() when a DXF/KML/
+  // GeoJSON file is loaded; CSV/digitized imports always use WGS84 below.
+  let dxfCrs = DEFAULT_DXF_CRS;
   const fileInput = document.getElementById("surveyFileInput");
-  const dropzone = document.getElementById("surveyDropzone");
+  // File selector doubles as the dropzone now — the separate #surveyDropzone
+  // box was removed, drag/drop lands directly on this label.
+  const dropzone = document.getElementById("surveyFileLabel");
   const summaryEl = document.getElementById("surveySummary");
-  const skipSelf = document.getElementById("surveySkipSelfIntersect");
   const previewBtn = document.getElementById("surveyPreviewBtn");
+  const clearImportBtn = document.getElementById("surveyClearBtn");
   const saveBtn = document.getElementById("surveySaveBtn");
+  const fileNameEl = document.getElementById("surveyFileName");
 
   if (!drawer) return null;
   // toggleBtn and surveyCloseBtn may be absent (stubs); guard all calls
   const hasToggle = toggleBtn && !toggleBtn.hidden;
-
-  // Populate CRS dropdown from CRS_OPTIONS
-  CRS_OPTIONS.forEach((o) => {
-    const opt = document.createElement("option");
-    opt.value = o.value;
-    opt.textContent = o.label;
-    crsSelect?.appendChild(opt);
-  });
-  if (crsSelect) crsSelect.value = "EPSG:32636";
 
   const polySource = new ol.source.Vector();
   const pointSource = new ol.source.Vector();
@@ -203,23 +211,6 @@ export function initSurveyImport({
   dxfLayer.set("displayInLayerSwitcher", false);
   map.addLayer(dxfLayer);
 
-  let digitizeCount = 0;
-  const drawSource = new ol.source.Vector();
-  const drawLayer = new ol.layer.Vector({
-    source: drawSource,
-    style: new ol.style.Style({
-      stroke: new ol.style.Stroke({ color: "#28a745", width: 2 }),
-      fill: new ol.style.Fill({ color: "rgba(40, 167, 69, 0.2)" })
-    }),
-    zIndex: 902
-  });
-  drawLayer.set("displayInLayerSwitcher", false);
-  map.addLayer(drawLayer);
-
-  let drawInteraction = null;
-  let snapInteraction1 = null;
-  let snapInteraction2 = null;
-
   let parsedRows = [];
   let lastPreviewPayload = null;
 
@@ -232,10 +223,28 @@ export function initSurveyImport({
     return str.trim().replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
   }
 
+  function fillEstateSelect(selectEl, estates) {
+    if (!selectEl) return;
+    const keep = selectEl.value;
+    selectEl.innerHTML = '<option value="">— Select Estate —</option>';
+    for (const e of estates) {
+      const opt = document.createElement("option");
+      opt.value = e.estate_name;
+      opt.textContent = e.estate_name;
+      selectEl.appendChild(opt);
+    }
+    if (keep && [...selectEl.options].some(o => o.value === keep)) {
+      selectEl.value = keep;
+    }
+  }
+
+  // Populates both the Blocks-import and Plots-import estate dropdowns from
+  // vsl_estate directly — this used to read estate_name off vsl_blocks,
+  // which no longer has that column now that estates are their own table
+  // (vsl_blocks.estate_id -> vsl_estate.id).
   async function refreshEstateOptions() {
-    // Populate both the block-import datalist and parcel-import estate dropdown
     try {
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=estate_name&estate_name=not.is.null`;
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_estate?select=id,estate_name&order=estate_name.asc`;
       const res = await fetch(url, {
         headers: {
           "apikey": cfg.SUPABASE_ANON_KEY,
@@ -245,29 +254,9 @@ export function initSurveyImport({
       });
       if (!res.ok) return;
       const data = await res.json();
-      const names = [...new Set(
-        data.map(d => d.estate_name).filter(n => n && String(n).trim())
-      )].sort((a, b) => a.localeCompare(b));
-
-      // Fill datalist for block import
-      if (surveyEstateNameList) {
-        surveyEstateNameList.innerHTML = names.map(n => `<option value="${n}">`).join("");
-      }
-
-      // Fill estate dropdown for parcel import
-      if (surveyParcelEstateSelect) {
-        const keepEstate = surveyParcelEstateSelect.value;
-        surveyParcelEstateSelect.innerHTML = '<option value="">— Select Estate —</option>';
-        for (const name of names) {
-          const opt = document.createElement("option");
-          opt.value = name;
-          opt.textContent = name;
-          surveyParcelEstateSelect.appendChild(opt);
-        }
-        if (keepEstate && [...surveyParcelEstateSelect.options].some(o => o.value === keepEstate)) {
-          surveyParcelEstateSelect.value = keepEstate;
-        }
-      }
+      const estates = data.filter(d => d.estate_name && String(d.estate_name).trim());
+      fillEstateSelect(blockEstateSelect, estates);
+      fillEstateSelect(surveyParcelEstateSelect, estates);
     } catch (e) {
       console.error("[Victoria Survey] Error fetching estates:", e);
     }
@@ -285,18 +274,34 @@ export function initSurveyImport({
 
     parentBlockSelect.disabled = false;
     parentBlockSelect.innerHTML = '<option value="">Loading blocks…</option>';
-    
+
     try {
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_blocks?select=block_code&estate_name=eq.${encodeURIComponent(estateName)}`;
-      const res = await fetch(url, {
-        headers: {
-          "apikey": cfg.SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`,
-          "Accept": "application/json"
-        }
-      });
+      const base = cfg.SUPABASE_URL.replace(/\/$/, "");
+      const headers = {
+        "apikey": cfg.SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`,
+        "Accept": "application/json"
+      };
+      // vsl_blocks is keyed by estate_id now, not estate_name, so resolve
+      // the id first.
+      const estRes = await fetch(
+        `${base}/rest/v1/vsl_estate?select=id&estate_name=eq.${encodeURIComponent(estateName)}&limit=1`,
+        { headers }
+      );
+      if (!estRes.ok) throw new Error("Failed to resolve estate");
+      const estRows = await estRes.json();
+      const estateId = estRows[0]?.id;
+      if (estateId == null) {
+        parentBlockSelect.innerHTML = '<option value="">No blocks for this estate</option>';
+        return;
+      }
+
+      const res = await fetch(
+        `${base}/rest/v1/vsl_blocks?select=block_code&estate_id=eq.${estateId}`,
+        { headers }
+      );
       if (!res.ok) throw new Error("Failed to fetch blocks");
-      
+
       const data = await res.json();
       const codes = [...new Set(data.map(d => d.block_code).filter(c => c != null && String(c).trim() !== ""))];
       codes.sort((a, b) => {
@@ -304,7 +309,7 @@ export function initSurveyImport({
         if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
         return String(a).localeCompare(String(b), undefined, { numeric: true });
       });
-      
+
       parentBlockSelect.innerHTML = '<option value="">— Select Block —</option>';
       for (const code of codes) {
         const opt = document.createElement("option");
@@ -320,6 +325,69 @@ export function initSurveyImport({
       parentBlockSelect.innerHTML = '<option value="">Error loading blocks</option>';
     }
   }
+
+  // "+" button next to either estate dropdown — small in-app modal (same
+  // pattern as promptForCrs/promptForStartingId below) that inserts a row
+  // into vsl_estate via the authenticated Supabase client (RLS requires
+  // ADMIN/SURVEYOR, same as everything else this panel can do), then
+  // refreshes both dropdowns and selects the new estate.
+  function promptCreateEstate() {
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; display:flex; align-items:center; justify-content:center; backdrop-filter: blur(2px);";
+      const modal = document.createElement("div");
+      modal.style.cssText = "background:#fff; padding:20px; border-radius:8px; width:280px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.15); font-family: system-ui, -apple-system, sans-serif;";
+      modal.innerHTML = `
+        <h4 style="margin:0 0 8px 0; font-size:1.1rem; color:#333;">New Estate</h4>
+        <p style="margin:0 0 16px 0; font-size:0.85rem; color:#666;">Estate name</p>
+        <input type="text" id="newEstateNameInput" placeholder="e.g. Lugazi" style="width:100%; padding:8px 12px; margin-bottom:20px; border:1px solid #ddd; border-radius:6px; font-size:1rem; box-sizing:border-box; outline:none;" />
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button id="newEstateCancel" style="padding:8px 16px; border-radius:6px; background:#f1f3f5; color:#495057; border:none; cursor:pointer; font-size:0.9rem; font-weight:500;">Cancel</button>
+          <button id="newEstateOk" style="padding:8px 16px; border-radius:6px; background:#28a745; color:#fff; border:none; cursor:pointer; font-size:0.9rem; font-weight:500;">Create</button>
+        </div>
+      `;
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      const input = document.getElementById("newEstateNameInput");
+      input.focus();
+      const cleanup = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
+      document.getElementById("newEstateCancel").onclick = () => { cleanup(); resolve(null); };
+      document.getElementById("newEstateOk").onclick = () => { const v = input.value.trim(); cleanup(); resolve(v || null); };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") document.getElementById("newEstateOk").click();
+        else if (e.key === "Escape") document.getElementById("newEstateCancel").click();
+      });
+    });
+  }
+
+  async function handleAddEstate(targetSelect) {
+    const name = await promptCreateEstate();
+    if (!name) return;
+    if (!supabase) {
+      setStatus(statusEl, "Can't create an estate — Supabase client not available.", true);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("vsl_estate")
+        .insert({ estate_name: name })
+        .select("id, estate_name")
+        .single();
+      if (error) throw error;
+      setStatus(statusEl, `Estate "${data.estate_name}" created.`);
+      await refreshEstateOptions();
+      if (targetSelect) {
+        targetSelect.value = data.estate_name;
+        targetSelect.dispatchEvent(new Event("change"));
+      }
+    } catch (e) {
+      console.error("[Victoria Survey] Failed to create estate:", e);
+      setStatus(statusEl, `Failed to create estate: ${e.message}`, true);
+    }
+  }
+
+  blockEstateAddBtn?.addEventListener("click", () => handleAddEstate(blockEstateSelect));
+  parcelEstateAddBtn?.addEventListener("click", () => handleAddEstate(surveyParcelEstateSelect));
 
   function updateLayerFields() {
     const v = layerSelect.value;
@@ -342,35 +410,19 @@ export function initSurveyImport({
     polySource.clear(true);
     pointSource.clear(true);
     dxfSource.clear(true);
-    drawSource.clear(true);
-    if (drawInteraction) {
-      map.removeInteraction(drawInteraction);
-      if (snapInteraction1) map.removeInteraction(snapInteraction1);
-      if (snapInteraction2) map.removeInteraction(snapInteraction2);
-      drawInteraction = null;
-      snapInteraction1 = null;
-      snapInteraction2 = null;
-    }
-    const stBtn = document.getElementById("surveyStartTracingBtn");
-    if(stBtn) {
-       stBtn.textContent = "Start Tracing";
-       stBtn.classList.replace("btn-danger", "btn-primary");
-    }
-    digitizeCount = 0;
-    const dc = document.getElementById("surveyDigitizeCount");
-    if(dc) dc.textContent = `0 polygons digitized`;
-    
+
     parsedDxf = null;
-    const dTools = document.getElementById("surveyDigitizeTools");
-    if(dTools) dTools.hidden = true;
-    
+
     lastPreviewPayload = null;
     saveBtn.disabled = true;
   }
 
-  function renderSummary(html) {
-    summaryEl.hidden = !html;
-    summaryEl.innerHTML = html || "";
+  // Plain text only — the <p class="uam-hint uam-hint--blue"> markup lives
+  // once in survey-panel.html, not rebuilt per call, so every summary looks
+  // identical no matter which code path renders it.
+  function renderSummary(text) {
+    summaryEl.hidden = !text;
+    summaryEl.textContent = text || "";
   }
 
   if (hasToggle) {
@@ -395,16 +447,6 @@ export function initSurveyImport({
       }
     } else {
       toggleBtn.classList.remove("active");
-      if (drawInteraction) {
-        map.removeInteraction(drawInteraction);
-        if (snapInteraction1) map.removeInteraction(snapInteraction1);
-        if (snapInteraction2) map.removeInteraction(snapInteraction2);
-        drawInteraction = null;
-        snapInteraction1 = null;
-        snapInteraction2 = null;
-        document.getElementById("surveyStartTracingBtn")?.classList.replace("btn-danger", "btn-primary");
-        document.getElementById("surveyStartTracingBtn").textContent = "Start Tracing";
-      }
     }
   }) // end toggleBtn click
   } // end hasToggle
@@ -429,7 +471,7 @@ export function initSurveyImport({
     dxfSource.clear(true);
     if (!parsedDxf) return;
     try {
-      const crs = crsSelect.value;
+      const crs = dxfCrs;
       const p4 = await getProj4();
       
       parsedDxf.entities.forEach(ent => {
@@ -446,20 +488,15 @@ export function initSurveyImport({
         if (ext && ext.every(Number.isFinite)) {
           map.getView().fit(ext, { padding: [100, 100, 100, 220], maxZoom: 18, duration: 400 });
         }
-        document.getElementById("surveyDigitizeTools").hidden = false;
-        setStatus(statusEl, "DXF loaded. Choose target layer, click Start Tracing, and trace over lines.");
+        // DXF has no polygons of its own (just lines) — shown for reference
+        // only. Use the Draw tab to create features on top of it.
+        setStatus(statusEl, "DXF loaded (shown for reference). Use the Draw tab to create features.");
       }
     } catch(e) {
       console.error(e);
       setStatus(statusEl, "Failed to project DXF: " + e.message, true);
     }
   }
-
-  crsSelect?.addEventListener("change", () => {
-    if (parsedDxf) {
-      renderDxf();
-    }
-  });
 
   function promptForCrs(filename) {
     return new Promise((resolve) => {
@@ -473,7 +510,7 @@ export function initSurveyImport({
         <h3 style="margin-top:0;">DXF Coordinate System</h3>
         <p style="font-size:0.85rem; color:#666;">Select the coordinate system for <strong>${filename}</strong>:</p>
         <select id="dxfCrsPromptSelect" style="width:100%; padding:8px; margin-bottom:16px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem;">
-          ${CRS_OPTIONS.map(o => `<option value="${o.value}" ${o.value === (crsSelect?.value || "EPSG:32636") ? "selected" : ""}>${o.label}</option>`).join('')}
+          ${CRS_OPTIONS.map(o => `<option value="${o.value}" ${o.value === dxfCrs ? "selected" : ""}>${o.label}</option>`).join('')}
         </select>
         <div style="display:flex; justify-content:flex-end; gap:8px;">
           <button id="dxfCrsPromptCancel" style="padding:8px 16px; border-radius:6px; background:#f0f0f0; border:none; cursor:pointer;">Cancel</button>
@@ -507,8 +544,8 @@ export function initSurveyImport({
         setStatus(statusEl, "Import cancelled (no CRS selected).");
         return;
       }
-      if (crsSelect) crsSelect.value = chosenCrs;
-      
+      dxfCrs = chosenCrs;
+
       if (name.endsWith(".dxf")) {
         try {
           setStatus(statusEl, "Parsing DXF...");
@@ -530,17 +567,15 @@ export function initSurveyImport({
           for (const f of features) {
             if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
           }
-          parsedDxf = { entities: [], _kmlFeatures: features }; // flag for digitizer
+          parsedDxf = { entities: [], _kmlFeatures: features };
           if (polySource.getFeatures().length > 0) {
             const ext = polySource.getExtent();
             if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
-            const dTools = document.getElementById("surveyDigitizeTools");
-            if (dTools) dTools.hidden = false;
-            setStatus(statusEl, `KML loaded — ${polySource.getFeatures().length} polygon(s). Use Trace to create parcels.`);
+            setStatus(statusEl, `KML loaded — ${polySource.getFeatures().length} polygon(s). Click Preview, then Save.`);
           } else {
             setStatus(statusEl, "No polygon features found in KML.", true);
           }
-          renderSummary(`<p>${features.length} KML feature(s) loaded.</p>`);
+          renderSummary(`${features.length} KML feature(s) loaded.`);
         } catch(e) {
           setStatus(statusEl, "KML parsing failed: " + e.message, true);
         }
@@ -556,17 +591,15 @@ export function initSurveyImport({
           for (const f of features) {
             if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
           }
-          parsedDxf = { entities: [], _gjFeatures: features }; // flag for digitizer
+          parsedDxf = { entities: [], _gjFeatures: features };
           if (polySource.getFeatures().length > 0) {
             const ext = polySource.getExtent();
             if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
-            const dTools = document.getElementById("surveyDigitizeTools");
-            if (dTools) dTools.hidden = false;
-            setStatus(statusEl, `GeoJSON loaded — ${polySource.getFeatures().length} polygon(s). Use Trace or save directly.`);
+            setStatus(statusEl, `GeoJSON loaded — ${polySource.getFeatures().length} polygon(s). Click Preview, then Save.`);
           } else {
             setStatus(statusEl, "No polygon features found in GeoJSON.", true);
           }
-          renderSummary(`<p>${features.length} GeoJSON feature(s) loaded.</p>`);
+          renderSummary(`${features.length} GeoJSON feature(s) loaded.`);
         } catch(e) {
           setStatus(statusEl, "GeoJSON parsing failed: " + e.message, true);
         }
@@ -576,9 +609,7 @@ export function initSurveyImport({
         clearPreview();
         parsedRows = await parseCsvFile(file);
         const n = parsedRows.length;
-        renderSummary(
-          `<p><strong>${n}</strong> data row(s) read. Choose CRS and click <strong>Preview</strong>.</p>`
-        );
+        renderSummary(`${n} data row(s) read.`);
       } catch (e) {
         parsedRows = [];
         setStatus(statusEl, e.message, true);
@@ -587,19 +618,12 @@ export function initSurveyImport({
     }
   }
 
-  // Export so global drag and drop can use it
+  // Export so global drag and drop can use it. The file's extension alone
+  // decides how it's parsed (see handleFile) — there's no format dropdown
+  // to keep in sync anymore.
   window.handleGlobalSurveyDrop = async function(file) {
     if (window.openUamTab) {
       window.openUamTab("import");
-    }
-    const sel = document.getElementById("importFormatSelect");
-    if (sel) {
-      const name = file.name.toLowerCase();
-      if (name.endsWith(".dxf")) sel.value = "dxf";
-      else if (name.endsWith(".kml")) sel.value = "kml";
-      else if (name.endsWith(".geojson") || name.endsWith(".json")) sel.value = "geojson";
-      else if (name.endsWith(".csv")) sel.value = "csv";
-      sel.dispatchEvent(new Event("change"));
     }
     await handleFile(file);
   };
@@ -618,158 +642,113 @@ export function initSurveyImport({
     dropzone.classList.remove("dragover");
     const f = e.dataTransfer?.files?.[0];
     if (f) {
-      // Set the format dropdown to match the file type
-      const sel = document.getElementById("importFormatSelect");
-      if (sel) {
-        const nm = f.name.toLowerCase();
-        if (nm.endsWith(".dxf")) sel.value = "dxf";
-        else if (nm.endsWith(".kml")) sel.value = "kml";
-        else if (nm.endsWith(".geojson") || nm.endsWith(".json")) sel.value = "geojson";
-        else if (nm.endsWith(".csv")) sel.value = "csv";
-        sel.dispatchEvent(new Event("change"));
-      }
       await handleFile(f);
     }
   });
 
-  function updateDigitizePayload() {
-    const features = drawSource.getFeatures();
-    if (features.length === 0) {
-      lastPreviewPayload = null;
-      saveBtn.disabled = true;
-      return;
-    }
-    
+  // KML/GeoJSON files already contain full polygons (no tracing needed) —
+  // Preview just packages whatever's currently in polySource as the save
+  // payload, the same shape the CSV edge-function preview produces.
+  function previewLocalPolygons(layerType) {
     const gj = new ol.format.GeoJSON();
+    const features = polySource.getFeatures();
     const results = features.map((f, i) => {
-      const geom = f.getGeometry().clone().transform('EPSG:3857', 'EPSG:4326');
+      const geom = f.getGeometry().clone().transform("EPSG:3857", "EPSG:4326");
       return {
-        parcelId: `Traced ${i + 1}`,
+        parcelId: f.get("parcelId") || `Feature ${i + 1}`,
         success: true,
         geometry: gj.writeGeometryObject(geom)
       };
     });
-    
-    const type = layerSelect.value;
-    const resolvedEstate = type === "BLOCKS"
-      ? toTitleCase(estateNameInput?.value?.trim() || "")
+
+    const resolvedEstate = layerType === "BLOCKS"
+      ? toTitleCase(blockEstateSelect?.value?.trim() || "")
       : (surveyParcelEstateSelect?.value?.trim() || "");
-      
+
     lastPreviewPayload = {
-        layerType: type,
-        estate_name: resolvedEstate,
-        parentBlockCode: parentBlockSelect?.value?.trim() || "",
-        coordinateSystem: "EPSG:4326", 
-        additionalInfo: additionalInfo?.value?.trim() || "",
-        results
+      layerType,
+      estate_name: resolvedEstate,
+      parentBlockCode: parentBlockSelect?.value?.trim() || "",
+      coordinateSystem: "EPSG:4326",
+      additionalInfo: "",
+      results
     };
-    saveBtn.disabled = false;
+
+    renderSummary(`Total Figures: ${results.length} ready to save.`);
+    saveBtn.disabled = !results.length;
+    setStatus(statusEl, "Preview ready. Verify on map, then save.");
   }
 
-  document.getElementById("surveyStartTracingBtn")?.addEventListener("click", () => {
-    const stBtn = document.getElementById("surveyStartTracingBtn");
-    if (drawInteraction) {
-      map.removeInteraction(drawInteraction);
-      if (snapInteraction1) map.removeInteraction(snapInteraction1);
-      if (snapInteraction2) map.removeInteraction(snapInteraction2);
-      drawInteraction = null;
-      snapInteraction1 = null;
-      snapInteraction2 = null;
-      stBtn.textContent = "Start Tracing";
-      stBtn.classList.replace("btn-danger", "btn-primary");
-      return;
-    }
-    
-    const layerType = layerSelect.value;
-    if (!layerType) {
-      setStatus(statusEl, "Select target layer (BLOCKS or PARCELS) before tracing.", true);
-      return;
-    }
-    if (layerType === "PARCELS" && !parentBlockSelect?.value?.trim()) {
-      setStatus(statusEl, "Choose the parent block before tracing parcels.", true);
-      return;
-    }
-
-    drawInteraction = new ol.interaction.Draw({
-      source: drawSource,
-      type: "Polygon"
-    });
-    
-    snapInteraction1 = new ol.interaction.Snap({ source: dxfSource });
-    snapInteraction2 = new ol.interaction.Snap({ source: drawSource });
-    
-    map.addInteraction(drawInteraction);
-    map.addInteraction(snapInteraction1);
-    map.addInteraction(snapInteraction2);
-    
-    drawInteraction.on('drawend', (e) => {
-      digitizeCount++;
-      const dc = document.getElementById("surveyDigitizeCount");
-      if(dc) dc.textContent = `${digitizeCount} polygons digitized`;
-      // Update the payload next tick so the feature is actually in the source
-      setTimeout(() => updateDigitizePayload(), 10);
-    });
-    
-    stBtn.textContent = "Stop Tracing";
-    stBtn.classList.replace("btn-primary", "btn-danger");
-    setStatus(statusEl, "Tracing active. Click map to draw polygon corners. Double-click to finish.");
-  });
-
-  document.getElementById("surveyClearTracingBtn")?.addEventListener("click", () => {
-    drawSource.clear(true);
-    digitizeCount = 0;
-    const dc = document.getElementById("surveyDigitizeCount");
-    if(dc) dc.textContent = `0 polygons digitized`;
-    updateDigitizePayload();
+  // Wipes the plotted preview off the map AND resets the file picker back
+  // to empty — clearPreview() alone (used elsewhere, e.g. on layer change)
+  // deliberately leaves the loaded file in place, since a fresh file load
+  // calls it too and shouldn't wipe itself.
+  clearImportBtn?.addEventListener("click", () => {
+    clearPreview();
+    parsedRows = [];
+    if (fileInput) fileInput.value = "";
+    if (fileNameEl) fileNameEl.textContent = "Choose a file or drop it here…";
+    renderSummary("");
+    setStatus(statusEl, "Cleared.");
   });
 
   previewBtn?.addEventListener("click", async () => {
     if (getManagementLocked?.()) return;
     const layerType = layerSelect.value;
     if (!layerType) {
-      setStatus(statusEl, "Select target layer (BLOCKS or PARCELS).", true);
+      setStatus(statusEl, "Select target layer (BLOCKS or PLOTS).", true);
       return;
     }
     if (layerType === "BLOCKS") {
-      const estateName = estateNameInput?.value?.trim() || "";
+      const estateName = blockEstateSelect?.value?.trim() || "";
       if (!estateName) {
-        setStatus(statusEl, "Enter an Estate name before previewing blocks.", true);
+        setStatus(statusEl, "Select an Estate before previewing blocks.", true);
         return;
       }
     }
     if (layerType === "PARCELS") {
       if (!surveyParcelEstateSelect?.value?.trim()) {
-        setStatus(statusEl, "Select an Estate before previewing parcels.", true);
+        setStatus(statusEl, "Select an Estate before previewing plots.", true);
         return;
       }
       if (!parentBlockSelect?.value?.trim()) {
-        setStatus(statusEl, "Select a Block (within the chosen Estate) before previewing parcels.", true);
+        setStatus(statusEl, "Select a Block (within the chosen Estate) before previewing plots.", true);
         return;
       }
     }
     if (!parsedRows.length) {
-      setStatus(statusEl, "Load a CSV file first.", true);
+      if (polySource.getFeatures().length) {
+        // KML/GeoJSON — polygons are already parsed, no edge-function
+        // round trip needed.
+        previewLocalPolygons(layerType);
+        return;
+      }
+      setStatus(
+        statusEl,
+        "Load a file with polygons first (CSV, KML, or GeoJSON). DXF files are shown for reference only.",
+        true
+      );
       return;
     }
-    const crs = crsSelect.value;
+    // CRS dropdown is gone — CSV eastings/northings default to UTM Zone 36N
+    // (the surveyors' standard projected grid; matches DEFAULT_DXF_CRS used
+    // for DXF/KML/GeoJSON below). The edge function reprojects server-side
+    // via proj4 before validating/saving.
+    const crs = "EPSG:32636";
     try {
       setStatus(statusEl, "Building preview…");
       const data = await callSurveyEdge(cfg, {
         action: "preview_batch",
         crs,
         rows: parsedRows,
-        skipSelfIntersectionCheck: !!skipSelf?.checked
+        // Self-intersect check is always skipped now — it kept failing
+        // imports whenever the surveyor forgot to tick the old checkbox.
+        skipSelfIntersectionCheck: true
       });
       const { summary, results } = data;
       renderSummary(
-        `<p><strong>Parcels (groups):</strong> ${summary.totalParcels} &nbsp;|&nbsp; <strong>Valid:</strong> ${summary.validParcels} &nbsp;|&nbsp; <strong>Failed:</strong> ${summary.failedParcels}</p>` +
-          `<p><strong>Total points:</strong> ${summary.totalPoints} &nbsp;|&nbsp; <strong>Skipped rows:</strong> ${summary.skippedRows}</p>` +
-          (layerType === "BLOCKS"
-            ? "<p class=\"small\">On save, each polygon becomes a new block numbered <strong>1, 2, 3…</strong> (CSV <code>parcel_id</code> is only for grouping points).</p>"
-            : "<p class=\"small\">On save, parcels get numbers <strong>1, 2, 3…</strong> in the selected block (CSV <code>parcel_id</code> is only for grouping corners).</p>") +
-          (summary.failedParcels > 0
-            ? "<p class=\"small\">Some parcels failed validation; check console or fix CSV.</p>"
-            : "")
+        `Total Figures: ${summary.totalParcels}   Failed: ${summary.failedParcels}   Total points: ${summary.totalPoints}` +
+          (summary.failedParcels > 0 ? "  — some plots failed validation." : "")
       );
 
       polySource.clear(true);
@@ -800,7 +779,7 @@ export function initSurveyImport({
       }
 
       const resolvedEstate = layerType === "BLOCKS"
-        ? toTitleCase(estateNameInput?.value?.trim() || "")
+        ? toTitleCase(blockEstateSelect?.value?.trim() || "")
         : (surveyParcelEstateSelect?.value?.trim() || "");
 
       lastPreviewPayload = {
@@ -808,7 +787,7 @@ export function initSurveyImport({
         estate_name: resolvedEstate,
         parentBlockCode: parentBlockSelect?.value?.trim() || "",
         coordinateSystem: crs,
-        additionalInfo: additionalInfo?.value?.trim() || "",
+        additionalInfo: "",
         results
       };
       saveBtn.disabled = !validResults.length;
@@ -823,7 +802,7 @@ export function initSurveyImport({
   function promptForStartingId(layerType) {
     return new Promise((resolve) => {
       const isBlock = layerType === "BLOCKS";
-      const title = isBlock ? "Starting Block ID" : "Starting Parcel ID";
+      const title = isBlock ? "Starting Block ID" : "Starting Plot ID";
       const desc = isBlock ? "Provide the first ID to auto-number the rest (e.g. Block-1)" : "Provide the first ID to auto-number the rest (e.g. A1)";
       const placeholder = isBlock ? "Block-1" : "A1";
 
@@ -915,7 +894,10 @@ export function initSurveyImport({
       const data = await callSurveyEdge(cfg, {
         action: "commit_batch",
         layerType: lastPreviewPayload.layerType,
-        estate_name: lastPreviewPayload.estate_name,
+        // The edge function reads this into `projectName` (not
+        // `estate_name`) — it was silently ignored before, and the RPC
+        // would fall back to using the Notes field as a pseudo estate name.
+        projectName: lastPreviewPayload.estate_name,
         parentBlockCode: lastPreviewPayload.parentBlockCode,
         coordinateSystem: lastPreviewPayload.coordinateSystem,
         additionalInfo: lastPreviewPayload.additionalInfo,
@@ -935,6 +917,7 @@ export function initSurveyImport({
         setStatus(statusEl, errMsg, true);
         return;
       }
+      const savedLayerType = lastPreviewPayload.layerType;
       polySource.clear(true);
       pointSource.clear(true);
       lastPreviewPayload = null;
@@ -944,6 +927,13 @@ export function initSurveyImport({
       await refreshEstateOptions();
       if (surveyParcelEstateSelect?.value) {
         await refreshParentBlockOptions(surveyParcelEstateSelect.value);
+      }
+      // A block's geom/estate_id feeds a DB trigger that recomputes the
+      // parent estate's boundary (vsl_recompute_estate_geometry) — pull
+      // that fresh geometry into the map's estate-outline layer, which
+      // otherwise only ever loads once at boot.
+      if (savedLayerType === "BLOCKS") {
+        await refreshEstateBoundaries?.();
       }
       fitMapToLayerSources(map, blocksSource, parcelsSource);
       setStatus(

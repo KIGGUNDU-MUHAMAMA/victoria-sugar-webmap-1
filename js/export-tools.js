@@ -4,7 +4,7 @@
  * in a user-selected CRS.
  */
 
-import { CRS_OPTIONS, PROJ4_DEFS, registerProj4Defs } from "./crs-definitions.js";
+import { registerProj4Defs } from "./crs-definitions.js";
 
 // ── proj4 lazy singleton ──────────────────────────────────────────────────────
 let _proj4 = null;
@@ -236,27 +236,16 @@ function csvEscape(s) {
  */
 export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, statusEl }) {
   // ── DOM refs ──────────────────────────────────────────────────────────────
-  const exportCrsSelectEl  = document.getElementById("exportCrsSelect");
+  // CRS dropdown removed — export always reprojects to WGS84 (EPSG:4326) now.
   const exportFmtSelectEl  = document.getElementById("exportFormatSelect");
   const exportSelectBtn    = document.getElementById("exportSelectBtn");
   const exportDoBtn        = document.getElementById("exportDoBtn");
   const exportCancelBtn    = document.getElementById("exportCancelBtn");
   const exportSelCountEl   = document.getElementById("exportSelCount");
 
-  // ── Populate CRS dropdown ─────────────────────────────────────────────────
-  if (exportCrsSelectEl && !exportCrsSelectEl.options.length) {
-    CRS_OPTIONS.forEach(opt => {
-      const el = document.createElement("option");
-      el.value       = opt.value;
-      el.textContent = opt.label;
-      exportCrsSelectEl.appendChild(el);
-    });
-    // Matches the default that used to be hardcoded in the HTML (<option selected>).
-    exportCrsSelectEl.value = "EPSG:32636";
-  }
-
   // ── State ─────────────────────────────────────────────────────────────────
   let selectInteraction = null;
+  let dragBoxInteraction = null;
   const selectedFeatures = new ol.Collection();
 
   function updateSelCount() {
@@ -280,6 +269,10 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
       map.removeInteraction(selectInteraction);
       selectInteraction = null;
     }
+    if (dragBoxInteraction && map) {
+      map.removeInteraction(dragBoxInteraction);
+      dragBoxInteraction = null;
+    }
   }
 
   function startSelection() {
@@ -289,7 +282,7 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
 
     const layers = [parcelsLayer, blocksLayer].filter(Boolean);
     if (!layers.length || !map) {
-      showStatus("No parcel/block layers available.", true);
+      showStatus("No plot/block layers available.", true);
       return;
     }
 
@@ -303,11 +296,30 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
         fill:   new ol.style.Fill({ color: "rgba(255, 109, 0, 0.18)" })
       })
     });
-
     map.addInteraction(selectInteraction);
-    showStatus("Click features to select them. Click again to deselect. Then press Export.");
-
     selectInteraction.on("select", updateSelCount);
+
+    // Window/box select — hold Ctrl (or Cmd on Mac) and drag a rectangle to
+    // add every plot/block whose geometry intersects it, on top of the
+    // click-to-toggle selection above.
+    dragBoxInteraction = new ol.interaction.DragBox({
+      condition: ol.events.condition.platformModifierKeyOnly,
+      className: "vsl-export-dragbox"
+    });
+    map.addInteraction(dragBoxInteraction);
+    dragBoxInteraction.on("boxend", () => {
+      const extent = dragBoxInteraction.getGeometry().getExtent();
+      for (const layer of layers) {
+        layer.getSource()?.forEachFeatureIntersectingExtent(extent, (feature) => {
+          if (!selectedFeatures.getArray().includes(feature)) {
+            selectedFeatures.push(feature);
+          }
+        });
+      }
+      updateSelCount();
+    });
+
+    showStatus("Click features to select, or hold Ctrl and drag a box to select many. Then press Export.");
   }
 
   exportSelectBtn?.addEventListener("click", startSelection);
@@ -326,7 +338,7 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
       showStatus("Select at least one feature first.", true);
       return;
     }
-    const targetCrs  = exportCrsSelectEl?.value || "EPSG:4326";
+    const targetCrs  = "EPSG:4326";
     const format     = exportFmtSelectEl?.value || "GeoJSON";
 
     showStatus("Reprojecting and building file…");

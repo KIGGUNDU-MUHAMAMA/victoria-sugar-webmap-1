@@ -1,7 +1,7 @@
 /**
  * unified-menu.js
  * Controls the Floating Action Button (FAB) and Unified Action Menu (UAM) panel.
- * Wires up tab switching, file-name display, dropzone, and Rover launch.
+ * Wires up tab switching, file-name display, and dropzone.
  */
 
 export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, blocksSource, parcelsSource, blocksLayer, parcelsLayer, surveyPreviewSnapSources, stopActiveTool }) {
@@ -9,8 +9,12 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
   const fabBtn   = document.getElementById("toolsTopBtn") || document.getElementById("toolsFabBtn");
   const overlay  = document.getElementById("unifiedActionMenu");
   const closeBtn = document.getElementById("uamCloseBtn");
-  const navBtns  = overlay?.querySelectorAll(".uam-nav-btn");
-  const tabs     = overlay?.querySelectorAll(".uam-tab");
+  // Selected by [data-uam-tab]/[data-uam-panel]/[data-uam-actions] attributes
+  // rather than a dedicated class, since the nav buttons now just use the
+  // shared .search-tab look (same as Modify/Select's vertical tabs).
+  const navBtns      = overlay?.querySelectorAll("[data-uam-tab]");
+  const tabs         = overlay?.querySelectorAll("[data-uam-panel]");
+  const actionGroups = overlay?.querySelectorAll("[data-uam-actions]");
 
   if (!fabBtn || !overlay) return;
 
@@ -30,6 +34,11 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
     // Also call the function if available
     if (typeof window.closeParcelStatusPanel === "function") window.closeParcelStatusPanel();
+
+    // Survey now docks in the same .map-left-stack column as Search
+    // (see windows/survey-panel.html) instead of floating as its own
+    // overlay, so Search needs to be explicitly closed here too.
+    if (typeof window.closeSearchPanel === "function") window.closeSearchPanel();
 
     overlay.hidden = false;
     overlay.setAttribute("aria-hidden", "false");
@@ -56,11 +65,6 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
   closeBtn?.addEventListener("click", closeMenu);
 
-  // Close on backdrop click (outside .uam-shell)
-  overlay.addEventListener("click", (e) => {
-    if (!e.target.closest(".uam-shell")) closeMenu();
-  });
-
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !overlay.hidden) closeMenu();
   });
@@ -70,9 +74,15 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     navBtns.forEach(btn => {
       const active = btn.dataset.uamTab === tabId;
       btn.setAttribute("aria-selected", active ? "true" : "false");
+      btn.tabIndex = active ? 0 : -1;
     });
     tabs.forEach(panel => {
       panel.hidden = panel.dataset.uamPanel !== tabId;
+    });
+    // Footer's action-button group swaps to match the active tab, same as
+    // its body panel does above (see [data-uam-actions] in survey-panel.html).
+    actionGroups.forEach(group => {
+      group.hidden = group.dataset.uamActions !== tabId;
     });
   }
 
@@ -94,35 +104,10 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     const label = document.getElementById(labelId);
     if (!input || !label) return;
     input.addEventListener("change", () => {
-      label.textContent = input.files?.[0]?.name ?? "Choose file…";
+      label.textContent = input.files?.[0]?.name ?? "Choose a file or drop it here…";
     });
   }
   bindFileLabel("surveyFileInput", "surveyFileName");
-
-  // Update surveyFileInput to also update accept based on importFormatSelect
-  const importFormatSel = document.getElementById("importFormatSelect");
-  const surveyFileInput = document.getElementById("surveyFileInput");
-  const ACCEPT_MAP = {
-    csv:     ".csv,text/csv",
-    dxf:     ".dxf",
-    kml:     ".kml",
-    geojson: ".geojson,.json"
-  };
-
-  if (importFormatSel && surveyFileInput) {
-    importFormatSel.addEventListener("change", () => {
-      const fmt = importFormatSel.value;
-      surveyFileInput.accept = ACCEPT_MAP[fmt] ?? ".csv,.dxf,.kml,.geojson";
-    });
-  }
-
-  // ── Rover launch ──────────────────────────────────────────────
-  const launchRoverBtn = document.getElementById("uamLaunchRoverBtn");
-  // The rover is still activated by the hidden #vslRoverBtn. Click it programmatically.
-  launchRoverBtn?.addEventListener("click", () => {
-    closeMenu();
-    document.getElementById("vslRoverBtn")?.click();
-  });
 
   // ── Draw tab: wire draw panel buttons to map-app.js ───────────
   // map-app.js already queries these IDs on init; nothing extra needed here

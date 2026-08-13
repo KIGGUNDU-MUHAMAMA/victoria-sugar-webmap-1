@@ -6226,7 +6226,20 @@ async function initMap() {
       closeParcelStatusPanel();
       const mp = document.getElementById("measurePanel");
       if (mp) mp.hidden = true;
-    }
+    },
+    // Needed for the print PDF's vector redraw (Option B) — the plot/block
+    // geometry, styling data, and label helpers are drawn as real PDF
+    // vectors instead of being rasterized, while the basemap (+ every other
+    // raster layer) is still captured as pixels, just at a deeper zoom
+    // (Option C) with blocksLayer/parcelsLayer hidden for that capture so
+    // they don't get double-drawn. See js/print-tool.js.
+    blocksLayer,
+    parcelsLayer,
+    CULTIVATION_PALETTE,
+    ALERT_SEVERITY_FILL,
+    ALERT_SEVERITY_COLORS,
+    getFeatureInteriorPoint,
+    surveyFeatureAreaAcresText
   });
 
   initSurveyEdit({

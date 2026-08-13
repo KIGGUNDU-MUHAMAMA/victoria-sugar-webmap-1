@@ -27,9 +27,11 @@ const WINDOW_FRAGMENTS = [
   // instead of the right-hand stack it used to render in (trigger and
   // panel are on the same side now).
   { parent: "mapLeftStack", url: "./windows/measure-panel.html" },
-  // Print/PDF Plot — #printTopBtn lives in #mapLeftBtnStack alongside the
-  // other tools above; see js/print-tool.js.
-  { parent: "mapLeftStack", url: "./windows/print-panel.html" },
+  // NOTE: windows/print-panel.html is no longer loaded — Print/PDF Plot
+  // (#printTopBtn) no longer opens a docked side panel at all; it now
+  // drives an in-place "print mode" overlay directly on the live map (see
+  // js/print-tool.js) instead. The old fragment file is left in place
+  // unreferenced rather than deleted.
   { parent: "mapLeftStack", url: "./windows/sentinel-analytics-panel.html" },
   { parent: "mapLeftStack", url: "./windows/search-panel.html" },
   { parent: "mapLeftStack", url: "./windows/info-help-popover.html" },

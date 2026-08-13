@@ -5226,6 +5226,314 @@ select.search-panel__input {
   line-height: 1;
 }
 
+/* =============================================================
+   PRINT MODE — in-place overlay UI (js/print-tool.js)
+   -------------------------------------------------------------
+   Replaces the old docked "Print Map" side panel. Entering print mode
+   toggles .vsl-print-mode on .map-viewport-wrap, which (a) hides every
+   floating button stack so the map reads clean/uncluttered, and (b) is
+   the positioning root for every piece below — title card, bottom
+   toolbar, setup popup, selection rectangle. All z-indexed above the map
+   (5) but below the toolbar/setup popup (20/21) so the selection rect's
+   drag handle never fights the buttons that control it.
+   ============================================================= */
+
+.map-viewport-wrap.vsl-print-mode .map-btn-stack {
+  display: none !important;
+}
+
+/* While the crosshair "select print area" button is armed — cursor swaps
+   to a crosshair over the whole map so it's clear the next drag defines
+   the print area. */
+.map-viewport-wrap.vsl-print-selecting,
+.map-viewport-wrap.vsl-print-selecting #map {
+  cursor: crosshair !important;
+}
+
+/* ── "Add title" button + editable title/description card — top-center,
+   Google Earth's map-title flow but restyled to match this app (frosted
+   card like .toast, not a flat white box). ── */
+.vsl-print-addtitle-btn {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.vsl-print-addtitle-btn:hover {
+  background: #fff;
+}
+.vsl-print-addtitle-btn[hidden] {
+  display: none !important;
+}
+
+.vsl-print-title-card {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: min(360px, calc(100% - 28px));
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  padding: 0.6rem 0.75rem;
+}
+.vsl-print-title-card[hidden] {
+  display: none !important;
+}
+.vsl-print-title-card__title {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.vsl-print-title-card__title::placeholder {
+  color: #9aa39a;
+  font-weight: 700;
+}
+.vsl-print-title-card__desc {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  resize: none;
+  font-family: inherit;
+  line-height: 1.3;
+}
+.vsl-print-title-card__title:focus,
+.vsl-print-title-card__desc:focus {
+  outline: none;
+}
+
+/* ── Bottom-center toolbar — same frosted/pill language as .toast (see
+   toast/toast.css), just holding icon buttons instead of text, and sitting
+   a bit clear of the actual bottom edge rather than flush against it. ── */
+.vsl-print-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 56px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.vsl-print-toolbar[hidden] {
+  display: none !important;
+}
+.vsl-print-toolbar__btn {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.vsl-print-toolbar__btn:hover {
+  background: #eef4ea;
+  color: var(--primary);
+}
+.vsl-print-toolbar__btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.vsl-print-toolbar__btn--primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.vsl-print-toolbar__btn--primary:hover {
+  background: var(--primary-2);
+  color: #fff;
+}
+.vsl-print-toolbar__btn--danger:hover {
+  background: #fdeaea;
+  color: var(--danger);
+  border-color: rgba(179, 54, 54, 0.35);
+}
+.vsl-print-toolbar__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.vsl-print-toolbar__sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 4px 2px;
+}
+
+/* ── Setup popup — floats just above the toolbar. ── */
+.vsl-print-setup {
+  position: absolute;
+  left: 50%;
+  bottom: 104px;
+  transform: translateX(-50%);
+  z-index: 21;
+  width: 240px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.vsl-print-setup[hidden] {
+  display: none !important;
+}
+.vsl-print-setup__heading {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin: 0.15rem 0 0;
+}
+.vsl-print-setup__row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.vsl-print-setup__row input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+.vsl-print-setup select {
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 0.8rem;
+  background: #fff;
+  color: var(--text);
+}
+
+/* ── Selection rectangle — dashed border + a resize handle, and the
+   "clear inside / dimmed outside" effect via one plain box-shadow: a
+   huge spread on an element with no background of its own paints
+   everywhere OUTSIDE its box, and .map-viewport-wrap's own
+   `overflow: hidden` (see the .webmap-app .map-viewport-wrap rule above)
+   naturally clips that spread to the map area — no clip-path/SVG mask
+   needed. ── */
+.vsl-print-selection {
+  position: absolute;
+  z-index: 15;
+  border: 2px dashed #fff;
+  box-shadow: 0 0 0 9999px rgba(15, 26, 20, 0.55), 0 2px 10px rgba(0, 0, 0, 0.25);
+  cursor: move;
+}
+.vsl-print-selection[hidden] {
+  display: none !important;
+}
+.vsl-print-selection__handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--primary);
+  cursor: nwse-resize;
+}
+.vsl-print-selection__hint {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(15, 26, 20, 0.75);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Legend, once a selection exists, anchors inside the selection's
+   top-right corner instead of floating freely over the whole map (still
+   draggable/resizable afterward — same .print-legend class, just given a
+   starting position here). */
+.print-legend.print-legend--in-selection {
+  z-index: 16;
+}
+
+/* Full-map "please wait" cover shown while generatePdf() temporarily
+   re-renders the live map at a higher pixel density (Resolution: High/
+   Print quality) — hides that brief resize/restore entirely instead of
+   letting the user see the map flash to a different zoom for a moment. */
+.vsl-print-capturing-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+.vsl-print-capturing-overlay[hidden] {
+  display: none !important;
+}
+.vsl-print-capturing-overlay__spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.vsl-print-capturing-overlay__text {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .popWinBody {
   flex: 1 1 auto;
   min-height: 0;

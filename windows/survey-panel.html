@@ -56,11 +56,12 @@
           </div>
 
           <!-- PLOTS-only — hidden for BLOCKS (toggled in updateLayerFields()).
-               When checked, the Plot Estate/Block pickers below go inactive
-               and doPreview()/doSave() stop requiring them — see
-               surveyAutoSelectCb wiring in survey-import.js. -->
+               Checked by default — when checked, the Plot Estate/Block
+               pickers below are hidden entirely and doPreview()/doSave()
+               stop requiring them — see surveyAutoSelectCb wiring in
+               survey-import.js. -->
           <label id="surveyAutoSelectRow" class="uam-checkbox-row" hidden>
-            <input type="checkbox" id="surveyAutoSelectCb" title="Will automatically choose the plot's block if it falls inside the block">
+            <input type="checkbox" id="surveyAutoSelectCb" checked title="Will automatically choose the plot's block if it falls inside the block">
             <span>Automatically Choose Block</span>
           </label>
 
@@ -193,7 +194,7 @@
                Picking either hides #drawFeatureRow entirely (see
                survey-draw.js isSystemEntity()/currentFeatureType()) since
                there's nothing left to choose there. -->
-          <div class="uam-field-row">
+          <div class="uam-field-row u-gap-8">
             <select id="drawEntityTypeSelect" class="uam-select">
               <option value="point">Point</option>
               <option value="line">Line</option>
@@ -201,6 +202,10 @@
               <option value="block">Block</option>
               <option value="plot">Plot</option>
             </select>
+            <!-- Non-interactive shape preview for whatever's picked above
+                 (js/survey-draw.js updateEntityIconPreview) — same box look
+                 as #drawManageFeaturesBtn, just not a button. -->
+            <span id="drawEntityIconPreview" class="uam-icon-btn uam-icon-preview" aria-hidden="true"></span>
           </div>
 
           <div id="drawFeatureRow" class="uam-field-row u-gap-8">
@@ -222,7 +227,7 @@
                  Blocks always need their Estate picked manually — there's no
                  "which estate is this in" geometry to resolve against. -->
             <label id="drawAutomaticRow" class="uam-checkbox-row" hidden>
-              <input type="checkbox" id="drawAutomaticCb" title="Will automatically choose the plot's block if it falls inside one">
+              <input type="checkbox" id="drawAutomaticCb" checked title="Will automatically choose the plot's block if it falls inside one">
               <span>Automatically Choose Block</span>
             </label>
             <div id="drawEstateRow" class="uam-field-row u-mb-6">
@@ -243,11 +248,12 @@
             </button>
           </div>
 
-          <!-- Same look as the Import tab's #surveySummary — plain blue
-               instructional text, not a bordered/error-styled box. Errors
-               still go to the global status bar (setStatus) same as before,
-               this line only ever shows "what to do next". -->
-          <p id="drawToolsFeedback" class="uam-hint uam-hint--blue" role="status" aria-live="polite" hidden></p>
+          <!-- Same shape as the Edit tab's #editHintList — a static bulleted
+               "how to" box, shown only while a drawing session is active
+               (js/survey-draw.js showHint/hideHint fills its <li>s per
+               geometry kind and toggles [hidden]). Errors/status now go to
+               the global status bar (setStatus) same as the Edit tab. -->
+          <ul id="drawHintList" class="uam-hint uam-hint--blue uam-hint--box" hidden></ul>
         </div>
 
         <!-- ── EDIT TAB ──
@@ -340,12 +346,14 @@
           <i class="fas fa-eraser" aria-hidden="true"></i> Clear
         </button>
       </div>
+      <!-- Cancel/Save — same shape as the Edit tab's group below (js/
+           survey-draw.js): shapes queue up on the map as they're drawn and
+           only actually reach the database when Save is clicked; Cancel
+           discards the whole queue. -->
       <div class="uam-actions-group" data-uam-actions="draw" hidden>
-        <button type="button" id="clearDrawingsBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger">
-          <i class="fas fa-eraser" aria-hidden="true"></i> Clear All
-        </button>
-        <button type="button" id="stopDrawBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">
-          <i class="fas fa-stop-circle" aria-hidden="true"></i> Stop Action
+        <button type="button" id="drawCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="button" id="drawSaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+          <i class="fas fa-floppy-disk" aria-hidden="true"></i>Save
         </button>
       </div>
       <div class="uam-actions-group" data-uam-actions="edit" hidden>

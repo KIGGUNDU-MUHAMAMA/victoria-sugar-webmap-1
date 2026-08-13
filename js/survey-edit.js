@@ -41,7 +41,9 @@ export function initSurveyEdit({
   getFeaturesLayer,
   refreshFeaturesLayer,
   loadLayersFromDb,
-  refreshEstateBoundaries
+  refreshEstateBoundaries,
+  attachSnap,
+  detachSnap
 }) {
   const selectBtn = document.getElementById("editSelectFeatureBtn");
   const hintList = document.getElementById("editHintList");
@@ -139,6 +141,10 @@ export function initSurveyEdit({
 
   let selectInteraction = null;
   let modifyInteraction = null;
+  // Snaps a dragged/inserted node onto other already-drawn custom features
+  // (trees, roads, walls, …) — separate from attachSnap/detachSnap (map-
+  // app.js), which cover snapping onto existing blocks/parcels.
+  let featuresSnapInteraction = null;
   let sessionActive = false;
 
   // One entry per feature touched this session, keyed by "kind:id" (ids are
@@ -274,6 +280,18 @@ export function initSurveyEdit({
     });
     map.addInteraction(modifyInteraction);
 
+    // Snap-to-existing-features while dragging a node — same shared
+    // mechanism the Draw tab uses (blocks/parcels via map-app.js's
+    // attachSnap), plus this session's own custom-features layer. Both
+    // must be added *after* modifyInteraction above for OL to actually
+    // apply the snap while a node is being dragged.
+    attachSnap?.();
+    const featuresLayerForSnap = getFeaturesLayer?.();
+    if (featuresLayerForSnap?.getSource) {
+      featuresSnapInteraction = new ol.interaction.Snap({ source: featuresLayerForSnap.getSource(), pixelTolerance: 12 });
+      map.addInteraction(featuresSnapInteraction);
+    }
+
     selectInteraction.on("select", (evt) => {
       const feature = evt.selected?.[0];
       // We render our own highlight/vertex styling on highlightLayer — no
@@ -309,6 +327,11 @@ export function initSurveyEdit({
       map.removeInteraction(modifyInteraction);
       modifyInteraction = null;
     }
+    if (featuresSnapInteraction) {
+      map.removeInteraction(featuresSnapInteraction);
+      featuresSnapInteraction = null;
+    }
+    detachSnap?.();
     clearPending({ restore });
     sessionActive = false;
     setToggleButtonState(false);
@@ -430,7 +453,17 @@ export function initSurveyEdit({
   // in unified-menu.js's confirmLeaveIfEditing()). Resolving true means
   // "go ahead"; this function is also responsible for actually tearing the
   // session down (with or without reverting) before returning.
+  //
+  // survey-draw.js sets this same hook for its own pending-shapes queue and
+  // initializes *before* this module (see map-app.js's init call order) —
+  // wrap whatever it left here instead of overwriting it outright, so both
+  // tabs' unsaved work gets guarded regardless of which is active when the
+  // user tries to navigate away.
+  const previousConfirmSurveyClose = window.vslConfirmSurveyClose;
   window.vslConfirmSurveyClose = async () => {
+    if (typeof previousConfirmSurveyClose === "function") {
+      if (!(await previousConfirmSurveyClose())) return false;
+    }
     if (!sessionActive) return true;
     if (pendingEdits.size > 0) {
       const discard = await confirmDiscardChanges();

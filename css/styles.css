@@ -3590,6 +3590,30 @@ select.search-panel__input {
   background: #f4fff4;
 }
 
+/* Draw tab's entity-type shape preview (js/survey-draw.js) — same box as
+   .uam-icon-btn above, but purely decorative: no hover state, no pointer
+   cursor. */
+.uam-icon-preview {
+  cursor: default;
+  transition: none;
+}
+.uam-icon-preview:hover {
+  border-color: var(--border);
+  color: var(--primary-2);
+  background: #fff;
+}
+/* Point preview — an actual small filled circle (matches the blue dot
+   used for the live sketch/point markers on the map) rather than a
+   Font Awesome pin glyph. */
+.uam-icon-preview__dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #0d47a1;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
 /* Small spacing/layout utilities used inline in survey-panel.html so the
    markup doesn't need one-off classes per element. */
 .u-gap-8 { gap: 8px; }

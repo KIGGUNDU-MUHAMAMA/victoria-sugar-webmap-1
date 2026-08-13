@@ -1,6 +1,0 @@
-A user will log an activity or a flag warning in the map
-A window will appear where the user will enter these details
-When pressing Ok, These details will be linked to the plot and activity
-This should work the same even when the admin edits the plot
-The data is sent to the database
-When a user clicks on the plot details, this data will be fetched.

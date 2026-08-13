@@ -5913,7 +5913,13 @@ function bindEvents() {
 
   drawLineBtn?.addEventListener("click", () => startMeasure("LineString", true));
   drawPolygonBtn?.addEventListener("click", () => startMeasure("Polygon", true));
-  stopDrawBtn.addEventListener("click", (e) => {
+  // #stopDrawBtn/#clearDrawingsBtn (below) no longer exist in the DOM — the
+  // Draw tab's footer now has its own drawCancelBtn/drawSaveBtn pair (see
+  // js/survey-draw.js) instead, and drawLineBtn/drawPolygonBtn above have
+  // had no matching element for a while either. Left `?.`-guarded rather
+  // than deleted outright since stopActiveTool()/measureSource.clear() here
+  // are otherwise-harmless generic "stop/clear whatever's active" calls.
+  stopDrawBtn?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
     stopActiveTool();
@@ -6196,7 +6202,15 @@ async function initMap() {
     setStatus,
     statusEl,
     loadLayersFromDb,
-    refreshEstateBoundaries: loadEstateBoundaries
+    refreshEstateBoundaries: loadEstateBoundaries,
+    // Same shared snap-to-existing-geometry mechanism the Measure tool
+    // already uses (blocks/parcels sources, gated by the snapBlocksCb/
+    // snapParcelsCb checkboxes that live — hidden — right in the Draw
+    // tab's own markup). attachSnap/detachSnap wrap the module-scoped
+    // readSnapOptions()/attachSnapInteractions()/detachSnapInteractions()
+    // defined above in this file.
+    attachSnap: () => attachSnapInteractions(readSnapOptions()),
+    detachSnap: detachSnapInteractions
   });
 
   initManageFeatures({ cfg, supabase, setStatus, statusEl });
@@ -6228,7 +6242,11 @@ async function initMap() {
     getFeaturesLayer: () => surveyDrawHandles?.getFeaturesLayer?.() ?? null,
     refreshFeaturesLayer: () => surveyDrawHandles?.refreshFeaturesLayer?.(),
     loadLayersFromDb,
-    refreshEstateBoundaries: loadEstateBoundaries
+    refreshEstateBoundaries: loadEstateBoundaries,
+    // Same shared snap mechanism as the Draw tab (see initSurveyDraw above)
+    // — snaps a dragged node onto existing block/parcel geometry.
+    attachSnap: () => attachSnapInteractions(readSnapOptions()),
+    detachSnap: detachSnapInteractions
   });
 
   if (sentinelGroupRef) {

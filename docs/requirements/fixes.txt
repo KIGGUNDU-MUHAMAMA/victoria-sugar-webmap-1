@@ -1,0 +1,51 @@
+1. add totals to the dashboard>estatesummary. And for all (everywhere, the default area units will be acres not ha)
+
+2. USe real data for these Area Utilisation and Plot Status Distribution and am not sure if they are what we need tp show for those chats
+
+3. In estate analytics, the filter button diesnt work. And we need to replace the Area Status by Block with activities and remove the seasons button
+
+4. Under estates>plots>tatoon col, please fech actual data
+
+5. Use consostent edit and delete buttons. Remember to use same classes and styles in other pages
+
+6. Under Activities, progress, We need to use a progress thing and percentage like that in the estates>utilisation col
+
+7. In activities, one should see the activity details when he clicks it just like it is done in the plots. Also like wise in other tables, we can use a window or like that plot details in estates>plot>plot details.
+
+8. Under estates, there should be no add plot button and add block button because plots and blocks are imported not created. because we need to plot them
+
+9. Am not sure if youre fetching real plot data in estates>plots and plot detaisl
+
+10. Use the word plots as much as posible instead of the word parcel
+
+11. As I said, In the webmap we need to plot the estate in the map with doted line and also label the estate name above the top rigth corner of the bounding box
+
+12. In the Email reports, 1. rename it to Reports, 2. The Add Email Subscriber and those details should only have add subscribe button and when clicked, should open a window to enter such details, there should be an option to select from available users and 3. The action buttons should also have a button to edit
+
+13. The alerts should also be previewable as in we need to see the detais;
+
+14. Remove the sidebar-collapse-btn, coz I think its no longer needed
+
+
+
+
+
+TALKING ABOUT THE WINDOWS
+
+
+
+1. The pop up window, you added both the logo and the icon in the popWinHead, We only need the window icon
+
+2. The padding of the popWinHead is 14 which should be reduced to about 8 likewise the popWinActionBtns, that should be the same in the webmap
+
+3. The style of the windows in the webmap should copy the windows in the the dashbord and the tab switchers in the webmap should look like those in the dashbord
+
+
+
+
+
+THE WEBMAP SEARCH
+
+
+
+1. The webmap search buttons like the navigate to (coordPlotSingleBtn, placeSearchGoBtn, parcelSearchGoBtn, parcelSearchPopoverCancelBtn, coordClearMarkersBtn) should be be put insdie the popWinActionBtn div

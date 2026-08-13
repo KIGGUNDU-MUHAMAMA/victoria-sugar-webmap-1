@@ -86,6 +86,13 @@ export function showPopup({
         inputEl.placeholder = field.placeholder || "";
         inputEl.value = field.value || "";
       }
+      // Clear the red "you left this blank" state (set below, in the
+      // required-and-empty branch) the moment they start fixing it. Select
+      // elements don't reliably fire "input" in every browser, so also
+      // listen for "change".
+      const clearInvalid = () => inputEl.classList.remove("vsl-popup-input--invalid", "vsl-popup-select--invalid");
+      inputEl.addEventListener("input", clearInvalid);
+      inputEl.addEventListener("change", clearInvalid);
       fieldEl.appendChild(inputEl);
     }
 
@@ -119,6 +126,7 @@ export function showPopup({
         if (b.readField && inputEl) {
           const raw = inputEl.tagName === "SELECT" ? inputEl.value : inputEl.value.trim();
           if (b.required && !raw) {
+            inputEl.classList.add(inputEl.tagName === "SELECT" ? "vsl-popup-select--invalid" : "vsl-popup-input--invalid");
             inputEl.focus();
             return;
           }

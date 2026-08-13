@@ -111,6 +111,19 @@
   border-color: var(--primary, #3f8f3f);
 }
 
+/* Shown when a `required` button is clicked with the field still empty
+   (see popup.js showPopup()) — cleared again as soon as the person starts
+   typing. */
+.vsl-popup-input--invalid,
+.vsl-popup-select--invalid {
+  border-color: var(--danger, #b33636);
+}
+.vsl-popup-input--invalid:focus,
+.vsl-popup-select--invalid:focus {
+  border-color: var(--danger, #b33636);
+  box-shadow: 0 0 0 2px rgba(179, 54, 54, 0.15);
+}
+
 .vsl-popup-actions {
   display: flex;
   justify-content: flex-end;

@@ -1,5 +1,9 @@
-parcel_id,point_number,eastings,northings,description
-BLK-A,1,500000,200000,corner 1
-BLK-A,2,501000,200000,
-BLK-A,3,501000,201000,
-BLK-A,4,500000,201000,
+id,eastings,northings,name
+1,500000,200000,Kayunga North
+1,501000,200000,Kayunga North
+1,501000,201000,Kayunga North
+1,500000,201000,Kayunga North
+2,502000,200000,Kayunga South
+2,503000,200000,Kayunga South
+2,503000,201000,Kayunga South
+2,502000,201000,Kayunga South

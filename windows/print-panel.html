@@ -1,0 +1,49 @@
+    <!-- Print/PDF Plot — js/print-tool.js. Docks in #mapLeftStack like every
+         other #mapLeftBtnStack panel (Search/Survey/Measure/…). No frame-
+         selection UI — "select a plot window" just means pan/zoom the live
+         map itself; Generate PDF captures whatever's currently on screen
+         (same OL "export map" canvas-compositing technique
+         js/feature-export.js already uses for single-feature PDFs). -->
+    <div id="printPanel" class="popWinMain popWin-mobileDock" hidden>
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-print" aria-hidden="true"></i></span>
+          <h2 class="popWinTitle">Print Map</h2>
+        </div>
+        <button type="button" class="popWinCloseBtn" id="printPanelCloseBtn" aria-label="Close print panel">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div class="popWinBody">
+        <p class="uam-hint uam-hint--blue">Pan and zoom the map to frame what you want plotted, then Generate PDF.</p>
+
+        <label class="mf-label">Title
+          <input type="text" id="printTitleInput" class="uam-input" placeholder="e.g. Lugazi Estate — Block 4" maxlength="80">
+        </label>
+
+        <div class="uam-field-row u-gap-8">
+          <select id="printOrientationSelect" class="uam-select">
+            <option value="landscape">Landscape</option>
+            <option value="portrait">Portrait</option>
+          </select>
+        </div>
+
+        <label class="uam-checkbox-row">
+          <input type="checkbox" id="printLegendCb" checked>
+          <span>Show legend (drag to reposition, drag the corner to resize)</span>
+        </label>
+        <label class="uam-checkbox-row">
+          <input type="checkbox" id="printNorthArrowCb" checked>
+          <span>Show north arrow</span>
+        </label>
+
+        <p id="printStatus" class="uam-hint uam-hint--blue" role="status" aria-live="polite" hidden></p>
+      </div>
+
+      <div class="popWinActionBtns">
+        <button type="button" id="printGenerateBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
+          <i class="fas fa-file-pdf" aria-hidden="true"></i> Generate PDF
+        </button>
+      </div>
+    </div>

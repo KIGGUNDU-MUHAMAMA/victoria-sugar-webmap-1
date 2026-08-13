@@ -3,6 +3,7 @@
  */
 
 import { CRS_OPTIONS, registerProj4Defs, toMap3857FromCrs } from "./crs-definitions.js";
+import { confirmDanger, promptSelect, promptText } from "../popups/popup.js";
 import DxfParser from "https://esm.sh/dxf-parser@1.1.2";
 
 let proj4lib = null;
@@ -129,6 +130,36 @@ function fitMapToLayerSources(map, blocksSource, parcelsSource) {
 // now the sole hardcoded fallback.
 const DEFAULT_DXF_CRS = "EPSG:32636";
 
+// KML's <LookAt> (or the newer <Camera>) is the author's intended "here's
+// where to look" view — OpenLayers' KML reader only extracts Placemark
+// geometries, not this, so we pull it straight out of the raw XML
+// ourselves. Returns null if neither element is present.
+function extractKmlLookAt(xmlText) {
+  try {
+    const doc = new DOMParser().parseFromString(xmlText, "text/xml");
+    const look = doc.querySelector("LookAt") || doc.querySelector("Camera");
+    if (!look) return null;
+    const lon = parseFloat(look.querySelector("longitude")?.textContent);
+    const lat = parseFloat(look.querySelector("latitude")?.textContent);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+    const rangeText = look.querySelector("range")?.textContent ?? look.querySelector("altitude")?.textContent;
+    const range = parseFloat(rangeText);
+    return { lon, lat, range: Number.isFinite(range) ? range : 0 };
+  } catch {
+    return null;
+  }
+}
+
+// Rough range(meters)->zoom heuristic — <LookAt>'s range is camera distance,
+// not a standard web-map zoom level, so there's no exact conversion. Good
+// enough to land in the right neighbourhood; plotFeaturesByGeometry's
+// extent-fit (run right after, when there are actual placemarks) takes over
+// for precise framing.
+function zoomFromRange(range) {
+  if (!range || range <= 0) return 15;
+  return Math.min(19, Math.max(3, Math.round(24 - Math.log2(range))));
+}
+
 export function initSurveyImport({
   map,
   cfg,
@@ -152,10 +183,27 @@ export function initSurveyImport({
   // datalist, Plots used to read a since-dropped vsl_blocks.estate_name
   // column. Neither matched the live schema (estate_id -> vsl_estate).
   const blockEstateSelect = document.getElementById("surveyBlockEstateSelect");
-  const blockEstateAddBtn = document.getElementById("surveyBlockEstateAddBtn");
+  const blockEstateManageBtn = document.getElementById("surveyBlockEstateManageBtn");
   const surveyParcelEstateSelect = document.getElementById("surveyParcelEstateSelect");
-  const parcelEstateAddBtn = document.getElementById("surveyParcelEstateAddBtn");
+  const parcelEstateManageBtn = document.getElementById("surveyParcelEstateManageBtn");
+  // Wraps surveyParcelEstateSelect + parcelEstateManageBtn — hidden as a
+  // pair while "Automatically select" is checked (see applyAutoSelectState).
+  const surveyParcelEstateRow = document.getElementById("surveyParcelEstateRow");
   const parentBlockSelect = document.getElementById("surveyParentBlockSelect");
+  const autoSelectRow = document.getElementById("surveyAutoSelectRow");
+  const autoSelectCb = document.getElementById("surveyAutoSelectCb");
+  // Block-assignment review list — only used on the PLOTS + "Automatically
+  // Choose Block" path (see runAutoAssign/renderAssignmentRows below).
+  const assignPanel = document.getElementById("surveyAssignPanel");
+  const assignScroll = document.getElementById("surveyAssignScroll");
+  const assignCountEl = document.getElementById("surveyAssignCount");
+  const assignExpandBtn = document.getElementById("surveyAssignExpandBtn");
+  const assignMatchedWrap = document.getElementById("surveyAssignMatchedWrap");
+  const assignMatchedEl = document.getElementById("surveyAssignMatched");
+  const assignMatchedTitle = document.getElementById("surveyAssignMatchedTitle");
+  const assignUnmatchedWrap = document.getElementById("surveyAssignUnmatchedWrap");
+  const assignUnmatchedEl = document.getElementById("surveyAssignUnmatched");
+  const assignUnmatchedTitle = document.getElementById("surveyAssignUnmatchedTitle");
   // Module-level (not a dropdown) — set by promptForCrs() when a DXF/KML/
   // GeoJSON file is loaded; CSV/digitized imports always use WGS84 below.
   let dxfCrs = DEFAULT_DXF_CRS;
@@ -164,9 +212,10 @@ export function initSurveyImport({
   // box was removed, drag/drop lands directly on this label.
   const dropzone = document.getElementById("surveyFileLabel");
   const summaryEl = document.getElementById("surveySummary");
+  // One footer button now does Preview AND Save (see setPreviewBtnMode/
+  // updateImportButtonsForFile below) — #surveySaveBtn no longer exists.
   const previewBtn = document.getElementById("surveyPreviewBtn");
   const clearImportBtn = document.getElementById("surveyClearBtn");
-  const saveBtn = document.getElementById("surveySaveBtn");
   const fileNameEl = document.getElementById("surveyFileName");
 
   if (!drawer) return null;
@@ -213,6 +262,12 @@ export function initSurveyImport({
 
   let parsedRows = [];
   let lastPreviewPayload = null;
+  // Tracks what's currently loaded so the footer button pair (Preview/Save
+  // + Clear) know what state to be in — set by handleFile(), cleared by
+  // resetImportUI().
+  let fileLoaded = false;
+  let currentFileKind = null; // "csv" | "kml" | "geojson" | "dxf"
+  let previewBtnMode = "preview"; // "preview" | "save"
 
   function closeDrawer() {
     drawer.classList.remove("open");
@@ -326,73 +381,32 @@ export function initSurveyImport({
     }
   }
 
-  // "+" button next to either estate dropdown — small in-app modal (same
-  // pattern as promptForCrs/promptForStartingId below) that inserts a row
-  // into vsl_estate via the authenticated Supabase client (RLS requires
-  // ADMIN/SURVEYOR, same as everything else this panel can do), then
-  // refreshes both dropdowns and selects the new estate.
-  function promptCreateEstate() {
-    return new Promise((resolve) => {
-      const overlay = document.createElement("div");
-      overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; display:flex; align-items:center; justify-content:center; backdrop-filter: blur(2px);";
-      const modal = document.createElement("div");
-      modal.style.cssText = "background:#fff; padding:20px; border-radius:8px; width:280px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.15); font-family: system-ui, -apple-system, sans-serif;";
-      modal.innerHTML = `
-        <h4 style="margin:0 0 8px 0; font-size:1.1rem; color:#333;">New Estate</h4>
-        <p style="margin:0 0 16px 0; font-size:0.85rem; color:#666;">Estate name</p>
-        <input type="text" id="newEstateNameInput" placeholder="e.g. Lugazi" style="width:100%; padding:8px 12px; margin-bottom:20px; border:1px solid #ddd; border-radius:6px; font-size:1rem; box-sizing:border-box; outline:none;" />
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button id="newEstateCancel" style="padding:8px 16px; border-radius:6px; background:#f1f3f5; color:#495057; border:none; cursor:pointer; font-size:0.9rem; font-weight:500;">Cancel</button>
-          <button id="newEstateOk" style="padding:8px 16px; border-radius:6px; background:#28a745; color:#fff; border:none; cursor:pointer; font-size:0.9rem; font-weight:500;">Create</button>
-        </div>
-      `;
-      overlay.appendChild(modal);
-      document.body.appendChild(overlay);
-      const input = document.getElementById("newEstateNameInput");
-      input.focus();
-      const cleanup = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
-      document.getElementById("newEstateCancel").onclick = () => { cleanup(); resolve(null); };
-      document.getElementById("newEstateOk").onclick = () => { const v = input.value.trim(); cleanup(); resolve(v || null); };
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") document.getElementById("newEstateOk").click();
-        else if (e.key === "Escape") document.getElementById("newEstateCancel").click();
-      });
-    });
+  // "+"/pencil button next to either estate dropdown — used to open a
+  // quick add-estate prompt inline; now switches the Survey window to its
+  // own Estates tab (js/manage-estates.js), which covers add + rename +
+  // delete in one place. That tab dispatches "vsl-estates-changed" on any
+  // change, which the listener below picks up to refresh both dropdowns
+  // here.
+  function openManageEstates() {
+    window.openUamTab?.("estates");
   }
+  blockEstateManageBtn?.addEventListener("click", openManageEstates);
+  parcelEstateManageBtn?.addEventListener("click", openManageEstates);
 
-  async function handleAddEstate(targetSelect) {
-    const name = await promptCreateEstate();
-    if (!name) return;
-    if (!supabase) {
-      setStatus(statusEl, "Can't create an estate — Supabase client not available.", true);
-      return;
+  window.addEventListener("vsl-estates-changed", () => {
+    refreshEstateOptions();
+    if (surveyParcelEstateSelect?.value) {
+      refreshParentBlockOptions(surveyParcelEstateSelect.value);
     }
-    try {
-      const { data, error } = await supabase
-        .from("vsl_estate")
-        .insert({ estate_name: name })
-        .select("id, estate_name")
-        .single();
-      if (error) throw error;
-      setStatus(statusEl, `Estate "${data.estate_name}" created.`);
-      await refreshEstateOptions();
-      if (targetSelect) {
-        targetSelect.value = data.estate_name;
-        targetSelect.dispatchEvent(new Event("change"));
-      }
-    } catch (e) {
-      console.error("[Victoria Survey] Failed to create estate:", e);
-      setStatus(statusEl, `Failed to create estate: ${e.message}`, true);
-    }
-  }
-
-  blockEstateAddBtn?.addEventListener("click", () => handleAddEstate(blockEstateSelect));
-  parcelEstateAddBtn?.addEventListener("click", () => handleAddEstate(surveyParcelEstateSelect));
+  });
 
   function updateLayerFields() {
     const v = layerSelect.value;
     blockFields.hidden = v !== "BLOCKS";
     parcelFields.hidden = v !== "PARCELS";
+    // "Automatically select" is Plots-only — hidden (and its effect
+    // ignored, see doPreview()'s BLOCKS branch below) for BLOCKS.
+    if (autoSelectRow) autoSelectRow.hidden = v !== "PARCELS";
     if (v === "PARCELS") {
       refreshEstateOptions();
       // Reset block dropdown until estate chosen
@@ -404,7 +418,375 @@ export function initSurveyImport({
     if (v === "BLOCKS") {
       refreshEstateOptions();
     }
+    applyAutoSelectState();
   }
+
+  // "Automatically select" checkbox — Plots-only (see updateLayerFields(),
+  // which hides #surveyAutoSelectRow outside of PARCELS). When on, the Plot
+  // Estate/Block pickers go inert — disabled, cleared, and relabelled to
+  // "— Auto Estate —"/"— Auto Block —" so it's obvious neither is a real
+  // pick — and doPreview()'s validation for them is skipped below. When
+  // off, they're refetched/rebuilt back to their normal empty state
+  // (refreshEstateOptions/refreshParentBlockOptions already own the
+  // "— Select Estate —"/"— Select Estate first —" placeholders and the
+  // disabled-until-an-Estate-is-chosen rule, so just delegate back to
+  // them rather than duplicating that logic here). Blocks import never
+  // consults this — its own Estate field is always required.
+  function applyAutoSelectState() {
+    const auto = !!autoSelectCb?.checked;
+    // Estate select + its "Manage estates" button are wrapped together —
+    // hidden as a pair. parentBlockSelect isn't wrapped, hidden directly.
+    if (surveyParcelEstateRow) surveyParcelEstateRow.hidden = auto;
+    if (parentBlockSelect) parentBlockSelect.hidden = auto;
+    if (surveyParcelEstateSelect) {
+      surveyParcelEstateSelect.disabled = auto;
+      if (auto) {
+        surveyParcelEstateSelect.innerHTML = '<option value="">— Auto Estate —</option>';
+        surveyParcelEstateSelect.value = "";
+      } else {
+        refreshEstateOptions();
+      }
+    }
+    if (parentBlockSelect) {
+      if (auto) {
+        parentBlockSelect.innerHTML = '<option value="">— Auto Block —</option>';
+        parentBlockSelect.value = "";
+        parentBlockSelect.disabled = true;
+      } else {
+        refreshParentBlockOptions(surveyParcelEstateSelect?.value?.trim() || "");
+      }
+    }
+  }
+  autoSelectCb?.addEventListener("change", () => {
+    applyAutoSelectState();
+    // Any assignment list on screen was resolved under the old setting —
+    // drop it and make the user re-Preview rather than leaving stale rows
+    // that no longer correspond to what Save would do.
+    clearAssignments();
+    setPreviewBtnMode("preview");
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Automatic block assignment
+  //
+  // With "Automatically Choose Block" ticked, Preview does its normal job
+  // (geometry validation + plotting) and then asks the database which block
+  // each plot falls inside — vsl_resolve_parcel_blocks, which tests
+  // ST_Contains(block.geom, ST_PointOnSurface(plot.geom)). PointOnSurface
+  // rather than a centroid: a centroid can land outside its own polygon when
+  // the plot is concave, which would silently mis-assign it.
+  //
+  // Nothing is written at this stage. The answers are rendered as an
+  // editable list (#surveyAssignPanel) so the user can verify them, override
+  // any row, and fill in the plots that matched nothing, before Save commits
+  // anything. Each row's chosen block is stashed as `block_id` directly on
+  // its entry in lastPreviewPayload.results — not in a parallel array — so
+  // it survives the parcelId rewriting that doSave's auto-numbering does.
+  // ──────────────────────────────────────────────────────────────────────
+
+  // The CSV's `id` column, as echoed back by the preview. Transient — it
+  // groups rows into one polygon and labels things on screen, and is never
+  // stored. `parcelId` is what the previous edge-function build emitted;
+  // reading both means a response from a not-yet-updated function (or a
+  // cached one) still works.
+  function featureIdOf(result) {
+    return result?.featureId ?? result?.parcelId ?? "";
+  }
+
+  // The CSV's `name` column — what actually becomes parcel_name / block_name.
+  // `descriptions` is the old key, kept for the same reason.
+  function featureNameOf(result) {
+    return String(result?.name ?? result?.descriptions ?? "").trim();
+  }
+
+  // { result, matched, badGeometry, estateKey, blockId }
+  let assignRows = [];
+  let blockCatalog = [];
+  let estateCatalog = [];
+  // Blocks may have no estate at all (vsl_blocks.estate_id is nullable), and
+  // an estate-first cascade would make those unreachable — they get their own
+  // synthetic group instead.
+  const NO_ESTATE_KEY = "__none__";
+
+  function estateKeyOf(estateId) {
+    return estateId == null || estateId === "" ? NO_ESTATE_KEY : String(estateId);
+  }
+
+  async function callRpc(fnName, body) {
+    const base = cfg.SUPABASE_URL.replace(/\/$/, "");
+    const res = await fetch(`${base}/rest/v1/rpc/${fnName}`, {
+      method: "POST",
+      headers: {
+        "apikey": cfg.SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${cfg.SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      throw new Error(`${fnName} returned invalid JSON (HTTP ${res.status}).`);
+    }
+    if (!res.ok) {
+      throw new Error(data?.message || data?.error || `${fnName} failed (HTTP ${res.status}).`);
+    }
+    return data;
+  }
+
+  function clearAssignments() {
+    assignRows = [];
+    blockCatalog = [];
+    estateCatalog = [];
+    if (assignMatchedEl) assignMatchedEl.innerHTML = "";
+    if (assignUnmatchedEl) assignUnmatchedEl.innerHTML = "";
+    if (assignMatchedWrap) assignMatchedWrap.hidden = true;
+    if (assignUnmatchedWrap) assignUnmatchedWrap.hidden = true;
+    if (assignPanel) assignPanel.hidden = true;
+  }
+
+  // Asks the database to place every previewed plot, then hands off to
+  // renderAssignmentRows. `results` is the already-filtered list of previews
+  // that actually produced geometry — index alignment with the response is
+  // what links a row back to its result object.
+  async function runAutoAssign(results) {
+    clearAssignments();
+    if (!results.length) return { matched: 0, unmatched: 0 };
+
+    const features = results.map((r) => ({
+      parcel_id: featureIdOf(r),
+      geometry: r.geometry
+    }));
+
+    const data = await callRpc("vsl_resolve_parcel_blocks", { p_features: features });
+    if (!data?.success) {
+      throw new Error(data?.error || "Could not resolve blocks for these plots.");
+    }
+
+    blockCatalog = Array.isArray(data.blocks) ? data.blocks : [];
+    estateCatalog = Array.isArray(data.estates) ? data.estates : [];
+    const matches = Array.isArray(data.matches) ? data.matches : [];
+
+    assignRows = results.map((result, i) => {
+      const m = matches[i] || {};
+      // Stamped onto the result object itself — this is what doSave reads.
+      result.block_id = m.block_id || null;
+      return {
+        result,
+        matched: !!m.block_id,
+        badGeometry: !!m.bad_geometry,
+        estateKey: estateKeyOf(m.estate_id),
+        blockId: m.block_id || null
+      };
+    });
+
+    renderAssignmentRows();
+    return {
+      matched: assignRows.filter((r) => r.blockId).length,
+      unmatched: assignRows.filter((r) => !r.blockId).length
+    };
+  }
+
+  function blocksForEstate(estateKey) {
+    if (!estateKey) return [];
+    return blockCatalog.filter((b) => estateKeyOf(b.estate_id) === estateKey);
+  }
+
+  // block_code is NOT unique across estates in this database (several blocks
+  // share code "1"), so rows are keyed by block id and labelled with
+  // block_name, falling back to the code only when a block has no name.
+  function blockLabel(b) {
+    const name = String(b.block_name ?? "").trim();
+    const code = String(b.block_code ?? "").trim();
+    if (name && code && name !== code) return `${name} (${code})`;
+    return name || code || "Unnamed block";
+  }
+
+  function fillEstateOptions(sel, selectedKey) {
+    sel.innerHTML = "";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "— Select Estate —";
+    sel.appendChild(blank);
+
+    for (const e of estateCatalog) {
+      const opt = document.createElement("option");
+      opt.value = String(e.id);
+      opt.textContent = e.estate_name || `Estate ${e.id}`;
+      sel.appendChild(opt);
+    }
+    if (blockCatalog.some((b) => b.estate_id == null)) {
+      const opt = document.createElement("option");
+      opt.value = NO_ESTATE_KEY;
+      opt.textContent = "— No estate —";
+      sel.appendChild(opt);
+    }
+    sel.value = selectedKey && [...sel.options].some((o) => o.value === selectedKey) ? selectedKey : "";
+  }
+
+  function fillBlockOptions(sel, estateKey, selectedBlockId) {
+    sel.innerHTML = "";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = estateKey ? "— Select Block —" : "— Select Estate first —";
+    sel.appendChild(blank);
+
+    for (const b of blocksForEstate(estateKey)) {
+      const opt = document.createElement("option");
+      opt.value = String(b.id);
+      opt.textContent = blockLabel(b);
+      sel.appendChild(opt);
+    }
+    sel.disabled = !estateKey;
+    sel.value =
+      selectedBlockId && [...sel.options].some((o) => o.value === String(selectedBlockId))
+        ? String(selectedBlockId)
+        : "";
+  }
+
+  function paintRowState(rowEl, row) {
+    const resolved = !!row.blockId;
+    rowEl.classList.toggle("sa-row--unmatched", !row.matched && !resolved);
+    rowEl.classList.toggle("sa-row--resolved", !row.matched && resolved);
+    const blockSel = rowEl.querySelector(".sa-row__block");
+    const estateSel = rowEl.querySelector(".sa-row__estate");
+    blockSel?.classList.toggle("is-empty", !resolved);
+    estateSel?.classList.toggle("is-empty", !row.estateKey);
+  }
+
+  // Zooms the map to a single plot so the user can eyeball the assignment
+  // against the block boundaries underneath it. The preview polygons are
+  // already in polySource, tagged with featureId.
+  function zoomToPreviewFeature(featureId) {
+    const feat = polySource.getFeatures().find((f) => f.get("featureId") === featureId);
+    const geom = feat?.getGeometry();
+    if (!geom) return;
+    map.getView().fit(geom.getExtent(), { padding: [120, 120, 120, 120], maxZoom: 19, duration: 350 });
+  }
+
+  function buildRowEl(row, index) {
+    const el = document.createElement("div");
+    el.className = "sa-row";
+    el.dataset.idx = String(index);
+
+    const head = document.createElement("div");
+    head.className = "sa-row__id";
+    const label = document.createElement("span");
+    // Two different things, both worth seeing: the CSV's parcel_id (the
+    // grouping key, which is NOT saved) and the description, which becomes
+    // the plot's name in the database.
+    const fid = featureIdOf(row.result);
+    const name = featureNameOf(row.result);
+    label.textContent = name ? `${fid} · ${name}` : fid;
+    label.title = name
+      ? `CSV id: ${fid} — saved name: ${name}`
+      : `CSV id: ${fid} — no name given, will be named after its generated code`;
+    head.appendChild(label);
+
+    const zoomBtn = document.createElement("button");
+    zoomBtn.type = "button";
+    zoomBtn.className = "sa-row__zoom";
+    zoomBtn.title = "Zoom to this plot";
+    zoomBtn.setAttribute("aria-label", `Zoom to ${fid}`);
+    zoomBtn.innerHTML = '<i class="fas fa-crosshairs" aria-hidden="true"></i>';
+    zoomBtn.addEventListener("click", () => zoomToPreviewFeature(fid));
+    head.appendChild(zoomBtn);
+    el.appendChild(head);
+
+    const selects = document.createElement("div");
+    selects.className = "sa-row__selects";
+
+    const estateSel = document.createElement("select");
+    estateSel.className = "sa-row__estate";
+    fillEstateOptions(estateSel, row.estateKey);
+
+    const blockSel = document.createElement("select");
+    blockSel.className = "sa-row__block";
+    fillBlockOptions(blockSel, row.estateKey, row.blockId);
+
+    // Changing estate invalidates the block — repopulate and clear, rather
+    // than leaving a block from a different estate selected.
+    estateSel.addEventListener("change", () => {
+      row.estateKey = estateSel.value || "";
+      row.blockId = null;
+      row.result.block_id = null;
+      fillBlockOptions(blockSel, row.estateKey, null);
+      paintRowState(el, row);
+      updateAssignCount();
+    });
+    blockSel.addEventListener("change", () => {
+      row.blockId = blockSel.value || null;
+      row.result.block_id = row.blockId;
+      paintRowState(el, row);
+      updateAssignCount();
+    });
+
+    selects.appendChild(estateSel);
+    selects.appendChild(blockSel);
+    el.appendChild(selects);
+    paintRowState(el, row);
+    return el;
+  }
+
+  function updateAssignCount() {
+    const assigned = assignRows.filter((r) => r.blockId).length;
+    const pending = assignRows.length - assigned;
+    if (assignCountEl) {
+      assignCountEl.textContent = pending
+        ? `${assigned} of ${assignRows.length} assigned · ${pending} pending`
+        : `${assigned} of ${assignRows.length} assigned`;
+    }
+    if (assignUnmatchedTitle) {
+      assignUnmatchedTitle.textContent = `Outside all blocks (${
+        assignRows.filter((r) => !r.matched).length
+      })`;
+    }
+  }
+
+  function renderAssignmentRows() {
+    if (!assignPanel) return;
+    const matchedFrag = document.createDocumentFragment();
+    const unmatchedFrag = document.createDocumentFragment();
+    let matchedCount = 0;
+    let unmatchedCount = 0;
+
+    assignRows.forEach((row, i) => {
+      const el = buildRowEl(row, i);
+      // Grouping is by what the *database* found, not by what's currently
+      // selected — a plot the user rescues by hand stays in the unmatched
+      // group (turning green) so the list doesn't reshuffle under them
+      // mid-edit.
+      if (row.matched) {
+        matchedFrag.appendChild(el);
+        matchedCount++;
+      } else {
+        unmatchedFrag.appendChild(el);
+        unmatchedCount++;
+      }
+    });
+
+    assignMatchedEl.innerHTML = "";
+    assignUnmatchedEl.innerHTML = "";
+    assignMatchedEl.appendChild(matchedFrag);
+    assignUnmatchedEl.appendChild(unmatchedFrag);
+    assignMatchedWrap.hidden = matchedCount === 0;
+    assignUnmatchedWrap.hidden = unmatchedCount === 0;
+    if (assignMatchedTitle) assignMatchedTitle.textContent = `Matched (${matchedCount})`;
+    assignPanel.hidden = assignRows.length === 0;
+    updateAssignCount();
+  }
+
+  assignExpandBtn?.addEventListener("click", () => {
+    const collapsed = !assignScroll.hidden;
+    assignScroll.hidden = collapsed;
+    assignExpandBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    assignExpandBtn.innerHTML = collapsed
+      ? '<i class="fas fa-chevron-down" aria-hidden="true"></i>'
+      : '<i class="fas fa-chevron-up" aria-hidden="true"></i>';
+  });
 
   function clearPreview() {
     polySource.clear(true);
@@ -413,8 +795,12 @@ export function initSurveyImport({
 
     parsedDxf = null;
 
+    clearAssignments();
     lastPreviewPayload = null;
-    saveBtn.disabled = true;
+    // previewBtn's enabled/mode state is no longer this function's job —
+    // see updateImportButtonsForFile(), which callers invoke separately so
+    // clearPreview() can still be used mid-load (e.g. re-parsing a file)
+    // without prematurely disabling the button.
   }
 
   // Plain text only — the <p class="uam-hint uam-hint--blue"> markup lives
@@ -423,6 +809,41 @@ export function initSurveyImport({
   function renderSummary(text) {
     summaryEl.hidden = !text;
     summaryEl.textContent = text || "";
+  }
+
+  // Footer button (#surveyPreviewBtn) does double duty: "Preview" runs the
+  // preview step, then — for CSV/GeoJSON only — flips to "Save", which
+  // commits to the database. KML/DXF can only ever be previewed.
+  function setPreviewBtnMode(mode) {
+    previewBtnMode = mode;
+    previewBtn.innerHTML = mode === "save"
+      ? '<i class="fas fa-database" aria-hidden="true"></i> Save'
+      : '<i class="fas fa-eye" aria-hidden="true"></i> Preview';
+  }
+
+  // Called whenever what's loaded changes (a new file, Clear, or a failed
+  // preview) — always resets the button back to "Preview" mode, and only
+  // enables it when something's loaded. KML/DXF stay enabled too — Preview
+  // still does something useful for them (re-fits the map / confirms
+  // what's shown, see doPreview) — it just never flips to Save.
+  function updateImportButtonsForFile() {
+    setPreviewBtnMode("preview");
+    previewBtn.disabled = !fileLoaded;
+    clearImportBtn.disabled = !fileLoaded;
+  }
+
+  // Wipes the plotted preview off the map AND resets the file picker back
+  // to empty, plus both footer buttons back to their inactive starting
+  // state — used by the Clear button and after a successful Save.
+  function resetImportUI() {
+    clearPreview();
+    parsedRows = [];
+    fileLoaded = false;
+    currentFileKind = null;
+    if (fileInput) fileInput.value = "";
+    if (fileNameEl) fileNameEl.textContent = "Choose a file or drop it here…";
+    renderSummary("");
+    updateImportButtonsForFile();
   }
 
   if (hasToggle) {
@@ -465,32 +886,74 @@ export function initSurveyImport({
     updateLayerFields();
     clearPreview();
     renderSummary("");
+    updateImportButtonsForFile();
   });
 
+  // A LWPOLYLINE/POLYLINE is closed (i.e. an outline, not just a line) when
+  // dxf-parser flags it (`shape`/`closed` — different dxf-parser versions
+  // use different property names) or, failing that, when its first and
+  // last vertex coincide.
+  function isClosedDxfPolyline(ent) {
+    if (ent.shape === true || ent.closed === true) return true;
+    const v = ent.vertices;
+    if (!v || v.length < 3) return false;
+    const a = v[0], b = v[v.length - 1];
+    return Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
+  }
+
+  // Plots every entity type dxf-parser hands back that we can meaningfully
+  // show: LINE/POLYLINE/LWPOLYLINE as lines (or, if closed, as a filled
+  // polygon outline), POINT as a point, and TEXT/MTEXT as a labelled point
+  // at its insertion location. CIRCLE/ARC/SPLINE/INSERT (blocks) aren't
+  // handled — reasonably rare in a survey DXF and a lot more work to
+  // project correctly.
   async function renderDxf() {
     dxfSource.clear(true);
+    pointSource.clear(true);
+    polySource.clear(true);
     if (!parsedDxf) return;
     try {
       const crs = dxfCrs;
       const p4 = await getProj4();
-      
+
       parsedDxf.entities.forEach(ent => {
-        if ((ent.type === 'LINE' || ent.type === 'POLYLINE' || ent.type === 'LWPOLYLINE') && ent.vertices) {
-          const coords = ent.vertices.map(v => {
-            return toMap3857FromCrs(p4, crs, v.x, v.y);
-          });
-          const line = new ol.geom.LineString(coords);
-          dxfSource.addFeature(new ol.Feature({ geometry: line }));
+        if ((ent.type === 'LINE' || ent.type === 'POLYLINE' || ent.type === 'LWPOLYLINE') && ent.vertices?.length) {
+          const coords = ent.vertices.map(v => toMap3857FromCrs(p4, crs, v.x, v.y));
+          if (ent.type !== 'LINE' && isClosedDxfPolyline(ent) && coords.length >= 3) {
+            const ring = (coords[0][0] === coords[coords.length - 1][0] && coords[0][1] === coords[coords.length - 1][1])
+              ? coords
+              : [...coords, coords[0]];
+            polySource.addFeature(new ol.Feature({ geometry: new ol.geom.Polygon([ring]) }));
+          } else {
+            dxfSource.addFeature(new ol.Feature({ geometry: new ol.geom.LineString(coords) }));
+          }
+        } else if (ent.type === 'POINT' && ent.position) {
+          const coord = toMap3857FromCrs(p4, crs, ent.position.x, ent.position.y);
+          pointSource.addFeature(new ol.Feature({ geometry: new ol.geom.Point(coord) }));
+        } else if ((ent.type === 'TEXT' || ent.type === 'MTEXT') && (ent.startPoint || ent.position || ent.insertionPoint)) {
+          const p = ent.startPoint || ent.position || ent.insertionPoint;
+          const coord = toMap3857FromCrs(p4, crs, p.x, p.y);
+          const feat = new ol.Feature({ geometry: new ol.geom.Point(coord) });
+          if (ent.text) feat.set("label", ent.text);
+          pointSource.addFeature(feat);
         }
       });
-      if (dxfSource.getFeatures().length > 0) {
-        const ext = dxfSource.getExtent();
-        if (ext && ext.every(Number.isFinite)) {
-          map.getView().fit(ext, { padding: [100, 100, 100, 220], maxZoom: 18, duration: 400 });
+
+      const extent = ol.extent.createEmpty();
+      for (const src of [dxfSource, pointSource, polySource]) {
+        for (const f of src.getFeatures()) {
+          const g = f.getGeometry();
+          if (g) ol.extent.extend(extent, g.getExtent());
         }
-        // DXF has no polygons of its own (just lines) — shown for reference
-        // only. Use the Draw tab to create features on top of it.
-        setStatus(statusEl, "DXF loaded (shown for reference). Use the Draw tab to create features.");
+      }
+      const total = dxfSource.getFeatures().length + pointSource.getFeatures().length + polySource.getFeatures().length;
+      if (total > 0) {
+        if (!ol.extent.isEmpty(extent) && extent.every(Number.isFinite)) {
+          map.getView().fit(extent, { padding: [100, 100, 100, 220], maxZoom: 18, duration: 400 });
+        }
+        setStatus(statusEl, `DXF loaded (shown for reference) — ${total} entity(ies). Use the Draw tab to create features.`);
+      } else {
+        setStatus(statusEl, "DXF parsed, but no supported entities (line/polyline/point/text) were found.", true);
       }
     } catch(e) {
       console.error(e);
@@ -499,46 +962,119 @@ export function initSurveyImport({
   }
 
   function promptForCrs(filename) {
-    return new Promise((resolve) => {
-      const overlay = document.createElement("div");
-      overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center;";
-      
-      const modal = document.createElement("div");
-      modal.style.cssText = "background:#fff; padding:20px; border-radius:12px; width:300px; max-width:90%; box-shadow:0 4px 12px rgba(0,0,0,0.2);";
-      
-      modal.innerHTML = `
-        <h3 style="margin-top:0;">DXF Coordinate System</h3>
-        <p style="font-size:0.85rem; color:#666;">Select the coordinate system for <strong>${filename}</strong>:</p>
-        <select id="dxfCrsPromptSelect" style="width:100%; padding:8px; margin-bottom:16px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem;">
-          ${CRS_OPTIONS.map(o => `<option value="${o.value}" ${o.value === dxfCrs ? "selected" : ""}>${o.label}</option>`).join('')}
-        </select>
-        <div style="display:flex; justify-content:flex-end; gap:8px;">
-          <button id="dxfCrsPromptCancel" style="padding:8px 16px; border-radius:6px; background:#f0f0f0; border:none; cursor:pointer;">Cancel</button>
-          <button id="dxfCrsPromptOk" style="padding:8px 16px; border-radius:6px; background:#28a745; color:#fff; border:none; cursor:pointer;">Plot DXF</button>
-        </div>
-      `;
-      
-      overlay.appendChild(modal);
-      document.body.appendChild(overlay);
-      
-      document.getElementById("dxfCrsPromptCancel").onclick = () => {
-        document.body.removeChild(overlay);
-        resolve(null);
-      };
-      
-      document.getElementById("dxfCrsPromptOk").onclick = () => {
-        const val = document.getElementById("dxfCrsPromptSelect").value;
-        document.body.removeChild(overlay);
-        resolve(val);
-      };
+    return promptSelect({
+      title: "DXF Coordinate System",
+      message: `Select the coordinate system for ${filename}:`,
+      options: CRS_OPTIONS,
+      value: dxfCrs,
+      confirmLabel: "Plot DXF"
     });
+  }
+
+  // Splits parsed KML/GeoJSON features across the three preview layers by
+  // geometry type (points -> pointSource, lines -> dxfSource, polygons ->
+  // polySource) and fits the map to whatever ended up plotted. Previously
+  // this only ever kept polygons and silently dropped everything else —
+  // which is exactly why Preview could fail with "load a file with
+  // polygons first" even on a KML that clearly had placemarks, just not
+  // polygon ones.
+  function plotFeaturesByGeometry(features) {
+    polySource.clear(true);
+    pointSource.clear(true);
+    dxfSource.clear(true);
+    const counts = { point: 0, line: 0, polygon: 0 };
+    for (const f of features) {
+      const geom = f.getGeometry();
+      if (!geom) continue;
+      const type = geom.getType();
+      if (type.includes("Polygon")) {
+        polySource.addFeature(f);
+        counts.polygon++;
+      } else if (type.includes("LineString")) {
+        dxfSource.addFeature(f);
+        counts.line++;
+      } else if (type.includes("Point")) {
+        // KML/GeoJSON placemarks/features commonly carry a "name" — reuse
+        // it as the point's label (same property CSV-preview vertex points
+        // already use).
+        const label = f.get("name");
+        if (label) f.set("label", label);
+        pointSource.addFeature(f);
+        counts.point++;
+      }
+    }
+    const extent = ol.extent.createEmpty();
+    for (const src of [polySource, pointSource, dxfSource]) {
+      for (const feat of src.getFeatures()) {
+        const g = feat.getGeometry();
+        if (g) ol.extent.extend(extent, g.getExtent());
+      }
+    }
+    if (!ol.extent.isEmpty(extent) && extent.every(Number.isFinite)) {
+      map.getView().fit(extent, { padding: [80, 80, 80, 80], maxZoom: 18, duration: 400 });
+    }
+    return counts;
   }
 
   async function handleFile(file) {
     if (!file) return;
     const name = file.name.toLowerCase();
-    
-    if (name.endsWith(".dxf") || name.endsWith(".kml") || name.endsWith(".geojson") || name.endsWith(".json")) {
+
+    // Every new file selection starts from a clean slate. Without this, a
+    // previously loaded file's parsedRows could survive into a new load —
+    // e.g. load a CSV, then load a DXF: doPreview() checks
+    // `parsedRows.length` to decide CSV-vs-local-polygons, so a leftover
+    // CSV array would route the DXF straight into the CSV edge-function
+    // preview path instead of the "DXF is preview-only" path. Resetting
+    // (and re-disabling the buttons) here up front closes that gap
+    // regardless of which branch below ends up running.
+    parsedRows = [];
+    fileLoaded = false;
+    currentFileKind = null;
+    clearPreview();
+    updateImportButtonsForFile();
+
+    if (name.endsWith(".kml")) {
+      // KML is defined by its spec to always be WGS84 lon/lat (EPSG:4326) —
+      // unlike DXF/GeoJSON, which have no such guarantee, there's nothing
+      // to ask the user about.
+      try {
+        setStatus(statusEl, "Parsing KML…");
+        const text = await file.text();
+        const kmlFormat = new ol.format.KML({ extractStyles: false });
+        const features = kmlFormat.readFeatures(text, { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" });
+
+        // The author's intended view, if the file has one — set it first so
+        // there's something sensible on screen even before/regardless of
+        // what plotFeaturesByGeometry finds below.
+        const lookAt = extractKmlLookAt(text);
+        if (lookAt) {
+          map.getView().animate({
+            center: ol.proj.fromLonLat([lookAt.lon, lookAt.lat]),
+            zoom: zoomFromRange(lookAt.range),
+            duration: 400
+          });
+        }
+
+        const counts = plotFeaturesByGeometry(features);
+        parsedDxf = { entities: [], _kmlFeatures: features };
+        const total = counts.point + counts.line + counts.polygon;
+
+        if (total > 0) {
+          setStatus(statusEl, `KML loaded — ${counts.polygon} polygon(s), ${counts.line} line(s), ${counts.point} point(s). Click Preview.`);
+        } else if (lookAt) {
+          setStatus(statusEl, "KML has a <LookAt>/<Camera> view but no plottable placemarks — zoomed there anyway.");
+        } else {
+          setStatus(statusEl, "No plottable placemarks (or <LookAt>) found in KML.", true);
+        }
+        fileLoaded = true;
+        currentFileKind = "kml";
+        renderSummary(`${total} feature(s) loaded (${counts.polygon} polygon, ${counts.line} line, ${counts.point} point). This kml file can only be previewed for drawing — it can't be saved.`);
+        updateImportButtonsForFile();
+      } catch(e) {
+        setStatus(statusEl, "KML parsing failed: " + e.message, true);
+      }
+    } else if (name.endsWith(".dxf") || name.endsWith(".geojson") || name.endsWith(".json")) {
       const chosenCrs = await promptForCrs(file.name);
       if (!chosenCrs) {
         setStatus(statusEl, "Import cancelled (no CRS selected).");
@@ -551,55 +1087,35 @@ export function initSurveyImport({
           setStatus(statusEl, "Parsing DXF...");
           parsedDxf = await parseDxfFile(file);
           parsedRows = [];
-          renderSummary("");
           await renderDxf();
+          fileLoaded = true;
+          currentFileKind = "dxf";
+          renderSummary("This dxf file can only be previewed for drawing — it can't be saved. Click Preview to re-fit the map to it.");
+          updateImportButtonsForFile();
         } catch(e) {
           setStatus(statusEl, "DXF parsing failed: " + e.message, true);
-        }
-      } else if (name.endsWith(".kml")) {
-        try {
-          clearPreview();
-          setStatus(statusEl, "Parsing KML…");
-          const text = await file.text();
-          const kmlFormat = new ol.format.KML({ extractStyles: false });
-          const features = kmlFormat.readFeatures(text, { dataProjection: chosenCrs, featureProjection: "EPSG:3857" });
-          polySource.clear(true);
-          for (const f of features) {
-            if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
-          }
-          parsedDxf = { entities: [], _kmlFeatures: features };
-          if (polySource.getFeatures().length > 0) {
-            const ext = polySource.getExtent();
-            if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
-            setStatus(statusEl, `KML loaded — ${polySource.getFeatures().length} polygon(s). Click Preview, then Save.`);
-          } else {
-            setStatus(statusEl, "No polygon features found in KML.", true);
-          }
-          renderSummary(`${features.length} KML feature(s) loaded.`);
-        } catch(e) {
-          setStatus(statusEl, "KML parsing failed: " + e.message, true);
         }
       } else {
         // geojson
         try {
-          clearPreview();
           setStatus(statusEl, "Parsing GeoJSON…");
           const text = await file.text();
           const gjFormat = new ol.format.GeoJSON();
           const features = gjFormat.readFeatures(text, { dataProjection: chosenCrs, featureProjection: "EPSG:3857" });
-          polySource.clear(true);
-          for (const f of features) {
-            if (f.getGeometry()?.getType().includes("Polygon")) polySource.addFeature(f);
-          }
+          const counts = plotFeaturesByGeometry(features);
           parsedDxf = { entities: [], _gjFeatures: features };
-          if (polySource.getFeatures().length > 0) {
-            const ext = polySource.getExtent();
-            if (ext && ext.every(Number.isFinite)) map.getView().fit(ext, { padding: [80,80,80,80], maxZoom: 18, duration: 400 });
-            setStatus(statusEl, `GeoJSON loaded — ${polySource.getFeatures().length} polygon(s). Click Preview, then Save.`);
-          } else {
-            setStatus(statusEl, "No polygon features found in GeoJSON.", true);
-          }
-          renderSummary(`${features.length} GeoJSON feature(s) loaded.`);
+          const total = counts.point + counts.line + counts.polygon;
+          setStatus(
+            statusEl,
+            total
+              ? `GeoJSON loaded — ${counts.polygon} polygon(s), ${counts.line} line(s), ${counts.point} point(s). Click Preview${counts.polygon ? ", then Save" : ""}.`
+              : "No plottable features found in GeoJSON.",
+            !total
+          );
+          fileLoaded = true;
+          currentFileKind = "geojson";
+          renderSummary(`${total} feature(s) loaded (${counts.polygon} polygon, ${counts.line} line, ${counts.point} point).`);
+          updateImportButtonsForFile();
         } catch(e) {
           setStatus(statusEl, "GeoJSON parsing failed: " + e.message, true);
         }
@@ -609,11 +1125,17 @@ export function initSurveyImport({
         clearPreview();
         parsedRows = await parseCsvFile(file);
         const n = parsedRows.length;
+        fileLoaded = true;
+        currentFileKind = "csv";
         renderSummary(`${n} data row(s) read.`);
+        updateImportButtonsForFile();
       } catch (e) {
         parsedRows = [];
+        fileLoaded = false;
+        currentFileKind = null;
         setStatus(statusEl, e.message, true);
         renderSummary("");
+        updateImportButtonsForFile();
       }
     }
   }
@@ -646,20 +1168,44 @@ export function initSurveyImport({
     }
   });
 
-  // KML/GeoJSON files already contain full polygons (no tracing needed) —
+  // KML/GeoJSON files already contain full geometry (no tracing needed) —
   // Preview just packages whatever's currently in polySource as the save
-  // payload, the same shape the CSV edge-function preview produces.
-  function previewLocalPolygons(layerType) {
+  // payload (the only geometry a Plot/Block can be saved as), the same
+  // shape the CSV edge-function preview produces. Lines/points plotted
+  // alongside it (see plotFeaturesByGeometry) are shown for reference only
+  // — they're never save-eligible.
+  async function previewLocalPolygons(layerType) {
     const gj = new ol.format.GeoJSON();
     const features = polySource.getFeatures();
     const results = features.map((f, i) => {
       const geom = f.getGeometry().clone().transform("EPSG:3857", "EPSG:4326");
       return {
-        parcelId: f.get("parcelId") || `Feature ${i + 1}`,
+        featureId: f.get("featureId") || `Feature ${i + 1}`,
         success: true,
         geometry: gj.writeGeometryObject(geom)
       };
     });
+    const lineCount = dxfSource.getFeatures().length;
+    const pointCount = pointSource.getFeatures().length;
+    const refParts = [];
+    if (lineCount) refParts.push(`${lineCount} line(s)`);
+    if (pointCount) refParts.push(`${pointCount} point(s)`);
+    const refSuffix = refParts.length ? ` (${refParts.join(", ")} also shown for reference.)` : "";
+
+    // KML is preview-only (see the hint shown when it's loaded), and a
+    // GeoJSON with no polygons at all has nothing save-eligible either —
+    // both cases stay in Preview mode (never flip to Save), but the button
+    // stays enabled so Preview can be clicked again to re-verify.
+    if (currentFileKind === "kml" || !results.length) {
+      renderSummary(
+        `${results.length} polygon(s) previewed.${refSuffix}` +
+          (currentFileKind === "kml"
+            ? " This kml file can only be previewed for drawing — it can't be saved."
+            : " No polygons found to save.")
+      );
+      setStatus(statusEl, currentFileKind === "kml" ? "Preview ready (view only — KML can't be saved)." : "Preview ready — nothing polygon-shaped to save.");
+      return;
+    }
 
     const resolvedEstate = layerType === "BLOCKS"
       ? toTitleCase(blockEstateSelect?.value?.trim() || "")
@@ -674,26 +1220,70 @@ export function initSurveyImport({
       results
     };
 
-    renderSummary(`Total Figures: ${results.length} ready to save.`);
-    saveBtn.disabled = !results.length;
+    // Plots + "Automatically Choose Block": resolve each polygon's block and
+    // put the answers in the review list before Save becomes available.
+    if (layerType === "PARCELS" && autoSelectCb?.checked) {
+      try {
+        setStatus(statusEl, "Matching plots to blocks…");
+        const { matched, unmatched } = await runAutoAssign(results);
+        renderSummary(
+          `${results.length} polygon(s) previewed — ${matched} matched to a block` +
+            (unmatched ? `, ${unmatched} outside all blocks.` : ".") +
+            `${refSuffix}`
+        );
+        previewBtn.disabled = false;
+        setPreviewBtnMode("save");
+        setStatus(
+          statusEl,
+          unmatched
+            ? `Review the assignments below — ${unmatched} plot(s) need a block.`
+            : "All plots matched a block. Review below, then save."
+        );
+      } catch (e) {
+        console.error("[Victoria Survey] Block auto-assign failed", e);
+        clearAssignments();
+        setStatus(statusEl, `Automatic block selection failed: ${e.message}`, true);
+      }
+      return;
+    }
+
+    renderSummary(`Total Figures: ${results.length} ready to save.${refSuffix}`);
+    previewBtn.disabled = !results.length;
+    if (results.length) setPreviewBtnMode("save");
     setStatus(statusEl, "Preview ready. Verify on map, then save.");
   }
 
   // Wipes the plotted preview off the map AND resets the file picker back
-  // to empty — clearPreview() alone (used elsewhere, e.g. on layer change)
-  // deliberately leaves the loaded file in place, since a fresh file load
-  // calls it too and shouldn't wipe itself.
+  // to empty, plus both footer buttons back to their inactive starting
+  // state.
   clearImportBtn?.addEventListener("click", () => {
-    clearPreview();
-    parsedRows = [];
-    if (fileInput) fileInput.value = "";
-    if (fileNameEl) fileNameEl.textContent = "Choose a file or drop it here…";
-    renderSummary("");
+    resetImportUI();
     setStatus(statusEl, "Cleared.");
   });
 
-  previewBtn?.addEventListener("click", async () => {
-    if (getManagementLocked?.()) return;
+  async function doPreview() {
+    // DXF has no polygons and never gets saved — it's not tied to a
+    // layer/estate/block at all, so skip straight past those checks.
+    // Preview just re-runs the same render-and-fit step file load already
+    // did, so clicking it re-confirms/re-zooms to what's on the map.
+    if (currentFileKind === "dxf") {
+      await renderDxf();
+      const n = dxfSource.getFeatures().length + pointSource.getFeatures().length + polySource.getFeatures().length;
+      renderSummary(
+        n
+          ? "This dxf file can only be previewed for drawing — it can't be saved."
+          : "This DXF has no supported entities to show."
+      );
+      setStatus(statusEl, n ? `DXF previewed — zoomed to ${n} entity(ies).` : "DXF has nothing to preview.", !n);
+      return;
+    }
+    // KML is likewise never saved, and isn't tied to a layer/estate/block
+    // either — skip straight to plotting whatever it has (previewLocalPolygons
+    // already handles "no polygons" gracefully for the preview-only case).
+    if (currentFileKind === "kml") {
+      await previewLocalPolygons(layerSelect.value || "");
+      return;
+    }
     const layerType = layerSelect.value;
     if (!layerType) {
       setStatus(statusEl, "Select target layer (BLOCKS or PLOTS).", true);
@@ -706,7 +1296,14 @@ export function initSurveyImport({
         return;
       }
     }
-    if (layerType === "PARCELS") {
+    // "Automatically select" is Plots-only — skips the Estate/Block
+    // requirement entirely, leaving whatever's resolving estate_name/
+    // parentBlockCode downstream (still just reads the now-disabled,
+    // likely-empty selects) to figure itself out rather than blocking
+    // Preview/Save on a manual pick. Blocks import above always requires
+    // its Estate regardless.
+    const autoSelect = !!autoSelectCb?.checked;
+    if (!autoSelect && layerType === "PARCELS") {
       if (!surveyParcelEstateSelect?.value?.trim()) {
         setStatus(statusEl, "Select an Estate before previewing plots.", true);
         return;
@@ -717,15 +1314,18 @@ export function initSurveyImport({
       }
     }
     if (!parsedRows.length) {
-      if (polySource.getFeatures().length) {
-        // KML/GeoJSON — polygons are already parsed, no edge-function
-        // round trip needed.
-        previewLocalPolygons(layerType);
+      // GeoJSON — already parsed (and split by geometry type into
+      // polySource/pointSource/dxfSource, see plotFeaturesByGeometry), no
+      // edge-function round trip needed. Any of the three counts as
+      // "something to preview" now — previewLocalPolygons only requires
+      // polySource specifically for the save payload.
+      if (polySource.getFeatures().length || pointSource.getFeatures().length || dxfSource.getFeatures().length) {
+        await previewLocalPolygons(layerType);
         return;
       }
       setStatus(
         statusEl,
-        "Load a file with polygons first (CSV, KML, or GeoJSON). DXF files are shown for reference only.",
+        "Load a file with shapes first (CSV, KML, or GeoJSON).",
         true
       );
       return;
@@ -757,7 +1357,7 @@ export function initSurveyImport({
       const validResults = results.filter((r) => r.success && r.geometry);
       for (const r of validResults) {
         const feat = gj.readFeature(
-          { type: "Feature", geometry: r.geometry, properties: { parcelId: r.parcelId } },
+          { type: "Feature", geometry: r.geometry, properties: { featureId: featureIdOf(r) } },
           { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" }
         );
         polySource.addFeature(feat);
@@ -767,7 +1367,9 @@ export function initSurveyImport({
           const pf = new ol.Feature({
             geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat]))
           });
-          pf.set("label", r.parcelId);
+          // Vertex marker label: prefer the feature's real name, fall back to
+          // the CSV id when the file didn't provide one.
+          pf.set("label", featureNameOf(r) || featureIdOf(r));
           pointSource.addFeature(pf);
         }
       }
@@ -790,77 +1392,109 @@ export function initSurveyImport({
         additionalInfo: "",
         results
       };
-      saveBtn.disabled = !validResults.length;
+
+      // Plots + "Automatically Choose Block": ask the database which block
+      // each previewed plot falls inside, then show the review list. Save
+      // only unlocks once that has succeeded — committing with no
+      // assignments at all would just fail server-side.
+      if (layerType === "PARCELS" && autoSelect) {
+        setStatus(statusEl, "Matching plots to blocks…");
+        const { matched, unmatched } = await runAutoAssign(validResults);
+        renderSummary(
+          `Total Figures: ${summary.totalParcels}   Failed: ${summary.failedParcels}   ` +
+            `Matched to a block: ${matched}` +
+            (unmatched ? `   Outside all blocks: ${unmatched}` : "")
+        );
+        previewBtn.disabled = !validResults.length;
+        if (validResults.length) setPreviewBtnMode("save");
+        setStatus(
+          statusEl,
+          unmatched
+            ? `Review the assignments below — ${unmatched} plot(s) need a block.`
+            : "All plots matched a block. Review below, then save."
+        );
+        return;
+      }
+
+      previewBtn.disabled = !validResults.length;
+      if (validResults.length) setPreviewBtnMode("save");
       setStatus(statusEl, "Preview ready. Verify on map, then save.");
     } catch (e) {
       clearPreview();
+      updateImportButtonsForFile();
       console.error("[Victoria Survey] Preview failed", e);
       setStatus(statusEl, e.message, true);
     }
-  });
+  }
 
+  // Only reached for digitized/KML/GeoJSON imports, which have no description
+  // column and therefore no name. CSV imports never see this — their names
+  // come from `description`, and their codes are auto-numbered by the
+  // database either way, so there is nothing left to ask about.
   function promptForStartingId(layerType) {
-    return new Promise((resolve) => {
-      const isBlock = layerType === "BLOCKS";
-      const title = isBlock ? "Starting Block ID" : "Starting Plot ID";
-      const desc = isBlock ? "Provide the first ID to auto-number the rest (e.g. Block-1)" : "Provide the first ID to auto-number the rest (e.g. A1)";
-      const placeholder = isBlock ? "Block-1" : "A1";
-
-      const overlay = document.createElement("div");
-      overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; display:flex; align-items:center; justify-content:center; backdrop-filter: blur(2px);";
-      
-      const modal = document.createElement("div");
-      modal.style.cssText = "background:#fff; padding:20px; border-radius:8px; width:280px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.15); font-family: system-ui, -apple-system, sans-serif;";
-      
-      modal.innerHTML = `
-        <h4 style="margin:0 0 8px 0; font-size:1.1rem; color:#333;">${title}</h4>
-        <p style="margin:0 0 16px 0; font-size:0.85rem; color:#666;">${desc}</p>
-        <input type="text" id="dxfStartIdPromptInput" placeholder="${placeholder}" style="width:100%; padding:8px 12px; margin-bottom:20px; border:1px solid #ddd; border-radius:6px; font-size:1rem; box-sizing:border-box; outline:none; transition:border-color 0.2s;" />
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button id="dxfStartIdPromptCancel" style="padding:8px 16px; border-radius:6px; background:#f1f3f5; color:#495057; border:none; cursor:pointer; font-size:0.9rem; font-weight:500; transition:background 0.2s;">Cancel</button>
-          <button id="dxfStartIdPromptOk" style="padding:8px 16px; border-radius:6px; background:#007bff; color:#fff; border:none; cursor:pointer; font-size:0.9rem; font-weight:500; transition:background 0.2s;">Save</button>
-        </div>
-      `;
-      
-      overlay.appendChild(modal);
-      document.body.appendChild(overlay);
-      
-      const input = document.getElementById("dxfStartIdPromptInput");
-      input.focus();
-      
-      input.addEventListener("focus", () => input.style.borderColor = "#007bff");
-      input.addEventListener("blur", () => input.style.borderColor = "#ddd");
-      
-      const cleanup = () => {
-        if (document.body.contains(overlay)) {
-          document.body.removeChild(overlay);
-        }
-      };
-
-      document.getElementById("dxfStartIdPromptCancel").onclick = () => {
-        cleanup();
-        resolve(null);
-      };
-      
-      document.getElementById("dxfStartIdPromptOk").onclick = () => {
-        cleanup();
-        resolve(input.value);
-      };
-      
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          document.getElementById("dxfStartIdPromptOk").click();
-        } else if (e.key === "Escape") {
-          document.getElementById("dxfStartIdPromptCancel").click();
-        }
-      });
+    const isBlock = layerType === "BLOCKS";
+    return promptText({
+      title: isBlock ? "Starting Block Name" : "Starting Plot Name",
+      message: isBlock
+        ? "This file has no description column. Give the first block a name and the rest are numbered from it (e.g. Block-1). Codes are generated by the database."
+        : "This file has no description column. Give the first plot a name and the rest are numbered from it (e.g. A1). Codes are generated by the database.",
+      placeholder: isBlock ? "Block-1" : "A1",
+      // Blank is a valid, deliberate answer here ("don't name them, let each
+      // one fall back to its generated code") — only Cancel/Escape should
+      // resolve null.
+      required: false
     });
   }
 
-  saveBtn?.addEventListener("click", async () => {
+  async function doSave() {
     if (getManagementLocked?.() || !lastPreviewPayload) return;
-    
-    // Auto-generate labels for digitized/DXF imports
+
+    // Which previews are actually going to the database. Normally all of
+    // them; on the auto-assign path, only the plots that ended up with a
+    // block. Everything downstream (auto-numbering included) works off this
+    // list so the numbering stays contiguous over what really gets saved.
+    let resultsToSend = lastPreviewPayload.results;
+
+    if (lastPreviewPayload.layerType === "PARCELS" && assignRows.length) {
+      const assignable = assignRows.filter((r) => r.result.success && r.result.geometry);
+      const discarded = assignable.filter((r) => !r.blockId);
+      const keeping = assignable.filter((r) => r.blockId);
+
+      if (!keeping.length) {
+        setStatus(
+          statusEl,
+          "No plots have a block assigned — assign at least one before saving.",
+          true
+        );
+        return;
+      }
+
+      if (discarded.length) {
+        const names = discarded.map(
+          (r) => featureNameOf(r.result) || featureIdOf(r.result)
+        );
+        const shown = names.slice(0, 8).join(", ");
+        const more = names.length > 8 ? ` and ${names.length - 8} more` : "";
+        const ok = await confirmDanger({
+          title: "Discard unassigned plots?",
+          message:
+            `${discarded.length} plot(s) have no block and will NOT be saved: ${shown}${more}. ` +
+            `${keeping.length} plot(s) will be saved. Assign a block to the rest first if you want to keep them.`,
+          confirmLabel: `Discard ${discarded.length} & save ${keeping.length}`,
+          icon: "fa-triangle-exclamation"
+        });
+        if (!ok) {
+          setStatus(statusEl, "Save cancelled — no changes were made.");
+          return;
+        }
+      }
+
+      resultsToSend = keeping.map((r) => r.result);
+    }
+
+    // Auto-generate NAMES for digitized/KML/GeoJSON imports, which carry no
+    // description column. CSV imports skip this — their names already came
+    // from `description`. Codes are generated by the database in both cases.
     if (parsedRows.length === 0) {
       const firstId = await promptForStartingId(lastPreviewPayload.layerType);
       if (firstId === null) {
@@ -882,9 +1516,16 @@ export function initSurveyImport({
         let currentNum = parseInt(numStr, 10);
         const numLength = numStr.length;
         
-        lastPreviewPayload.results.forEach((r, idx) => {
+        // Numbers only what's being saved — a plot dropped for having no
+        // block shouldn't consume a number and leave a gap in the sequence.
+        //
+        // Writes `name`, which the commit RPC reads into parcel_name /
+        // block_name. It used to write the id, back when that became the
+        // database code; codes are auto-numbered server-side now, and the id
+        // is only a transient grouping/display key.
+        resultsToSend.forEach((r, idx) => {
           const seqNumStr = String(currentNum + idx).padStart(numLength, '0');
-          r.parcelId = prefix + seqNumStr;
+          r.name = prefix + seqNumStr;
         });
       }
     }
@@ -901,7 +1542,10 @@ export function initSurveyImport({
         parentBlockCode: lastPreviewPayload.parentBlockCode,
         coordinateSystem: lastPreviewPayload.coordinateSystem,
         additionalInfo: lastPreviewPayload.additionalInfo,
-        results: lastPreviewPayload.results
+        // Each entry may carry its own block_id (auto-assign path). The
+        // commit RPC prefers that over parentBlockCode, so a single batch
+        // can span as many blocks as the plots landed in.
+        results: resultsToSend
       });
       const inserted = data.db?.inserted ?? 0;
       const errs = data.db?.errors || [];
@@ -918,10 +1562,9 @@ export function initSurveyImport({
         return;
       }
       const savedLayerType = lastPreviewPayload.layerType;
-      polySource.clear(true);
-      pointSource.clear(true);
-      lastPreviewPayload = null;
-      saveBtn.disabled = true;
+      // Import's done — reset the file input, map preview, and both footer
+      // buttons back to their inactive starting state, same as Clear.
+      resetImportUI();
       await loadLayersFromDb();
       // Refresh estate+block dropdowns after save
       await refreshEstateOptions();
@@ -948,8 +1591,21 @@ export function initSurveyImport({
       console.error("[Victoria Survey] Save failed", e);
       setStatus(statusEl, e.message, true);
     }
+  }
+
+  // One footer button, two modes — click routes to whichever step is
+  // current (see setPreviewBtnMode). getManagementLocked is re-checked
+  // inside doPreview/doSave too, but bail out here first either way.
+  previewBtn?.addEventListener("click", async () => {
+    if (getManagementLocked?.()) return;
+    if (previewBtnMode === "save") {
+      await doSave();
+    } else {
+      await doPreview();
+    }
   });
 
+  updateImportButtonsForFile();
   updateLayerFields();
 
   return {

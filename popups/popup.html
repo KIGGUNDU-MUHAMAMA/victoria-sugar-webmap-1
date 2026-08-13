@@ -1,0 +1,22 @@
+<!-- Shared confirm/prompt popup shell — see popups/popup.js showPopup().
+     One instance, reused for every small centered dialog in the app
+     instead of each caller building its own ad-hoc overlay+modal DOM from
+     scratch (the old pattern: survey-import.js's promptForCrs/
+     promptForStartingId, manage-estates.js's promptEstateName/
+     showDangerPopup all duplicated near-identical inline-styled markup).
+     Content below is filled in per-call by showPopup(); nothing here is
+     static except the skeleton. Loaded into <body> by app-boot.js, same as
+     windows/*.html. -->
+<div id="vslPopupOverlay" class="vsl-popup-overlay" hidden>
+  <div id="vslPopupCard" class="vsl-popup-card">
+    <div class="vsl-popup-row">
+      <span id="vslPopupIcon" class="vsl-popup-icon"><i aria-hidden="true"></i></span>
+      <div class="vsl-popup-copy">
+        <h4 id="vslPopupTitle" class="vsl-popup-title"></h4>
+        <p id="vslPopupMessage" class="vsl-popup-message"></p>
+      </div>
+    </div>
+    <div id="vslPopupField" class="vsl-popup-field" hidden></div>
+    <div id="vslPopupActions" class="vsl-popup-actions"></div>
+  </div>
+</div>

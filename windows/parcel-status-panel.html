@@ -34,6 +34,15 @@
 
           <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
         </div>
+
+        <!-- Busy overlay while Delete is in flight — same generic
+             .popWinBody-covering pattern as the Survey window's Edit tab
+             (see #surveyBusyOverlay/window.vslSurveyBusy in survey-panel.html/
+             survey-edit.js). Toggled by setParcelStatusBusy() in map-app.js. -->
+        <div id="parcelStatusBusyOverlay" class="uam-body-loading" hidden>
+          <div class="uam-body-loading__spinner"></div>
+          <span id="parcelStatusBusyOverlayText" class="uam-body-loading__text">Deleting…</span>
+        </div>
       </div>
 
       <!-- Footer buttons now use the same .futuristic-icon-btn(--modal-pad)

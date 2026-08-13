@@ -29,10 +29,17 @@
           <i class="fas fa-pencil-ruler" aria-hidden="true"></i> Draw
         </button>
         <button type="button" class="search-tab" data-uam-tab="edit" role="tab" aria-selected="false" tabindex="-1">
-          <i class="fas fa-vector-square" aria-hidden="true"></i> Edit
+          <i class="fa-regular fa-object-group" aria-hidden="true"></i> Edit
+        </button>
+        <button type="button" class="search-tab" data-uam-tab="estates" role="tab" aria-selected="false" tabindex="-1">
+          <i class="fas fa-map-location-dot" aria-hidden="true"></i> Estates
         </button>
         <button type="button" class="search-tab" data-uam-tab="export" role="tab" aria-selected="false" tabindex="-1">
           <i class="fas fa-file-export" aria-hidden="true"></i> Export
+        </button>
+        <!-- Structure only for now — no JS wiring yet, implementation to follow. -->
+        <button type="button" class="search-tab" data-uam-tab="drone" role="tab" aria-selected="false" tabindex="-1">
+          <i class="fas fa-helicopter" aria-hidden="true"></i> Drone
         </button>
       </div>
 
@@ -48,6 +55,15 @@
             </select>
           </div>
 
+          <!-- PLOTS-only — hidden for BLOCKS (toggled in updateLayerFields()).
+               When checked, the Plot Estate/Block pickers below go inactive
+               and doPreview()/doSave() stop requiring them — see
+               surveyAutoSelectCb wiring in survey-import.js. -->
+          <label id="surveyAutoSelectRow" class="uam-checkbox-row" hidden>
+            <input type="checkbox" id="surveyAutoSelectCb" title="Will automatically choose the plot's block if it falls inside the block">
+            <span>Automatically Choose Block</span>
+          </label>
+
           <!-- Both estate pickers are real <select>s sourced from vsl_estate
                (survey-import.js refreshEstateOptions) — was a free-text
                input w/ datalist for Blocks and a <select> reading a stale
@@ -60,18 +76,21 @@
               <select id="surveyBlockEstateSelect" class="uam-select">
                 <option value="">— Select Estate —</option>
               </select>
-              <button type="button" id="surveyBlockEstateAddBtn" class="uam-icon-btn" title="Add new estate" aria-label="Add new estate">
-                <i class="fas fa-plus" aria-hidden="true"></i>
+              <button type="button" id="surveyBlockEstateManageBtn" class="uam-icon-btn" title="Manage estates" aria-label="Manage estates">
+                <i class="fas fa-pen-to-square" aria-hidden="true"></i>
               </button>
             </div>
           </div>
           <div id="surveyParcelFields" class="survey-conditional" hidden>
-            <div class="uam-field-row u-gap-8 u-mb-6">
+            <!-- Both hidden outright (not just disabled) while "Automatically
+                 select" is checked — see applyAutoSelectState() in
+                 survey-import.js. -->
+            <div id="surveyParcelEstateRow" class="uam-field-row u-gap-8 u-mb-6">
               <select id="surveyParcelEstateSelect" class="uam-select">
                 <option value="">— Select Estate —</option>
               </select>
-              <button type="button" id="surveyParcelEstateAddBtn" class="uam-icon-btn" title="Add new estate" aria-label="Add new estate">
-                <i class="fas fa-plus" aria-hidden="true"></i>
+              <button type="button" id="surveyParcelEstateManageBtn" class="uam-icon-btn" title="Manage estates" aria-label="Manage estates">
+                <i class="fas fa-pen-to-square" aria-hidden="true"></i>
               </button>
             </div>
             <select id="surveyParentBlockSelect" class="uam-select">
@@ -102,22 +121,60 @@
                popup, not this dropdown), all default to UTM Zone 36N —
                the surveyors' standard projected grid. -->
 
-          <!-- Moved out of .popWinActionBtns — Preview now lives here,
-               right under the hint, instead of in the footer with Save.
-               Clear (new) wipes the plotted preview + resets the file
-               picker so a fresh file can be loaded without leftovers. -->
-          <div class="uam-field-row u-gap-8 u-mt-6">
-            <button type="button" id="surveyPreviewBtn" class="uam-btn uam-btn--primary u-flex-1">
-              <i class="fas fa-eye" aria-hidden="true"></i> Preview
-            </button>
-            <button type="button" id="surveyClearBtn" class="uam-btn uam-btn--danger u-flex-1">
-              <i class="fas fa-eraser" aria-hidden="true"></i> Clear
-            </button>
-          </div>
+          <!-- Preview/Clear moved into .popWinActionBtns below (see the
+               data-uam-actions="import" group) so this tab matches every
+               other tab's footer-button layout. -->
 
           <!-- Every renderSummary() call in survey-import.js just sets this
                <p>'s text — same look every time, no per-call HTML/markup. -->
           <p id="surveySummary" class="uam-hint uam-hint--blue" hidden></p>
+
+          <!-- ── BLOCK ASSIGNMENT REVIEW ──
+               Only rendered on the PLOTS + "Automatically Choose Block" path,
+               between Preview and Save: vsl_resolve_parcel_blocks returns the
+               block each previewed plot falls inside (ST_PointOnSurface ->
+               ST_Contains), and every row lands here for the user to verify
+               and, if need be, override before anything is written.
+
+               Two groups, both built by renderAssignmentRows() in
+               survey-import.js — matched plots (pre-filled Estate/Block) and
+               unmatched ones (fell outside every block, blank until the user
+               picks). Unmatched plots left blank are dropped at save time,
+               behind a confirmDanger() warning. Clicking a row zooms the map
+               to that plot.
+
+               Rows are stacked cards rather than a real <table> — this panel
+               is a narrow docked column, and a 3-column table with two
+               dropdowns per row is unreadable at this width. -->
+          <div id="surveyAssignPanel" class="survey-assign" hidden>
+            <div class="survey-assign__bar">
+              <span id="surveyAssignCount" class="survey-assign__count"></span>
+              <button type="button" id="surveyAssignExpandBtn" class="survey-assign__toggle" aria-expanded="true">
+                <i class="fas fa-chevron-up" aria-hidden="true"></i>
+              </button>
+            </div>
+
+            <div id="surveyAssignScroll" class="survey-assign__scroll">
+              <section id="surveyAssignMatchedWrap" class="survey-assign__group" hidden>
+                <h4 class="survey-assign__title">
+                  <i class="fas fa-circle-check" aria-hidden="true"></i>
+                  <span id="surveyAssignMatchedTitle">Matched</span>
+                </h4>
+                <div id="surveyAssignMatched" class="survey-assign__rows"></div>
+              </section>
+
+              <section id="surveyAssignUnmatchedWrap" class="survey-assign__group survey-assign__group--warn" hidden>
+                <h4 class="survey-assign__title">
+                  <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                  <span id="surveyAssignUnmatchedTitle">Outside all blocks</span>
+                </h4>
+                <p class="survey-assign__note">
+                  Assign a block, or these plots are discarded when you save.
+                </p>
+                <div id="surveyAssignUnmatched" class="survey-assign__rows"></div>
+              </section>
+            </div>
+          </div>
         </div>
 
         <!-- ── DRAW TAB ── -->
@@ -131,15 +188,22 @@
             <input type="checkbox" id="snapSurveyCb" checked>
           </div>
 
+          <!-- Block/Plot are picked directly here now — no more "choose
+               Polygon, then find Block/Plot in the Feature list below".
+               Picking either hides #drawFeatureRow entirely (see
+               survey-draw.js isSystemEntity()/currentFeatureType()) since
+               there's nothing left to choose there. -->
           <div class="uam-field-row">
             <select id="drawEntityTypeSelect" class="uam-select">
               <option value="point">Point</option>
               <option value="line">Line</option>
               <option value="polygon">Polygon</option>
+              <option value="block">Block</option>
+              <option value="plot">Plot</option>
             </select>
           </div>
 
-          <div class="uam-field-row u-gap-8">
+          <div id="drawFeatureRow" class="uam-field-row u-gap-8">
             <select id="drawFeatureSelect" class="uam-select">
               <option value="">Feature…</option>
             </select>
@@ -148,15 +212,20 @@
             </button>
           </div>
 
-          <!-- Only shown when the selected feature is the system Plot or
-               Block type — everything else (trees, boreholes, roads, …)
-               saves straight into vsl_feature with no estate/block link. -->
+          <!-- Only shown for Block/Plot (see drawEntityTypeSelect above) —
+               everything else (trees, boreholes, roads, …) saves straight
+               into vsl_feature with no estate/block link. -->
           <div id="drawPlotBlockFields" class="survey-conditional" hidden>
-            <label class="uam-checkbox-row">
-              <input type="checkbox" id="drawAutomaticCb">
-              <span>Automatic</span>
+            <!-- Plot-only (mirrors the Import tab's "Automatically Choose
+                 Block" — same idea, same vsl_resolve_parcel_blocks RPC, just
+                 resolving the single just-drawn shape instead of a batch).
+                 Blocks always need their Estate picked manually — there's no
+                 "which estate is this in" geometry to resolve against. -->
+            <label id="drawAutomaticRow" class="uam-checkbox-row" hidden>
+              <input type="checkbox" id="drawAutomaticCb" title="Will automatically choose the plot's block if it falls inside one">
+              <span>Automatically Choose Block</span>
             </label>
-            <div class="uam-field-row u-mb-6">
+            <div id="drawEstateRow" class="uam-field-row u-mb-6">
               <select id="drawEstateSelect" class="uam-select">
                 <option value="">— Select Estate —</option>
               </select>
@@ -170,21 +239,48 @@
 
           <div class="uam-field-row">
             <button type="button" id="drawStartBtn" class="uam-btn uam-btn--primary u-w-100">
-              <i class="fas fa-pen-nib"></i> <span id="drawStartBtnLabel">Start Drawing</span>
+              <i id="drawStartBtnIcon" class="fas fa-play" aria-hidden="true"></i> <span id="drawStartBtnLabel">Start Drawing</span>
             </button>
           </div>
 
-          <div id="drawToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+          <!-- Same look as the Import tab's #surveySummary — plain blue
+               instructional text, not a bordered/error-styled box. Errors
+               still go to the global status bar (setStatus) same as before,
+               this line only ever shows "what to do next". -->
+          <p id="drawToolsFeedback" class="uam-hint uam-hint--blue" role="status" aria-live="polite" hidden></p>
         </div>
 
-        <!-- ── EDIT TAB ── -->
+        <!-- ── EDIT TAB ──
+             editSelectFeatureBtn is a Start/Stop toggle (see
+             js/survey-edit.js setToggleButtonState). editHintList replaces
+             the old #editToolsFeedback status line — it's just a static
+             how-to, shown only while a session is active (toggled via its
+             [hidden] attribute in survey-edit.js). -->
         <div class="uam-tab" id="uamTabEdit" data-uam-panel="edit" hidden>
           <button type="button" id="editSelectFeatureBtn" class="uam-btn uam-btn--primary u-w-100">
-            <i class="fas fa-hand-pointer"></i> Select Feature to Edit
+            <i class="fas fa-circle-play"></i> Start Editing
           </button>
-          <p class="uam-hint">Click a plot, block, or drawn feature on the map, then drag its nodes to reshape it.</p>
-          <div id="editSelectedInfo" class="survey-summary" hidden></div>
-          <div id="editToolsFeedback" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+          <ul id="editHintList" class="uam-hint uam-hint--blue uam-hint--box" hidden>
+            <li>Select object to edit</li>
+            <li>Drag the nodes to shift the nodes</li>
+            <li>Click the edges to add a node</li>
+            <li>Click a node to delete or move the node</li>
+          </ul>
+        </div>
+
+        <!-- ── ESTATES TAB ──
+             Replaces the old Manage Estates modal (windows/manage-estates-
+             panel.html, no longer loaded — see app-boot.js) — same list/
+             add/rename/delete behaviour, but now lives directly in this
+             tab's body like every other tab instead of a separate popup.
+             js/manage-estates.js still owns all the logic. -->
+        <div class="uam-tab me-body" id="uamTabEstates" data-uam-panel="estates" hidden>
+          <div class="me-list-head">
+            <span>Estate</span>
+            <span>Actions</span>
+          </div>
+          <div id="meList" class="me-list"></div>
+          <p id="meError" class="search-panel__error" role="alert" hidden></p>
         </div>
 
         <!-- ── EXPORT TAB ── -->
@@ -206,7 +302,22 @@
           <div id="exportSelCount" class="uam-sel-count" hidden>0 selected</div>
         </div>
 
+        <!-- ── DRONE UPLOAD TAB ── (placeholder — implementation to follow) -->
+        <div class="uam-tab" id="uamTabDrone" data-uam-panel="drone" hidden>
+          <p class="uam-hint">Drone imagery upload is coming soon.</p>
+        </div>
+
       </div><!-- .popWinBody -->
+
+      <!-- Generic busy overlay for this window — covers .popWinBody
+           regardless of its scroll position (see .popWinBodyRow's
+           position:relative in styles.css). Shown/hidden via
+           window.vslSurveyBusy(bool, text) — currently only used by
+           survey-edit.js's Save button. -->
+      <div id="surveyBusyOverlay" class="uam-body-loading" hidden>
+        <div class="uam-body-loading__spinner"></div>
+        <span id="surveyBusyOverlayText" class="uam-body-loading__text">Saving…</span>
+      </div>
     </div><!-- .popWinBodyRow -->
 
     <!-- Footer actions — one group per tab, .popWinActionBtns like every
@@ -215,8 +326,18 @@
          themselves use) so only the current tab's buttons show. -->
     <div class="popWinActionBtns">
       <div class="uam-actions-group" data-uam-actions="import">
-        <button type="button" id="surveySaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
-          <i class="fas fa-database" aria-hidden="true"></i> Save
+        <!-- One button, two modes (see survey-import.js setPreviewBtnMode):
+             disabled until a file is chosen, then "Preview". For CSV/GeoJSON
+             a successful preview flips it to "Save" (which commits to the
+             database). KML/DXF are preview-only — it stays as Preview
+             (disabled once previewed) since there's nothing to save. -->
+        <button type="button" id="surveyPreviewBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+          <i class="fas fa-eye" aria-hidden="true"></i> Preview
+        </button>
+        <!-- Clear resets the file input, plotted preview, and this whole
+             button pair back to their inactive starting state. -->
+        <button type="button" id="surveyClearBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger" disabled>
+          <i class="fas fa-eraser" aria-hidden="true"></i> Clear
         </button>
       </div>
       <div class="uam-actions-group" data-uam-actions="draw" hidden>
@@ -230,7 +351,12 @@
       <div class="uam-actions-group" data-uam-actions="edit" hidden>
         <button type="button" id="editCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
         <button type="button" id="editSaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
-          <i class="fas fa-check" aria-hidden="true"></i> Save
+          <i class="fas fa-floppy-disk" aria-hidden="true"></i>Save
+        </button>
+      </div>
+      <div class="uam-actions-group" data-uam-actions="estates" hidden>
+        <button type="button" id="meAddBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
+          <i class="fas fa-plus" aria-hidden="true"></i> Add New
         </button>
       </div>
       <div class="uam-actions-group" data-uam-actions="export" hidden>

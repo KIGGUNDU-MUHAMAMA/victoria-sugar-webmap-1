@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="css/styles.css?v=2.2.0">
   <link rel="stylesheet" href="css/utilities.css?v=1.0">
   <link rel="stylesheet" href="toast/toast.css?v=1.0">
+  <link rel="stylesheet" href="popups/popup.css?v=1.0">
 
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2196f3">
@@ -90,6 +91,13 @@
         </button>
         <button type="button" class="dashboard-btn" id="parcelStatusBtn" title="Select">
           <i class="fas fa-arrow-pointer"></i>
+        </button>
+        <!-- Print/PDF Plot — was a placeholder tab inside the Survey window;
+             moved out here (js/print-tool.js) since it's really its own
+             map tool (pan/zoom to frame, then export), not part of the
+             import/draw/edit workflow the Survey window otherwise covers. -->
+        <button type="button" class="dashboard-btn" id="printTopBtn" title="Print Map">
+          <i class="fas fa-print"></i>
         </button>
       </div>
 

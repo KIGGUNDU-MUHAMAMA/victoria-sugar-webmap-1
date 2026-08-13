@@ -27,6 +27,9 @@ const WINDOW_FRAGMENTS = [
   // instead of the right-hand stack it used to render in (trigger and
   // panel are on the same side now).
   { parent: "mapLeftStack", url: "./windows/measure-panel.html" },
+  // Print/PDF Plot — #printTopBtn lives in #mapLeftBtnStack alongside the
+  // other tools above; see js/print-tool.js.
+  { parent: "mapLeftStack", url: "./windows/print-panel.html" },
   { parent: "mapLeftStack", url: "./windows/sentinel-analytics-panel.html" },
   { parent: "mapLeftStack", url: "./windows/search-panel.html" },
   { parent: "mapLeftStack", url: "./windows/info-help-popover.html" },
@@ -54,6 +57,15 @@ const WINDOW_FRAGMENTS = [
   // Opened from the pencil button next to the Survey window's Draw tab
   // Feature dropdown (js/survey-draw.js / js/manage-features.js).
   { parent: "body", url: "./windows/manage-features-panel.html" },
+  // NOTE: windows/manage-estates-panel.html is no longer loaded — estate
+  // management moved from a separate modal into the Survey window's own
+  // Estates tab (see windows/survey-panel.html #uamTabEstates and
+  // js/manage-estates.js). The old fragment file is left in place
+  // unreferenced rather than deleted.
+
+  // Shared confirm/prompt popup shell (see popups/popup.js showPopup()) —
+  // one instance reused by every small dialog across the app.
+  { parent: "body", url: "./popups/popup.html" }
 ];
 
 async function loadWindowFragments() {

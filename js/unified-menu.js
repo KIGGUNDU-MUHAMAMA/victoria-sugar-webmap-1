@@ -49,7 +49,21 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     if (!anySelected) switchTab("import");
   }
 
-  function closeMenu() {
+  // window.vslConfirmSurveyClose (set by js/survey-edit.js) is a loosely-
+  // coupled guard, same "expose a global hook, call it if present" pattern
+  // as window.closeSearchPanel/window.closeParcelStatusPanel above — lets
+  // an active, unsaved Edit-tab session block navigation away from it
+  // (closing this window, or switching to any other tab) until the user
+  // confirms discarding it. Resolves true immediately (no popup) whenever
+  // there's nothing to lose, so this is a no-op the vast majority of the
+  // time.
+  async function confirmLeaveIfEditing() {
+    if (typeof window.vslConfirmSurveyClose !== "function") return true;
+    return await window.vslConfirmSurveyClose();
+  }
+
+  async function closeMenu() {
+    if (!(await confirmLeaveIfEditing())) return;
     overlay.hidden = true;
     overlay.setAttribute("aria-hidden", "true");
     fabBtn.classList.remove("uam-open");
@@ -70,7 +84,14 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
   });
 
   // ── Tab switching ─────────────────────────────────────────────
-  function switchTab(tabId) {
+  async function switchTab(tabId) {
+    // Re-clicking the tab that's already active isn't "leaving" it — skip
+    // the confirm-discard guard entirely, otherwise an in-progress Edit
+    // session with unsaved changes would spuriously prompt every time its
+    // own nav button is clicked again.
+    const current = [...navBtns].find(b => b.getAttribute("aria-selected") === "true")?.dataset.uamTab;
+    if (current === tabId) return;
+    if (!(await confirmLeaveIfEditing())) return;
     navBtns.forEach(btn => {
       const active = btn.dataset.uamTab === tabId;
       btn.setAttribute("aria-selected", active ? "true" : "false");

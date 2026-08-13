@@ -1,7 +1,35 @@
 /**
- * Survey CSV preview + commit (Supabase Edge). Numbering is enforced in Postgres:
- * run `sql/006_vsl_survey_auto_numbering.sql` so `vsl_survey_batch_upsert` assigns
- * block codes 1,2,3… globally and parcel numbers 1,2,3… per parent block.
+ * Survey CSV preview + commit (Supabase Edge).
+ *
+ * COLUMN MAPPING — one format, identical for BLOCKS and PLOTS:
+ *
+ *   id         grouping key. Marks where one polygon's ring starts and ends.
+ *              Deliberately generic: the same file shape describes block
+ *              corners or plot corners, and nothing downstream needs to know
+ *              which. Never stored — the database generates its own codes.
+ *   eastings   \ projected coordinates, reprojected to WGS84 here and used
+ *   northings  / for the geometry, area and edge lengths.
+ *   name       the feature NAME -> vsl_parcels.parcel_name / vsl_blocks.block_name.
+ *
+ * Legacy headers are still accepted so older files keep importing:
+ *   parcel_id / block_id / feature_id  ->  id
+ *   description                        ->  name
+ *   point_number                       ->  ignored (see rowsToParcels)
+ *
+ * Codes are generated in Postgres by `vsl_survey_batch_upsert`: block codes
+ * 1,2,3… per estate and parcel codes 1,2,3… per parent block. See
+ * sql/019_vsl_survey_import_column_mapping.sql and sql/020_vsl_survey_name_column.sql.
+ *
+ * ⚠ DEPLOYS AS `quick-api`, NOT `vsl-survey-import`.
+ * The client calls whatever cfg.SURVEY_FUNCTION_NAME says, which defaults to
+ * "quick-api" (see surveyFunctionUrl() in js/survey-import.js). The directory
+ * name here does not match the deployed slug, so:
+ *
+ *     supabase functions deploy quick-api
+ *
+ * That mismatch already caused one silent drift — the estate-name title-casing
+ * below existed only in the deployed copy and was missing from this file. If
+ * you edit this file, deploy it, or the change does nothing.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import proj4 from "https://esm.sh/proj4@2.11.0";
@@ -39,17 +67,33 @@ function ensureProj4() {
   proj4Initialized = true;
 }
 
-type InputPoint = { x: number; y: number; point_number?: string | number; description?: string };
-type ParcelInput = { parcelId: string; points: InputPoint[] };
-type ParcelPreview = {
+// No point_number: vertex order comes from CSV row order (see rowsToParcels).
+type InputPoint = { x: number; y: number; name?: string };
+type FeatureInput = { featureId: string; points: InputPoint[] };
+type FeaturePreview = {
+  // Grouping key from the CSV's `id` column. Transient: used for previewing,
+  // the review table and error messages. Never written to the database.
+  featureId: string;
+  // Mirror of featureId under the old key, so a browser still running a
+  // cached copy of the previous client keeps working. Remove once clients
+  // have rolled over.
   parcelId: string;
   success: boolean;
   geometry?: { type: "Polygon"; coordinates: number[][][] };
   area_hectares?: number;
   num_vertices?: number;
   edge_distances?: Array<{ meters: number; label: string }>;
-  descriptions?: string;
+  // The feature NAME, from the `name` column.
+  name?: string;
   errors?: string[];
+  // Set by the client only on the "Automatically Choose Block" import path
+  // (Survey > Import > #surveyAutoSelectCb): the block this individual plot
+  // was resolved into by vsl_resolve_parcel_blocks, possibly overridden by
+  // the user in the review table before saving. Never produced by
+  // preview_batch — it is passed straight through to the commit RPC, which
+  // prefers it over p_parent_block_code. See
+  // sql/017_vsl_survey_batch_per_item_block.sql.
+  block_id?: string | null;
 };
 
 function fail(status: number, message: string, extra: Record<string, unknown> = {}) {
@@ -181,15 +225,15 @@ function hasSelfIntersection(ring: number[][]): boolean {
   return false;
 }
 
-function processParcel(
-  parcelId: string,
+function processFeature(
+  featureId: string,
   points: InputPoint[],
   skipSelfIntersectionCheck: boolean,
-): ParcelPreview {
+): FeaturePreview {
   const errors: string[] = [];
-  if (!parcelId) errors.push("Missing parcelId");
+  if (!featureId) errors.push("Missing id");
   if (!Array.isArray(points) || points.length < 3) errors.push("At least 3 points are required");
-  if (errors.length > 0) return { parcelId, success: false, errors };
+  if (errors.length > 0) return { featureId, parcelId: featureId, success: false, errors };
 
   const ring: number[][] = [];
   for (const p of points) {
@@ -201,13 +245,30 @@ function processParcel(
     }
     ring.push([lon, lat]);
   }
-  if (errors.length > 0) return { parcelId, success: false, errors };
-  if (ring.length < 3) return { parcelId, success: false, errors: ["Not enough valid points"] };
+  if (errors.length > 0) return { featureId, parcelId: featureId, success: false, errors };
+  if (ring.length < 3) {
+    return { featureId, parcelId: featureId, success: false, errors: ["Not enough valid points"] };
+  }
+
+  // Drop a repeated closing vertex if the file already carries one, so the
+  // closing step below cannot leave a zero-length edge behind. Survey exports
+  // routinely repeat the first point as the last row of a ring.
+  while (
+    ring.length > 3 &&
+    ring[0][0] === ring[ring.length - 1][0] &&
+    ring[0][1] === ring[ring.length - 1][1]
+  ) {
+    ring.pop();
+  }
+  if (ring.length < 3) {
+    return { featureId, parcelId: featureId, success: false, errors: ["Not enough distinct points"] };
+  }
+
   const first = ring[0];
   const last = ring[ring.length - 1];
   if (first[0] !== last[0] || first[1] !== last[1]) ring.push([first[0], first[1]]);
   if (!skipSelfIntersectionCheck && hasSelfIntersection(ring)) {
-    return { parcelId, success: false, errors: ["Polygon has self-intersections"] };
+    return { featureId, parcelId: featureId, success: false, errors: ["Polygon has self-intersections"] };
   }
   const edge_distances: Array<{ meters: number; label: string }> = [];
   for (let i = 0; i < ring.length - 1; i++) {
@@ -217,18 +278,21 @@ function processParcel(
     edge_distances.push({ meters, label: `${meters.toFixed(2)}m` });
   }
   const area = areaHectares(ring);
-  const descriptions = points
-    .map((p) => String(p.description ?? "").trim())
-    .filter(Boolean)
-    .join(" | ");
+  // The NAME, from the `name` column. First non-empty value in the group
+  // wins — the column is expected to repeat the same name on every row of a
+  // feature, so this reads it back exactly. (It also degrades sensibly on
+  // older files where the column held per-point labels: you get one stable
+  // label rather than every label concatenated.)
+  const name = points.map((p) => String(p.name ?? "").trim()).find(Boolean) ?? "";
   return {
-    parcelId,
+    featureId,
+    parcelId: featureId,
     success: true,
     geometry: { type: "Polygon", coordinates: [ring] },
     area_hectares: area,
     num_vertices: ring.length - 1,
     edge_distances,
-    descriptions: descriptions || undefined,
+    name: name || undefined,
   };
 }
 
@@ -246,33 +310,50 @@ function transformToWgs84(crs: string, easting: number, northing: number): [numb
 
 type CsvRow = Record<string, unknown>;
 
+/**
+ * Reads one CSV row into { id, eastings, northings, name }.
+ *
+ * `point_number` is deliberately ignored. It used to order the vertices, but
+ * in real exports it is a file-wide running counter rather than a per-feature
+ * one, and rings are often written with their first point repeated at the end
+ * to close them. Sorting on it therefore moved that duplicate next to its twin
+ * and produced a zero-length edge. CSV row order is the authoritative vertex
+ * order — which is how the surveyor's file is written in the first place.
+ * A consequence worth knowing: re-sorting the CSV before importing will
+ * scramble the polygons.
+ */
 function normalizeCsvRow(row: CsvRow): {
-  parcel_id: string;
-  point_number: number;
+  id: string;
   eastings: number;
   northings: number;
-  description: string;
+  name: string;
 } | null {
   const lower: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) {
-    lower[String(k).toLowerCase().trim()] = v;
+    // Strip a leading UTF-8 BOM. Files exported from Excel begin with one, so
+    // the first header arrives as "﻿id" and would never match.
+    lower[String(k).replace(/^﻿/, "").toLowerCase().trim()] = v;
   }
-  const parcel_id = String(lower["parcel_id"] ?? "").trim();
-  const pn = Number(lower["point_number"]);
+  // `id` is the current column; the rest are legacy headers kept working.
+  const id = String(
+    lower["id"] ?? lower["feature_id"] ?? lower["parcel_id"] ?? lower["block_id"] ?? "",
+  ).trim();
   const eastings = Number(lower["eastings"] ?? lower["easting"]);
   const northings = Number(lower["northings"] ?? lower["northing"]);
-  const description = String(lower["description"] ?? "");
-  if (!parcel_id || !Number.isFinite(pn) || !Number.isFinite(eastings) || !Number.isFinite(northings)) {
+  const name = String(lower["name"] ?? lower["description"] ?? "");
+  if (!id || !Number.isFinite(eastings) || !Number.isFinite(northings)) {
     return null;
   }
-  return { parcel_id, point_number: pn, eastings, northings, description };
+  return { id, eastings, northings, name };
 }
 
-function rowsToParcels(
+function rowsToFeatures(
   rows: CsvRow[],
   crs: string,
-): { parcels: ParcelInput[]; skipped: number; pointCount: number } {
-  const groups = new Map<string, Array<{ pn: number; east: number; north: number; desc: string }>>();
+): { features: FeatureInput[]; skipped: number; pointCount: number } {
+  // Map preserves insertion order, and rows are pushed in file order, so both
+  // the features and the vertices within each feature keep the CSV's ordering.
+  const groups = new Map<string, Array<{ east: number; north: number; name: string }>>();
   let skipped = 0;
   for (const row of rows) {
     const n = normalizeCsvRow(row);
@@ -280,26 +361,20 @@ function rowsToParcels(
       skipped++;
       continue;
     }
-    if (!groups.has(n.parcel_id)) groups.set(n.parcel_id, []);
-    groups.get(n.parcel_id)!.push({
-      pn: n.point_number,
-      east: n.eastings,
-      north: n.northings,
-      desc: n.description,
-    });
+    if (!groups.has(n.id)) groups.set(n.id, []);
+    groups.get(n.id)!.push({ east: n.eastings, north: n.northings, name: n.name });
   }
   let pointCount = 0;
-  const parcels: ParcelInput[] = [];
-  for (const [parcelId, pts] of groups) {
-    pts.sort((a, b) => a.pn - b.pn);
+  const features: FeatureInput[] = [];
+  for (const [featureId, pts] of groups) {
     pointCount += pts.length;
     const points: InputPoint[] = pts.map((p) => {
       const [lon, lat] = transformToWgs84(crs, p.east, p.north);
-      return { x: lon, y: lat, point_number: p.pn, description: p.desc };
+      return { x: lon, y: lat, name: p.name };
     });
-    parcels.push({ parcelId, points });
+    features.push({ featureId, points });
   }
-  return { parcels, skipped, pointCount };
+  return { features, skipped, pointCount };
 }
 
 function checkSurveySecret(req: Request): boolean {
@@ -330,9 +405,9 @@ Deno.serve(async (req) => {
       const rows: CsvRow[] = Array.isArray(body?.rows) ? body.rows : [];
       if (rows.length === 0) return fail(400, "No CSV rows supplied");
       const skip = !!body?.skipSelfIntersectionCheck;
-      const { parcels, skipped, pointCount } = rowsToParcels(rows, crs);
-      const results: ParcelPreview[] = parcels.map((p) =>
-        processParcel(p.parcelId, p.points, skip)
+      const { features, skipped, pointCount } = rowsToFeatures(rows, crs);
+      const results: FeaturePreview[] = features.map((f) =>
+        processFeature(f.featureId, f.points, skip)
       );
       const validCount = results.filter((r) => r.success).length;
       return ok({
@@ -355,26 +430,63 @@ Deno.serve(async (req) => {
         return fail(400, "layerType must be BLOCKS or PARCELS");
       }
       const parentBlockCode = body?.parentBlockCode != null ? String(body.parentBlockCode) : "";
-      const projectName = body?.projectName != null ? String(body.projectName) : "";
+
+      // Estate name, title-cased. Accepts either key: the client sends
+      // `projectName`, but `estate_name` is honoured first so a caller using
+      // the schema's own vocabulary works too.
+      const rawEstate = body?.estate_name != null
+        ? String(body.estate_name)
+        : (body?.projectName != null ? String(body.projectName) : "");
+      const estateName = rawEstate.trim()
+        ? rawEstate.trim().replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        : null;
+
       const coordinateSystem = body?.coordinateSystem != null ? String(body.coordinateSystem) : "";
       const additionalInfo = body?.additionalInfo != null ? String(body.additionalInfo) : "";
-      const results: ParcelPreview[] = Array.isArray(body?.results) ? body.results : [];
-      const valid = results.filter((r: ParcelPreview) => r.success && r.geometry);
-      if (valid.length === 0) return fail(400, "No valid parcels to commit");
+      const results: FeaturePreview[] = Array.isArray(body?.results) ? body.results : [];
+      const valid = results.filter((r: FeaturePreview) => r.success && r.geometry);
+      if (valid.length === 0) return fail(400, "No valid features to commit");
 
-      const p_items = valid.map((r: ParcelPreview) => ({
-        csv_parcel_id: r.parcelId,
-        geometry: r.geometry,
-        area_hectares: r.area_hectares,
-        num_vertices: r.num_vertices,
-        edge_distances: r.edge_distances,
-        descriptions: r.descriptions || "",
-      }));
+      const p_items = valid.map((r: FeaturePreview) => {
+        // Tolerate either key from the client: a cached copy of the previous
+        // build still sends parcelId/descriptions.
+        const featureId = r.featureId ?? r.parcelId ?? "";
+        const name = r.name ?? (r as { descriptions?: string }).descriptions ?? "";
+        return {
+          // Grouping key only — the RPC uses it to label errors, never stores it.
+          feature_id: featureId,
+          csv_parcel_id: featureId,
+          geometry: r.geometry,
+          area_hectares: r.area_hectares,
+          num_vertices: r.num_vertices,
+          edge_distances: r.edge_distances,
+          // The NAME -> parcel_name / block_name.
+          name,
+          // Same value under the old key, for a database that has not yet had
+          // sql/020 applied.
+          descriptions: name,
+          // Per-plot parent block, when the client resolved one. Omitted (null)
+          // for the ordinary "pick one block for the whole batch" path, where
+          // p_parent_block_code below still does the work.
+          block_id: typeof r.block_id === "string" && r.block_id.trim() !== ""
+            ? r.block_id.trim()
+            : null,
+        };
+      });
+
+      // Only one of the two is required. The RPC rejects PARCELS with neither
+      // a parent block code nor any per-item block_id, so let it decide
+      // rather than blocking here — a batch may legitimately arrive with an
+      // empty parentBlockCode when every item carries its own block.
+      const hasItemBlocks = p_items.some((it) => it.block_id !== null);
+      if (layerType === "PARCELS" && !hasItemBlocks && parentBlockCode.trim() === "") {
+        return fail(400, "Select a parent block, or enable automatic block selection.");
+      }
 
       const { data, error } = await admin.rpc("vsl_survey_batch_upsert", {
         p_layer_type: layerType,
         p_parent_block_code: layerType === "PARCELS" ? parentBlockCode : null,
-        p_project_name: projectName || null,
+        p_project_name: estateName,
         p_coordinate_system: coordinateSystem || null,
         p_additional_info: additionalInfo || null,
         p_items,

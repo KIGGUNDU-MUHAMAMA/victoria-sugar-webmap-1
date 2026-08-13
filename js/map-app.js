@@ -3,6 +3,7 @@ import { clearStatus, parseNum, setStatus, vincentyDistanceMeters, computeUtmCar
 import { initSurveyImport } from "./survey-import.js";
 import { initSurveyDraw } from "./survey-draw.js";
 import { initManageFeatures } from "./manage-features.js";
+import { initManageEstates } from "./manage-estates.js";
 import { initSurveyEdit } from "./survey-edit.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
 import { initCoordExtractDrawer } from "./coord-extract-drawer.js";
@@ -11,6 +12,8 @@ import { initFarmReports } from "./farm-reports.js";
 import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
 import { initExportTools } from "./export-tools.js";
 import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
+import { initPrintTool } from "./print-tool.js";
+import { confirmDanger } from "../popups/popup.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -50,6 +53,22 @@ let isAuthenticated = false;
 let selectedFeature = null;
 let selectedLayerType = null;
 let parcelActionOverlay;
+// Whether a plain map click is allowed to select a block/parcel and show
+// the floating .parcel-action-toolbar (Log Activity/Alert/Info). Survey's
+// Edit tab (selecting a feature to reshape) and Draw tab (drawing a new
+// one) both turn this off for the duration of their session — see
+// window.vslSetParcelClickEnabled below and js/survey-edit.js /
+// js/survey-draw.js — so clicking a parcel while editing/drawing doesn't
+// also pop up the unrelated toolbar underneath.
+let parcelClickSelectionEnabled = true;
+window.vslSetParcelClickEnabled = function (enabled) {
+  parcelClickSelectionEnabled = !!enabled;
+  if (!parcelClickSelectionEnabled) {
+    selectedFeature = null;
+    selectedLayerType = null;
+    hideParcelActionToolbar();
+  }
+};
 let activeInteraction = null;
 let activeSnapInteractions = [];
 let smartMeasureListener = null;
@@ -103,6 +122,17 @@ const ALERT_SEVERITY_COLORS = {
   critical: "#d32f2f",
   warning: "#f9a825",
   information: "#1976d2"
+};
+
+/** Same severity colors as ALERT_SEVERITY_COLORS, as translucent fills —
+ *  used by parcelsLayer's style function to color a plot by its worst
+ *  unresolved alert (see _alert_severity/refreshParcelAlertBadges),
+ *  overriding the cultivation-status fill so an alert is visible on the
+ *  map itself, not just in the "Alerts(n)" text line/popups. */
+const ALERT_SEVERITY_FILL = {
+  critical: "rgba(211, 47, 47, 0.42)",
+  warning: "rgba(249, 168, 37, 0.42)",
+  information: "rgba(25, 118, 210, 0.36)"
 };
 
 /** Vertical pixel offset (screen convention: positive = down) from the
@@ -1215,6 +1245,29 @@ function initProfileModal() {
 let alertsListRecords = [];
 let alertsListCurrentParcel = null; // { id, label } — so resolving an alert can refresh this same list
 
+/** Batched created_by/resolved_by -> profile full_name lookup for a list of
+ *  alert rows, mirroring the same _whoNames attachment buildParcelInfoHtml
+ *  does (see RECORD_WHO_COLUMNS/buildRecordDetailRows) — needed here too
+ *  since the Alerts List modal loads its rows directly from vsl_alerts
+ *  rather than going through buildParcelInfoHtml, so without this the
+ *  record-detail drill-down opened from it ("Logged by"/"Resolved by")
+ *  fell back to showing the raw user id instead of a name. */
+async function attachAlertWhoNames(alerts) {
+  const cols = RECORD_WHO_COLUMNS.alert;
+  const whoIds = new Set();
+  for (const r of alerts) for (const c of cols) if (r[c]) whoIds.add(r[c]);
+
+  let nameById = new Map();
+  if (whoIds.size) {
+    const { data: whoProfiles } = await supabase.from("vsl_profiles").select("id, full_name").in("id", Array.from(whoIds));
+    nameById = new Map((whoProfiles || []).map((p) => [p.id, p.full_name]));
+  }
+  for (const r of alerts) {
+    r._whoNames = {};
+    for (const c of cols) if (r[c]) r._whoNames[c] = nameById.get(r[c]) || null;
+  }
+}
+
 async function openAlertsListModal(parcelId, parcelLabel) {
   const overlay = document.getElementById("alertsListOverlay");
   const inner = document.getElementById("alertsListInner");
@@ -1236,6 +1289,7 @@ async function openAlertsListModal(parcelId, parcelLabel) {
     if (error) throw error;
 
     alertsListRecords = data || [];
+    await attachAlertWhoNames(alertsListRecords);
     inner.innerHTML = buildAlertsListTableHtml(alertsListRecords, "No alerts yet.", true);
   } catch (err) {
     console.error("[Victoria] Failed to load alerts list:", err);
@@ -2599,6 +2653,15 @@ const parcelsLayer = new ol.layer.Vector({
       fillColor = CULTIVATION_PALETTE[status].fill;
     }
 
+    // An unresolved alert takes priority over the cultivation-status color
+    // — _alert_severity is only set while at least one of this plot's
+    // alerts is still open/investigating (see refreshParcelAlertBadges),
+    // so this naturally clears itself once the alert is resolved.
+    const alertSeverityForFill = feature.get("_alert_severity");
+    if (alertSeverityForFill && ALERT_SEVERITY_FILL[alertSeverityForFill]) {
+      fillColor = ALERT_SEVERITY_FILL[alertSeverityForFill];
+    }
+
     const styles = [];
 
     styles.push(new ol.style.Style({
@@ -3403,6 +3466,7 @@ function clearParcelStatusSelection() {
 }
 
 function closeParcelStatusPanel() {
+  window.vslClosePrintPanel?.();
   const panel = document.getElementById("parcelStatusPanel");
   const btn = document.getElementById("parcelStatusBtn");
   parcelStatusState.panelOpen = false;
@@ -3416,6 +3480,7 @@ function closeParcelStatusPanel() {
 }
 
 function closeUAM() {
+  window.vslClosePrintPanel?.();
   // Direct DOM close — does not rely on window.closeMenu being available yet
   const uamOverlay = document.getElementById("unifiedActionMenu");
   const fabBtn = document.getElementById("toolsTopBtn") || document.getElementById("toolsFabBtn");
@@ -3522,6 +3587,18 @@ function tryParcelStatusMapClick(evt) {
   return true;
 }
 
+/** Busy overlay covering the Select window's body while Delete is in
+ *  flight — same generic pattern as Survey's #surveyBusyOverlay/
+ *  window.vslSurveyBusy (survey-panel.html / survey-edit.js), just scoped
+ *  to this window's own overlay element instead of sharing that one. */
+function setParcelStatusBusy(on, text) {
+  const overlay = document.getElementById("parcelStatusBusyOverlay");
+  const textEl = document.getElementById("parcelStatusBusyOverlayText");
+  if (!overlay) return;
+  if (textEl && text) textEl.textContent = text;
+  overlay.hidden = !on;
+}
+
 function setupParcelStatusPanel() {
   const toolbarBtn = document.getElementById("parcelStatusBtn");
   const closeBtn = document.getElementById("parcelStatusCloseBtn");
@@ -3542,7 +3619,7 @@ function setupParcelStatusPanel() {
     const features = parcelStatusState.selectedFeatures;
     const lt = parcelStatusState.selectedLayerType;
     if (!features || features.length === 0 || !lt) return;
-    
+
     if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
       setParcelStatusFormError("Sign in to delete features.");
       return;
@@ -3553,26 +3630,57 @@ function setupParcelStatusPanel() {
     }
 
     const modeName = lt === "BLOCKS" ? "block" : "parcel";
-    const msg = `CRITICAL WARNING: You are about to permanently delete ${features.length} ${modeName}(s).\n\nThis action cannot be undone. Are you absolutely sure?`;
-    if (!confirm(msg)) return;
+    const ids = features.map(f => f.getId());
+
+    // A block with linked plots can't be deleted (FK constraint) — same
+    // guard/message as Survey > Estates deleting an estate with linked
+    // blocks (see manage-estates.js's confirmDanger call).
+    if (lt === "BLOCKS") {
+      const { count, error: countError } = await supabase
+        .from("vsl_parcels")
+        .select("id", { count: "exact", head: true })
+        .in("block_id", ids);
+      if (!countError && count > 0) {
+        await confirmDanger({
+          title: "Can't Delete Block",
+          message: "You can not delete a block with linked Plots, manually delete the linked plots first."
+        });
+        return;
+      }
+    }
+
+    const confirmed = await confirmDanger({
+      title: `Delete ${features.length} ${modeName}${features.length > 1 ? "s" : ""}`,
+      message: `You are about to permanently delete ${features.length} ${modeName}(s). This action cannot be undone.`,
+      confirmLabel: "Delete"
+    });
+    if (!confirmed) return;
 
     deleteBtn.disabled = true;
     setParcelStatusFormError("");
-    setStatus(statusEl, `Deleting ${features.length} ${modeName}(s)...`);
+    setParcelStatusBusy(true, `Deleting ${features.length} ${modeName}(s)…`);
 
     const tableName = lt === "BLOCKS" ? "vsl_blocks" : "vsl_parcels";
-    const ids = features.map(f => f.getId());
-    
+
     let errorCount = 0;
+    let lastError = null;
     for (const id of ids) {
       const { error } = await supabase.from(tableName).delete().eq("id", id);
-      if (error) errorCount++;
+      if (error) { errorCount++; lastError = error; }
     }
 
     deleteBtn.disabled = false;
+    setParcelStatusBusy(false);
 
     if (errorCount > 0) {
-      setParcelStatusFormError(`Failed to delete ${errorCount} of ${features.length} item(s).`);
+      // A stale linked-plots count (a plot added concurrently since this
+      // panel's selection was made) hits the same FK constraint
+      // server-side — same message either way, since the cause is identical.
+      setParcelStatusFormError(
+        lt === "BLOCKS" && /foreign key|violates/i.test(lastError?.message || "")
+          ? "You can not delete a block with linked Plots, manually delete the linked plots first."
+          : `Failed to delete ${errorCount} of ${features.length} item(s).`
+      );
     } else {
       setStatus(statusEl, `Successfully deleted ${features.length} ${modeName}(s).`);
       clearParcelStatusSelection();
@@ -4176,6 +4284,12 @@ function buildLegendList() {
     list.appendChild(li);
   });
 }
+// js/print-tool.js reuses this exact same cultivation-status data (colors
+// can never drift from what the map actually draws) for its own legend
+// overlay, by calling this then reading #legendStatusList's rendered
+// <li>s — same loosely-coupled window.* hook pattern as
+// vslSetParcelClickEnabled/vslConfirmSurveyClose elsewhere in this app.
+window.vslBuildLegendList = buildLegendList;
 
 function closeLegendPanel() {
   const panel = document.getElementById("legendPanel");
@@ -4245,6 +4359,7 @@ function setupInfoPopup() {
   // modal (top-toolbar "Modify" button), unaffected by this.
   map.on("click", (evt) => {
     if (activeInteraction) return; // do not popup when measuring or drawing
+    if (!parcelClickSelectionEnabled) return; // Survey Edit/Draw session in progress — see window.vslSetParcelClickEnabled
 
     if (document.getElementById("coordExtractDrawer")?.dataset.picking === "1") {
       return;
@@ -4741,6 +4856,7 @@ function openSearchPanel(tab = "parcel") {
 }
 
 function closeSearchPanel(options = {}) {
+  window.vslClosePrintPanel?.();
   const { clearHighlight = true } = options;
   const panel = document.getElementById("searchPanel");
   const btn = document.getElementById("searchPanelBtn");
@@ -5956,10 +6072,10 @@ async function initUser() {
     ]) {
       if (el) el.disabled = true;
     }
+    // surveyPreviewBtn now does double duty as Preview AND Save (see
+    // survey-import.js) — disabling it alone covers both for MANAGMENT.
     const sp = document.getElementById("surveyPreviewBtn");
-    const ss = document.getElementById("surveySaveBtn");
     if (sp) sp.disabled = true;
-    if (ss) ss.disabled = true;
   }
   return true;
 }
@@ -6084,6 +6200,20 @@ async function initMap() {
   });
 
   initManageFeatures({ cfg, supabase, setStatus, statusEl });
+  initManageEstates({ cfg, supabase, setStatus, statusEl });
+
+  initPrintTool({
+    map,
+    setStatus,
+    statusEl,
+    closeOtherPanels: () => {
+      closeSearchPanel({ clearHighlight: false });
+      closeUAM();
+      closeParcelStatusPanel();
+      const mp = document.getElementById("measurePanel");
+      if (mp) mp.hidden = true;
+    }
+  });
 
   initSurveyEdit({
     map,

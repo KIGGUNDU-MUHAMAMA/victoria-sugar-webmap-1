@@ -2,9 +2,15 @@
      Draw tab's Feature dropdown (survey-panel.html #drawManageFeaturesBtn).
      CRUD over vsl_feature_type. Plot/Block rows are system-owned
      (is_system=true): their geometry kind + routing can't change, so those
-     two rows only allow editing color/icon, not delete. -->
+     two rows only allow editing color/icon/size/etc, not delete.
+
+     List view: 3 collapsible <details> sections (Point/Line/Polygon),
+     each a narrow 3-column table (icon+swatch, name, "on map" display
+     badges) instead of one long flat list — mirrors the Estates tab's
+     compact-row look (windows/survey-panel.html #uamTabEstates) rather
+     than the old wide, form-heavy layout. -->
 <div id="manageFeaturesModal" class="vsl-modal-overlay" hidden>
-  <div class="vsl-modal-card vsl-modal-card--wide popWinMain">
+  <div class="vsl-modal-card vsl-modal-card--wide mf-modal popWinMain">
     <header class="popWinHead">
       <div class="popWinHead__inner">
         <span class="popWinIcon"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
@@ -15,21 +21,12 @@
       </button>
     </header>
 
-    <div class="popWinTabs">
-      <select id="mfKindFilter" class="popWinTabs__select" aria-label="Filter by geometry type">
-        <option value="">All types</option>
-        <option value="point">Point</option>
-        <option value="line">Line</option>
-        <option value="polygon">Polygon</option>
-      </select>
-    </div>
-
     <div class="popWinBody mf-body">
       <div id="mfListWrap">
         <button type="button" id="mfAddBtn" class="uam-btn uam-btn--primary u-w-100 u-mb-6">
           <i class="fas fa-plus"></i> Add Feature
         </button>
-        <div id="mfList" class="mf-list"></div>
+        <div id="mfSections"></div>
       </div>
 
       <!-- Create/edit form — hidden until Add or an edit pencil is clicked -->
@@ -48,13 +45,31 @@
           </select>
         </label>
 
-        <label class="mf-label" id="mfLinetypeRow">Line style
-          <select id="mfLinetypeSelect" class="uam-select">
-            <option value="solid">Solid</option>
-            <option value="dashed">Dashed</option>
-            <option value="dotted">Dotted</option>
-          </select>
-        </label>
+        <!-- ── Point-only params ── -->
+        <div id="mfPointParams" class="mf-param-group" hidden>
+          <div class="mf-row-2">
+            <label class="mf-label">Icon size (px)
+              <input type="number" id="mfIconSizeInput" class="uam-input" min="6" max="40" step="1" value="10">
+            </label>
+            <label class="mf-label">Rotation (°)
+              <input type="number" id="mfRotationInput" class="uam-input" min="0" max="359" step="1" value="0">
+            </label>
+          </div>
+        </div>
+
+        <!-- ── Line/Polygon-shared params ── -->
+        <div id="mfLinetypeRow" class="mf-row-2">
+          <label class="mf-label">Line style
+            <select id="mfLinetypeSelect" class="uam-select">
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+            </select>
+          </label>
+          <label class="mf-label">Line weight (px)
+            <input type="number" id="mfWeightInput" class="uam-input" min="1" max="12" step="1" value="2">
+          </label>
+        </div>
 
         <label class="mf-label">Color
           <input type="color" id="mfColorInput" class="mf-color-input" value="#3f8f3f">
@@ -68,6 +83,26 @@
           </div>
           <div id="mfIconGrid" class="mf-icon-grid" role="listbox" aria-label="Choose an icon"></div>
           <input type="hidden" id="mfIconInput" value="">
+        </div>
+
+        <!-- ── "Display on map" — which text label(s), if any, render next
+             to the feature. Point/Line only ever have Name to offer (1
+             checkbox); Polygon also offers Area (2 checkboxes) — the
+             vsl_feature_type_display_params_max DB constraint caps this at
+             1/2 respectively, but since that's exactly how many checkboxes
+             each group has, there's nothing extra to enforce client-side. -->
+        <div class="mf-label">
+          Show on map
+          <div id="mfDisplayGroup" class="mf-display-group">
+            <label class="mf-checkbox-row">
+              <input type="checkbox" id="mfDisplayNameCb" value="name">
+              <span>Name label</span>
+            </label>
+            <label class="mf-checkbox-row" id="mfDisplayAreaRow" hidden>
+              <input type="checkbox" id="mfDisplayAreaCb" value="area">
+              <span>Area label</span>
+            </label>
+          </div>
         </div>
 
         <label class="mf-checkbox-row">

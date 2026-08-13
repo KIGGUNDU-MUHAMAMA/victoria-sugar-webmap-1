@@ -1773,9 +1773,9 @@ left: 12px;
   border: 1px solid #c5d9bc;
 }
 
-.survey-conditional {
+/* .survey-conditional {
   margin-top: 0.5rem;
-}
+} */
 
 .survey-dropzone {
   margin-top: 0.45rem;
@@ -2797,6 +2797,21 @@ select.search-panel__input {
 .futuristic-icon-btn[hidden] {
   display: none !important;
 }
+/* Disabled state had no visual treatment at all — a disabled Preview/Save
+   or Clear button (survey-panel.html's Import tab, before a file is
+   chosen) looked exactly as clickable as an active one, just silently
+   ate the click. Dim it and kill the hover lift so "inactive" actually
+   reads as inactive. */
+.futuristic-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none !important;
+}
+.futuristic-icon-btn:disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
 .futuristic-icon-btn.btn-go,
 .futuristic-icon-btn.btn-add {
   background: linear-gradient(135deg, var(--vsl-primary) 0%, #2e7d32 100%);
@@ -3154,6 +3169,13 @@ select.search-panel__input {
   display: flex;
   gap: 3px;
 }
+/* Same [hidden] fix as .uam-checkbox-row/.futuristic-icon-btn elsewhere in
+   this file — the class rule's `display: flex` above otherwise beats the
+   browser's own `[hidden] { display: none }` rule (e.g. #surveyParcelEstateRow,
+   hidden while "Automatically select" is checked). */
+.uam-field-row[hidden] {
+  display: none !important;
+}
 
 .uam-inline-label {
   font-size: 0.8rem;
@@ -3347,6 +3369,202 @@ select.search-panel__input {
   color: #2563eb;
 }
 
+/* Boxed variant — rounded bluish card instead of plain text, for a short
+   bulleted instruction list (e.g. Edit tab's "how to" hint, shown only
+   while an editing session is active). Combine with .uam-hint--blue:
+   <ul class="uam-hint uam-hint--blue uam-hint--box">. */
+.uam-hint--box {
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem 0.55rem 1.4rem;
+  font-size: 0.72rem;
+}
+
+.uam-hint--box li {
+  margin: 2px 0;
+}
+
+/* ── Block assignment review (Survey > Import > "Automatically Choose
+   Block") ───────────────────────────────────────────────────────────────
+   #surveyAssignPanel in windows/survey-panel.html, populated by
+   renderAssignmentRows() in js/survey-import.js. Sits between the preview
+   summary and the footer buttons, listing every previewed plot with the
+   block it resolved into so the user can verify/override before saving.
+
+   Stacked cards, not a table: this panel is a narrow docked column, so an
+   ID + two dropdowns only fit stacked vertically. */
+.survey-assign {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.survey-assign[hidden] {
+  display: none !important;
+}
+
+/* Sticky header strip — "187 matched · 13 unmatched" plus the collapse
+   chevron, so the counts stay visible while the list scrolls. */
+.survey-assign__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(63, 143, 63, 0.08);
+  border-bottom: 1px solid var(--border);
+}
+.survey-assign__count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.survey-assign__toggle {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+.survey-assign__toggle:hover {
+  background: rgba(63, 143, 63, 0.15);
+  color: var(--text);
+}
+
+/* Capped height so a 200-plot import can't push the footer buttons off the
+   panel — the list scrolls inside this box instead. */
+.survey-assign__scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.survey-assign__scroll[hidden] {
+  display: none !important;
+}
+
+.survey-assign__group + .survey-assign__group {
+  margin-top: 10px;
+}
+.survey-assign__group[hidden] {
+  display: none !important;
+}
+
+.survey-assign__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--primary);
+}
+.survey-assign__group--warn .survey-assign__title {
+  color: var(--danger);
+}
+.survey-assign__note {
+  margin: 0 0 6px;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: var(--danger);
+}
+
+.survey-assign__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* One plot. Left accent bar is the at-a-glance matched/unmatched tell. */
+.sa-row {
+  padding: 5px 6px 6px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.sa-row--unmatched {
+  border-left-color: var(--danger);
+  background: rgba(179, 54, 54, 0.05);
+}
+/* Turns green the moment the user picks a block for an unmatched plot —
+   immediate confirmation it's no longer going to be discarded. */
+.sa-row--resolved {
+  border-left-color: var(--primary);
+  background: rgba(63, 143, 63, 0.06);
+}
+
+.sa-row__id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text);
+}
+/* Zooms the map to this plot — verification is the whole point of the
+   table, and the ID is the obvious thing to click. */
+.sa-row__zoom {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.65rem;
+}
+.sa-row__zoom:hover {
+  background: rgba(63, 143, 63, 0.15);
+  color: var(--primary);
+}
+
+.sa-row__selects {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* Same shrunken metrics for both dropdowns — .uam-select is sized for the
+   panel's main fields, which is too tall to repeat 200 times. */
+.sa-row__selects select {
+  width: 100%;
+  padding: 3px 5px;
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+.sa-row__selects select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+/* Nothing chosen yet on an unmatched plot — this row is headed for the
+   discard list, so flag the empty select rather than letting it look like
+   any other. */
+.sa-row__selects select.is-empty {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* "+" button next to an estate <select> (create new estate). Square,
    matches the select's height, sits flush next to it in a .uam-field-row. */
 .uam-icon-btn {
@@ -3381,19 +3599,46 @@ select.search-panel__input {
 .u-flex-1 { flex: 1; }
 .u-hidden { display: none !important; }
 
-/* "Automatic" checkbox row above the estate/block filter in the Draw tab */
+/* "Automatic" checkbox row above the estate/block filter in the Draw tab —
+   also used by the Import tab's "Automatically select" row. Checkbox +
+   label pushed to the row's right edge (justify-content: flex-end). */
 .uam-checkbox-row {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   font-size: 0.82rem;
   color: var(--text);
-  margin: 2px 0 8px;
   cursor: pointer;
 }
-
+/* Same [hidden] fix as .futuristic-icon-btn/.popWinActionBtns elsewhere in
+   this file — the class rule's `display: flex` above has equal-or-higher
+   specificity than the browser's own `[hidden] { display: none }` rule, so
+   without this, setting the hidden attribute (e.g. #surveyAutoSelectRow)
+   silently did nothing. */
+.uam-checkbox-row[hidden] {
+  display: none !important;
+}
+#surveyLayerSelect{
+  margin-bottom:4px;
+}
+#surveyAutoSelectRow{
+  margin-top:0px
+}
+/* The app-wide input/select/button reset (near the top of this file) sets
+   width:100% on every <input> — same same-specificity gap as .mf-row__edit
+   and others elsewhere in this file. Without an explicit width here, the
+   checkbox's native square stays small but its *layout box* claims the
+   row's full width, shoving the label out to the far edge and wrapping it
+   (exactly the look this rule fixes). */
 .uam-checkbox-row input[type="checkbox"] {
-  margin: 0;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex: 0 0 auto;
+  margin-top: 0px;
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 
 /* Survey no longer needs its own mobile drill-down rules here — docked in
@@ -4478,6 +4723,17 @@ select.search-panel__input {
 .vsl-modal-overlay[hidden] {
   display: none !important;
 }
+
+/* Record Detail is a drill-down that can be opened from within another
+   already-open modal (Alerts List, or the Feature Info panel's repeating
+   groups) — every .vsl-modal-overlay shares the same z-index (2000) above,
+   and for equal z-index, later DOM order wins. record-detail-modal.html is
+   fetched before alerts-list-modal.html (see WINDOW_FRAGMENTS in
+   js/app-boot.js), so without this it was rendering BEHIND the Alerts
+   List modal instead of on top of it. */
+#recordDetailOverlay {
+  z-index: 2100;
+}
 /* Background/border/radius/shadow now come from .popWinMain (applied
    alongside this class in edit-details-modal.html) — .vsl-modal-card only
    controls this modal's sizing/entrance animation on top of that. */
@@ -4733,6 +4989,41 @@ select.search-panel__input {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  position: relative; /* anchors .uam-body-loading below, regardless of .popWinBody's own scroll */
+}
+
+/* Busy overlay covering a pop window's body while an async action (e.g.
+   Survey Edit tab's Save) is in flight — see survey-panel.html's
+   #surveyBusyOverlay and window.vslSurveyBusy in survey-edit.js. */
+.uam-body-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+.uam-body-loading[hidden] {
+  display: none;
+}
+#editSaveBtn i{
+  padding: 5px;
+}
+.uam-body-loading__spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.uam-body-loading__text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
 }
 .popWinTabs--vertical {
   flex-direction: column;
@@ -4819,6 +5110,98 @@ select.search-panel__input {
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
+/* ── Print/PDF Plot — draggable/resizable legend overlay + fixed north
+   arrow, both docked directly over the live map (js/print-tool.js).
+   Reuses .legend-panel__item/.legend-panel__swatch above for its rows
+   (their markup is cloned straight from #legendStatusList), styled here
+   only as the floating card + drag/resize handles around them. ────────── */
+.print-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 5;
+  width: 170px;
+  min-width: 120px;
+  min-height: 60px;
+  max-width: 60vw;
+  max-height: 60vh;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(6, 26, 22, 0.18);
+  padding: 0.5rem 0.6rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow: hidden;
+  user-select: none;
+}
+.print-legend__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.print-legend__drag {
+  cursor: grab;
+  color: #8a8f8c;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.print-legend__drag:hover {
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.06);
+}
+.print-legend__list {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+.print-legend__list .legend-panel__item {
+  font-size: 0.72rem;
+}
+.print-legend__resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  border-right: 2px solid rgba(0, 0, 0, 0.28);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.28);
+  border-radius: 0 0 4px 0;
+}
+
+.print-north-arrow {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 6px 16px rgba(6, 26, 22, 0.16);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  color: var(--text);
+  pointer-events: none;
+}
+.print-north-arrow i {
+  transform: rotate(-45deg);
+  font-size: 0.95rem;
+}
+.print-north-arrow span {
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .popWinBody {
   flex: 1 1 auto;
   min-height: 0;
@@ -4877,6 +5260,15 @@ select.search-panel__input {
 }
 .popWinActionBtns .futuristic-icon-btn:hover {
   transform: none;
+}
+/* The rule above (rightly) blocks the round button's lift/scale for this
+   rectangular footer variant, and the base rule further up always sets
+   box-shadow: none — between the two, hovering a footer button (Preview/
+   Save/Clear/Cancel/Add New/…) had *no* visual feedback at all. Same fix
+   #parcelStatusModifyBtn already used below: a colour shift via filter,
+   since transform/box-shadow are off the table here. */
+.popWinActionBtns .futuristic-icon-btn:hover:not(:disabled) {
+  filter: brightness(0.92);
 }
 
 /* Select window's Modify button reacts on hover with a colour shift only
@@ -5007,6 +5399,14 @@ select.search-panel__input {
 
 .vsl-modal-card--wide {
   max-width: 640px;
+}
+
+/* Manage Features used the shared 640px width by default — far wider than
+   its actual content (a short name + a couple of small badges per row)
+   needs, which is the "so messy"/"width too wide" complaint. Scoped
+   narrower, same pattern as #featureInfoPanel/#logActivityModal below. */
+.mf-modal.vsl-modal-card--wide {
+  max-width: 420px;
 }
 
 /* feature-info-panel's grouped/collapsible content can run much taller than
@@ -5453,31 +5853,71 @@ select.search-panel__input {
   gap: 0.6rem;
 }
 
-.mf-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
 .mf-list-empty {
   font-size: 0.85rem;
   color: var(--muted);
   padding: 8px 4px;
 }
 
-.mf-list-group-heading {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 8px 2px 2px;
+/* ── Collapsible Point/Line/Polygon sections (#mfSections) — replaces the
+   old single flat .mf-list + uppercase group-heading dividers with 3
+   native <details>, each holding its own short .mf-row list. Narrower and
+   easier to scan than one long mixed list, same idea as the Estates tab's
+   compact rows (.me-row). ── */
+.mf-section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.mf-section:last-child {
+  margin-bottom: 0;
 }
 
-.mf-list-group-heading:first-child {
-  margin-top: 0;
+.mf-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f4f7f1;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none; /* kill the default <summary> disclosure triangle */
+  user-select: none;
+}
+.mf-section__head::-webkit-details-marker {
+  display: none;
+}
+
+.mf-section__count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.mf-section__chevron {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.mf-section[open] .mf-section__chevron {
+  transform: rotate(180deg);
+}
+
+.mf-section__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .mf-row {
@@ -5519,26 +5959,218 @@ select.search-panel__input {
   background: #f0f4ee;
   border-radius: 5px;
   padding: 2px 6px;
+  margin-left: 6px;
 }
 
+/* "Show on map" badges (name/area label toggles — see the display_params
+   column) rendered inline in each row, right before the edit button. */
+.mf-row__display {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+.mf-row__display-badge {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--vsl-primary, #2e7d32);
+  background: #eaf5ea;
+  border-radius: 5px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.mf-row__display-badge--none {
+  color: var(--muted);
+  background: #f0f4ee;
+}
+
+/* The app-wide `input,select,button,textarea { width:100% }` / `button {
+   background:var(--primary) }` reset (styles.css top, meant for auth-form
+   buttons) wasn't fully overridden here — only background/color/border/
+   padding were set, not width or border-radius, and CSS applies each
+   *property* from whichever rule wins that property, not whole rules
+   wholesale. The result: every .mf-row__edit stretched to 100% width with
+   a 10px pill radius, turning each row into a giant full-bleed button and
+   pushing its sibling (and the name label) out of view / into horizontal
+   overflow. Every property the base reset touches is now pinned here
+   explicitly so nothing leaks through. */
 .mf-row__edit {
   flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  margin-top: 0;
   border: none;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 0.85rem;
-  padding: 4px;
+  font-size: 0.8rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .mf-row__edit:hover {
   color: var(--primary);
+  background: #eef4ea;
+}
+
+/* Destructive variant of the above (used elsewhere alongside
+   .mf-row__edit) — red hover instead of the default green. */
+.mf-row__edit--danger:hover {
+  color: var(--danger);
+  background: #fdeaea;
+}
+
+/* ── MANAGE ESTATES MODAL (windows/manage-estates-panel.html) ──
+   Now lives in the Survey window's own Estates tab (windows/survey-panel.
+   html #uamTabEstates) instead of a separate modal — compact table look,
+   name+block-count on the left, small paired action buttons on the right,
+   one thin divider per row instead of a full box. */
+
+.me-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.me-list-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.me-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.me-list-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 10px 4px;
+}
+
+.me-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.me-row:last-child {
+  border-bottom: none;
+}
+
+.me-row__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.me-row__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me-block_count {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.me-row__actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* Shared app-wide row-action button (edit/delete) — this is the pair the
+   user picked as the canonical style from Survey > Estates. `.me-row__btn`
+   is kept as an alias (rather than touching manage-estates.js) so any
+   other row-action list (Manage Features, etc.) can just use
+   `.vsl-icon-action-btn` directly instead of duplicating this block.
+   Explicit width/height here for the same reason .mf-row__edit needed
+   them — the app-wide `button { width:100% }` reset otherwise wins that
+   property regardless of this rule's higher specificity. */
+.vsl-icon-action-btn,
+.me-row__btn {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.vsl-icon-action-btn:hover,
+.me-row__btn:hover {
+  background: #eef4ea;
+  color: var(--primary);
+}
+.vsl-icon-action-btn--danger,
+.me-row__btn--danger {
+  color: var(--danger);
+  border-color: rgba(179, 54, 54, 0.35);
+}
+.vsl-icon-action-btn--danger:hover,
+.me-row__btn--danger:hover {
+  background: #fdeaea;
+  color: var(--danger);
 }
 
 .mf-form {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
+}
+
+/* Same [hidden] fix this file needs everywhere a class rule sets its own
+   `display` (.uam-hint/.uam-checkbox-row/.futuristic-icon-btn/…) — without
+   it, mfPointParams/mfLinetypeRow/mfDisplayAreaRow's [hidden] toggling
+   (survey kind-dependent form fields) would silently do nothing. */
+.mf-param-group[hidden],
+.mf-row-2[hidden] {
+  display: none !important;
+}
+
+/* Two fields side by side (icon size+rotation, line style+weight) — same
+   row-of-inputs shape .mf-label already gives a single field, just paired. */
+.mf-row-2 {
+  display: flex;
+  gap: 0.6rem;
+}
+.mf-row-2 > .mf-label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.mf-display-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .mf-label {
@@ -5624,7 +6256,18 @@ select.search-panel__input {
   color: var(--text);
   cursor: pointer;
 }
+.mf-checkbox-row[hidden] {
+  display: none !important;
+}
 
+/* Same width/height gap as .uam-checkbox-row's checkbox (app-wide
+   `input { width:100% }` reset otherwise stretches the box invisibly and
+   shoves the label out to the row's edge). */
 .mf-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex: 0 0 auto;
   margin: 0;
+  accent-color: var(--primary);
 }

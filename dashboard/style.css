@@ -475,16 +475,19 @@ input.form-input:focus, select.form-input:focus {
 .resolve-alert-summary .ras-title { font-weight: 700; color: var(--gray-900); margin-bottom: 4px; }
 .resolve-alert-summary .ras-meta  { font-size: 11px; color: var(--gray-500); margin-top: 6px; }
 
-/* Icon-only row-action buttons used across every table */
+/* Icon-only row-action buttons used across every table — matches the
+   webmap app's edit/delete row buttons (Survey > Estates tab; see
+   .vsl-icon-action-btn / .me-row__btn in the webmap's css/styles.css) so
+   the same edit/delete pair looks and reacts identically in both apps. */
 .icon-btn {
   width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--radius-sm); border: 1px solid var(--gray-300);
+  border-radius: 7px; border: 1px solid var(--gray-300);
   background: var(--white); color: var(--gray-700); cursor: pointer;
   font-size: 13px; transition: all .15s; flex-shrink: 0; padding: 0;
 }
-.icon-btn:hover { background: var(--gray-100); }
-.icon-btn.danger { border-color: transparent; background: var(--red-100); color: var(--red-500); }
-.icon-btn.danger:hover { background: var(--red-500); color: #fff; }
+.icon-btn:hover { background: var(--green-50); color: var(--green-700); }
+.icon-btn.danger { border-color: rgba(192, 57, 43, 0.35); background: var(--white); color: var(--red-500); }
+.icon-btn.danger:hover { background: var(--red-100); color: var(--red-500); }
 .icon-btn.primary { border-color: transparent; background: var(--green-50); color: var(--green-700); }
 .icon-btn.primary:hover { background: var(--green-700); color: #fff; }
 

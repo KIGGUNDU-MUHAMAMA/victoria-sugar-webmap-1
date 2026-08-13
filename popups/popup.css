@@ -1,0 +1,151 @@
+/**
+ * Shared confirm/prompt popup (popups/popup.html + popups/popup.js).
+ * Deliberately its own small overlay/card, distinct from the app's
+ * .vsl-modal-overlay/.popWinMain "docked window" chrome — this is a quick
+ * "confirm this" or "type one thing" interruption, not a full window.
+ */
+
+.vsl-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(20, 20, 20, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease-out;
+}
+.vsl-popup-overlay[hidden] {
+  display: none !important;
+}
+
+.vsl-popup-card {
+  width: 300px;
+  max-width: 90vw;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+  border-top: 5px solid var(--primary, #3f8f3f);
+  font-family: inherit;
+  animation: modalScaleIn 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+/* Danger theme (delete confirmations, "can't do that" warnings, discard-
+   unsaved-changes prompts) — red accent instead of the neutral green, same
+   "something's about to be lost" signal as the rest of the app's danger
+   buttons/badges. */
+.vsl-popup-card[data-theme="danger"] {
+  border-top-color: var(--danger, #b33636);
+}
+
+.vsl-popup-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 18px 20px 4px;
+}
+
+.vsl-popup-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: #eef4ea;
+  color: var(--primary, #3f8f3f);
+}
+.vsl-popup-card[data-theme="danger"] .vsl-popup-icon {
+  background: #fdeaea;
+  color: var(--danger, #b33636);
+}
+
+.vsl-popup-copy {
+  min-width: 0;
+}
+
+.vsl-popup-title {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text, #1d2a1d);
+}
+
+.vsl-popup-message {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--muted, #5a6a5a);
+}
+.vsl-popup-message[hidden] {
+  display: none;
+}
+
+.vsl-popup-field {
+  padding: 10px 20px 0;
+}
+.vsl-popup-field[hidden] {
+  display: none;
+}
+
+.vsl-popup-input,
+.vsl-popup-select {
+  width: 100%;
+  margin-top: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font: inherit;
+  box-sizing: border-box;
+  outline: none;
+  background: #fff;
+  color: var(--text, #1d2a1d);
+}
+.vsl-popup-input:focus,
+.vsl-popup-select:focus {
+  border-color: var(--primary, #3f8f3f);
+}
+
+.vsl-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px 20px;
+}
+
+.vsl-popup-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vsl-popup-btn--ghost {
+  background: #f1f3f5;
+  color: #495057;
+}
+.vsl-popup-btn--ghost:hover {
+  background: #e7e9eb;
+}
+.vsl-popup-btn--primary {
+  background: var(--primary, #3f8f3f);
+  color: #fff;
+}
+.vsl-popup-btn--primary:hover {
+  background: var(--primary-2, #2e7d32);
+}
+.vsl-popup-btn--danger {
+  background: var(--danger, #b33636);
+  color: #fff;
+}
+.vsl-popup-btn--danger:hover {
+  background: #962b2b;
+}

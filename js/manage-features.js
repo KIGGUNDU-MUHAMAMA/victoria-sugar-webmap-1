@@ -3,6 +3,11 @@
  * vsl_feature_type, opened from the pencil button next to the Survey
  * window's Draw tab Feature dropdown (js/survey-draw.js).
  *
+ * List view: 3 collapsible <details> sections (Point/Line/Polygon), each a
+ * compact row-per-feature table — same "narrow list, not a wide form-heavy
+ * grid" idea as the Estates tab (js/manage-estates.js) — instead of the old
+ * single wide flat list.
+ *
  * Exposes window.openManageFeaturesPanel() so survey-draw.js doesn't need
  * a direct import (keeps the two modules independently loadable, same
  * pattern as the other window.* hooks already in this app).
@@ -26,6 +31,13 @@ const ICON_LIBRARY = [
   "fa-triangle-exclamation"
 ];
 
+const KIND_META = {
+  point: { label: "Point", icon: "fa-location-dot" },
+  line: { label: "Line", icon: "fa-slash" },
+  polygon: { label: "Polygon", icon: "fa-draw-polygon" }
+};
+const KIND_ORDER = ["point", "line", "polygon"];
+
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -36,21 +48,26 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
   const overlay = document.getElementById("manageFeaturesModal");
   const closeBtn = document.getElementById("manageFeaturesCloseBtn");
   const cancelBtn = document.getElementById("manageFeaturesCancelBtn");
-  const kindFilter = document.getElementById("mfKindFilter");
-  const listWrap = document.getElementById("mfListWrap");
-  const listEl = document.getElementById("mfList");
+  const sectionsEl = document.getElementById("mfSections");
   const addBtn = document.getElementById("mfAddBtn");
   const form = document.getElementById("mfForm");
   const editIdInput = document.getElementById("mfEditId");
   const nameInput = document.getElementById("mfNameInput");
   const kindSelect = document.getElementById("mfKindSelect");
+  const pointParams = document.getElementById("mfPointParams");
+  const iconSizeInput = document.getElementById("mfIconSizeInput");
+  const rotationInput = document.getElementById("mfRotationInput");
   const linetypeRow = document.getElementById("mfLinetypeRow");
   const linetypeSelect = document.getElementById("mfLinetypeSelect");
+  const weightInput = document.getElementById("mfWeightInput");
   const colorInput = document.getElementById("mfColorInput");
   const iconPreview = document.getElementById("mfIconPreview");
   const iconSearch = document.getElementById("mfIconSearch");
   const iconGrid = document.getElementById("mfIconGrid");
   const iconInput = document.getElementById("mfIconInput");
+  const displayNameCb = document.getElementById("mfDisplayNameCb");
+  const displayAreaRow = document.getElementById("mfDisplayAreaRow");
+  const displayAreaCb = document.getElementById("mfDisplayAreaCb");
   const activeCb = document.getElementById("mfActiveCb");
   const formError = document.getElementById("mfFormError");
   const listActions = document.getElementById("mfListActions");
@@ -82,33 +99,46 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     }
   }
 
-  function renderList() {
-    const kind = kindFilter.value;
-    const filtered = kind ? rows.filter((r) => r.geometry_kind === kind) : rows;
-    if (!filtered.length) {
-      listEl.innerHTML = '<p class="mf-list-empty">No features yet.</p>';
-      return;
-    }
-    let html = "";
-    let lastKind = null;
-    for (const r of filtered) {
-      if (!kind && r.geometry_kind !== lastKind) {
-        lastKind = r.geometry_kind;
-        html += `<div class="mf-list-group-heading">${escapeHtml(lastKind)}</div>`;
-      }
-      html += `
-        <div class="mf-row" data-id="${r.id}">
-          <span class="mf-row__swatch" style="background:${escapeHtml(r.color || "#3f8f3f")}">
-            <i class="fas ${escapeHtml(r.icon || "fa-circle-dot")}" aria-hidden="true"></i>
-          </span>
-          <span class="mf-row__name">${escapeHtml(r.name)}</span>
+  function displayBadges(r) {
+    const params = Array.isArray(r.display_params) ? r.display_params : [];
+    if (!params.length) return '<span class="mf-row__display-badge mf-row__display-badge--none">Off</span>';
+    return params.map((p) => `<span class="mf-row__display-badge">${p === "area" ? "Area" : "Name"}</span>`).join("");
+  }
+
+  function rowHtml(r) {
+    return `
+      <div class="mf-row" data-id="${r.id}">
+        <span class="mf-row__swatch" style="background:${escapeHtml(r.color || "#3f8f3f")}">
+          <i class="fas ${escapeHtml(r.icon || "fa-circle-dot")}" aria-hidden="true"></i>
+        </span>
+        <span class="mf-row__name">
+          ${escapeHtml(r.name)}
           ${r.is_system ? '<span class="mf-row__badge">System</span>' : ""}
-          <button type="button" class="mf-row__edit" data-edit="${r.id}" aria-label="Edit ${escapeHtml(r.name)}">
-            <i class="fas fa-pen" aria-hidden="true"></i>
-          </button>
-        </div>`;
-    }
-    listEl.innerHTML = html;
+        </span>
+        <span class="mf-row__display">${displayBadges(r)}</span>
+        <button type="button" class="mf-row__edit" data-edit="${r.id}" aria-label="Edit ${escapeHtml(r.name)}">
+          <i class="fas fa-pen" aria-hidden="true"></i>
+        </button>
+      </div>`;
+  }
+
+  function renderSections() {
+    sectionsEl.innerHTML = KIND_ORDER.map((kind) => {
+      const items = rows.filter((r) => r.geometry_kind === kind);
+      const meta = KIND_META[kind];
+      return `
+        <details class="mf-section" open>
+          <summary class="mf-section__head">
+            <i class="fas ${meta.icon}" aria-hidden="true"></i>
+            <span class="mf-section__label">${meta.label}</span>
+            <span class="mf-section__count">${items.length}</span>
+            <i class="fas fa-chevron-down mf-section__chevron" aria-hidden="true"></i>
+          </summary>
+          <div class="mf-section__body">
+            ${items.length ? items.map(rowHtml).join("") : '<p class="mf-list-empty">No features yet.</p>'}
+          </div>
+        </details>`;
+    }).join("");
   }
 
   function renderIconGrid(filterText) {
@@ -133,13 +163,19 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
   });
   iconSearch.addEventListener("input", () => renderIconGrid(iconSearch.value));
 
-  function updateLinetypeVisibility() {
-    linetypeRow.hidden = kindSelect.value === "point";
+  // Point/Line/Polygon each expose a different subset of params — see the
+  // module doc comment and the vsl_feature_type_style_params migration.
+  function updateKindVisibility() {
+    const kind = kindSelect.value;
+    pointParams.hidden = kind !== "point";
+    linetypeRow.hidden = kind === "point";
+    displayAreaRow.hidden = kind !== "polygon";
+    if (kind !== "polygon") displayAreaCb.checked = false;
   }
-  kindSelect.addEventListener("change", updateLinetypeVisibility);
+  kindSelect.addEventListener("change", updateKindVisibility);
 
   function showList() {
-    listWrap.hidden = false;
+    document.getElementById("mfListWrap").hidden = false;
     form.hidden = true;
     listActions.hidden = false;
     formActions.hidden = true;
@@ -147,7 +183,7 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
   }
 
   function showForm(row) {
-    listWrap.hidden = true;
+    document.getElementById("mfListWrap").hidden = true;
     form.hidden = false;
     listActions.hidden = true;
     formActions.hidden = false;
@@ -155,32 +191,40 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
 
     editIdInput.value = row?.id ?? "";
     nameInput.value = row?.name ?? "";
-    kindSelect.value = row?.geometry_kind ?? (kindFilter.value || "point");
+    kindSelect.value = row?.geometry_kind ?? "point";
     // Changing geometry kind on an existing type would desync it from any
     // already-drawn instances (and, for Plot/Block, from the Draw tab's
     // special-cased routing) — only free on brand-new rows.
     kindSelect.disabled = !!row;
 
     linetypeSelect.value = row?.linetype ?? "solid";
+    weightInput.value = row?.line_weight ?? 2;
+    iconSizeInput.value = row?.icon_size ?? 10;
+    rotationInput.value = row?.icon_rotation ?? 0;
     colorInput.value = row?.color ?? "#3f8f3f";
     iconInput.value = row?.icon ?? "fa-circle-dot";
     iconPreview.innerHTML = `<i class="fas ${iconInput.value}" aria-hidden="true"></i>`;
     iconSearch.value = "";
+
+    const dp = Array.isArray(row?.display_params) ? row.display_params : [];
+    displayNameCb.checked = dp.includes("name");
+    displayAreaCb.checked = dp.includes("area");
+
     activeCb.checked = row?.is_active !== false;
-    updateLinetypeVisibility();
+    updateKindVisibility();
     renderIconGrid("");
 
     const isSystem = !!row?.is_system;
     // Plot/Block are load-bearing (Draw tab checks code === 'plot'/'block'
     // and the name shows up in save-confirmation text) — lock name/kind,
-    // still allow re-coloring/re-iconing them and toggling active.
+    // still allow re-styling them and toggling active.
     nameInput.disabled = isSystem;
     deleteBtn.hidden = !row || isSystem;
   }
 
   addBtn.addEventListener("click", () => showForm(null));
 
-  listEl.addEventListener("click", (e) => {
+  sectionsEl.addEventListener("click", (e) => {
     const editBtn = e.target.closest("[data-edit]");
     if (!editBtn) return;
     const row = rows.find((r) => String(r.id) === editBtn.dataset.edit);
@@ -199,12 +243,21 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
       return;
     }
     const editId = editIdInput.value;
+    const kind = kindSelect.value;
+    const displayParams = [];
+    if (displayNameCb.checked) displayParams.push("name");
+    if (kind === "polygon" && displayAreaCb.checked) displayParams.push("area");
+
     const payload = {
       name,
-      geometry_kind: kindSelect.value,
-      linetype: kindSelect.value === "point" ? null : linetypeSelect.value,
+      geometry_kind: kind,
+      linetype: kind === "point" ? null : linetypeSelect.value,
+      line_weight: kind === "point" ? 2 : (Number(weightInput.value) || 2),
+      icon_size: kind === "point" ? (Number(iconSizeInput.value) || 10) : 10,
+      icon_rotation: kind === "point" ? (Number(rotationInput.value) || 0) : 0,
       color: colorInput.value,
       icon: iconInput.value || null,
+      display_params: displayParams,
       is_active: activeCb.checked
     };
     try {
@@ -216,7 +269,7 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
       }
       if (error) throw error;
       await fetchRows();
-      renderList();
+      renderSections();
       showList();
       window.dispatchEvent(new CustomEvent("vsl-feature-types-changed"));
       setStatus?.(statusEl, editId ? "Feature updated." : "Feature added.");
@@ -236,7 +289,7 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
       const { error } = await supabase.from("vsl_feature_type").delete().eq("id", editId);
       if (error) throw error;
       await fetchRows();
-      renderList();
+      renderSections();
       showList();
       window.dispatchEvent(new CustomEvent("vsl-feature-types-changed"));
     } catch (err) {
@@ -245,12 +298,10 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     }
   });
 
-  kindFilter.addEventListener("change", renderList);
-
   async function open() {
     overlay.hidden = false;
     await fetchRows();
-    renderList();
+    renderSections();
     showList();
   }
   function close() {

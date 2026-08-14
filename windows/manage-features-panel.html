@@ -86,11 +86,12 @@
         </div>
 
         <!-- ── "Display on map" — which text label(s), if any, render next
-             to the feature. Point/Line only ever have Name to offer (1
-             checkbox); Polygon also offers Area (2 checkboxes) — the
-             vsl_feature_type_display_params_max DB constraint caps this at
-             1/2 respectively, but since that's exactly how many checkboxes
-             each group has, there's nothing extra to enforce client-side. -->
+             to the feature. Point only ever has Name to offer (1 checkbox).
+             Line offers Name OR Length (still only 1 — the
+             vsl_feature_type_display_params_max DB constraint caps non-
+             polygon kinds at 1, so manage-features.js enforces these two as
+             mutually exclusive). Polygon offers Name + Area together
+             (2 checkboxes, the constraint's max for polygon). -->
         <div class="mf-label">
           Show on map
           <div id="mfDisplayGroup" class="mf-display-group">
@@ -101,6 +102,10 @@
             <label class="mf-checkbox-row" id="mfDisplayAreaRow" hidden>
               <input type="checkbox" id="mfDisplayAreaCb" value="area">
               <span>Area label</span>
+            </label>
+            <label class="mf-checkbox-row" id="mfDisplayLengthRow" hidden>
+              <input type="checkbox" id="mfDisplayLengthCb" value="length">
+              <span>Length label</span>
             </label>
           </div>
         </div>

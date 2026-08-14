@@ -20,8 +20,8 @@
 //   5. Save PDF builds the page from two independent pieces: the basemap
 //      (+ drone/sentinel/annotation layers) is captured as a raster image
 //      — blocksLayer/parcelsLayer hidden for that capture, re-rendered at a
-//      modest fixed zoom (BASEMAP_ZOOM_SCALE, a little more for "High" via
-//      HIGH_BASEMAP_ZOOM_SCALE) via the same "composite every .ol-layer
+//      modest fixed zoom (BASEMAP_ZOOM_SCALE — the same for both the
+//      Standard and High settings) via the "composite every .ol-layer
 //      canvas onto one canvas" technique js/feature-export.js uses for
 //      single-feature PDFs — while the plot/block boundaries and labels are
 //      drawn as genuine PDF vectors straight on top (projected from their
@@ -66,15 +66,14 @@ export function initPrintTool({
 
   // Zoom-in factor for the basemap-only raster capture (Option C) — how
   // much denser than the live on-screen view the basemap tiles get
-  // re-requested/rendered at before being cropped into the page. Kept
-  // modest for both tiers — pushing this hard for "High" (6x + a long
-  // extra tile-load wait) was what made it laggy, without helping the
-  // text/boundaries that actually needed to be sharp, since those are
-  // vectors now, not pixels (see the LOD comment above drawBlockVector).
-  // "High" gets a small basemap bump on top of that vector detail, not a
-  // second deep re-render.
+  // re-requested/rendered at before being cropped into the page. The SAME
+  // for both Resolution settings, deliberately: pushing this harder for
+  // "High" (6x plus a long extra tile-load wait) is what made it laggy,
+  // and it didn't help the thing that actually needed to be legible, since
+  // the boundaries and labels are PDF vectors, not pixels. "High" spends
+  // its effort on the vector layer instead — see
+  // PRINT_HIGH_ADDS_EDGE_DISTANCES.
   const BASEMAP_ZOOM_SCALE = 3;
-  const HIGH_BASEMAP_ZOOM_SCALE = 4;
 
   function setPrintStatus(msg, isError) {
     setStatus?.(statusEl, msg, isError);
@@ -663,18 +662,22 @@ export function initPrintTool({
   /** Plain-text "halo" (colored text over a repeated white offset-stamp)
    *  standing in for the stroke-outlined text OL draws on screen — jsPDF
    *  has no single-call equivalent. Cheap and reads fine at label sizes.
-   *  Supports embedded \n (jsPDF lays out multi-line text natively). */
+   *  Supports embedded \n (jsPDF lays out multi-line text natively), and an
+   *  optional `angle` (degrees) for text that follows a line — see
+   *  drawEdgeDistanceLabels. A fresh options object is built per doc.text
+   *  call because jsPDF reads/normalizes that object internally. */
   function drawHaloText(doc, text, x, y, opts) {
-    const { align = "center", fontSize, colorRGB } = opts;
+    const { align = "center", fontSize, colorRGB, angle } = opts;
+    const textOpts = () => (angle ? { align, angle } : { align });
     doc.setFont("helvetica", "bold");
     doc.setFontSize(fontSize);
     doc.setTextColor(255, 255, 255);
     const d = 0.35;
     [[-d, 0], [d, 0], [0, -d], [0, d], [-d, -d], [d, -d], [-d, d], [d, d]].forEach(([dx, dy]) => {
-      doc.text(text, x + dx, y + dy, { align });
+      doc.text(text, x + dx, y + dy, textOpts());
     });
     doc.setTextColor(colorRGB[0], colorRGB[1], colorRGB[2]);
-    doc.text(text, x, y, { align });
+    doc.text(text, x, y, textOpts());
   }
 
   function forEachOuterRing(geometry, cb) {
@@ -695,99 +698,31 @@ export function initPrintTool({
   const EDGE_DISTANCE_RGB = [25, 118, 210]; // #1976d2
 
   // ---------------------------------------------------------------------
-  // Level-of-detail sizing — borrows the exact idea the live map already
-  // uses: blocksLayer/parcelsLayer's own style functions size text/strokes
-  // in FIXED CSS pixels, but only draw certain tiers (block name → parcel
-  // name → parcel name+area+ratoon → per-edge distances) once the current
-  // view's `resolution` (map meters per CSS pixel) drops below that tier's
-  // threshold — i.e. once you're zoomed in close enough for it to fit/
-  // matter. A print has no on-screen "resolution", but the exact same
-  // concept applies: a wide 10km selection squeezed onto one page is
-  // "zoomed out" (large effective resolution) the same way panning out on
-  // screen would hide detail, while a small selection blown up to fill the
-  // page is "zoomed in" (small effective resolution) and earns the same
-  // full detail — including the per-edge distance labels — the live map
-  // would show at that scale.
-  //
-  // Two SEPARATE numbers come out of this, and they answer two different
-  // questions — conflating them is what caused the "big squashy spaghetti"
-  // look:
-  //   - tierRes (boosted by PRINT_DETAIL_BOOST) answers "which detail tier
-  //     should even be ATTEMPTED" (block name / parcel name / full parcel
-  //     detail / per-edge distances).
-  //   - sizeScale (NOT boosted — reflects the real, physical ground-meters-
-  //     per-page-point density) answers "how big should whatever gets
-  //     drawn actually be so it fits". Every fixed on-screen CSS-px size
-  //     below is converted to PDF points AND multiplied by sizeScale, so a
-  //     tier that only got drawn because of the boost (i.e. the page
-  //     genuinely represents a lot of ground per point) draws itself small
-  //     enough to fit its own tiny polygon, instead of stamping a full-size
-  //     on-screen-equivalent label onto a sliver of a shape.
+  // TUNABLE — flat label/stroke sizes, in PDF points. These are plain
+  // fixed sizes on purpose: the earlier "compute everything dynamically
+  // from an effective print resolution" experiment is gone. Standard and
+  // High print IDENTICALLY except for one thing — High additionally draws
+  // the per-edge distance labels (see PRINT_HIGH_ADDS_EDGE_DISTANCES).
   // ---------------------------------------------------------------------
-  const PX_TO_PT = 0.75; // 1 CSS px (1/96in) == 0.75pt (1/72in)
-  function pxToPt(px) { return px * PX_TO_PT; }
+  const BLOCK_LABEL_PT = 8;        // block name *was 8*
+  const BLOCK_STROKE_PT = 0.5;       // block outline *was 1*
+  const PARCEL_LABEL_PT = 1;       // plot name / area / ratoon / Alerts(n) was 7
+  const PARCEL_LABEL_SIMPLE_PT = 2.5; // plot name only, when the page is busy was 6.5
+  const PARCEL_STROKE_PT = 0.5;   // plot outline was 0.85
+  const PARCEL_HALO_PT = 1;     // white casing under the plot outline *was 1.75*
+  const EDGE_DISTANCE_PT = 5;      // "123.4m" edge labels (High only) was 6
 
-  // TUNABLE — how much more "zoomed in" the print's vector detail (block/
-  // parcel labels, edge-distance labels, stroke widths) acts than the raw
-  // extent-vs-page-size math alone would produce. computeEffectivePrintResolution
-  // below divides its result by this before comparing against the label
-  // tier thresholds (25 / 20 / 12 / 4 — see the LOD comment above). A
-  // NUMBER GREATER THAN 1 here = MORE detail shows (name/area/ratoon labels
-  // appear more readily, and the per-edge distance labels — the "line
-  // distances" — need the result to drop to 4 or under); a number LESS
-  // THAN 1 makes the result bigger and shows LESS detail. This only
-  // decides WHETHER a tier is attempted — see PRINT_SIZE_REFERENCE_RES/
-  // PRINT_LABEL_MIN_SCALE/PRINT_LABEL_MAX_SCALE right below for the knobs
-  // that control how BIG whatever gets drawn actually comes out.
-  const PRINT_DETAIL_BOOST = 8;
+  /** Above this many plots in the selection, plot labels collapse to the
+   *  name alone (no area/ratoon) so a wide print doesn't turn into a wall
+   *  of stacked text. */
+  const SIMPLIFY_LABELS_ABOVE = 150;
 
-  // TUNABLE — sizing. sizeScale = PRINT_SIZE_REFERENCE_RES / (true,
-  // unboosted ground-meters-per-page-point), clamped to [PRINT_LABEL_MIN_
-  // SCALE, PRINT_LABEL_MAX_SCALE], then multiplied onto every font size and
-  // stroke width below. PRINT_SIZE_REFERENCE_RES is "the resolution at
-  // which a fixed on-screen px size is meant to look right" — raise it and
-  // everything draws bigger overall; lower it and everything draws
-  // smaller. The min/max clamp exists so a very wide selection (would
-  // shrink to near-invisible) or a very tight one (would balloon huge)
-  // both stay legible instead of running away in either direction.
-  const PRINT_SIZE_REFERENCE_RES = 3;
-  const PRINT_LABEL_MIN_SCALE = 0.2;
-  const PRINT_LABEL_MAX_SCALE = 1.4;
-
-  /** True ground meters per 1 EPSG:3857 unit at the extent's center — same
-   *  correction computeScaleDenominator already uses. */
-  function groundMetersPerMapUnit(extent) {
-    const cx = (extent[0] + extent[2]) / 2;
-    const cy = (extent[1] + extent[3]) / 2;
-    const proj = map.getView().getProjection();
-    if (typeof ol !== "undefined" && ol.proj?.getPointResolution) {
-      return ol.proj.getPointResolution(proj, 1, [cx, cy]);
-    }
-    return 1;
-  }
-
-  /** Returns { tierRes, sizeScale } — see the block comment above for what
-   *  each one is for. Both are derived from the same raw (unboosted)
-   *  ground-meters-per-CSS-px-equivalent-of-page-space number; only
-   *  tierRes gets divided by PRINT_DETAIL_BOOST. */
-  function computeEffectivePrintResolution(extent, drawW, drawH) {
-    const mPerUnit = groundMetersPerMapUnit(extent);
-    const [minX, minY, maxX, maxY] = extent;
-    const metersPerPtX = ((maxX - minX) * mPerUnit) / (drawW || 1);
-    const metersPerPtY = ((maxY - minY) * mPerUnit) / (drawH || 1);
-    const metersPerPt = (metersPerPtX + metersPerPtY) / 2;
-    const rawRes = metersPerPt * PX_TO_PT; // meters per PDF pt -> meters per CSS-px-equivalent
-    const tierRes = rawRes / PRINT_DETAIL_BOOST;
-    const rawSizeScale = rawRes > 0 ? PRINT_SIZE_REFERENCE_RES / rawRes : 1;
-    const sizeScale = Math.max(PRINT_LABEL_MIN_SCALE, Math.min(PRINT_LABEL_MAX_SCALE, rawSizeScale));
-    return { tierRes, sizeScale };
-  }
-
-  /** pxToPt, additionally scaled down/up to actually fit the print's real
-   *  physical density — see sizeScale above. Use this (not pxToPt
-   *  directly) for every font size / stroke width in drawBlockVector /
-   *  drawParcelVector / drawEdgeDistanceLabels. */
-  function scaledPt(px, sizeScale) { return pxToPt(px) * sizeScale; }
+  /** The single difference between the Standard and High resolution
+   *  settings: High spends its effort on the vector layer by additionally
+   *  plotting every plot edge's length. The basemap capture is identical
+   *  for both (see BASEMAP_ZOOM_SCALE) — pushing that harder for High is
+   *  what made it laggy. */
+  const PRINT_HIGH_ADDS_EDGE_DISTANCES = false; // true = High draws edge distances, false = Standard and High identical  
 
   /** Haversine — good enough for a printed edge-length label, avoids
    *  needing map-app.js's own vincentyDistanceMeters wired through. */
@@ -800,13 +735,41 @@ export function initPrintTool({
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  // TUNABLE — edge-distance label rotation/fit. See drawEdgeDistanceLabels.
+  //
+  // EDGE_LABEL_ANGLE_SIGN: which way jsPDF's `angle` option turns text.
+  //   Page space here has y growing DOWNWARD (project() puts north at the
+  //   top), while a positive jsPDF angle rotates counter-clockwise as seen
+  //   on the page — so the visual angle of an edge is -atan2(dy, dx), i.e.
+  //   sign -1. If the distance labels come out mirrored about the line
+  //   (leaning the wrong way relative to their edge), flip this to 1.
+  //
+  // EDGE_LABEL_FIT_RATIO: a label is skipped when the edge it belongs to
+  //   is shorter than (text width x this). Mirrors what OL's
+  //   placement:"line" does natively — it refuses to draw text that
+  //   wouldn't fit along its line — and is the main thing keeping short
+  //   edges from stacking labels on top of each other. Raise it (1.3, 1.6)
+  //   to drop more labels and de-clutter; lower it toward 1 to show more.
+  //
+  // EDGE_LABEL_OFFSET_PT: perpendicular nudge off the boundary line itself,
+  //   in points, so text doesn't sit directly on the stroke.
+  const EDGE_LABEL_ANGLE_SIGN = -1;
+  const EDGE_LABEL_FIT_RATIO = 1.15;
+  const EDGE_LABEL_OFFSET_PT = 0;
+
   /** Per-edge distance labels along a ring — the print equivalent of the
    *  live parcelsLayer style function's `resolution <= 4` segment-length
-   *  text. Labels sit just off to one side of each edge (not rotated to
-   *  follow the edge's angle — jsPDF text rotation direction/pivot isn't
-   *  reliable enough across versions to risk upside-down/mirrored labels
-   *  sight-unseen). */
+   *  text, which uses ol.style.Text's placement:"line" to run the text
+   *  along each edge. jsPDF has no placement:"line", so this does the same
+   *  job manually: rotate the text to the edge's own angle, fold that angle
+   *  into (-90, 90] so it never renders upside-down or right-to-left, and
+   *  skip edges too short to hold the label (see EDGE_LABEL_FIT_RATIO). */
   function drawEdgeDistanceLabels(doc, ring, project, fontSize) {
+    // getTextWidth measures at the CURRENT font/size, so set both before
+    // the loop — drawHaloText sets the same pair, so they stay in sync.
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(fontSize);
+
     for (let i = 0; i < ring.length - 1; i++) {
       const pt1 = ring[i];
       const pt2 = ring[i + 1];
@@ -814,21 +777,35 @@ export function initPrintTool({
       const ll2 = ol.proj.transform(pt2, "EPSG:3857", "EPSG:4326");
       const distM = haversineMeters(ll1[0], ll1[1], ll2[0], ll2[1]);
       if (!(distM > 0)) continue;
+
       const p1 = project(pt1);
       const p2 = project(pt2);
-      const midX = (p1[0] + p2[0]) / 2;
-      const midY = (p1[1] + p2[1]) / 2;
       const dx = p2[0] - p1[0];
       const dy = p2[1] - p1[1];
-      const len = Math.hypot(dx, dy) || 1;
-      const offset = 3.5; // pt, nudges the label off the boundary line itself
-      const lx = midX + (-dy / len) * offset;
-      const ly = midY + (dx / len) * offset;
-      drawHaloText(doc, `${distM.toFixed(1)}m`, lx, ly, { fontSize, colorRGB: EDGE_DISTANCE_RGB });
+      const len = Math.hypot(dx, dy);
+      if (!(len > 0)) continue;
+
+      const text = `${distM.toFixed(1)}m`;
+      if (doc.getTextWidth(text) * EDGE_LABEL_FIT_RATIO > len) continue; // wouldn't fit along this edge
+
+      // Edge angle in page space, then folded upright: any edge pointing
+      // into the left half-plane gets spun 180 degrees so the text still
+      // reads left-to-right instead of upside-down. Rotating by 180 doesn't
+      // move the text (it's centered on its anchor), only its reading
+      // direction, so the perpendicular offset below stays valid either way.
+      let angleDeg = EDGE_LABEL_ANGLE_SIGN * Math.atan2(dy, dx) * (180 / Math.PI);
+      if (angleDeg > 90) angleDeg -= 180;
+      else if (angleDeg <= -90) angleDeg += 180;
+
+      const midX = (p1[0] + p2[0]) / 2;
+      const midY = (p1[1] + p2[1]) / 2;
+      const lx = midX + (-dy / len) * EDGE_LABEL_OFFSET_PT;
+      const ly = midY + (dx / len) * EDGE_LABEL_OFFSET_PT;
+      drawHaloText(doc, text, lx, ly, { fontSize, colorRGB: EDGE_DISTANCE_RGB, angle: angleDeg });
     }
   }
 
-  function drawBlockVector(doc, feature, project, effRes, sizeScale) {
+  function drawBlockVector(doc, feature, project) {
     const geometry = feature.getGeometry();
     if (!geometry) return;
     const status = feature.get("cultivation_status");
@@ -838,24 +815,20 @@ export function initPrintTool({
       fillRGB = parsed.rgb;
       fillAlpha = parsed.a;
     }
-    // Mirrors blocksLayer's own style function: thin (1.5px) once zoomed
-    // out past resolution 25, thicker (3px) once inside it.
-    const strokeWidthPt = scaledPt(effRes > 25 ? 1.5 : 3, sizeScale);
     forEachOuterRing(geometry, (ring) => {
       drawClosedPath(doc, ring.map(project), {
         fill: fillRGB, fillAlpha,
-        strokeColor: BLOCK_STROKE_RGB, strokeWidth: strokeWidthPt
+        strokeColor: BLOCK_STROKE_RGB, strokeWidth: BLOCK_STROKE_PT
       });
     });
-    if (effRes > 25) return; // matches blocksLayer: no label at all once this zoomed out
     const ip = getFeatureInteriorPoint?.(geometry);
     if (!ip) return;
     const [px, py] = project(ip.getCoordinates());
     const name = String(feature.get("block_name") ?? "").trim() || "—";
-    drawHaloText(doc, name, px, py, { fontSize: scaledPt(12, sizeScale), colorRGB: BLOCK_STROKE_RGB });
+    drawHaloText(doc, name, px, py, { fontSize: BLOCK_LABEL_PT, colorRGB: BLOCK_STROKE_RGB });
   }
 
-  function drawParcelVector(doc, feature, project, effRes, sizeScale) {
+  function drawParcelVector(doc, feature, project, simplifyLabels, withEdgeDistances) {
     const geometry = feature.getGeometry();
     if (!geometry) return;
     const status = feature.get("cultivation_status");
@@ -873,28 +846,19 @@ export function initPrintTool({
       fillAlpha = parsed.a;
     }
 
-    // Mirrors parcelsLayer: thin (1px) + halo (2.5px) once zoomed out past
-    // resolution 12, thicker (2px) + halo (3.5px) once inside it.
-    const strokeWidthPx = effRes > 12 ? 1 : 2;
-    const strokeWidthPt = scaledPt(strokeWidthPx, sizeScale);
-    const haloWidthPt = scaledPt(strokeWidthPx + 1.5, sizeScale);
-
     forEachOuterRing(geometry, (ring) => {
       drawClosedPath(doc, ring.map(project), {
         fill: fillRGB, fillAlpha,
-        haloColor: [255, 255, 255], haloWidth: haloWidthPt,
-        strokeColor: PARCEL_STROKE_RGB, strokeWidth: strokeWidthPt
+        haloColor: [255, 255, 255], haloWidth: PARCEL_HALO_PT,
+        strokeColor: PARCEL_STROKE_RGB, strokeWidth: PARCEL_STROKE_PT
       });
     });
 
-    // Per-edge distance labels — same resolution<=4 threshold as the live
-    // parcelsLayer style function, PARCELS only (blocks never had these
-    // on screen either).
-    if (effRes <= 4) {
-      forEachOuterRing(geometry, (ring) => drawEdgeDistanceLabels(doc, ring, project, scaledPt(10, sizeScale)));
+    // The one High-resolution extra — plot edge lengths, rotated to follow
+    // each edge. Plots only; blocks never had these on screen either.
+    if (withEdgeDistances) {
+      forEachOuterRing(geometry, (ring) => drawEdgeDistanceLabels(doc, ring, project, EDGE_DISTANCE_PT));
     }
-
-    if (effRes > 20) return; // matches PARCEL_NAME_ONLY_RES: no label at all past this
 
     const ip = getFeatureInteriorPoint?.(geometry);
     if (!ip) return;
@@ -902,14 +866,11 @@ export function initPrintTool({
     const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
     const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
 
-    if (effRes > 12) {
-      // Name-only tier (PARCEL_NAME_ONLY_RES) — same fixed 11px as on screen.
-      drawHaloText(doc, label, px, py, { fontSize: scaledPt(11, sizeScale), colorRGB: PARCEL_STROKE_RGB });
+    if (simplifyLabels) {
+      drawHaloText(doc, label, px, py, { fontSize: PARCEL_LABEL_SIMPLE_PT, colorRGB: PARCEL_STROKE_RGB });
       return;
     }
 
-    // Full-detail tier (<= PARCEL_FULL_DETAIL_RES) — name/area/ratoon block
-    // + its own "Alerts(n)" line, same as parcelsLayer's style function.
     const expArea = feature.get("expected_area_acres");
     const area = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
     const ratoonVal = feature.get("ratoon_number");
@@ -919,8 +880,7 @@ export function initPrintTool({
     let lineCount = area ? 2 : 1;
     if (ratoonLine) { text += `\n${ratoonLine}`; lineCount += 1; }
 
-    const fontSizePx = 11;
-    const fontSize = scaledPt(fontSizePx, sizeScale);
+    const fontSize = PARCEL_LABEL_PT;
     drawHaloText(doc, text, px, py, { fontSize, colorRGB: PARCEL_STROKE_RGB });
 
     if (alertSeverity && alertCount) {
@@ -932,18 +892,17 @@ export function initPrintTool({
 
   /** Draws every block, then every parcel, that intersects `extent` —
    *  blocks first so parcels (drawn on top, same as the live LAND LAYERS
-   *  group order) win any visual overlap. `effRes`/`sizeScale` (computed
-   *  once for the whole print via computeEffectivePrintResolution) drive
-   *  which detail tier every feature draws at, and how big it draws — see
-   *  the LOD comment above. */
-  function drawParcelsAndBlocksVector(doc, extent, drawX, drawY, drawW, drawH) {
+   *  group order) win any visual overlap. Identical for Standard and High
+   *  except `isHigh`, which adds the per-edge distance labels. */
+  function drawParcelsAndBlocksVector(doc, extent, drawX, drawY, drawW, drawH, isHigh) {
     if (!extent || !blocksLayer || !parcelsLayer) return;
     const project = makeProjector(extent, drawX, drawY, drawW, drawH);
-    const { tierRes: effRes, sizeScale } = computeEffectivePrintResolution(extent, drawW, drawH);
     const blockFeatures = blocksLayer.getSource().getFeaturesInExtent(extent);
     const parcelFeatures = parcelsLayer.getSource().getFeaturesInExtent(extent);
-    blockFeatures.forEach((feature) => drawBlockVector(doc, feature, project, effRes, sizeScale));
-    parcelFeatures.forEach((feature) => drawParcelVector(doc, feature, project, effRes, sizeScale));
+    const simplifyLabels = parcelFeatures.length > SIMPLIFY_LABELS_ABOVE;
+    const withEdgeDistances = !!isHigh && PRINT_HIGH_ADDS_EDGE_DISTANCES;
+    blockFeatures.forEach((feature) => drawBlockVector(doc, feature, project));
+    parcelFeatures.forEach((feature) => drawParcelVector(doc, feature, project, simplifyLabels, withEdgeDistances));
   }
 
   /** Plain pixel-accurate crop — `rect` must already be in the same pixel
@@ -1028,12 +987,10 @@ export function initPrintTool({
     }
     saveBtn.disabled = true;
     const isHigh = settings.resolution === "2";
-    // Basemap capture is a modest bump for "High" (not the deep zoom + long
-    // tile-load wait it used to be — that's what was laggy). The plot/block
-    // vectors are resolution-independent either way (see LOD comment above
-    // drawBlockVector) and always draw at their full, extent-appropriate
-    // detail regardless of this setting.
-    const scale = isHigh ? HIGH_BASEMAP_ZOOM_SCALE : BASEMAP_ZOOM_SCALE;
+    // Basemap capture is IDENTICAL for both settings — High's extra effort
+    // goes into the vector layer (per-edge distance labels), not into
+    // fetching deeper tiles, which is what made it laggy.
+    const scale = BASEMAP_ZOOM_SCALE;
     setPrintStatus("Rendering imagery…", false);
     setCapturingOverlay(true, "Rendering imagery…");
     try {
@@ -1106,7 +1063,7 @@ export function initPrintTool({
         doc.clip?.();
         doc.discardPath?.();
       } catch { /* clip unsupported — vectors still draw, just unclipped */ }
-      drawParcelsAndBlocksVector(doc, extent, drawX, drawY, drawW, drawH);
+      drawParcelsAndBlocksVector(doc, extent, drawX, drawY, drawW, drawH, isHigh);
       doc.restoreGraphicsState?.();
 
       doc.setDrawColor(190);

@@ -221,6 +221,11 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   // Live area for a polygon feature, in hectares — used only for the
   // optional "Area" on-map label (display_params), computed client-side
   // from the already-loaded geometry rather than round-tripping to the DB.
+  // Nothing here is cached on the feature, so this — and every label built
+  // from it below — recomputes fresh on every single render call, which is
+  // exactly what keeps the label live/correct while the Edit tab drags this
+  // same feature's nodes around (no stale-cache bug to worry about, unlike
+  // blocksLayer/parcelsLayer's own area label in map-app.js).
   function areaHectares(geometry) {
     // Matches the { projection: "EPSG:3857" } convention map-app.js's own
     // ol.sphere.getArea() calls use everywhere else in this app.
@@ -228,17 +233,32 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     return (m2 / 10000).toFixed(2);
   }
 
-  // "Show on map" text label(s), built from whichever of name/area this
-  // feature type has checked (vsl_feature_type.display_params, max 1 for
-  // point/line, max 2 for polygon — see manage-features.js's form and the
-  // vsl_feature_type_display_params_max DB constraint). Offset below the
-  // marker/shape so it doesn't sit on top of the icon/stroke.
+  // Live ground length for a line feature, in meters/km — the "Length"
+  // counterpart to areaHectares above, used for the optional Length label
+  // on line-kind feature types (see manage-features.js's mfDisplayLengthCb).
+  // Same km-once-it's-1000m+ formatting convention as map-app.js's own
+  // Measure tool (formatGroundLengthM), kept local here since map-app.js
+  // doesn't export its helpers to other modules.
+  function lengthText(geometry) {
+    const m = ol.sphere.getLength(geometry, { projection: "EPSG:3857" });
+    if (!Number.isFinite(m)) return "";
+    if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
+    return `${m.toFixed(1)} m`;
+  }
+
+  // "Show on map" text label(s), built from whichever of name/area/length
+  // this feature type has checked (vsl_feature_type.display_params, max 1
+  // for point/line — Name and Length are mutually exclusive for line, see
+  // manage-features.js — max 2 for polygon — see manage-features.js's form
+  // and the vsl_feature_type_display_params_max DB constraint). Offset
+  // below the marker/shape so it doesn't sit on top of the icon/stroke.
   function displayLabelStyle(feature, offsetY) {
     const params = feature.get("_display");
     if (!Array.isArray(params) || !params.length) return null;
     const lines = [];
     if (params.includes("name") && feature.get("_name")) lines.push(feature.get("_name"));
     if (params.includes("area")) lines.push(`${areaHectares(feature.getGeometry())} ha`);
+    if (params.includes("length")) lines.push(lengthText(feature.getGeometry()));
     if (!lines.length) return null;
     return new ol.style.Style({
       text: new ol.style.Text({

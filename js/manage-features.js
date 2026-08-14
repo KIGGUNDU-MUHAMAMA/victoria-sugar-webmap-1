@@ -68,6 +68,8 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
   const displayNameCb = document.getElementById("mfDisplayNameCb");
   const displayAreaRow = document.getElementById("mfDisplayAreaRow");
   const displayAreaCb = document.getElementById("mfDisplayAreaCb");
+  const displayLengthRow = document.getElementById("mfDisplayLengthRow");
+  const displayLengthCb = document.getElementById("mfDisplayLengthCb");
   const activeCb = document.getElementById("mfActiveCb");
   const formError = document.getElementById("mfFormError");
   const listActions = document.getElementById("mfListActions");
@@ -99,10 +101,11 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     }
   }
 
+  const DISPLAY_PARAM_LABELS = { name: "Name", area: "Area", length: "Length" };
   function displayBadges(r) {
     const params = Array.isArray(r.display_params) ? r.display_params : [];
     if (!params.length) return '<span class="mf-row__display-badge mf-row__display-badge--none">Off</span>';
-    return params.map((p) => `<span class="mf-row__display-badge">${p === "area" ? "Area" : "Name"}</span>`).join("");
+    return params.map((p) => `<span class="mf-row__display-badge">${DISPLAY_PARAM_LABELS[p] || p}</span>`).join("");
   }
 
   function rowHtml(r) {
@@ -170,9 +173,22 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     pointParams.hidden = kind !== "point";
     linetypeRow.hidden = kind === "point";
     displayAreaRow.hidden = kind !== "polygon";
+    displayLengthRow.hidden = kind !== "line";
     if (kind !== "polygon") displayAreaCb.checked = false;
+    if (kind !== "line") displayLengthCb.checked = false;
   }
   kindSelect.addEventListener("change", updateKindVisibility);
+
+  // Line is capped at 1 display param (vsl_feature_type_display_params_max),
+  // and now has two options to choose from (Name/Length) instead of just
+  // one — enforce that cap client-side by making them mutually exclusive,
+  // only when Line is the current kind (Polygon's Name+Area can both be on).
+  displayNameCb.addEventListener("change", () => {
+    if (kindSelect.value === "line" && displayNameCb.checked) displayLengthCb.checked = false;
+  });
+  displayLengthCb.addEventListener("change", () => {
+    if (displayLengthCb.checked) displayNameCb.checked = false;
+  });
 
   function showList() {
     document.getElementById("mfListWrap").hidden = false;
@@ -209,6 +225,7 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     const dp = Array.isArray(row?.display_params) ? row.display_params : [];
     displayNameCb.checked = dp.includes("name");
     displayAreaCb.checked = dp.includes("area");
+    displayLengthCb.checked = dp.includes("length");
 
     activeCb.checked = row?.is_active !== false;
     updateKindVisibility();
@@ -247,6 +264,7 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     const displayParams = [];
     if (displayNameCb.checked) displayParams.push("name");
     if (kind === "polygon" && displayAreaCb.checked) displayParams.push("area");
+    if (kind === "line" && displayLengthCb.checked) displayParams.push("length");
 
     const payload = {
       name,

@@ -14,6 +14,7 @@
  */
 
 import { confirmDanger } from "../popups/popup.js";
+import { computeUtmCartesianAreaAcres } from "./utils.js";
 
 // Green — both the always-visible "here are this feature's nodes" resting
 // markers, and the cursor's "click here to insert a new node" indicator
@@ -94,6 +95,48 @@ export function initSurveyEdit({
 
   function feedback(msg, isError) {
     if (msg) setStatus?.(statusEl, msg, isError);
+  }
+
+  // Block/parcel area, recomputed live from geometry as it's reshaped —
+  // same UTM-cartesian algorithm map-app.js's own surveyFeatureAreaAcresText
+  // uses (via computeUtmCartesianAreaAcres, imported from the same shared
+  // utils.js both modules already pull from), so the number matches exactly
+  // what the rest of the app would compute for this shape. Kept in sync
+  // onto the feature's own "expected_area_acres" property while editing
+  // (see modifyend below) — that property is what blocksLayer/parcelsLayer
+  // in map-app.js *prefers* over live computation for their on-map label,
+  // so without this, dragging a node would leave that label showing the
+  // stale pre-edit area until a full page reload.
+  function liveAreaAcres(geometry) {
+    if (!geometry) return null;
+    try {
+      const type = geometry.getType();
+      let areaAcres = 0;
+      if (type === "Polygon") {
+        const ring = geometry.getLinearRing(0);
+        if (ring) {
+          const lonLats = ring.getCoordinates().map((pt) => ol.proj.transform(pt, "EPSG:3857", "EPSG:4326"));
+          areaAcres = computeUtmCartesianAreaAcres(lonLats);
+        }
+      } else if (type === "MultiPolygon") {
+        for (const poly of geometry.getPolygons()) {
+          const ring = poly.getLinearRing(0);
+          if (ring) {
+            const lonLats = ring.getCoordinates().map((pt) => ol.proj.transform(pt, "EPSG:3857", "EPSG:4326"));
+            areaAcres += computeUtmCartesianAreaAcres(lonLats);
+          }
+        }
+      } else {
+        return null;
+      }
+      // Rounded once here so the number shown live while dragging and the
+      // one eventually persisted on Save (see saveBtn below, which just
+      // reads this same property back off the feature) are always
+      // identical — no separate rounding step anywhere else.
+      return Math.round(areaAcres * 100) / 100;
+    } catch {
+      return null;
+    }
   }
 
   // ── Highlight layer — bold amber outline over the currently *focused*
@@ -200,7 +243,15 @@ export function initSurveyEdit({
     }
 
     if (!pendingEdits.has(key)) {
-      pendingEdits.set(key, { feature, kind, originalGeom: feature.getGeometry().clone() });
+      pendingEdits.set(key, {
+        feature,
+        kind,
+        originalGeom: feature.getGeometry().clone(),
+        // Only meaningful for block/parcel (see liveAreaAcres/modifyend
+        // below) — snapshotted so Cancel/discard can put the true original
+        // value back, not whatever it got live-recomputed to mid-edit.
+        originalExpectedArea: kind === "block" || kind === "parcel" ? feature.get("expected_area_acres") : undefined
+      });
     }
     modifyFeatures.push(feature);
     highlightSource.addFeature(feature);
@@ -210,8 +261,13 @@ export function initSurveyEdit({
   }
 
   function clearPending({ restore }) {
-    for (const { feature, originalGeom } of pendingEdits.values()) {
-      if (restore) feature.setGeometry(originalGeom.clone());
+    for (const { feature, kind, originalGeom, originalExpectedArea } of pendingEdits.values()) {
+      if (restore) {
+        feature.setGeometry(originalGeom.clone());
+        if (kind === "block" || kind === "parcel") {
+          feature.set("expected_area_acres", originalExpectedArea);
+        }
+      }
     }
     pendingEdits.clear();
     modifyFeatures.clear();
@@ -279,6 +335,21 @@ export function initSurveyEdit({
       deleteCondition: (evt) => ol.events.condition.singleClick(evt) && !!hoveredVertexCoord
     });
     map.addInteraction(modifyInteraction);
+
+    // Re-syncs the focused block/parcel's "expected_area_acres" to its
+    // just-reshaped geometry after every discrete Modify action (a drag,
+    // an inserted vertex, or a deleted one all fire this) — see
+    // liveAreaAcres's comment above for why that property specifically.
+    // Custom vsl_feature polygons/lines need no equivalent: their area/
+    // length labels (js/survey-draw.js styleForFeature) are computed fresh
+    // from geometry on every render already, nothing cached to go stale.
+    modifyInteraction.on("modifyend", () => {
+      if (!focusedKey) return;
+      const entry = pendingEdits.get(focusedKey);
+      if (!entry || (entry.kind !== "block" && entry.kind !== "parcel")) return;
+      const areaAcres = liveAreaAcres(entry.feature.getGeometry());
+      if (areaAcres != null) entry.feature.set("expected_area_acres", areaAcres);
+    });
 
     // Snap-to-existing-features while dragging a node — same shared
     // mechanism the Draw tab uses (blocks/parcels via map-app.js's
@@ -400,6 +471,14 @@ export function initSurveyEdit({
             });
             if (error) throw error;
             savedAnyBlock = true;
+            // vsl_update_block_geom only touches geom — persist the area
+            // already recomputed onto the feature live while it was being
+            // dragged (see modifyend above) with a plain follow-up update,
+            // same pattern the Draw tab uses for block_name/parcel_name.
+            const areaAcres = feature.get("expected_area_acres");
+            if (areaAcres != null) {
+              await supabase.from("vsl_blocks").update({ expected_area_acres: areaAcres }).eq("id", id);
+            }
           } else if (kind === "parcel") {
             const { error } = await supabase.rpc("vsl_update_parcel_geom", {
               p_parcel_id: id,
@@ -407,6 +486,10 @@ export function initSurveyEdit({
               p_user_id: userId
             });
             if (error) throw error;
+            const areaAcres = feature.get("expected_area_acres");
+            if (areaAcres != null) {
+              await supabase.from("vsl_parcels").update({ expected_area_acres: areaAcres }).eq("id", id);
+            }
           } else {
             const { error } = await supabase.rpc("vsl_update_feature_geom", {
               p_feature_id: id,

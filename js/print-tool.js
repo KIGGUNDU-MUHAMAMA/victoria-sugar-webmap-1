@@ -672,7 +672,12 @@ export function initPrintTool({
     doc.setFont("helvetica", "bold");
     doc.setFontSize(fontSize);
     doc.setTextColor(255, 255, 255);
-    const d = 0.35;
+    // Halo thickness has to track the font size now that sizes scale with
+    // the selection — a fixed offset that looked right at 7pt would smear
+    // 2pt text into an unreadable white blob. 5% of the font size is the
+    // ratio the old fixed 0.35 had at the original 7pt default, so this
+    // reproduces the previous look exactly at that size.
+    const d = fontSize * 0.05;
     [[-d, 0], [d, 0], [0, -d], [0, d], [-d, -d], [d, -d], [-d, d], [d, d]].forEach(([dx, dy]) => {
       doc.text(text, x + dx, y + dy, textOpts());
     });
@@ -698,24 +703,45 @@ export function initPrintTool({
   const EDGE_DISTANCE_RGB = [25, 118, 210]; // #1976d2
 
   // ---------------------------------------------------------------------
-  // TUNABLE — flat label/stroke sizes, in PDF points. These are plain
-  // fixed sizes on purpose: the earlier "compute everything dynamically
-  // from an effective print resolution" experiment is gone. Standard and
-  // High print IDENTICALLY except for one thing — High additionally draws
-  // the per-edge distance labels (see PRINT_HIGH_ADDS_EDGE_DISTANCES).
+  // TUNABLE — BASE label/stroke sizes, in PDF points.
+  //
+  // These are NOT used directly. Every one of them is divided by the
+  // selection's ground size in km (the longer of the selection window's
+  // width/height — see getSelectionSizeKm) before anything is drawn, so
+  // the whole drawing scales inversely with how much ground the print
+  // covers. Tighter selection -> bigger text and thicker lines; wider
+  // selection -> smaller text and thinner lines.
+  //
+  // Read each value below as "the size this would be at a 1km selection".
+  // Worked example, selecting a 10km x 5km window (selection size = 10):
+  //     PARCEL_HALO_PT        2/10  = 0.2
+  //     PARCEL_STROKE_PT      1/10  = 0.1
+  //     BLOCK_STROKE_PT       2/10  = 0.2
+  //     BLOCK_LABEL_PT       40/10  = 4
+  //     PARCEL_LABEL_PT      20/10  = 2
+  //     EDGE_DISTANCE_PT     10/10  = 1
+  //
+  // The division happens once per print in computePrintSizes(), which
+  // hands a `sizes` object down to the draw functions — it can't live on
+  // the constants themselves, since the selection isn't known until the
+  // user has actually drawn one.
+  //
+  // Every plot inside the selection gets its full name/area/ratoon label,
+  // always. There's deliberately no "too many plots, drop to name only"
+  // fallback any more — the sizes above shrink to fit instead, and it's
+  // the user's call to print on bigger paper or select a smaller area if
+  // the result comes out too small to read.
   // ---------------------------------------------------------------------
-  const BLOCK_LABEL_PT = 8;        // block name *was 8*
-  const BLOCK_STROKE_PT = 0.5;       // block outline *was 1*
-  const PARCEL_LABEL_PT = 1;       // plot name / area / ratoon / Alerts(n) was 7
-  const PARCEL_LABEL_SIMPLE_PT = 2.5; // plot name only, when the page is busy was 6.5
-  const PARCEL_STROKE_PT = 0.5;   // plot outline was 0.85
-  const PARCEL_HALO_PT = 1;     // white casing under the plot outline *was 1.75*
-  const EDGE_DISTANCE_PT = 5;      // "123.4m" edge labels (High only) was 6
 
-  /** Above this many plots in the selection, plot labels collapse to the
-   *  name alone (no area/ratoon) so a wide print doesn't turn into a wall
-   *  of stacked text. */
-  const SIMPLIFY_LABELS_ABOVE = 150;
+  //---------- LINE CONSTANTS (per 1km of selection) --------------------\\
+  const BASE_PARCEL_HALO_PT = 2;     // white casing under the plot outline
+  const BASE_PARCEL_STROKE_PT = 1;   // plot line thickness
+  const BASE_BLOCK_STROKE_PT = 2;    // block outline
+
+  //---------- TEXT CONSTANTS (per 1km of selection) --------------------\\
+  const BASE_BLOCK_LABEL_PT = 40;   // block name
+  const BASE_PARCEL_LABEL_PT = 20;  // plot name / area / ratoon / Alerts(n)
+  const BASE_EDGE_DISTANCE_PT = 10; // "123.4m" edge labels (High only)
 
   /** The single difference between the Standard and High resolution
    *  settings: High spends its effort on the vector layer by additionally
@@ -733,6 +759,46 @@ export function initPrintTool({
     const dLon = toRad(lon2 - lon1);
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  /** The selection window's ground size in KILOMETRES — the larger of its
+   *  width and height, measured across the middle of the extent so it's
+   *  true ground distance (haversine on real lon/lat) rather than raw
+   *  Web-Mercator units, which would over-report the further you get from
+   *  the equator. This single number is the divisor behind every BASE_*
+   *  size above: select 10km x 5km and it returns 10. */
+  function getSelectionSizeKm(extent) {
+    if (!extent) return 1;
+    const [minX, minY, maxX, maxY] = extent;
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    const toLonLat = (c) => ol.proj.transform(c, "EPSG:3857", "EPSG:4326");
+    const w = toLonLat([minX, midY]);
+    const e = toLonLat([maxX, midY]);
+    const s = toLonLat([midX, minY]);
+    const n = toLonLat([midX, maxY]);
+    const widthM = haversineMeters(w[0], w[1], e[0], e[1]);
+    const heightM = haversineMeters(s[0], s[1], n[0], n[1]);
+    return Math.max(widthM, heightM) / 1000;
+  }
+
+  /** Divides every BASE_* size by the selection's km size, once per print.
+   *  The only safety here is against a zero/NaN divisor (which would make
+   *  every size Infinity and render nothing) — the results themselves are
+   *  deliberately NOT clamped, so the raw inverse relationship is exactly
+   *  what lands on the page. */
+  function computePrintSizes(extent) {
+    const km = getSelectionSizeKm(extent);
+    const d = km > 0 && isFinite(km) ? km : 1;
+    return {
+      selectionKm: d,
+      parcelHalo: BASE_PARCEL_HALO_PT / d,
+      parcelStroke: BASE_PARCEL_STROKE_PT / d,
+      blockStroke: BASE_BLOCK_STROKE_PT / d,
+      blockLabel: BASE_BLOCK_LABEL_PT / d,
+      parcelLabel: BASE_PARCEL_LABEL_PT / d,
+      edgeDistance: BASE_EDGE_DISTANCE_PT / d
+    };
   }
 
   // TUNABLE — edge-distance label rotation/fit. See drawEdgeDistanceLabels.
@@ -805,7 +871,7 @@ export function initPrintTool({
     }
   }
 
-  function drawBlockVector(doc, feature, project) {
+  function drawBlockVector(doc, feature, project, sizes) {
     const geometry = feature.getGeometry();
     if (!geometry) return;
     const status = feature.get("cultivation_status");
@@ -818,17 +884,17 @@ export function initPrintTool({
     forEachOuterRing(geometry, (ring) => {
       drawClosedPath(doc, ring.map(project), {
         fill: fillRGB, fillAlpha,
-        strokeColor: BLOCK_STROKE_RGB, strokeWidth: BLOCK_STROKE_PT
+        strokeColor: BLOCK_STROKE_RGB, strokeWidth: sizes.blockStroke
       });
     });
     const ip = getFeatureInteriorPoint?.(geometry);
     if (!ip) return;
     const [px, py] = project(ip.getCoordinates());
     const name = String(feature.get("block_name") ?? "").trim() || "—";
-    drawHaloText(doc, name, px, py, { fontSize: BLOCK_LABEL_PT, colorRGB: BLOCK_STROKE_RGB });
+    drawHaloText(doc, name, px, py, { fontSize: sizes.blockLabel, colorRGB: BLOCK_STROKE_RGB });
   }
 
-  function drawParcelVector(doc, feature, project, simplifyLabels, withEdgeDistances) {
+  function drawParcelVector(doc, feature, project, withEdgeDistances, sizes) {
     const geometry = feature.getGeometry();
     if (!geometry) return;
     const status = feature.get("cultivation_status");
@@ -849,15 +915,15 @@ export function initPrintTool({
     forEachOuterRing(geometry, (ring) => {
       drawClosedPath(doc, ring.map(project), {
         fill: fillRGB, fillAlpha,
-        haloColor: [255, 255, 255], haloWidth: PARCEL_HALO_PT,
-        strokeColor: PARCEL_STROKE_RGB, strokeWidth: PARCEL_STROKE_PT
+        haloColor: [255, 255, 255], haloWidth: sizes.parcelHalo,
+        strokeColor: PARCEL_STROKE_RGB, strokeWidth: sizes.parcelStroke
       });
     });
 
     // The one High-resolution extra — plot edge lengths, rotated to follow
     // each edge. Plots only; blocks never had these on screen either.
     if (withEdgeDistances) {
-      forEachOuterRing(geometry, (ring) => drawEdgeDistanceLabels(doc, ring, project, EDGE_DISTANCE_PT));
+      forEachOuterRing(geometry, (ring) => drawEdgeDistanceLabels(doc, ring, project, sizes.edgeDistance));
     }
 
     const ip = getFeatureInteriorPoint?.(geometry);
@@ -865,11 +931,6 @@ export function initPrintTool({
     const [px, py] = project(ip.getCoordinates());
     const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
     const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
-
-    if (simplifyLabels) {
-      drawHaloText(doc, label, px, py, { fontSize: PARCEL_LABEL_SIMPLE_PT, colorRGB: PARCEL_STROKE_RGB });
-      return;
-    }
 
     const expArea = feature.get("expected_area_acres");
     const area = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
@@ -880,7 +941,7 @@ export function initPrintTool({
     let lineCount = area ? 2 : 1;
     if (ratoonLine) { text += `\n${ratoonLine}`; lineCount += 1; }
 
-    const fontSize = PARCEL_LABEL_PT;
+    const fontSize = sizes.parcelLabel;
     drawHaloText(doc, text, px, py, { fontSize, colorRGB: PARCEL_STROKE_RGB });
 
     if (alertSeverity && alertCount) {
@@ -893,16 +954,21 @@ export function initPrintTool({
   /** Draws every block, then every parcel, that intersects `extent` —
    *  blocks first so parcels (drawn on top, same as the live LAND LAYERS
    *  group order) win any visual overlap. Identical for Standard and High
-   *  except `isHigh`, which adds the per-edge distance labels. */
+   *  except `isHigh`, which adds the per-edge distance labels.
+   *
+   *  Every font size and line width comes from computePrintSizes(), which
+   *  divides the BASE_* constants by the selection's ground size in km —
+   *  computed once here and passed down, so the whole page is drawn at one
+   *  consistent scale. */
   function drawParcelsAndBlocksVector(doc, extent, drawX, drawY, drawW, drawH, isHigh) {
     if (!extent || !blocksLayer || !parcelsLayer) return;
     const project = makeProjector(extent, drawX, drawY, drawW, drawH);
+    const sizes = computePrintSizes(extent);
     const blockFeatures = blocksLayer.getSource().getFeaturesInExtent(extent);
     const parcelFeatures = parcelsLayer.getSource().getFeaturesInExtent(extent);
-    const simplifyLabels = parcelFeatures.length > SIMPLIFY_LABELS_ABOVE;
     const withEdgeDistances = !!isHigh && PRINT_HIGH_ADDS_EDGE_DISTANCES;
-    blockFeatures.forEach((feature) => drawBlockVector(doc, feature, project));
-    parcelFeatures.forEach((feature) => drawParcelVector(doc, feature, project, simplifyLabels, withEdgeDistances));
+    blockFeatures.forEach((feature) => drawBlockVector(doc, feature, project, sizes));
+    parcelFeatures.forEach((feature) => drawParcelVector(doc, feature, project, withEdgeDistances, sizes));
   }
 
   /** Plain pixel-accurate crop — `rect` must already be in the same pixel

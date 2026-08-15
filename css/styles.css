@@ -5134,98 +5134,6 @@ select.search-panel__input {
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
-/* ── Print/PDF Plot — draggable/resizable legend overlay + fixed north
-   arrow, both docked directly over the live map (js/print-tool.js).
-   Reuses .legend-panel__item/.legend-panel__swatch above for its rows
-   (their markup is cloned straight from #legendStatusList), styled here
-   only as the floating card + drag/resize handles around them. ────────── */
-.print-legend {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
-  z-index: 5;
-  width: 170px;
-  min-width: 120px;
-  min-height: 60px;
-  max-width: 60vw;
-  max-height: 60vh;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 10px;
-  box-shadow: 0 8px 22px rgba(6, 26, 22, 0.18);
-  padding: 0.5rem 0.6rem 0.65rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  overflow: hidden;
-  user-select: none;
-}
-.print-legend__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--text);
-}
-.print-legend__drag {
-  cursor: grab;
-  color: #8a8f8c;
-  padding: 2px 4px;
-  border-radius: 6px;
-}
-.print-legend__drag:hover {
-  color: var(--text);
-  background: rgba(0, 0, 0, 0.06);
-}
-.print-legend__list {
-  flex: 1 1 auto;
-  overflow: auto;
-}
-.print-legend__list .legend-panel__item {
-  font-size: 0.72rem;
-}
-.print-legend__resize {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  border-right: 2px solid rgba(0, 0, 0, 0.28);
-  border-bottom: 2px solid rgba(0, 0, 0, 0.28);
-  border-radius: 0 0 4px 0;
-}
-
-.print-north-arrow {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 5;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 6px 16px rgba(6, 26, 22, 0.16);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  color: var(--text);
-  pointer-events: none;
-}
-.print-north-arrow i {
-  transform: rotate(-45deg);
-  font-size: 0.95rem;
-}
-.print-north-arrow span {
-  font-size: 0.6rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
 /* =============================================================
    PRINT MODE — in-place overlay UI (js/print-tool.js)
    -------------------------------------------------------------
@@ -5250,15 +5158,35 @@ select.search-panel__input {
   cursor: crosshair !important;
 }
 
-/* ── "Add title" button + editable title/description card — top-center,
-   Google Earth's map-title flow but restyled to match this app (frosted
-   card like .toast, not a flat white box). ── */
-.vsl-print-addtitle-btn {
+/* ── Bottom stack — one wrapper holding the "Add title" button / title
+   card AND the toolbar, pinned bottom-center and stacked vertically, so
+   the whole print UI reads as a single unit instead of the title floating
+   separately at the top. The wrapper is click-through; only its children
+   take pointer events, so the transparent gap between the card and the
+   toolbar can't swallow a drag meant for the map. Children below are
+   therefore laid out in normal flow — no absolute positioning of their
+   own. ── */
+.vsl-print-bottom-stack {
   position: absolute;
-  top: 14px;
   left: 50%;
+  bottom: 10px;
   transform: translateX(-50%);
   z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 28px);
+  pointer-events: none;
+}
+.vsl-print-bottom-stack > * {
+  pointer-events: auto;
+}
+
+/* ── "Add title" button + editable title card — Google Earth's
+   map-title flow but restyled to match this app (frosted card like .toast,
+   not a flat white box), and sitting directly above the toolbar. ── */
+.vsl-print-addtitle-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -5282,12 +5210,7 @@ select.search-panel__input {
 }
 
 .vsl-print-title-card {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  width: min(360px, calc(100% - 28px));
+  width: min(360px, 100%);
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -5313,35 +5236,35 @@ select.search-panel__input {
   color: #9aa39a;
   font-weight: 700;
 }
-.vsl-print-title-card__desc {
-  width: 100%;
-  border: none;
-  background: transparent;
-  padding: 0;
-  margin: 0.2rem 0 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  resize: none;
-  font-family: inherit;
-  line-height: 1.3;
-}
-.vsl-print-title-card__title:focus,
-.vsl-print-title-card__desc:focus {
+.vsl-print-title-card__title:focus {
   outline: none;
+}
+
+/* ── Resting state — the card is no longer being edited (focus left it, see
+   leaveTitleEditing in js/print-tool.js). It shrinks to a compact caption:
+   tighter padding, smaller type, softer background. Clicking it goes back
+   to editing. The card only survives in this state if a title was actually
+   typed — if it's empty it folds back into the "Add title" button. ── */
+.vsl-print-title-card--resting {
+  width: auto;
+  max-width: min(360px, 100%);
+  padding: 0.35rem 0.7rem;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+}
+.vsl-print-title-card--resting .vsl-print-title-card__title {
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
 /* ── Bottom-center toolbar — same frosted/pill language as .toast (see
    toast/toast.css), just holding icon buttons instead of text, and sitting
    a bit clear of the actual bottom edge rather than flush against it. ── */
 .vsl-print-toolbar {
-  position: absolute;
-  left: 50%;
-  bottom: 56px;
-  transform: translateX(-50%);
-  z-index: 20;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);
@@ -5354,8 +5277,8 @@ select.search-panel__input {
   display: none !important;
 }
 .vsl-print-toolbar__btn {
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -5364,8 +5287,11 @@ select.search-panel__input {
   border-radius: 9px;
   background: #fff;
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   cursor: pointer;
+}
+#vslPrintSelectAreaBtn{
+  border-radius: 9px 0px 0px 9px;
 }
 .vsl-print-toolbar__btn:hover {
   background: #eef4ea;
@@ -5378,12 +5304,12 @@ select.search-panel__input {
 }
 .vsl-print-toolbar__btn--primary {
   background: var(--primary);
-  color: #fff;
+  color:#fff;
   border-color: var(--primary);
 }
 .vsl-print-toolbar__btn--primary:hover {
   background: var(--primary-2);
-  color: #fff;
+  color: tomato;
 }
 .vsl-print-toolbar__btn--danger:hover {
   background: #fdeaea;
@@ -5394,32 +5320,138 @@ select.search-panel__input {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ── Select-area split button — the main icon plus a narrow caret that
+   opens the "Lock Aspect Ratio" popup above it. ── */
+.vsl-print-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0px;
+}
+.vsl-print-split__caret {
+  width: 20px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 0px 9px 9px 0px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.vsl-print-split__caret:hover {
+  background: #eef4ea;
+  color: var(--primary);
+}
+.vsl-print-split__caret.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.vsl-print-lock-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 24;
+  padding: 0.5rem 0.7rem;
+  background: #fff;
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+.vsl-print-lock-pop[hidden] {
+  display: none !important;
+}
+.vsl-print-lock-pop__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.vsl-print-lock-pop__row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
 .vsl-print-toolbar__sep {
   width: 1px;
   align-self: stretch;
   background: var(--border);
-  margin: 4px 2px;
+  margin: px 2px;
 }
 
 /* ── Setup popup — floats just above the toolbar. ── */
+/* ── Print setup — a small standalone window centred over the map, with
+   its own header and close button (it used to be a bare popover tucked
+   above the toolbar). Closes on its X, on Cancel/exit, or on any click
+   outside it — see openSetupPopup/closeSetupPopup in js/print-tool.js. ── */
 .vsl-print-setup {
   position: absolute;
+  top: 50%;
   left: 50%;
-  bottom: 104px;
-  transform: translateX(-50%);
-  z-index: 21;
-  width: 240px;
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid rgba(47, 107, 47, 0.18);
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  width: 250px;
+  max-width: calc(100% - 28px);
+  background: #fff;
+  border: 1px solid rgba(47, 107, 47, 0.2);
   border-radius: 12px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
-  padding: 0.7rem 0.8rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.26);
+  overflow: hidden;
 }
 .vsl-print-setup[hidden] {
   display: none !important;
+}
+.vsl-print-setup__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  background: #eef4ea;
+  border-bottom: 1px solid rgba(47, 107, 47, 0.16);
+}
+.vsl-print-setup__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.vsl-print-setup__close {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.vsl-print-setup__close:hover {
+  background: #fdeaea;
+  color: var(--danger);
+  border-color: rgba(179, 54, 54, 0.3);
+}
+.vsl-print-setup__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem 0.8rem;
 }
 .vsl-print-setup__heading {
   font-size: 0.68rem;
@@ -5427,7 +5459,7 @@ select.search-panel__input {
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--muted);
-  margin: 0.15rem 0 0;
+  margin: 0;
 }
 .vsl-print-setup__row {
   display: flex;
@@ -5441,15 +5473,44 @@ select.search-panel__input {
   width: auto;
   margin: 0;
 }
-.vsl-print-setup select {
-  width: 100%;
+/* A row holding a label + control (e.g. Text size) rather than a checkbox
+   — pushes the control to the right edge. */
+.vsl-print-setup__row--select {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.vsl-print-setup__row--select select {
+  width: 74px;
   margin: 0;
-  padding: 0.35rem 0.5rem;
+  padding: 0.25rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: 7px;
-  font-size: 0.8rem;
   background: #fff;
   color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+/* A dependent option, indented under the row it belongs to. */
+.vsl-print-setup__row--sub {
+  padding-left: 1.15rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.vsl-print-setup__row.is-disabled,
+.vsl-print-setup__row input:disabled,
+.vsl-print-setup__row input:disabled + span {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vsl-print-setup__note {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--muted);
+}
+.vsl-print-setup__note[hidden] {
+  display: none !important;
 }
 
 /* ── Selection rectangle — dashed border + a resize handle, and the
@@ -5469,16 +5530,24 @@ select.search-panel__input {
 .vsl-print-selection[hidden] {
   display: none !important;
 }
+/* One bottom-right grip. With the aspect lock ON it snaps the box to
+   whichever page ratio the drag is heading for — pull wide for landscape,
+   tall for portrait — exactly like drawing a fresh box. With the lock OFF
+   it's a plain free resize. Green while the lock is holding it. */
 .vsl-print-selection__handle {
   position: absolute;
-  right: -6px;
-  bottom: -6px;
-  width: 14px;
-  height: 14px;
+  right: -8px;
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #fff;
-  border: 2px solid var(--primary);
+  border: 3px solid var(--primary);
   cursor: nwse-resize;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.vsl-print-selection__handle--locked {
+  border-color: #2e7d32;
 }
 .vsl-print-selection__hint {
   position: absolute;
@@ -5492,14 +5561,6 @@ select.search-panel__input {
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
-}
-
-/* Legend, once a selection exists, anchors inside the selection's
-   top-right corner instead of floating freely over the whole map (still
-   draggable/resizable afterward — same .print-legend class, just given a
-   starting position here). */
-.print-legend.print-legend--in-selection {
-  z-index: 16;
 }
 
 /* Full-map "please wait" cover shown while generatePdf() temporarily

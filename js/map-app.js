@@ -6235,6 +6235,12 @@ async function initMap() {
     // they don't get double-drawn. See js/print-tool.js.
     blocksLayer,
     parcelsLayer,
+    // Estate boundaries/names and the saved custom features (trees, roads,
+    // boreholes, …) are drawn as vectors too. The features layer is owned
+    // by survey-draw, so it's fetched lazily through its handle rather
+    // than captured here — it's rebuilt whenever feature types change.
+    estatesLayer,
+    getFeaturesLayer: () => surveyDrawHandles?.getFeaturesLayer?.() || null,
     CULTIVATION_PALETTE,
     ALERT_SEVERITY_FILL,
     ALERT_SEVERITY_COLORS,

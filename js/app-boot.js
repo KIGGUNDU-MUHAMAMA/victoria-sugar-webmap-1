@@ -59,6 +59,9 @@ const WINDOW_FRAGMENTS = [
   // Opened from the pencil button next to the Survey window's Draw tab
   // Feature dropdown (js/survey-draw.js / js/manage-features.js).
   { parent: "body", url: "./windows/manage-features-panel.html" },
+  // Per-type settings window opened from the list above (and its stacked
+  // icon-library picker) — see js/feature-type-editor.js.
+  { parent: "body", url: "./windows/feature-type-editor.html" },
   // NOTE: windows/manage-estates-panel.html is no longer loaded — estate
   // management moved from a separate modal into the Survey window's own
   // Estates tab (see windows/survey-panel.html #uamTabEstates and

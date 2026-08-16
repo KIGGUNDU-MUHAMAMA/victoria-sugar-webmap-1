@@ -6,12 +6,11 @@
 /* global ol, Chart, window — globals from webmap */
 
 const CULTIVATION_LABELS = {
-  not_in_cane: "Not in cane",
+  vacant: "Vacant",
   prepared: "Prepared",
   planted: "Planted",
-  standing: "Standing",
-  harvested: "Harvested",
-  replant_renovation: "Replant / renovation"
+  ratoon: "Ratoon",
+  harvested: "Harvested"
 };
 
 function fmtNum(n, d = 2) {
@@ -22,7 +21,7 @@ function fmtNum(n, d = 2) {
 function countByKey(rows, key) {
   const o = {};
   for (const r of rows) {
-    const k = r[key] && String(r[key]) ? String(r[key]) : "not_in_cane";
+    const k = r[key] && String(r[key]) ? String(r[key]) : "vacant";
     o[k] = (o[k] || 0) + 1;
   }
   return o;

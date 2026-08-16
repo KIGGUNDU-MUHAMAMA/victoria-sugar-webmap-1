@@ -85,11 +85,11 @@ function acresToHa(acres) {
 }
 
 // Statuses considered "actively growing cane" for harvest-due scheduling —
-// not_in_cane/prepared (nothing planted yet) and replant_renovation (being
-// reworked) never have a meaningful due date; 'harvested' is treated as a
-// brief transitional flag some records still carry from before the Log
-// Harvest flow existed.
-const GROWING_CULTIVATION_STATUSES = ['planted', 'standing'];
+// vacant/prepared (nothing planted yet) never have a meaningful due date;
+// 'harvested' is treated as a brief transitional flag some records still
+// carry from before the Log Harvest flow existed. Ratoon IS growing cane —
+// it's the regrowth after a cut — so it counts here alongside planted.
+const GROWING_CULTIVATION_STATUSES = ['planted', 'ratoon'];
 
 // Given the reference start date (planting_date for a plant crop, or
 // ratoon_start_date once a plot has been through its first harvest) and the
@@ -114,22 +114,22 @@ function computeHarvestDue(referenceDateStr, harvestPeriodMonths) {
 function healthFromCultivationStatus(status) {
   if (!status) return 'watch';
   const s = status.toLowerCase();
-  if (s === 'planted' || s === 'cane_standing' || s === 'ratoon') return 'good';
-  if (s === 'not_in_cane' || s === 'fallow') return 'watch';
-  if (s === 'replant_renovation' || s === 'failed') return 'alert';
+  if (s === 'planted' || s === 'ratoon') return 'good';
+  if (s === 'vacant' || s === 'fallow') return 'watch';
+  if (s === 'failed') return 'alert';
   return 'watch';
 }
 
 // Map cultivation_status → display growth stage label
 function stageFromCultivationStatus(status) {
   const map = {
-    not_in_cane:          'Fallow',
-    planted:               'Grand Growth',
-    cane_standing:          'Grand Growth',
-    ratoon:                 'Tillering',
-    replant_renovation:     'Under Prep',
-    pending:                 'Under Prep',
-    failed:                  'Fallow',
+    vacant:      'Fallow',
+    prepared:    'Under Prep',
+    planted:     'Grand Growth',
+    ratoon:      'Tillering',
+    harvested:   'Harvested',
+    pending:     'Under Prep',
+    failed:      'Fallow',
   };
   return map[status] || 'Fallow';
 }
@@ -291,7 +291,7 @@ async function loadLiveData() {
     const parcelsInBlock = rawParcels.filter(p => p.block_id === b.id);
     const areaHa = acresToHa(b.expected_area_acres);
     const plantedAcres = parcelsInBlock
-      .filter(p => p.cultivation_status && p.cultivation_status !== 'not_in_cane' && p.cultivation_status !== 'pending')
+      .filter(p => p.cultivation_status && p.cultivation_status !== 'vacant' && p.cultivation_status !== 'pending')
       .reduce((s, p) => s + (parseFloat(p.expected_area_acres) || 0), 0);
     const plantedHa = acresToHa(plantedAcres) || (areaHa * 0.0); // 0 if nothing planted yet
     const seed = seedFromString(b.id);
@@ -308,9 +308,7 @@ async function loadLiveData() {
       plots: parcelsInBlock.length,
       areaHa: Number(areaHa.toFixed(2)),
       plantedHa: Number(plantedHa.toFixed(2)),
-      status: b.cultivation_status === 'not_in_cane' ? 'watch'
-            : b.cultivation_status === 'replant_renovation' ? 'alert'
-            : 'active',
+      status: b.cultivation_status === 'vacant' ? 'watch' : 'active',
       avgYield: harvestTonnes && areaHa ? Number((harvestTonnes / (areaHa * 2.47105)).toFixed(2)) : Number(((6.5 + (seed % 30) / 10) / 2.47105).toFixed(2)), // t/acre; placeholder if no harvest yet
       season: '2024-B',
       // Legacy plain-text columns (kept for reference, not the assigned-manager source of truth anymore).
@@ -328,7 +326,7 @@ async function loadLiveData() {
       soilPh: b.soil_ph ?? null,
       ownership: b.ownership || null,
       geometryStatus: b.geometry_status || 'pending',
-      cultivationStatus: b.cultivation_status || 'not_in_cane',
+      cultivationStatus: b.cultivation_status || 'vacant',
       lastHarvestDate: harvest?.last_harvest_date ?? null,
       harvestTonnes,
       cultivationNotes: b.cultivation_notes,
@@ -382,7 +380,7 @@ async function loadLiveData() {
       planted: p.planting_date,
       expectedHarvest: p.expected_harvest_date,
       yield: harvest?.harvest_tonnes ?? null,
-      cultivationStatus: p.cultivation_status || 'not_in_cane',
+      cultivationStatus: p.cultivation_status || 'vacant',
       cultivationNotes: p.cultivation_notes,
       lastHarvestDate: harvest?.last_harvest_date ?? null,
       // Logged By — who recorded this plot's most recent harvest (vsl_harvests.created_by
@@ -868,8 +866,8 @@ function buildRecentActivityFromLiveData(rawParcels, rawBlocks, estateNameById) 
     const estateName = parentBlock ? estateNameById.get(parentBlock.estate_id) : null;
     items.push({
       type: 'update',
-      icon: p.cultivation_status === 'not_in_cane' ? '🪴' : '🌾',
-      color: p.cultivation_status === 'replant_renovation' ? 'amber' : 'green',
+      icon: p.cultivation_status === 'vacant' ? '🪴' : '🌾',
+      color: p.cultivation_status === 'ratoon' ? 'amber' : 'green',
       text: `Parcel ${p.parcel_name || p.parcel_code} updated — status: ${titleCase(p.cultivation_status)}`,
       meta: `${estateName || ''} · ${new Date(p.updated_at).toLocaleString()}`,
     });

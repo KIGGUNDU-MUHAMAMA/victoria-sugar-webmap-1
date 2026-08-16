@@ -1302,7 +1302,7 @@ function renderEstatesPage(el) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Expected Area (acres)</label><input class="form-input" id="ab-area" type="number" placeholder="0.00"></div>
         <div class="form-group"><label class="form-label">Cultivation Status</label>
-          <select class="form-input" id="ab-status"><option value="not_in_cane">Not in Cane</option><option value="planted">Planted</option><option value="replant_renovation">Replant / Renovation</option></select></div>
+          <select class="form-input" id="ab-status"><option value="vacant">Vacant</option><option value="prepared">Prepared</option><option value="planted">Planted</option><option value="ratoon">Ratoon</option><option value="harvested">Harvested</option></select></div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1342,9 +1342,11 @@ function renderEstatesPage(el) {
         <div class="form-group"><label class="form-label">Block Code</label><input class="form-input" id="eb-code" value="${b.id}"></div>
         <div class="form-group"><label class="form-label">Cultivation Status</label>
           <select class="form-input" id="eb-status">
-            <option value="not_in_cane" ${b.cultivationStatus==='not_in_cane'?'selected':''}>Not in Cane</option>
+            <option value="vacant" ${b.cultivationStatus==='vacant'?'selected':''}>Vacant</option>
+            <option value="prepared" ${b.cultivationStatus==='prepared'?'selected':''}>Prepared</option>
             <option value="planted" ${b.cultivationStatus==='planted'?'selected':''}>Planted</option>
-            <option value="replant_renovation" ${b.cultivationStatus==='replant_renovation'?'selected':''}>Replant / Renovation</option>
+            <option value="ratoon" ${b.cultivationStatus==='ratoon'?'selected':''}>Ratoon</option>
+            <option value="harvested" ${b.cultivationStatus==='harvested'?'selected':''}>Harvested</option>
           </select></div>
       </div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Expected Area (acres)</label>
@@ -1436,7 +1438,7 @@ function renderEstatesPage(el) {
         block_id: blockId, parcel_code: code, parcel_name: code,
         expected_area_acres: area || null, ratoon_number: ratoon || 0,
         planting_date: planted || null,
-        cultivation_status: 'not_in_cane',
+        cultivation_status: 'vacant',
       }]);
       if (error) throw error;
       closeModal();
@@ -1476,10 +1478,12 @@ function renderEstatesPage(el) {
           </select></div>
         <div class="form-group"><label class="form-label">Cultivation Status</label>
           <select class="form-input" id="ep-status">
-            <option value="not_in_cane" ${p.cultivationStatus==='not_in_cane'?'selected':''}>Not in Cane</option>
+            <option value="vacant" ${p.cultivationStatus==='vacant'?'selected':''}>Vacant</option>
+            <option value="prepared" ${p.cultivationStatus==='prepared'?'selected':''}>Prepared</option>
             <option value="planted" ${p.cultivationStatus==='planted'?'selected':''}>Planted</option>
             <option value="ratoon" ${p.cultivationStatus==='ratoon'?'selected':''}>Ratoon</option>
-            <option value="replant_renovation" ${p.cultivationStatus==='replant_renovation'?'selected':''}>Replant / Renovation</option>
+            <option value="ratoon" ${p.cultivationStatus==='ratoon'?'selected':''}>Ratoon</option>
+            <option value="harvested" ${p.cultivationStatus==='harvested'?'selected':''}>Harvested</option>
           </select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -1841,7 +1845,7 @@ function renderProduction(el) {
       // Mark the plot harvested and shift it onto the next ratoon cycle.
       const { error: pErr } = await client.from('vsl_parcels').update({
         ratoon_number: nextRatoon, ratoon_start_date: dateVal,
-        expected_harvest_date: nextExpectedHarvest, cultivation_status: 'standing',
+        expected_harvest_date: nextExpectedHarvest, cultivation_status: 'ratoon',
       }).eq('id', plotUuid);
       if (pErr) throw pErr;
 

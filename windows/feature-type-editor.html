@@ -1,0 +1,193 @@
+<!-- Feature Type editor — opened from the edit pencil (or Add Feature) in the
+     Manage Features window (js/manage-features.js -> window.openFeatureTypeEditor).
+     Replaces the form that used to live underneath that window's list.
+
+     One window, three field sets: which one shows is driven entirely by the
+     feature type's geometry kind (js/feature-type-editor.js applyKind), since
+     a point, a line and a polygon have almost nothing in common beyond name
+     and color:
+       point   — icon, color, size, rotation, Name label
+       line    — line type, line style, width, color, Name/Length labels,
+                 label direction
+       polygon — line type, color, Name/Area labels
+     Kind is chosen only when creating; on an existing type it's fixed (it
+     determines the code band and how the feature is drawn).
+
+     The icon picker below is a second overlay stacked on top of this one; it
+     reads icons/icons.json (see that file's _readme for how to add more). -->
+<div id="featureTypeEditorModal" class="vsl-modal-overlay" hidden>
+  <div class="vsl-modal-card fte-modal popWinMain">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-sliders" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle" id="fteTitle">Edit Feature</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="fteCloseBtn" aria-label="Close feature editor">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinBody fte-body">
+      <form id="fteForm" novalidate>
+        <input type="hidden" id="fteId" value="">
+
+        <div class="mf-row-2">
+          <label class="mf-label">Type name
+            <input type="text" id="fteName" class="uam-input" placeholder="e.g. Borehole" required>
+          </label>
+          <label class="mf-label">Code
+            <input type="text" id="fteCode" class="uam-input mf-code-input" readonly tabindex="-1">
+          </label>
+        </div>
+
+        <!-- Only offered while creating — see the module doc comment. -->
+        <label class="mf-label" id="fteKindRow">Geometry
+          <select id="fteKind" class="uam-select">
+            <option value="point">Point</option>
+            <option value="line">Line</option>
+            <option value="polygon">Polygon</option>
+          </select>
+        </label>
+
+        <!-- ── POINT ────────────────────────────────────────────────── -->
+        <div id="ftedPoint" hidden>
+          <div class="mf-label">Icon
+            <div class="fte-icon-field">
+              <span id="fteIconPreview" class="fte-icon-preview" aria-hidden="true"></span>
+              <button type="button" id="fteIconPickBtn" class="uam-btn fte-icon-btn">Choose icon…</button>
+            </div>
+            <input type="hidden" id="fteIcon" value="">
+          </div>
+
+          <div class="mf-row-2">
+            <label class="mf-label">Icon size (px)
+              <input type="number" id="fteIconSize" class="uam-input" min="6" max="40" step="1" value="10">
+            </label>
+            <label class="mf-label">Rotation (°)
+              <input type="number" id="fteRotation" class="uam-input" min="0" max="359" step="1" value="0">
+            </label>
+          </div>
+        </div>
+
+        <!-- ── LINE ─────────────────────────────────────────────────── -->
+        <div id="ftedLine" hidden>
+          <div class="mf-row-2">
+            <label class="mf-label">Line type
+              <select id="fteLinetype" class="uam-select">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+                <option value="none">No line</option>
+              </select>
+            </label>
+            <label class="mf-label">Style
+              <select id="fteLineStyle" class="uam-select">
+                <option value="single">Single</option>
+                <option value="double">Double</option>
+                <option value="triple">Triple</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Two different things, deliberately side by side: weight is how
+               thick one stroke is drawn (screen pixels, constant at any
+               zoom); spacing is the real ground gap between the parallel
+               strokes of a double/triple line (metres, so it scales with the
+               map and prints true). Spacing is disabled for a single line,
+               which has nothing to be spaced from. -->
+          <div class="mf-row-2">
+            <label class="mf-label">Line weight (px)
+              <input type="number" id="fteWidth" class="uam-input" min="1" max="12" step="1" value="2">
+            </label>
+            <label class="mf-label">Spacing (m)
+              <input type="number" id="fteSpacing" class="uam-input" min="0.5" max="1000" step="0.5" value="3">
+            </label>
+          </div>
+        </div>
+
+        <!-- ── POLYGON ──────────────────────────────────────────────── -->
+        <div id="ftedPolygon" hidden>
+          <div class="mf-row-2">
+            <label class="mf-label">Line type
+              <select id="ftePolyLinetype" class="uam-select">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+                <option value="none">No line</option>
+              </select>
+            </label>
+            <label class="mf-label">Line weight (px)
+              <input type="number" id="ftePolyWidth" class="uam-input" min="1" max="12" step="1" value="2">
+            </label>
+          </div>
+        </div>
+
+        <!-- Shared by all three kinds. -->
+        <label class="mf-label">Color
+          <input type="color" id="fteColor" class="mf-color-input" value="#3f8f3f">
+        </label>
+
+        <!-- Live preview of exactly what this type will look like on the
+             map — the same swatch the feature list and the legend show. -->
+        <div class="mf-label">Preview
+          <div id="ftePreview" class="fte-preview"></div>
+        </div>
+
+        <!-- ── Labels ── framed group, filled in by renderLabelOptions() in
+             js/feature-type-editor.js: radios (with a None) for point and
+             line, whose labels are mutually exclusive, checkboxes for
+             polygon, which can show Name and Area together. -->
+        <fieldset class="fte-fieldset">
+          <legend class="fte-legend">Labels</legend>
+          <div id="fteLabelOptions"></div>
+        </fieldset>
+
+        <!-- Line only — a horizontal label sits beside the line, "along"
+             follows its bearing (OL text placement: "line"). -->
+        <fieldset class="fte-fieldset" id="fteLabelDirRow" hidden>
+          <legend class="fte-legend">Label direction</legend>
+          <label class="mf-checkbox-row">
+            <input type="radio" name="fteLabelDir" id="fteLabelDirHorizontal" value="horizontal" checked>
+            <span>Horizontal</span>
+          </label>
+          <label class="mf-checkbox-row">
+            <input type="radio" name="fteLabelDir" id="fteLabelDirAlong" value="along">
+            <span>Along the line</span>
+          </label>
+        </fieldset>
+
+        <p id="fteError" class="search-panel__error" role="alert" hidden></p>
+      </form>
+    </div>
+
+    <div class="popWinActionBtns">
+      <button type="button" id="fteCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
+      <button type="submit" form="fteForm" id="fteSaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
+        <i class="fas fa-check" aria-hidden="true"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Icon library picker — stacked on top of the editor above. Contents come
+     from icons/icons.json at open time, so adding an SVG + its name to that
+     manifest is all it takes to make a new icon selectable here. -->
+<div id="iconPickerModal" class="vsl-modal-overlay vsl-modal-overlay--stacked" hidden>
+  <div class="vsl-modal-card fte-modal popWinMain">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-icons" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Choose an Icon</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="iconPickerCloseBtn" aria-label="Close icon picker">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinBody">
+      <input type="search" id="iconPickerSearch" class="uam-input" placeholder="Search icons…" autocomplete="off">
+      <div id="iconPickerGrid" class="fte-icon-grid" role="listbox" aria-label="Icon library"></div>
+      <p id="iconPickerError" class="search-panel__error" role="alert" hidden></p>
+    </div>
+  </div>
+</div>

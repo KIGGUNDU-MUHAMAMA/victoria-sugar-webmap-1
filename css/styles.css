@@ -843,28 +843,27 @@ button:hover {
   border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.parcel-status-swatch[data-status="not_in_cane"] {
-  background: rgba(84, 110, 122, 0.55);
+/* Cultivation status swatches — keys and colours match
+   CULTIVATION_PALETTE in js/map-app.js. Vacant is intentionally unfilled
+   (just the swatch's own border), matching how it draws on the map. */
+.parcel-status-swatch[data-status="vacant"] {
+  background: transparent;
 }
 
 .parcel-status-swatch[data-status="prepared"] {
-  background: rgba(93, 64, 55, 0.55);
+  background: rgba(30, 224, 161, 0.75);
 }
 
 .parcel-status-swatch[data-status="planted"] {
-  background: rgba(46, 125, 50, 0.55);
+  background: rgba(45, 124, 51, 0.85);
 }
 
-.parcel-status-swatch[data-status="standing"] {
-  background: rgba(13, 61, 13, 0.65);
+.parcel-status-swatch[data-status="ratoon"] {
+  background: rgba(12, 61, 12, 0.9);
 }
 
 .parcel-status-swatch[data-status="harvested"] {
-  background: rgba(251, 192, 45, 0.75);
-}
-
-.parcel-status-swatch[data-status="replant_renovation"] {
-  background: rgba(106, 27, 154, 0.55);
+  background: rgba(161, 251, 142, 0.9);
 }
 
 .control-btn.picking-active {
@@ -3602,6 +3601,33 @@ select.search-panel__input {
   color: var(--primary-2);
   background: #fff;
 }
+/* #drawFeaturePreview holds a .fts swatch (the same one the Manage
+   Features list draws), which brings its own sizing — the box just needs
+   to stop clipping it and to centre it. */
+.uam-icon-preview .fts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.uam-icon-preview .fts--point {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.uam-icon-preview .fts--point img {
+  width: 12px;
+  height: 12px;
+}
+
+/* Pins a tab's secondary action to the bottom of the tab body, below
+   whatever content the tab has, rather than letting it float directly
+   under the last field. `margin-top: auto` only bites once .popWinBody has
+   spare height, which is exactly when it matters. */
+.uam-tab__footer {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
 /* Point preview — an actual small filled circle (matches the blue dot
    used for the live sketch/point markers on the map) rather than a
    Font Awesome pin glyph. */
@@ -5400,7 +5426,7 @@ select.search-panel__input {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 30;
-  width: 250px;
+  width: 430px;
   max-width: calc(100% - 28px);
   background: #fff;
   border: 1px solid rgba(47, 107, 47, 0.2);
@@ -5452,6 +5478,81 @@ select.search-panel__input {
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.7rem 0.8rem 0.8rem;
+}
+
+/* ── Tabbed settings — vertical tab rail on the left, one pane at a time
+   on the right, same shape as the Survey window's .popWinTabs--vertical.
+   The window is a fixed height so switching tabs doesn't resize it. ── */
+.vsl-print-settings {
+  display: flex;
+  align-items: stretch;
+  height: 268px;
+}
+.vsl-print-settings__tabs {
+  flex: 0 0 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.4rem;
+  background: #f4f7f2;
+  border-right: 1px solid rgba(47, 107, 47, 0.14);
+  overflow-y: auto;
+}
+.vsl-print-settings__tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.vsl-print-settings__tab i {
+  width: 13px;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+}
+.vsl-print-settings__tab:hover {
+  background: #e7efe3;
+  color: var(--text);
+}
+.vsl-print-settings__tab.active {
+  background: #fff;
+  border-color: rgba(47, 107, 47, 0.22);
+  color: var(--primary);
+}
+.vsl-print-settings__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0.7rem 0.8rem 0.8rem;
+}
+.vsl-print-settings__pane {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.vsl-print-settings__pane.active {
+  display: flex;
+}
+
+/* Features tab — one row per feature TYPE in use, with its own colour. */
+.vsl-print-features {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.vsl-print-features__swatch {
+  width: 16px;
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: 0.82rem;
 }
 .vsl-print-setup__heading {
   font-size: 0.68rem;
@@ -6252,91 +6353,92 @@ select.search-panel__input {
   padding: 8px 4px;
 }
 
-/* ── Collapsible Point/Line/Polygon sections (#mfSections) — replaces the
-   old single flat .mf-list + uppercase group-heading dividers with 3
-   native <details>, each holding its own short .mf-row list. Narrower and
-   easier to scan than one long mixed list, same idea as the Estates tab's
-   compact rows (.me-row). ── */
-.mf-section {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  margin-bottom: 8px;
-  overflow: hidden;
-}
-.mf-section:last-child {
-  margin-bottom: 0;
-}
-
-.mf-section__head {
-  display: flex;
+/* ── Feature type table (#mfList) ──
+   One row per feature type of the currently-open kind tab, laid out as a
+   4-column grid: icon swatch, type (name + code), label toggles, actions.
+   Replaces the older collapsible Point/Line/Polygon <details> sections —
+   the kind is now a tab (.popWinTabs above the body), so the list only ever
+   shows one kind at a time and can afford real columns. The grid template
+   is shared with .mf-thead so headers and cells stay aligned. */
+.mf-thead,
+.mf-trow {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  background: #f4f7f1;
-  font-size: 0.82rem;
+}
+
+.mf-thead {
+  padding: 2px 8px 6px;
+  font-size: 0.64rem;
   font-weight: 700;
-  color: var(--text);
-  cursor: pointer;
-  list-style: none; /* kill the default <summary> disclosure triangle */
-  user-select: none;
-}
-.mf-section__head::-webkit-details-marker {
-  display: none;
-}
-
-.mf-section__count {
-  font-size: 0.68rem;
-  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 1px 7px;
+}
+/* Right-align the two trailing header cells over their (right-aligned)
+   columns — the first two sit over left-aligned content. */
+.mf-thead > span:nth-child(3),
+.mf-thead > span:nth-child(4) {
+  text-align: right;
 }
 
-.mf-section__chevron {
-  margin-left: auto;
-  font-size: 0.72rem;
-  color: var(--muted);
-  transition: transform 0.15s;
-}
-.mf-section[open] .mf-section__chevron {
-  transform: rotate(180deg);
-}
-
-.mf-section__body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.mf-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.mf-trow {
   padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
+  border-bottom: 1px solid var(--border);
   background: #fff;
 }
+.mf-trow:last-child {
+  border-bottom: none;
+}
 
-.mf-row__swatch {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
+/* Holds the .fts swatch (see below) — the icon for a point, the actual
+   strokes for a line, fill+outline for a polygon. */
+.mf-trow__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 0.8rem;
 }
 
-.mf-row__name {
-  flex: 1 1 auto;
+/* ── Feature type swatch ──
+   Built by featureTypeSwatchHtml() in js/feature-type-editor.js and used in
+   three places (the feature list, the editor's live preview, and anywhere
+   else a type needs showing), so a type looks the same everywhere. */
+.fts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+/* Point: the icon SVG on a chip filled with the type's color. The SVGs in
+   /icons are black single-path glyphs, so they're inverted to white with a
+   filter rather than shipping a light copy of every file. */
+.fts--point {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+.fts--point img {
+  width: 14px;
+  height: 14px;
+  filter: brightness(0) invert(1);
+}
+
+/* "No line" types have nothing to draw — show a dash rather than an empty
+   cell so the row doesn't look broken. */
+.fts--empty {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.mf-trow__type {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mf-trow__name {
   font-size: 0.85rem;
   color: var(--text);
   overflow: hidden;
@@ -6344,50 +6446,67 @@ select.search-panel__input {
   white-space: nowrap;
 }
 
-.mf-row__badge {
-  flex: 0 0 auto;
-  font-size: 0.68rem;
+/* vsl_feature_type.code (plus an "N drawn" hint when the type is in use),
+   as the second line of the Type cell. Tabular figures so the codes line
+   up down the column. */
+.mf-trow__code {
+  font-size: 0.66rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.mf-trow__badge {
+  font-size: 0.62rem;
+  font-weight: 700;
   color: var(--muted);
   background: #f0f4ee;
   border-radius: 5px;
-  padding: 2px 6px;
+  padding: 1px 5px;
   margin-left: 6px;
 }
 
-/* "Show on map" badges (name/area label toggles — see the display_params
-   column) rendered inline in each row, right before the edit button. */
-.mf-row__display {
-  flex: 0 0 auto;
+.mf-trow__labels {
   display: flex;
   gap: 4px;
+  justify-content: flex-end;
 }
-.mf-row__display-badge {
+
+/* A label readout (Name/Area/Dist) — deliberately NOT a control: no hover
+   state, no pointer, nothing to click. It reports which of this type's
+   display_params are switched on (green = on, grey = off); changing them
+   happens in the Feature Type editor window. */
+.mf-label-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
   font-size: 0.64rem;
   font-weight: 700;
-  color: var(--vsl-primary, #2e7d32);
-  background: #eaf5ea;
-  border-radius: 5px;
-  padding: 2px 6px;
+  line-height: 1.6;
   white-space: nowrap;
+  user-select: none;
 }
-.mf-row__display-badge--none {
-  color: var(--muted);
-  background: #f0f4ee;
+.mf-label-tag--on {
+  background: #eaf5ea;
+  border-color: var(--vsl-primary, #2e7d32);
+  color: var(--vsl-primary, #2e7d32);
+}
+
+.mf-trow__actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
 }
 
 /* The app-wide `input,select,button,textarea { width:100% }` / `button {
    background:var(--primary) }` reset (styles.css top, meant for auth-form
-   buttons) wasn't fully overridden here — only background/color/border/
-   padding were set, not width or border-radius, and CSS applies each
-   *property* from whichever rule wins that property, not whole rules
-   wholesale. The result: every .mf-row__edit stretched to 100% width with
-   a 10px pill radius, turning each row into a giant full-bleed button and
-   pushing its sibling (and the name label) out of view / into horizontal
-   overflow. Every property the base reset touches is now pinned here
-   explicitly so nothing leaks through. */
-.mf-row__edit {
-  flex: 0 0 auto;
+   buttons) isn't overridden wholesale — CSS applies each *property* from
+   whichever rule wins that property, not whole rules at a time. Without
+   pinning width/radius/margin here, each icon button stretches to 100% and
+   blows the row's grid apart. */
+.mf-trow__btn {
   width: 26px;
   height: 26px;
   min-width: 26px;
@@ -6403,17 +6522,142 @@ select.search-panel__input {
   align-items: center;
   justify-content: center;
 }
-
-.mf-row__edit:hover {
+.mf-trow__btn:hover {
   color: var(--primary);
   background: #eef4ea;
 }
-
-/* Destructive variant of the above (used elsewhere alongside
-   .mf-row__edit) — red hover instead of the default green. */
-.mf-row__edit--danger:hover {
+/* Delete reads red at rest, not only on hover — it's the one destructive
+   action in the row and shouldn't look identical to Edit until touched. */
+.mf-trow__btn--danger {
+  color: var(--danger);
+}
+.mf-trow__btn--danger:hover {
   color: var(--danger);
   background: #fdeaea;
+}
+
+/* ── FEATURE TYPE EDITOR (windows/feature-type-editor.html) ──
+   Its own window rather than a form under the feature list: point, line and
+   polygon each need a different set of controls, and the inline version had
+   to show all three. Reuses the .mf-label / .mf-row-2 / .mf-checkbox-row
+   form primitives further down this file. */
+.fte-modal {
+  width: min(460px, 94vw);
+}
+
+.fte-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Icon field — current icon next to the button that opens the library. */
+.fte-icon-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.fte-icon-preview {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f9f5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fte-icon-preview img {
+  width: 18px;
+  height: 18px;
+}
+
+.fte-icon-btn {
+  width: auto;
+  margin-top: 0;
+  flex: 1 1 auto;
+}
+
+/* Live "this is how it will draw" swatch — same markup as the list's. */
+.fte-preview {
+  margin-top: 4px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: #f7f9f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+}
+
+/* Framed groups (Labels, Label direction). The app-wide form reset doesn't
+   touch fieldset/legend, so these only need their own look. */
+.fte-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 6px 10px 8px;
+  margin: 0;
+}
+.fte-fieldset[hidden] {
+  display: none;
+}
+.fte-legend {
+  padding: 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Icon library grid, inside the stacked picker overlay. */
+.fte-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.fte-icon-grid__btn {
+  width: 100%;
+  height: 46px;
+  margin-top: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fte-icon-grid__btn img {
+  width: 20px;
+  height: 20px;
+}
+.fte-icon-grid__btn:hover {
+  border-color: var(--primary);
+  background: #eef4ea;
+}
+.fte-icon-grid__btn--active {
+  border-color: var(--vsl-primary, #2e7d32);
+  background: #eaf5ea;
+  box-shadow: inset 0 0 0 1px var(--vsl-primary, #2e7d32);
+}
+
+/* A modal opened from another modal (the icon picker sits on top of the
+   feature editor, which itself sits on top of the Manage Features list).
+   Every .vsl-modal-overlay shares z-index 2000 and relies on DOM order,
+   which happens to be correct here — this makes it explicit instead, in the
+   same 2000/2100 scheme #recordDetailOverlay already uses. */
+.vsl-modal-overlay--stacked {
+  z-index: 2200;
 }
 
 /* ── MANAGE ESTATES MODAL (windows/manage-estates-panel.html) ──
@@ -6534,23 +6778,21 @@ select.search-panel__input {
   color: var(--danger);
 }
 
-.mf-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
 /* Same [hidden] fix this file needs everywhere a class rule sets its own
    `display` (.uam-hint/.uam-checkbox-row/.futuristic-icon-btn/…) — without
-   it, mfPointParams/mfLinetypeRow/mfDisplayAreaRow's [hidden] toggling
-   (survey kind-dependent form fields) would silently do nothing. */
+   it, the Feature Type editor's kind-dependent field groups would stay
+   visible when their [hidden] attribute is set. */
 .mf-param-group[hidden],
-.mf-row-2[hidden] {
+.mf-row-2[hidden],
+#ftedPoint[hidden],
+#ftedLine[hidden],
+#ftedPolygon[hidden] {
   display: none !important;
 }
 
-/* Two fields side by side (icon size+rotation, line style+weight) — same
-   row-of-inputs shape .mf-label already gives a single field, just paired. */
+/* Two fields side by side (name+code, icon size+rotation, line type+style)
+   — same row-of-inputs shape .mf-label already gives a single field, just
+   paired. */
 .mf-row-2 {
   display: flex;
   gap: 0.6rem;
@@ -6560,10 +6802,16 @@ select.search-panel__input {
   min-width: 0;
 }
 
-.mf-display-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* Read-only code field (#mfCodeInput) — the database assigns it, so it's
+   shown greyed and non-editable rather than left out entirely. Not
+   `disabled`, which would drop it out of the tab order *and* look like a
+   temporarily-unavailable control instead of a permanent display value. */
+.mf-code-input[readonly] {
+  background: #f4f6f2;
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
 }
 
 .mf-label {
@@ -6585,61 +6833,10 @@ select.search-panel__input {
   cursor: pointer;
 }
 
-.mf-icon-preview {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mf-icon-preview__swatch {
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  border: 1.5px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-2);
-  background: #fff;
-}
-
-.mf-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
-  gap: 6px;
-  max-height: 140px;
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: #fafcf8;
-}
-
-.mf-icon-grid__btn {
-  width: 34px;
-  height: 34px;
-  border: 1.5px solid transparent;
-  border-radius: 7px;
-  background: #fff;
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.9rem;
-}
-
-.mf-icon-grid__btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.mf-icon-grid__btn.mf-icon-grid__btn--active {
-  border-color: var(--primary);
-  background: #eaf6ea;
-  color: var(--primary-2);
-}
+/* NOTE: the old inline icon picker (.mf-icon-preview / .mf-icon-grid) is
+   gone — icons are now chosen in the stacked picker overlay of the Feature
+   Type editor, styled as .fte-icon-* above, and read from icons/icons.json
+   instead of a hardcoded class list. */
 
 .mf-checkbox-row {
   display: flex;
@@ -6653,10 +6850,14 @@ select.search-panel__input {
   display: none !important;
 }
 
-/* Same width/height gap as .uam-checkbox-row's checkbox (app-wide
-   `input { width:100% }` reset otherwise stretches the box invisibly and
-   shoves the label out to the row's edge). */
-.mf-checkbox-row input[type="checkbox"] {
+/* Same width/height pin as .uam-checkbox-row's checkbox. The app-wide
+   `input { width:100% }` reset otherwise stretches the control's layout box
+   across the whole row — the little square/circle still draws at its native
+   size, but centred in that stretched box, which is what pushed the Label
+   direction radios into the middle of the row with their text hard right.
+   Radios need it just as much as checkboxes do. */
+.mf-checkbox-row input[type="checkbox"],
+.mf-checkbox-row input[type="radio"] {
   width: 16px;
   height: 16px;
   min-width: 16px;

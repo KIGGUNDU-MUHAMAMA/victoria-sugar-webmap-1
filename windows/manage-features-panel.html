@@ -1,14 +1,17 @@
 <!-- Manage Features — opened from the pencil ("edit") button next to the
      Draw tab's Feature dropdown (survey-panel.html #drawManageFeaturesBtn).
-     CRUD over vsl_feature_type. Plot/Block rows are system-owned
-     (is_system=true): their geometry kind + routing can't change, so those
-     two rows only allow editing color/icon/size/etc, not delete.
+     The list of vsl_feature_type, one tab per geometry kind (Point/Lines/
+     Polygon — same pill row as the Search window's tabs), each showing only
+     that kind's types, fetched when the tab is opened.
 
-     List view: 3 collapsible <details> sections (Point/Line/Polygon),
-     each a narrow 3-column table (icon+swatch, name, "on map" display
-     badges) instead of one long flat list — mirrors the Estates tab's
-     compact-row look (windows/survey-panel.html #uamTabEstates) rather
-     than the old wide, form-heavy layout. -->
+     Columns: Icon (a swatch of how the type actually renders — the icon for
+     a point, its strokes for a line, fill+outline for a polygon, same as the
+     legend), Type (name + numeric code), Labels (read-only: which on-map
+     labels are switched on), Actions (edit/delete).
+
+     Editing happens in its own window (windows/feature-type-editor.html) —
+     this one is purely the list. Add Feature lives in the footer next to
+     Close's old slot. -->
 <div id="manageFeaturesModal" class="vsl-modal-overlay" hidden>
   <div class="vsl-modal-card vsl-modal-card--wide mf-modal popWinMain">
     <header class="popWinHead">
@@ -21,117 +24,37 @@
       </button>
     </header>
 
+    <div class="popWinTabs" id="mfTabs" role="tablist" aria-label="Feature geometry kind">
+      <button type="button" class="search-tab" id="mfTabPoint" role="tab" aria-selected="true" aria-controls="mfListWrap" data-kind="point">
+        <i class="fas fa-location-dot" aria-hidden="true"></i> Point
+      </button>
+      <button type="button" class="search-tab" id="mfTabLine" role="tab" aria-selected="false" aria-controls="mfListWrap" data-kind="line">
+        <i class="fas fa-slash" aria-hidden="true"></i> Lines
+      </button>
+      <button type="button" class="search-tab" id="mfTabPolygon" role="tab" aria-selected="false" aria-controls="mfListWrap" data-kind="polygon">
+        <i class="fas fa-draw-polygon" aria-hidden="true"></i> Polygon
+      </button>
+    </div>
+
     <div class="popWinBody mf-body">
-      <div id="mfListWrap">
-        <button type="button" id="mfAddBtn" class="uam-btn uam-btn--primary u-w-100 u-mb-6">
-          <i class="fas fa-plus"></i> Add Feature
-        </button>
-        <div id="mfSections"></div>
+      <div id="mfListWrap" role="tabpanel">
+        <!-- Column headers, kept outside #mfList so they don't re-render on
+             every refresh. Grid template is shared with .mf-trow. -->
+        <div class="mf-thead" aria-hidden="true">
+          <span>Icon</span>
+          <span>Type</span>
+          <span>Labels</span>
+          <span>Actions</span>
+        </div>
+        <div id="mfList"></div>
+        <p id="mfListError" class="search-panel__error" role="alert" hidden></p>
       </div>
-
-      <!-- Create/edit form — hidden until Add or an edit pencil is clicked -->
-      <form id="mfForm" class="mf-form" hidden novalidate>
-        <input type="hidden" id="mfEditId" value="">
-
-        <label class="mf-label">Name
-          <input type="text" id="mfNameInput" class="uam-input" placeholder="e.g. Borehole" required>
-        </label>
-
-        <label class="mf-label">Geometry
-          <select id="mfKindSelect" class="uam-select">
-            <option value="point">Point</option>
-            <option value="line">Line</option>
-            <option value="polygon">Polygon</option>
-          </select>
-        </label>
-
-        <!-- ── Point-only params ── -->
-        <div id="mfPointParams" class="mf-param-group" hidden>
-          <div class="mf-row-2">
-            <label class="mf-label">Icon size (px)
-              <input type="number" id="mfIconSizeInput" class="uam-input" min="6" max="40" step="1" value="10">
-            </label>
-            <label class="mf-label">Rotation (°)
-              <input type="number" id="mfRotationInput" class="uam-input" min="0" max="359" step="1" value="0">
-            </label>
-          </div>
-        </div>
-
-        <!-- ── Line/Polygon-shared params ── -->
-        <div id="mfLinetypeRow" class="mf-row-2">
-          <label class="mf-label">Line style
-            <select id="mfLinetypeSelect" class="uam-select">
-              <option value="solid">Solid</option>
-              <option value="dashed">Dashed</option>
-              <option value="dotted">Dotted</option>
-            </select>
-          </label>
-          <label class="mf-label">Line weight (px)
-            <input type="number" id="mfWeightInput" class="uam-input" min="1" max="12" step="1" value="2">
-          </label>
-        </div>
-
-        <label class="mf-label">Color
-          <input type="color" id="mfColorInput" class="mf-color-input" value="#3f8f3f">
-        </label>
-
-        <div class="mf-label">
-          Icon
-          <div class="mf-icon-preview">
-            <span id="mfIconPreview" class="mf-icon-preview__swatch"><i class="fas fa-circle-question" aria-hidden="true"></i></span>
-            <input type="text" id="mfIconSearch" class="uam-input u-flex-1" placeholder="Search icons…">
-          </div>
-          <div id="mfIconGrid" class="mf-icon-grid" role="listbox" aria-label="Choose an icon"></div>
-          <input type="hidden" id="mfIconInput" value="">
-        </div>
-
-        <!-- ── "Display on map" — which text label(s), if any, render next
-             to the feature. Point only ever has Name to offer (1 checkbox).
-             Line offers Name OR Length (still only 1 — the
-             vsl_feature_type_display_params_max DB constraint caps non-
-             polygon kinds at 1, so manage-features.js enforces these two as
-             mutually exclusive). Polygon offers Name + Area together
-             (2 checkboxes, the constraint's max for polygon). -->
-        <div class="mf-label">
-          Show on map
-          <div id="mfDisplayGroup" class="mf-display-group">
-            <label class="mf-checkbox-row">
-              <input type="checkbox" id="mfDisplayNameCb" value="name">
-              <span>Name label</span>
-            </label>
-            <label class="mf-checkbox-row" id="mfDisplayAreaRow" hidden>
-              <input type="checkbox" id="mfDisplayAreaCb" value="area">
-              <span>Area label</span>
-            </label>
-            <label class="mf-checkbox-row" id="mfDisplayLengthRow" hidden>
-              <input type="checkbox" id="mfDisplayLengthCb" value="length">
-              <span>Length label</span>
-            </label>
-          </div>
-        </div>
-
-        <label class="mf-checkbox-row">
-          <input type="checkbox" id="mfActiveCb" checked>
-          <span>Active (shown in the Draw tab dropdown)</span>
-        </label>
-
-        <p id="mfFormError" class="search-panel__error" role="alert" hidden></p>
-      </form>
     </div>
 
     <div class="popWinActionBtns">
-      <div id="mfListActions" class="uam-actions-group">
-        <button type="button" id="manageFeaturesCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Close</button>
-      </div>
-      <div id="mfFormActions" class="uam-actions-group" hidden>
-        <button type="button" id="mfFormCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>
-        <button type="button" id="mfDeleteBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger" hidden>
-          <i class="fas fa-trash" aria-hidden="true"></i> Delete
-        </button>
-        <button type="submit" form="mfForm" id="mfSaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
-          <i class="fas fa-check" aria-hidden="true"></i> Save
-        </button>
-      </div>
+      <button type="button" id="mfAddBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
+        <i class="fas fa-plus" aria-hidden="true"></i> Add Feature
+      </button>
     </div>
   </div>
 </div>

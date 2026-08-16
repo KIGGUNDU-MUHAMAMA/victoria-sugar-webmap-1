@@ -1,42 +1,45 @@
 /**
- * Manage Features modal (windows/manage-features-panel.html) — CRUD over
+ * Manage Features window (windows/manage-features-panel.html) — the list of
  * vsl_feature_type, opened from the pencil button next to the Survey
  * window's Draw tab Feature dropdown (js/survey-draw.js).
  *
- * List view: 3 collapsible <details> sections (Point/Line/Polygon), each a
- * compact row-per-feature table — same "narrow list, not a wide form-heavy
- * grid" idea as the Estates tab (js/manage-estates.js) — instead of the old
- * single wide flat list.
+ * This module is only the list: one tab per geometry kind, a row per type,
+ * and add/delete. All editing happens in the separate Feature Type editor
+ * window (js/feature-type-editor.js), reached through the global hook
+ * window.openFeatureTypeEditor() — the form that used to sit underneath this
+ * list is gone, because point/line/polygon each need a different set of
+ * fields and cramming all three into one inline form made none of them
+ * clear.
  *
- * Exposes window.openManageFeaturesPanel() so survey-draw.js doesn't need
- * a direct import (keeps the two modules independently loadable, same
- * pattern as the other window.* hooks already in this app).
+ * Columns: Icon (a live swatch of how the type renders — the icon for a
+ * point, its parallel strokes for a line, fill + outline for a polygon,
+ * built by featureTypeSwatchHtml so the list, the editor preview and the
+ * legend all agree), Type (name + numeric code), Labels (read-only: which
+ * on-map labels are on — changed in the editor, not by clicking here), and
+ * Actions.
+ *
+ * Codes are banded by kind — 1-99 point, 100-199 line, 200-299 polygon — and
+ * assigned by the vsl_feature_type_set_code database trigger on insert.
+ *
+ * Exposes window.openManageFeaturesPanel() so survey-draw.js doesn't need a
+ * direct import (keeps the two modules independently loadable, same pattern
+ * as the other window.* hooks already in this app).
  */
 
-// A curated, known-good set of Font Awesome 6 Free solid icons — enough
-// variety to cover most point/line/polygon features without needing an
-// upload/asset pipeline. Anyone can still type to filter this grid.
-const ICON_LIBRARY = [
-  "fa-house", "fa-house-chimney", "fa-tree", "fa-leaf", "fa-seedling",
-  "fa-droplet", "fa-water", "fa-database", "fa-gears", "fa-cloud-sun",
-  "fa-sun", "fa-wind", "fa-fire", "fa-location-crosshairs", "fa-map-pin",
-  "fa-flag", "fa-tower-broadcast", "fa-bolt", "fa-weight-scale",
-  "fa-industry", "fa-warehouse", "fa-building", "fa-car-side",
-  "fa-gas-pump", "fa-truck", "fa-tractor", "fa-door-open", "fa-road",
-  "fa-shoe-prints", "fa-ruler", "fa-grip-lines", "fa-grip-lines-vertical",
-  "fa-school", "fa-draw-polygon", "fa-vector-square", "fa-square-parking",
-  "fa-mountain", "fa-dumpster", "fa-recycle", "fa-ban", "fa-cow",
-  "fa-circle-dot", "fa-minus", "fa-camera", "fa-signal", "fa-wifi",
-  "fa-person-digging", "fa-hammer", "fa-screwdriver-wrench", "fa-toolbox",
-  "fa-triangle-exclamation"
-];
+import { confirmDanger } from "../popups/popup.js";
+import { featureTypeSwatchHtml } from "./feature-type-editor.js";
 
 const KIND_META = {
   point: { label: "Point", icon: "fa-location-dot" },
   line: { label: "Line", icon: "fa-slash" },
   polygon: { label: "Polygon", icon: "fa-draw-polygon" }
 };
-const KIND_ORDER = ["point", "line", "polygon"];
+
+// Which on-map labels each kind can offer, in display order. Mirrors the
+// editor's own list (and, behind it, the vsl_feature_type_display_params_max
+// constraint) — here it only decides which chips the Labels column shows.
+const LABEL_OPTIONS = { point: ["name"], line: ["name", "length"], polygon: ["name", "area"] };
+const DISPLAY_PARAM_LABELS = { name: "Name", area: "Area", length: "Dist" };
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -47,39 +50,19 @@ function escapeHtml(s) {
 export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
   const overlay = document.getElementById("manageFeaturesModal");
   const closeBtn = document.getElementById("manageFeaturesCloseBtn");
-  const cancelBtn = document.getElementById("manageFeaturesCancelBtn");
-  const sectionsEl = document.getElementById("mfSections");
+  const tabsEl = document.getElementById("mfTabs");
+  const listEl = document.getElementById("mfList");
+  const listError = document.getElementById("mfListError");
   const addBtn = document.getElementById("mfAddBtn");
-  const form = document.getElementById("mfForm");
-  const editIdInput = document.getElementById("mfEditId");
-  const nameInput = document.getElementById("mfNameInput");
-  const kindSelect = document.getElementById("mfKindSelect");
-  const pointParams = document.getElementById("mfPointParams");
-  const iconSizeInput = document.getElementById("mfIconSizeInput");
-  const rotationInput = document.getElementById("mfRotationInput");
-  const linetypeRow = document.getElementById("mfLinetypeRow");
-  const linetypeSelect = document.getElementById("mfLinetypeSelect");
-  const weightInput = document.getElementById("mfWeightInput");
-  const colorInput = document.getElementById("mfColorInput");
-  const iconPreview = document.getElementById("mfIconPreview");
-  const iconSearch = document.getElementById("mfIconSearch");
-  const iconGrid = document.getElementById("mfIconGrid");
-  const iconInput = document.getElementById("mfIconInput");
-  const displayNameCb = document.getElementById("mfDisplayNameCb");
-  const displayAreaRow = document.getElementById("mfDisplayAreaRow");
-  const displayAreaCb = document.getElementById("mfDisplayAreaCb");
-  const displayLengthRow = document.getElementById("mfDisplayLengthRow");
-  const displayLengthCb = document.getElementById("mfDisplayLengthCb");
-  const activeCb = document.getElementById("mfActiveCb");
-  const formError = document.getElementById("mfFormError");
-  const listActions = document.getElementById("mfListActions");
-  const formActions = document.getElementById("mfFormActions");
-  const formCancelBtn = document.getElementById("mfFormCancelBtn");
-  const deleteBtn = document.getElementById("mfDeleteBtn");
 
-  if (!overlay) return null;
+  if (!overlay || !listEl) return null;
 
+  // Only the active tab's kind is held here — switching tabs refetches.
+  let activeKind = "point";
   let rows = [];
+  // vsl_feature_type id -> how many drawn features use it. Drives the
+  // "can't delete a type that's still in use" guard below.
+  let featureCounts = new Map();
 
   function restHeaders() {
     return {
@@ -89,250 +72,217 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     };
   }
 
-  async function fetchRows() {
+  function showListError(msg) {
+    if (!listError) return;
+    listError.textContent = msg || "";
+    listError.hidden = !msg;
+  }
+
+  async function fetchRows(kind) {
     try {
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_feature_type?select=*&order=geometry_kind.asc,sort_order.asc`;
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_feature_type?select=*&geometry_kind=eq.${encodeURIComponent(kind)}&order=code.asc`;
       const res = await fetch(url, { headers: restHeaders() });
       if (!res.ok) throw new Error("Failed to load feature types");
       rows = await res.json();
     } catch (e) {
       console.error("[Victoria Survey] Error fetching feature types:", e);
       rows = [];
+      showListError("Couldn't load feature types.");
     }
   }
 
-  const DISPLAY_PARAM_LABELS = { name: "Name", area: "Area", length: "Length" };
-  function displayBadges(r) {
+  // One flat read tallied client-side — same shape as manage-estates.js's
+  // block counts, and cheap enough to run on every refresh.
+  async function fetchFeatureCounts() {
+    try {
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_feature?select=feature_type_id`;
+      const res = await fetch(url, { headers: restHeaders() });
+      if (!res.ok) throw new Error("Failed to load feature counts");
+      const data = await res.json();
+      const map = new Map();
+      for (const row of data) {
+        if (row.feature_type_id == null) continue;
+        map.set(row.feature_type_id, (map.get(row.feature_type_id) || 0) + 1);
+      }
+      featureCounts = map;
+    } catch (e) {
+      console.error("[Victoria Survey] Error fetching feature counts:", e);
+      featureCounts = new Map();
+    }
+  }
+
+  // Authoritative, right-now count for one type — the tally above can be
+  // stale if someone else drew a feature since this window last refreshed,
+  // and deleting a type out from under real features would break them.
+  // PostgREST returns the total in Content-Range when asked for an exact
+  // count, so this stays a single small request.
+  async function fetchLiveFeatureCount(typeId) {
+    const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/vsl_feature?select=id&feature_type_id=eq.${encodeURIComponent(typeId)}&limit=1`;
+    const res = await fetch(url, { headers: { ...restHeaders(), Prefer: "count=exact" } });
+    if (!res.ok) throw new Error("Couldn't check whether this feature type is in use.");
+    const range = res.headers.get("content-range") || "";
+    const total = Number(range.split("/")[1]);
+    return Number.isFinite(total) ? total : null;
+  }
+
+  // The Labels cell: every label this kind can show, with the ones actually
+  // switched on highlighted. Deliberately inert — no hover state, no click
+  // handler — so the column reads as a status readout of display_params.
+  // Changing it happens in the editor window.
+  function labelChipsHtml(r) {
     const params = Array.isArray(r.display_params) ? r.display_params : [];
-    if (!params.length) return '<span class="mf-row__display-badge mf-row__display-badge--none">Off</span>';
-    return params.map((p) => `<span class="mf-row__display-badge">${DISPLAY_PARAM_LABELS[p] || p}</span>`).join("");
-  }
-
-  function rowHtml(r) {
-    return `
-      <div class="mf-row" data-id="${r.id}">
-        <span class="mf-row__swatch" style="background:${escapeHtml(r.color || "#3f8f3f")}">
-          <i class="fas ${escapeHtml(r.icon || "fa-circle-dot")}" aria-hidden="true"></i>
-        </span>
-        <span class="mf-row__name">
-          ${escapeHtml(r.name)}
-          ${r.is_system ? '<span class="mf-row__badge">System</span>' : ""}
-        </span>
-        <span class="mf-row__display">${displayBadges(r)}</span>
-        <button type="button" class="mf-row__edit" data-edit="${r.id}" aria-label="Edit ${escapeHtml(r.name)}">
-          <i class="fas fa-pen" aria-hidden="true"></i>
-        </button>
-      </div>`;
-  }
-
-  function renderSections() {
-    sectionsEl.innerHTML = KIND_ORDER.map((kind) => {
-      const items = rows.filter((r) => r.geometry_kind === kind);
-      const meta = KIND_META[kind];
-      return `
-        <details class="mf-section" open>
-          <summary class="mf-section__head">
-            <i class="fas ${meta.icon}" aria-hidden="true"></i>
-            <span class="mf-section__label">${meta.label}</span>
-            <span class="mf-section__count">${items.length}</span>
-            <i class="fas fa-chevron-down mf-section__chevron" aria-hidden="true"></i>
-          </summary>
-          <div class="mf-section__body">
-            ${items.length ? items.map(rowHtml).join("") : '<p class="mf-list-empty">No features yet.</p>'}
-          </div>
-        </details>`;
-    }).join("");
-  }
-
-  function renderIconGrid(filterText) {
-    const q = (filterText || "").trim().toLowerCase();
-    const list = q ? ICON_LIBRARY.filter((i) => i.replace("fa-", "").includes(q)) : ICON_LIBRARY;
-    iconGrid.innerHTML = list
-      .map(
-        (i) =>
-          `<button type="button" class="mf-icon-grid__btn${i === iconInput.value ? " mf-icon-grid__btn--active" : ""}" data-icon="${i}" title="${i}">
-            <i class="fas ${i}" aria-hidden="true"></i>
-          </button>`
-      )
+    const options = LABEL_OPTIONS[r.geometry_kind] || [];
+    if (!options.length) return "";
+    return options
+      .map((p) => {
+        const on = params.includes(p);
+        return `<span class="mf-label-tag${on ? " mf-label-tag--on" : ""}">${DISPLAY_PARAM_LABELS[p]}</span>`;
+      })
       .join("");
   }
 
-  iconGrid.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-icon]");
-    if (!btn) return;
-    iconInput.value = btn.dataset.icon;
-    iconPreview.innerHTML = `<i class="fas ${btn.dataset.icon}" aria-hidden="true"></i>`;
-    renderIconGrid(iconSearch.value);
-  });
-  iconSearch.addEventListener("input", () => renderIconGrid(iconSearch.value));
-
-  // Point/Line/Polygon each expose a different subset of params — see the
-  // module doc comment and the vsl_feature_type_style_params migration.
-  function updateKindVisibility() {
-    const kind = kindSelect.value;
-    pointParams.hidden = kind !== "point";
-    linetypeRow.hidden = kind === "point";
-    displayAreaRow.hidden = kind !== "polygon";
-    displayLengthRow.hidden = kind !== "line";
-    if (kind !== "polygon") displayAreaCb.checked = false;
-    if (kind !== "line") displayLengthCb.checked = false;
-  }
-  kindSelect.addEventListener("change", updateKindVisibility);
-
-  // Line is capped at 1 display param (vsl_feature_type_display_params_max),
-  // and now has two options to choose from (Name/Length) instead of just
-  // one — enforce that cap client-side by making them mutually exclusive,
-  // only when Line is the current kind (Polygon's Name+Area can both be on).
-  displayNameCb.addEventListener("change", () => {
-    if (kindSelect.value === "line" && displayNameCb.checked) displayLengthCb.checked = false;
-  });
-  displayLengthCb.addEventListener("change", () => {
-    if (displayLengthCb.checked) displayNameCb.checked = false;
-  });
-
-  function showList() {
-    document.getElementById("mfListWrap").hidden = false;
-    form.hidden = true;
-    listActions.hidden = false;
-    formActions.hidden = true;
-    formError.hidden = true;
+  function rowHtml(r) {
+    const inUse = featureCounts.get(r.id) || 0;
+    return `
+      <div class="mf-trow" data-id="${r.id}">
+        <span class="mf-trow__icon">${featureTypeSwatchHtml(r)}</span>
+        <span class="mf-trow__type">
+          <span class="mf-trow__name">
+            ${escapeHtml(r.name)}
+            ${r.is_active === false ? '<span class="mf-trow__badge">Hidden</span>' : ""}
+          </span>
+          <span class="mf-trow__code">Code ${escapeHtml(r.code ?? "—")}${inUse ? ` · ${inUse} drawn` : ""}</span>
+        </span>
+        <span class="mf-trow__labels">${labelChipsHtml(r)}</span>
+        <span class="mf-trow__actions">
+          <button type="button" class="mf-trow__btn" data-edit="${r.id}" aria-label="Edit ${escapeHtml(r.name)}">
+            <i class="fas fa-pen" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="mf-trow__btn mf-trow__btn--danger" data-delete="${r.id}" aria-label="Delete ${escapeHtml(r.name)}">
+            <i class="fas fa-trash" aria-hidden="true"></i>
+          </button>
+        </span>
+      </div>`;
   }
 
-  function showForm(row) {
-    document.getElementById("mfListWrap").hidden = true;
-    form.hidden = false;
-    listActions.hidden = true;
-    formActions.hidden = false;
-    formError.hidden = true;
-
-    editIdInput.value = row?.id ?? "";
-    nameInput.value = row?.name ?? "";
-    kindSelect.value = row?.geometry_kind ?? "point";
-    // Changing geometry kind on an existing type would desync it from any
-    // already-drawn instances (and, for Plot/Block, from the Draw tab's
-    // special-cased routing) — only free on brand-new rows.
-    kindSelect.disabled = !!row;
-
-    linetypeSelect.value = row?.linetype ?? "solid";
-    weightInput.value = row?.line_weight ?? 2;
-    iconSizeInput.value = row?.icon_size ?? 10;
-    rotationInput.value = row?.icon_rotation ?? 0;
-    colorInput.value = row?.color ?? "#3f8f3f";
-    iconInput.value = row?.icon ?? "fa-circle-dot";
-    iconPreview.innerHTML = `<i class="fas ${iconInput.value}" aria-hidden="true"></i>`;
-    iconSearch.value = "";
-
-    const dp = Array.isArray(row?.display_params) ? row.display_params : [];
-    displayNameCb.checked = dp.includes("name");
-    displayAreaCb.checked = dp.includes("area");
-    displayLengthCb.checked = dp.includes("length");
-
-    activeCb.checked = row?.is_active !== false;
-    updateKindVisibility();
-    renderIconGrid("");
-
-    const isSystem = !!row?.is_system;
-    // Plot/Block are load-bearing (Draw tab checks code === 'plot'/'block'
-    // and the name shows up in save-confirmation text) — lock name/kind,
-    // still allow re-styling them and toggling active.
-    nameInput.disabled = isSystem;
-    deleteBtn.hidden = !row || isSystem;
+  function renderList() {
+    const meta = KIND_META[activeKind];
+    listEl.innerHTML = rows.length
+      ? rows.map(rowHtml).join("")
+      : `<p class="mf-list-empty">No ${meta.label.toLowerCase()} features yet.</p>`;
   }
 
-  addBtn.addEventListener("click", () => showForm(null));
+  function setActiveKind(kind) {
+    if (!KIND_META[kind]) return;
+    activeKind = kind;
+    tabsEl?.querySelectorAll("[data-kind]").forEach((btn) => {
+      btn.setAttribute("aria-selected", String(btn.dataset.kind === kind));
+    });
+  }
 
-  sectionsEl.addEventListener("click", (e) => {
-    const editBtn = e.target.closest("[data-edit]");
-    if (!editBtn) return;
-    const row = rows.find((r) => String(r.id) === editBtn.dataset.edit);
-    if (row) showForm(row);
+  // Refetches this kind's rows plus the in-use counts — called on open, on
+  // tab switch, and after the editor saves or a row is deleted.
+  async function refreshList() {
+    showListError("");
+    await Promise.all([fetchRows(activeKind), fetchFeatureCounts()]);
+    renderList();
+  }
+
+  tabsEl?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-kind]");
+    if (!btn || btn.dataset.kind === activeKind) return;
+    setActiveKind(btn.dataset.kind);
+    refreshList();
   });
 
-  formCancelBtn.addEventListener("click", showList);
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    formError.hidden = true;
-    const name = nameInput.value.trim();
-    if (!name) {
-      formError.textContent = "Name is required.";
-      formError.hidden = false;
-      return;
-    }
-    const editId = editIdInput.value;
-    const kind = kindSelect.value;
-    const displayParams = [];
-    if (displayNameCb.checked) displayParams.push("name");
-    if (kind === "polygon" && displayAreaCb.checked) displayParams.push("area");
-    if (kind === "line" && displayLengthCb.checked) displayParams.push("length");
-
-    const payload = {
-      name,
-      geometry_kind: kind,
-      linetype: kind === "point" ? null : linetypeSelect.value,
-      line_weight: kind === "point" ? 2 : (Number(weightInput.value) || 2),
-      icon_size: kind === "point" ? (Number(iconSizeInput.value) || 10) : 10,
-      icon_rotation: kind === "point" ? (Number(rotationInput.value) || 0) : 0,
-      color: colorInput.value,
-      icon: iconInput.value || null,
-      display_params: displayParams,
-      is_active: activeCb.checked
-    };
-    try {
-      let error;
-      if (editId) {
-        ({ error } = await supabase.from("vsl_feature_type").update(payload).eq("id", editId));
-      } else {
-        ({ error } = await supabase.from("vsl_feature_type").insert(payload));
+  // Both entry points into the editor window. onSaved lands the list on the
+  // kind that was just saved, which for a new type may not be the open tab.
+  function openEditor(row) {
+    window.openFeatureTypeEditor?.(row, {
+      kind: activeKind,
+      onSaved: async (savedKind) => {
+        setActiveKind(savedKind || activeKind);
+        await refreshList();
       }
-      if (error) throw error;
-      await fetchRows();
-      renderSections();
-      showList();
-      window.dispatchEvent(new CustomEvent("vsl-feature-types-changed"));
-      setStatus?.(statusEl, editId ? "Feature updated." : "Feature added.");
-    } catch (err) {
-      formError.textContent = err.message;
-      formError.hidden = false;
-    }
-  });
+    });
+  }
 
-  deleteBtn.addEventListener("click", async () => {
-    const editId = editIdInput.value;
-    if (!editId) return;
-    if (!window.confirm("Delete this feature type? Features already drawn with it are unaffected, but it will disappear from the Draw tab list.")) {
+  addBtn?.addEventListener("click", () => openEditor(null));
+
+  async function deleteFeatureType(row) {
+    showListError("");
+    // A feature type that still has features drawn with it can't go — those
+    // features would lose the row that gives them their icon, color and
+    // labels (and the FK would refuse the delete anyway). Checked live
+    // rather than from the cached tally, in case someone drew one just now.
+    let inUse = featureCounts.get(row.id) || 0;
+    try {
+      const live = await fetchLiveFeatureCount(row.id);
+      if (live != null) inUse = live;
+    } catch (e) {
+      console.error("[Victoria Survey] Feature count check failed:", e);
+      showListError(e.message);
       return;
     }
+    if (inUse > 0) {
+      await confirmDanger({
+        title: "Can't Delete Feature Type",
+        message: `"${row.name}" is used by ${inUse} drawn feature${inUse === 1 ? "" : "s"}. Delete or re-type ${inUse === 1 ? "it" : "them"} on the map first.`
+      });
+      return;
+    }
+
+    const confirmed = await confirmDanger({
+      title: "Delete Feature Type",
+      message: `Delete "${row.name}" (code ${row.code})? It will disappear from the Draw tab list. This can't be undone.`,
+      confirmLabel: "Delete"
+    });
+    if (!confirmed) return;
+
     try {
-      const { error } = await supabase.from("vsl_feature_type").delete().eq("id", editId);
+      const { error } = await supabase.from("vsl_feature_type").delete().eq("id", row.id);
       if (error) throw error;
-      await fetchRows();
-      renderSections();
-      showList();
+      await refreshList();
       window.dispatchEvent(new CustomEvent("vsl-feature-types-changed"));
+      setStatus?.(statusEl, `Feature type "${row.name}" deleted.`);
     } catch (err) {
-      formError.textContent = err.message;
-      formError.hidden = false;
+      console.error("[Victoria Survey] Failed to delete feature type:", err);
+      showListError(
+        /foreign key|violates/i.test(err.message)
+          ? "This feature type is still used by drawn features — remove those first."
+          : err.message
+      );
+    }
+  }
+
+  listEl.addEventListener("click", (e) => {
+    const editBtn = e.target.closest("[data-edit]");
+    if (editBtn) {
+      const row = rows.find((r) => String(r.id) === editBtn.dataset.edit);
+      if (row) openEditor(row);
+      return;
+    }
+    const delBtn = e.target.closest("[data-delete]");
+    if (delBtn) {
+      const row = rows.find((r) => String(r.id) === delBtn.dataset.delete);
+      if (row) deleteFeatureType(row);
     }
   });
 
   async function open() {
     overlay.hidden = false;
-    await fetchRows();
-    renderSections();
-    showList();
+    await refreshList();
   }
   function close() {
     overlay.hidden = true;
   }
 
   closeBtn?.addEventListener("click", close);
-  cancelBtn?.addEventListener("click", close);
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
 
   window.openManageFeaturesPanel = open;
 
-  return { open, close };
+  return { open, close, refresh: refreshList };
 }

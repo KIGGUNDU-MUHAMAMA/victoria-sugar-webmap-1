@@ -12,26 +12,67 @@
  * live Draw interaction for the new type) without losing anything already
  * queued.
  *
- * Plot and Block are "system" feature types (vsl_feature_type.is_system):
- * drawing one of these still creates a row in vsl_parcels/vsl_blocks (via
- * vsl_draw_create_parcel/vsl_draw_create_block), scoped by the Estate/Block
- * filter dropdowns shown only for those two types. Every other feature type
- * (trees, boreholes, roads, walls, …) saves straight into the generic
- * vsl_feature table against its vsl_feature_type row.
+ * Plot and Block are "system" entity types: drawing one of these creates a
+ * row in vsl_parcels/vsl_blocks (via vsl_draw_create_parcel/
+ * vsl_draw_create_block), scoped by the Estate/Block filter dropdowns shown
+ * only for those two. They deliberately have NO vsl_feature_type row — that
+ * table is now purely the catalog of things that end up in vsl_feature, with
+ * banded numeric codes (1-99 point, 100-199 line, 200-299 polygon). Plot and
+ * Block are defined in code instead, see SYSTEM_FEATURE_TYPES below. Every
+ * other feature type (trees, boreholes, roads, walls, …) saves straight into
+ * the generic vsl_feature table against its vsl_feature_type row.
  */
 
 import { promptText, confirmDanger } from "../popups/popup.js";
+import { featureTypeSwatchHtml } from "./feature-type-editor.js";
 
 const OL_TYPE_BY_ENTITY = { point: "Point", line: "LineString", polygon: "Polygon", block: "Polygon", plot: "Polygon" };
-// "block"/"plot" are direct drawEntityTypeSelect values that map straight to
-// their vsl_feature_type system row — see isSystemEntity()/currentFeatureType().
+// "block"/"plot" are direct drawEntityTypeSelect values — see
+// isSystemEntity()/currentFeatureType().
 const SYSTEM_ENTITY_VALUES = ["block", "plot"];
+
+// Stand-ins for what used to be the two is_system rows in vsl_feature_type.
+// Same shape as a real row where the rest of this module reads from it
+// (name/geometry_kind/color/icon/… for the sketch + pending styles), minus
+// `id` — nothing ever writes these to vsl_feature, the save path branches on
+// `code` and calls the parcel/block RPCs instead.
+const SYSTEM_FEATURE_TYPES = {
+  block: {
+    id: null,
+    code: "block",
+    name: "Block",
+    geometry_kind: "polygon",
+    color: "#c45c1a",
+    icon: "fa-vector-square",
+    icon_size: 10,
+    icon_rotation: 0,
+    line_weight: 2,
+    linetype: null,
+    display_params: [],
+    is_system: true
+  },
+  plot: {
+    id: null,
+    code: "plot",
+    name: "Plot",
+    geometry_kind: "polygon",
+    color: "#28a745",
+    icon: "fa-draw-polygon",
+    icon_size: 10,
+    icon_rotation: 0,
+    line_weight: 2,
+    linetype: null,
+    display_params: [],
+    is_system: true
+  }
+};
 
 export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLayersFromDb, refreshEstateBoundaries, attachSnap, detachSnap }) {
   const entitySelect = document.getElementById("drawEntityTypeSelect");
   const entityIconPreview = document.getElementById("drawEntityIconPreview");
   const featureRow = document.getElementById("drawFeatureRow");
   const featureSelect = document.getElementById("drawFeatureSelect");
+  const featurePreview = document.getElementById("drawFeaturePreview");
   const manageBtn = document.getElementById("drawManageFeaturesBtn");
   const plotBlockFields = document.getElementById("drawPlotBlockFields");
   const automaticRow = document.getElementById("drawAutomaticRow");
@@ -97,6 +138,9 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     startBtn.classList.toggle("uam-btn--primary", !active);
     if (startBtnIcon) startBtnIcon.className = active ? "fas fa-stop-circle" : "fas fa-play";
     if (startBtnLabel) startBtnLabel.textContent = active ? "Finish Drawing" : "Start Drawing";
+    // Every caller sets sessionActive before calling this, so the enabled
+    // state can be recomputed straight from it here.
+    updateStartButtonState();
   }
 
   // Live sketch preview color — also used to mark the very first vertex
@@ -167,7 +211,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   const featuresSource = new ol.source.Vector();
   const featuresLayer = new ol.layer.Vector({
     source: featuresSource,
-    style: (feature) => styleForFeature(feature),
+    style: (feature, resolution) => styleForFeature(feature, resolution),
     zIndex: 910
   });
   featuresLayer.set("displayInLayerSwitcher", false);
@@ -186,37 +230,68 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   pendingLayer.set("displayInLayerSwitcher", false);
   map.addLayer(pendingLayer);
 
-  // Font Awesome icons (vsl_feature_type.icon, e.g. "fa-tree") are just CSS
-  // classes — OL can't use a class directly, so this resolves the actual
-  // glyph character Font Awesome's stylesheet assigns to that class (via a
-  // throwaway <i> element's computed `::before` content) once, then reuses
-  // it as plain text in an ol.style.Text with the Font Awesome font family.
-  // No hardcoded icon->codepoint table to keep in sync with ICON_LIBRARY in
-  // manage-features.js this way — works for any icon class, not just the
-  // curated list there.
-  const faGlyphCache = new Map();
-  function faGlyph(iconClass) {
-    if (!iconClass) return null;
-    if (faGlyphCache.has(iconClass)) return faGlyphCache.get(iconClass);
-    const el = document.createElement("i");
-    el.className = `fas ${iconClass}`;
-    el.style.cssText = "position:absolute;left:-9999px;visibility:hidden;";
-    document.body.appendChild(el);
-    const content = getComputedStyle(el, "::before").content;
-    document.body.removeChild(el);
-    const glyph = content && content !== "none" && content !== "normal" ? content.replace(/^["']|["']$/g, "") : null;
-    faGlyphCache.set(iconClass, glyph);
-    return glyph;
+  // Point icons come from the SVG files in /icons — the same files the
+  // Feature Type editor's picker lists (icons/icons.json) and the print tool
+  // rasterises. Rendering them from the files rather than from the Font
+  // Awesome webfont means any icon added to that folder works on the map
+  // too; a font-glyph render would only ever cover icons that happen to
+  // exist in Font Awesome.
+  //
+  // OL needs a synchronous style, so each icon is fetched once, recoloured
+  // white (FA's SVGs carry no fill, so they'd paint black on the colored
+  // chip — same fill injection print-tool.js's loadIconPng does) and cached
+  // as a data URI. A miss returns null and schedules a repaint for when the
+  // fetch lands, so the first frame just shows the bare chip.
+  const ICON_DIR = "./icons";
+  const ICON_PX = 64; // data-URI render box; scale is derived from this
+  const svgIconCache = new Map(); // "fa-tree" -> data URI | null
+  const svgIconPending = new Set();
+
+  function svgIconUrl(iconName) {
+    if (!iconName) return null;
+    if (svgIconCache.has(iconName)) return svgIconCache.get(iconName);
+    if (svgIconPending.has(iconName)) return null;
+
+    svgIconPending.add(iconName);
+    (async () => {
+      let url = null;
+      try {
+        const res = await fetch(`${ICON_DIR}/${encodeURIComponent(iconName)}.svg`);
+        if (res.ok) {
+          const svgText = await res.text();
+          // Fixed width/height (viewBox is left alone, so the glyph stays
+          // centred and un-stretched) makes the rendered size predictable,
+          // which is what lets the scale below be a plain division.
+          const colored = svgText.replace(
+            /<svg\b/,
+            `<svg fill="#ffffff" width="${ICON_PX}" height="${ICON_PX}"`
+          );
+          url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(colored);
+        }
+      } catch (e) {
+        console.error(`[Victoria Survey] Couldn't load icon ${iconName}:`, e);
+      }
+      svgIconCache.set(iconName, url);
+      svgIconPending.delete(iconName);
+      featuresLayer.changed();
+      pendingLayer.changed();
+    })();
+    return null;
   }
-  // The glyph *character* resolves immediately (it just reads a CSS rule —
-  // see faGlyph above), but actually painting it needs the Font Awesome
-  // webfont file itself loaded, or canvas silently falls back to a
-  // tofu/blank box. Re-paint once it's confirmed ready.
-  document.fonts?.ready?.then(() => {
-    featuresLayer.changed();
-    pendingLayer.changed();
-    sketchLayer.changed();
-  });
+
+  /** The white glyph sitting on a point's colored chip, or null while its
+   *  file is still loading (or missing entirely). */
+  function iconImageStyle(iconName, radius, rotationDeg) {
+    const url = svgIconUrl(iconName);
+    if (!url) return null;
+    return new ol.style.Style({
+      image: new ol.style.Icon({
+        src: url,
+        scale: (radius * 1.25) / ICON_PX,
+        rotation: (rotationDeg * Math.PI) / 180
+      })
+    });
+  }
 
   // Live area for a polygon feature, in hectares — used only for the
   // optional "Area" on-map label (display_params), computed client-side
@@ -235,7 +310,8 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
 
   // Live ground length for a line feature, in meters/km — the "Length"
   // counterpart to areaHectares above, used for the optional Length label
-  // on line-kind feature types (see manage-features.js's mfDisplayLengthCb).
+  // on line-kind feature types (the Length checkbox in the Feature Type
+  // editor, js/feature-type-editor.js).
   // Same km-once-it's-1000m+ formatting convention as map-app.js's own
   // Measure tool (formatGroundLengthM), kept local here since map-app.js
   // doesn't export its helpers to other modules.
@@ -252,7 +328,12 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   // manage-features.js — max 2 for polygon — see manage-features.js's form
   // and the vsl_feature_type_display_params_max DB constraint). Offset
   // below the marker/shape so it doesn't sit on top of the icon/stroke.
-  function displayLabelStyle(feature, offsetY) {
+  // A point's label sits to the RIGHT of its marker, vertically centred on
+  // it, rather than centred underneath — a marker is a single spot, so the
+  // text reads as an annotation pointing at it (and two nearby points don't
+  // stack their labels on top of each other). Lines and polygons keep their
+  // centred labels, where the text belongs to the whole shape.
+  function displayLabelStyle(feature, offsetY, offsetX) {
     const params = feature.get("_display");
     if (!Array.isArray(params) || !params.length) return null;
     const lines = [];
@@ -260,23 +341,152 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     if (params.includes("area")) lines.push(`${areaHectares(feature.getGeometry())} ha`);
     if (params.includes("length")) lines.push(lengthText(feature.getGeometry()));
     if (!lines.length) return null;
+
+    // "Along the line" (vsl_feature_type.label_direction) hands placement to
+    // OL, which repeats the text along the geometry and rotates it to follow
+    // each segment. It only works on line geometries, and it can't render a
+    // multi-line string, so the parts are joined with a separator instead of
+    // a newline in that mode.
+    const along =
+      feature.get("_labelDir") === "along" &&
+      /LineString/.test(feature.getGeometry()?.getType() || "");
+
+    const textOpts = {
+      text: along ? lines.join("  ·  ") : lines.join("\n"),
+      font: "600 11px sans-serif",
+      fill: new ol.style.Fill({ color: "#1d2a1d" }),
+      stroke: new ol.style.Stroke({ color: "#fff", width: 3 }),
+      textAlign: offsetX ? "left" : "center"
+    };
+    if (offsetX) {
+      textOpts.offsetX = offsetX;
+      textOpts.textBaseline = "middle";
+    }
+    if (along) {
+      textOpts.placement = "line";
+      textOpts.overflow = true;
+      // Lift it just clear of the stroke it's sitting on.
+      textOpts.offsetY = -2;
+    } else {
+      textOpts.offsetY = offsetY;
+    }
+    return new ol.style.Style({ text: new ol.style.Text(textOpts) });
+  }
+
+  // Feature ids the Search window's Feature tab is currently pointing at —
+  // drawn with an extra halo underneath so a searched-for feature is
+  // obvious once the map finishes zooming to it. Cleared by the search
+  // panel's Clear button (see setHighlightedFeatures below).
+  const highlightedIds = new Set();
+  const HIGHLIGHT_COLOR = "#ffb300";
+  function highlightStyle(feature) {
+    const geomType = feature.getGeometry()?.getType();
+    if (geomType === "Point" || geomType === "MultiPoint") {
+      const radius = Math.max(3, Number(feature.get("_iconSize")) || 10);
+      return new ol.style.Style({
+        image: new ol.style.Circle({
+          radius: radius + 7,
+          fill: new ol.style.Fill({ color: hexToRgba(HIGHLIGHT_COLOR, 0.35) }),
+          stroke: new ol.style.Stroke({ color: HIGHLIGHT_COLOR, width: 3 })
+        }),
+        zIndex: -1
+      });
+    }
+    const weight = Math.max(1, Number(feature.get("_weight")) || 2);
     return new ol.style.Style({
-      text: new ol.style.Text({
-        text: lines.join("\n"),
-        font: "600 11px sans-serif",
-        fill: new ol.style.Fill({ color: "#1d2a1d" }),
-        stroke: new ol.style.Stroke({ color: "#fff", width: 3 }),
-        offsetY,
-        textAlign: "center"
-      })
+      stroke: new ol.style.Stroke({ color: hexToRgba(HIGHLIGHT_COLOR, 0.85), width: weight + 8 }),
+      zIndex: -1
     });
   }
 
-  function styleForFeature(feature) {
+  // vsl_feature_type.linetype -> an OL lineDash array (undefined = solid).
+  // Scaled by the stroke width so a thick dashed line doesn't look like a
+  // solid one with nicks in it.
+  function lineDashFor(linetype, weight) {
+    const w = Math.max(1, Number(weight) || 2);
+    if (linetype === "dashed") return [w * 3, w * 2];
+    if (linetype === "dotted") return [w, w * 2];
+    return undefined;
+  }
+
+  // Ground metres -> screen pixels at the current view resolution.
+  //
+  // `resolution` is map units (EPSG:3857) per pixel, and a Web-Mercator unit
+  // is only a true metre at the equator — it stretches by 1/cos(latitude)
+  // going north or south. Dividing by that factor turns a real-world
+  // measurement (line_spacing_m: the gap between a road's two edges) into
+  // the right number of pixels, so a double line keeps its true width on the
+  // ground as the map zooms instead of being a fixed pixel gap.
+  function metersToPixels(meters, resolution, feature) {
+    const m = Number(meters);
+    if (!Number.isFinite(m) || !resolution) return 0;
+    let cosLat = 1;
+    try {
+      const c = ol.extent.getCenter(feature.getGeometry().getExtent());
+      const lat = ol.proj.toLonLat(c)[1];
+      cosLat = Math.cos((lat * Math.PI) / 180) || 1;
+    } catch {
+      cosLat = 1;
+    }
+    return m / cosLat / resolution;
+  }
+
+  // vsl_feature_type.line_style -> the stroke stack that draws one, two or
+  // three parallel lines, `spacingPx` apart, each `weight` px thick.
+  //
+  // OpenLayers can't offset a stroke from its geometry, so parallel lines
+  // are done the way cartographers have always drawn cased roads: paint one
+  // wide stroke in the feature's color, then knock the middle back out with
+  // a narrower stroke in the "paper" color. The arithmetic is just the
+  // total across the bundle —
+  //   double: 2 strokes + 1 gap  -> outer 2w+s, knockout s
+  //   triple: 3 strokes + 2 gaps -> outer 3w+2s, knockout w+2s, then the
+  //           centre stroke painted back on top
+  // — which leaves exactly `weight`-thick lines with `spacingPx` between
+  // them. The triple's centre line is dotted, the usual road-centreline
+  // convention, regardless of the type's own line type.
+  const LINE_GAP_COLOR = "#ffffff";
+  function lineStrokeStyles(color, weight, dash, lineStyle, spacingPx) {
+    const w = Math.max(1, Number(weight) || 2);
+    // A sub-pixel gap would render as one blurred thick line, so never let
+    // the bundle collapse below something visibly separated.
+    const s = Math.max(1, Number(spacingPx) || 0);
+    const stroke = (strokeColor, width, strokeDash) =>
+      new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: strokeColor, width, lineDash: strokeDash })
+      });
+
+    if (lineStyle === "double") {
+      return [stroke(color, 2 * w + s, dash), stroke(LINE_GAP_COLOR, s)];
+    }
+    if (lineStyle === "triple") {
+      return [
+        stroke(color, 3 * w + 2 * s, dash),
+        stroke(LINE_GAP_COLOR, w + 2 * s),
+        stroke(color, w, lineDashFor("dotted", w))
+      ];
+    }
+    return [stroke(color, w, dash)];
+  }
+
+  // `resolution` is handed in by OL (see featuresLayer's style option) and is
+  // needed to turn line_spacing_m's ground metres into pixels.
+  function styleForFeature(feature, resolution) {
+    const halo = highlightedIds.has(String(feature.getId())) ? highlightStyle(feature) : null;
+    if (halo) {
+      // Prepend the halo so it paints under the feature's own style — the
+      // per-kind branches below each return their own array, so this wraps
+      // whichever one applies rather than duplicating all three.
+      const base = styleWithoutHighlight(feature, resolution);
+      return [halo, ...(Array.isArray(base) ? base : [base])];
+    }
+    return styleWithoutHighlight(feature, resolution);
+  }
+
+  function styleWithoutHighlight(feature, resolution) {
     const color = feature.get("_color") || "#3f8f3f";
     const geomType = feature.getGeometry()?.getType();
     if (geomType === "Point" || geomType === "MultiPoint") {
-      const glyph = faGlyph(feature.get("_icon"));
       const radius = Math.max(3, Number(feature.get("_iconSize")) || 10);
       const rotationDeg = Number(feature.get("_iconRotation")) || 0;
       const styles = [
@@ -289,34 +499,35 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
           })
         })
       ];
-      if (glyph) {
-        styles.push(
-          new ol.style.Style({
-            text: new ol.style.Text({
-              text: glyph,
-              font: `900 ${Math.round(radius * 1.1)}px "Font Awesome 6 Free"`,
-              rotation: (rotationDeg * Math.PI) / 180,
-              fill: new ol.style.Fill({ color: "#fff" }),
-              textAlign: "center",
-              textBaseline: "middle"
-            })
-          })
-        );
-      }
-      const label = displayLabelStyle(feature, -(radius + 10));
+      const iconStyle = iconImageStyle(feature.get("_icon"), radius, rotationDeg);
+      if (iconStyle) styles.push(iconStyle);
+      const label = displayLabelStyle(feature, 0, radius + 6);
       if (label) styles.push(label);
       return styles;
     }
     const weight = Math.max(1, Number(feature.get("_weight")) || (geomType?.includes("Line") ? 3 : 2));
+    const linetype = feature.get("_linetype") || "solid";
+    const dash = lineDashFor(linetype, weight);
+
     if (geomType === "LineString" || geomType === "MultiLineString") {
-      const styles = [new ol.style.Style({ stroke: new ol.style.Stroke({ color, width: weight }) })];
+      // "No line" draws nothing but still gets its label — useful for a
+      // route or boundary that should only be annotated, not outlined.
+      const spacingPx = metersToPixels(feature.get("_lineSpacingM"), resolution, feature);
+      const styles =
+        linetype === "none"
+          ? []
+          : lineStrokeStyles(color, weight, dash, feature.get("_lineStyle"), spacingPx);
       const label = displayLabelStyle(feature, -10);
       if (label) styles.push(label);
       return styles;
     }
+
     const styles = [
       new ol.style.Style({
-        stroke: new ol.style.Stroke({ color, width: weight }),
+        stroke:
+          linetype === "none"
+            ? undefined
+            : new ol.style.Stroke({ color, width: weight, lineDash: dash }),
         fill: new ol.style.Fill({ color: hexToRgba(color, 0.18) })
       })
     ];
@@ -330,7 +541,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   // name if any, else the feature type's own name as a placeholder — so
   // it's obvious *what's* queued regardless of that type's normal
   // display_params setting.
-  function nameLabelStyle(text, offsetY) {
+  function nameLabelStyle(text, offsetY, offsetX) {
     if (!text) return null;
     return new ol.style.Style({
       text: new ol.style.Text({
@@ -339,7 +550,10 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         fill: new ol.style.Fill({ color: "#1d2a1d" }),
         stroke: new ol.style.Stroke({ color: "#fff", width: 3 }),
         offsetY,
-        textAlign: "center"
+        // Same right-of-the-marker placement as a saved point's label.
+        offsetX: offsetX || 0,
+        textAlign: offsetX ? "left" : "center",
+        textBaseline: offsetX ? "middle" : "alphabetic"
       })
     });
   }
@@ -348,7 +562,6 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     const label = feature.get("_pendingLabel") || "";
     const geomType = feature.getGeometry()?.getType();
     if (geomType === "Point") {
-      const glyph = faGlyph(feature.get("_icon"));
       const radius = Math.max(3, Number(feature.get("_iconSize")) || 10);
       const styles = [
         new ol.style.Style({
@@ -359,20 +572,9 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
           })
         })
       ];
-      if (glyph) {
-        styles.push(
-          new ol.style.Style({
-            text: new ol.style.Text({
-              text: glyph,
-              font: `900 ${Math.round(radius * 1.1)}px "Font Awesome 6 Free"`,
-              fill: new ol.style.Fill({ color: "#fff" }),
-              textAlign: "center",
-              textBaseline: "middle"
-            })
-          })
-        );
-      }
-      const nl = nameLabelStyle(label, -(radius + 10));
+      const iconStyle = iconImageStyle(feature.get("_icon"), radius, 0);
+      if (iconStyle) styles.push(iconStyle);
+      const nl = nameLabelStyle(label, 0, radius + 6);
       if (nl) styles.push(nl);
       return styles;
     }
@@ -457,6 +659,16 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         );
         olFeature.setId(row.id);
         olFeature.set("_source", "vsl_feature");
+        // Feature TYPE (as distinct from _name, which is this feature's own
+        // label). The print tool groups by type — to list only the types
+        // actually in use in its Features tab, and to build the legend's
+        // Features group. vsl_list_features already returns both.
+        olFeature.set("_typeId", row.feature_type_id ?? null);
+        olFeature.set("_typeName", row.feature_type_name || "");
+        olFeature.set("_linetype", row.linetype ?? null);
+        olFeature.set("_lineStyle", row.line_style || "single");
+        olFeature.set("_lineSpacingM", row.line_spacing_m ?? 3);
+        olFeature.set("_labelDir", row.label_direction || "horizontal");
         olFeature.set("_name", row.name || row.feature_type_name || "");
         olFeature.set("_color", row.color || "#3f8f3f");
         olFeature.set("_icon", row.icon || "");
@@ -494,7 +706,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
 
   function currentFeatureType() {
     if (isSystemEntity()) {
-      return featureTypes.find((f) => f.is_system && f.code === entitySelect.value) || null;
+      return SYSTEM_FEATURE_TYPES[entitySelect.value] || null;
     }
     const id = featureSelect.value;
     if (!id) return null;
@@ -506,28 +718,58 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     return !!ft?.is_system && (ft.code === "plot" || ft.code === "block");
   }
 
+  // How the picked feature type will actually draw — the exact swatch the
+  // Manage Features list shows (icon on a colored chip for a point, the real
+  // strokes for a line, fill + outline for a polygon), so what's configured
+  // there is visible right here before anything is drawn.
+  function updateFeaturePreview() {
+    if (!featurePreview) return;
+    const ft = isSystemEntity() ? null : currentFeatureType();
+    featurePreview.innerHTML = ft ? featureTypeSwatchHtml(ft, { width: 26, height: 20 }) : "";
+  }
+
   function populateFeatureSelect() {
     if (isSystemEntity()) {
-      // Block/Plot are chosen directly via drawEntityTypeSelect now — no
-      // separate Feature pick needed, and no longer offered from the
-      // generic Polygon list below either (see the filter there).
+      // Block/Plot are chosen directly via drawEntityTypeSelect — no
+      // separate Feature pick needed, and they're not in vsl_feature_type
+      // at all so they can't show up in the generic Polygon list below.
       if (featureRow) featureRow.hidden = true;
       updatePlotBlockVisibility();
+      updateStartButtonState();
       return;
     }
     if (featureRow) featureRow.hidden = false;
     const kind = entitySelect.value;
     const keep = featureSelect.value;
-    const rows = featureTypes.filter(
-      (f) => f.geometry_kind === kind && !(f.is_system && (f.code === "plot" || f.code === "block"))
-    );
+    const rows = featureTypes.filter((f) => f.geometry_kind === kind);
     featureSelect.innerHTML =
-      '<option value="">Feature…</option>' +
+      '<option value="">— Select Feature —</option>' +
       rows.map((f) => `<option value="${f.id}">${f.name}</option>`).join("");
     if (keep && rows.some((f) => String(f.id) === keep)) {
       featureSelect.value = keep;
     }
+    updateFeaturePreview();
     updatePlotBlockVisibility();
+    updateStartButtonState();
+  }
+
+  // Start Drawing only makes sense once there's something to draw: a feature
+  // type picked, and — for Plot/Block — the Estate/Block it belongs to,
+  // unless a Plot is set to resolve its block automatically. Same rules as
+  // validateEntityRequirements(), which stays as the on-click backstop for
+  // anything that changes without a change event firing.
+  function updateStartButtonState() {
+    if (!startBtn) return;
+    // Mid-session the button is "Finish Drawing" and must always work.
+    if (sessionActive) {
+      startBtn.disabled = false;
+      startBtn.removeAttribute("title");
+      return;
+    }
+    const problem = validateEntityRequirements(currentFeatureType());
+    startBtn.disabled = !!problem;
+    if (problem) startBtn.title = problem;
+    else startBtn.removeAttribute("title");
   }
 
   function updatePlotBlockVisibility() {
@@ -575,6 +817,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   }
   automaticCb?.addEventListener("change", () => {
     applyDrawAutoState();
+    updateStartButtonState();
     rearmIfActive();
   });
 
@@ -633,14 +876,20 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     rearmIfActive();
   });
   featureSelect.addEventListener("change", () => {
+    updateFeaturePreview();
     updatePlotBlockVisibility();
+    updateStartButtonState();
     rearmIfActive();
   });
   estateSelect?.addEventListener("change", () => {
     refreshDrawBlockOptions(estateSelect.value);
+    updateStartButtonState();
     rearmIfActive();
   });
-  blockSelect?.addEventListener("change", rearmIfActive);
+  blockSelect?.addEventListener("change", () => {
+    updateStartButtonState();
+    rearmIfActive();
+  });
 
   // Manage Estates (js/manage-estates.js) dispatches this after any
   // add/rename/delete so this dropdown doesn't go stale while open.
@@ -663,7 +912,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   // error string, or null when everything needed is in place.
   function validateEntityRequirements(ft) {
     if (!ft) {
-      return isSystemEntity() ? "That system feature type wasn't found — check Manage Features." : "Choose a feature before drawing.";
+      return isSystemEntity() ? "Unknown entity type selected." : "Choose a feature before drawing.";
     }
     if (ft.is_system && (ft.code === "plot" || ft.code === "block")) {
       const isPlot = ft.code === "plot";
@@ -1026,6 +1275,8 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
 
   updateFooterState();
   updateEntityIconPreview();
+  // Disabled until the feature types have loaded and something is picked.
+  updateStartButtonState();
 
   (async () => {
     await fetchFeatureTypes();
@@ -1040,6 +1291,16 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     },
     getFeaturesLayer: () => featuresLayer,
     getFeaturesSource: () => featuresSource,
-    refreshFeaturesLayer
+    refreshFeaturesLayer,
+    // Used by the Search window's Feature tab and the Select window's
+    // Feature tab (both in map-app.js) — pass the ids to halo, or nothing/an
+    // empty list to clear. One highlight set, deliberately: searching for a
+    // feature and selecting one are both "show me this", and having two
+    // competing halos on the same layer would just be confusing.
+    setHighlightedFeatures: (ids) => {
+      highlightedIds.clear();
+      for (const id of ids || []) highlightedIds.add(String(id));
+      featuresLayer.changed();
+    }
   };
 }

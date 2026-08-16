@@ -3,6 +3,7 @@ import { clearStatus, parseNum, setStatus, vincentyDistanceMeters, computeUtmCar
 import { initSurveyImport } from "./survey-import.js";
 import { initSurveyDraw } from "./survey-draw.js";
 import { initManageFeatures } from "./manage-features.js";
+import { initFeatureTypeEditor } from "./feature-type-editor.js";
 import { initManageEstates } from "./manage-estates.js";
 import { initSurveyEdit } from "./survey-edit.js";
 import { initCoordSearchDrawer } from "./coord-search-drawer.js";
@@ -13,7 +14,7 @@ import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
 import { initExportTools } from "./export-tools.js";
 import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
 import { initPrintTool } from "./print-tool.js";
-import { confirmDanger } from "../popups/popup.js";
+import { confirmDanger, promptText } from "../popups/popup.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -92,19 +93,37 @@ const editSource = new ol.source.Vector();
 /** Set by parcel search RPC; layer styles emphasize these ids after bbox reload. */
 const searchHighlight = { blockId: null, parcelId: null };
 
-/** Cultivation status → map colours (blocks & parcels when not search-highlighted). */
+/** Handles returned by initSurveyDraw() — the drawn-features layer/source and
+ *  its highlight hook, needed by the search panel's Feature tab. Assigned
+ *  during init; null before that. */
+let surveyDrawApi = null;
+/** Re-populates the Feature tab's Kind/Type/Name dropdowns from whatever is
+ *  currently on the features layer. Set by setupFeatureSearch(). */
+let refreshFeatureSearchOptions = null;
+
+/** Cultivation status → map colours (blocks & parcels when not search-highlighted).
+ *
+ *  Four working statuses plus Vacant. "Vacant" is deliberately unfilled —
+ *  every fill check below pairs `CULTIVATION_PALETTE[status]` with
+ *  `status !== "vacant"`, so a vacant plot draws as a bare outline and its
+ *  legend swatch is an empty box.
+ *
+ *  Renamed 2026-08: not_in_cane -> vacant, replant_renovation -> ratoon,
+ *  and "standing" removed entirely (its one plot was moved to planted).
+ *  The database was migrated to match — vsl_parcels/vsl_blocks values,
+ *  their column defaults, both *_cultivation_status_chk constraints and
+ *  the vsl_block_stats view all use these keys now. */
 const CULTIVATION_PALETTE = {
-  not_in_cane: { stroke: "#455a64", fill: "rgba(84, 110, 122, 0.32)", text: "#37474f" },
-  prepared: { stroke: "#4e342e", fill: "rgba(93, 64, 55, 0.3)", text: "#3e2723" },
-  planted: { stroke: "#1b5e20", fill: "rgba(46, 125, 50, 0.36)", text: "#1b5e20" },
-  standing: { stroke: "#0d3d0d", fill: "rgba(13, 61, 13, 0.4)", text: "#0d2f0d" },
-  harvested: { stroke: "#e65100", fill: "rgba(251, 192, 45, 0.42)", text: "#bf360c" },
-  replant_renovation: { stroke: "#4a148c", fill: "rgba(106, 27, 154, 0.32)", text: "#4a148c" }
+  vacant: { stroke: "#607d8b", fill: "rgba(0, 0, 0, 0)", text: "#455a64" },
+  prepared: { stroke: "#12a876", fill: "rgba(30, 224, 161, 0.38)", text: "#0b6b4a" },
+  planted: { stroke: "#2d7c33", fill: "rgba(45, 124, 51, 0.42)", text: "#1b4d20" },
+  ratoon: { stroke: "#0c3d0c", fill: "rgba(12, 61, 12, 0.45)", text: "#0c3d0c" },
+  harvested: { stroke: "#5fa84b", fill: "rgba(161, 251, 142, 0.48)", text: "#35702a" }
 };
 
 function cultivationKeyFromFeature(feature) {
   const s = feature.get("cultivation_status");
-  return s && CULTIVATION_PALETTE[s] ? s : "not_in_cane";
+  return s && CULTIVATION_PALETTE[s] ? s : "vacant";
 }
 
 /** Parcel label zoom staging: name-only until zoomed in past PARCEL_FULL_DETAIL_RES,
@@ -226,12 +245,11 @@ const parcelStatusState = {
 };
 
 const CULTIVATION_STATUS_LABELS = {
-  not_in_cane: "Not in cane",
+  vacant: "Vacant",
   prepared: "Prepared",
   planted: "Planted",
-  standing: "Standing",
-  harvested: "Harvested",
-  replant_renovation: "Replant / renovation"
+  ratoon: "Ratoon",
+  harvested: "Harvested"
 };
 
 /** vsl_alerts.severity -> display label, shared by badges, the info panel, and the log-alert modal. */
@@ -1016,6 +1034,15 @@ function initialsFromName(name) {
   return (name || "").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
 
+/** Signed-in user's display name, for anything outside this module that
+ *  needs to stamp it (the print tool's "Printed by" line). Same loosely-
+ *  coupled window.* hook pattern used for vslBuildLegendList /
+ *  vslClosePrintPanel. Returns null for guests. */
+window.vslCurrentUserName = () => {
+  if (!currentUser || currentUser.id === "guest") return null;
+  return currentProfile?.full_name || currentProfile?.email || currentUser?.email || null;
+};
+
 function updateProfileButtonAvatar() {
   const slot = document.getElementById("profileAvatarSlot");
   if (!slot || !currentProfile || !currentUser || currentUser.id === "guest") return;
@@ -1479,8 +1506,8 @@ async function applyPlantingWriteBack(parcelIds, properties) {
  * Land-linked write-back for Harvesting — registers the harvest in
  * vsl_harvests (the plot detail panel's Harvest History reads straight from
  * that table), then bumps each plot's ratoon number and flips
- * cultivation_status to "replant_renovation" ("Replant / renovation" in the
- * UI — the closest existing status to "replant / regrow").
+ * cultivation_status to "ratoon" — harvested cane regrows as ratoon,
+ * which is what the next cycle actually is.
  */
 async function applyHarvestingWriteBack(parcelIds, properties, createdBy) {
   const today = new Date().toISOString().slice(0, 10);
@@ -1510,7 +1537,7 @@ async function applyHarvestingWriteBack(parcelIds, properties, createdBy) {
       .from("vsl_parcels")
       .update({
         ratoon_number: (p.ratoon_number ?? 0) + 1,
-        cultivation_status: "replant_renovation",
+        cultivation_status: "ratoon",
         cultivation_updated_at: new Date().toISOString()
       })
       .eq("id", p.id);
@@ -1791,7 +1818,7 @@ async function buildBlockInfoHtml(blockId) {
 
   const statusCounts = {};
   for (const p of parcels) {
-    const k = p.cultivation_status || "not_in_cane";
+    const k = p.cultivation_status || "vacant";
     statusCounts[k] = (statusCounts[k] || 0) + 1;
   }
   const statusRows = Object.keys(CULTIVATION_STATUS_LABELS).map((k) => [CULTIVATION_STATUS_LABELS[k], String(statusCounts[k] || 0)]);
@@ -2003,7 +2030,7 @@ function buildBlockExportSections({ block, totalPlots, totalArea, avgPlotSize, p
  *  slots into the same rendering/export pipeline. "Planted area" (per
  *  block and estate-wide) is the sum of vsl_parcels.expected_area_acres
  *  for plots whose cultivation_status is
- *  anything other than "not_in_cane" — there's no dedicated column for it. */
+ *  anything other than "vacant" — there's no dedicated column for it. */
 async function buildEstateInfoHtml(estateId) {
   const [estateRes, blocksRes] = await Promise.all([
     supabase.from("vsl_estate").select("*, vsl_profiles!manager_id(email, full_name, phone, title)").eq("id", estateId).single(),
@@ -2026,7 +2053,7 @@ async function buildEstateInfoHtml(estateId) {
     const agg = perBlock.get(p.block_id);
     if (!agg) continue;
     agg.plots += 1;
-    if (p.cultivation_status && p.cultivation_status !== "not_in_cane") {
+    if (p.cultivation_status && p.cultivation_status !== "vacant") {
       agg.plantedArea += Number(p.expected_area_acres) || 0;
     }
   }
@@ -2608,7 +2635,7 @@ const blocksLayer = new ol.layer.Vector({
     let strokeWidth = resolution > 25 && !hi ? 1.5 : (hi ? 5 : 3); 
     let textColor = "#d32f2f";
     
-    if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
+    if (status && CULTIVATION_PALETTE[status] && status !== "vacant") {
       fillColor = CULTIVATION_PALETTE[status].fill;
     }
 
@@ -2649,7 +2676,7 @@ const parcelsLayer = new ol.layer.Vector({
     let strokeWidth = resolution > 12 && !hi ? 1 : (hi ? 4 : 2);
     let textColor = "#2e7d32";
 
-    if (status && CULTIVATION_PALETTE[status] && status !== "not_in_cane") {
+    if (status && CULTIVATION_PALETTE[status] && status !== "vacant") {
       fillColor = CULTIVATION_PALETTE[status].fill;
     }
 
@@ -3272,10 +3299,107 @@ function renderParcelStatusPreview() {
   if (!features || features.length === 0) {
     if (selectionLabel) selectionLabel.textContent = "Select on map";
     if (actionsRow) actionsRow.hidden = true;
+  } else if (parcelStatusState.selectedLayerType === "FEATURES") {
+    // Drawn features are individually named things rather than a numbered
+    // grid, so name what's picked instead of just counting it.
+    if (selectionLabel) {
+      selectionLabel.textContent =
+        features.length === 1
+          ? `${features[0].get("_name") || features[0].get("_typeName") || "Feature"}` +
+            (features[0].get("_typeName") ? ` · ${features[0].get("_typeName")}` : "")
+          : `Selection: ${features.length} features`;
+    }
+    if (actionsRow) actionsRow.hidden = false;
   } else {
     if (selectionLabel) selectionLabel.textContent = `Selection: ${features.length}`;
     if (actionsRow) actionsRow.hidden = false;
   }
+}
+
+/** Rename a drawn feature — the Select window's Modify action when the
+ *  Feature tab is active. The Edit Details modal it opens for plots/blocks
+ *  is all cultivation status/harvest fields, none of which a tree or a road
+ *  has; a feature's name is the one thing worth editing here (its shape is
+ *  the Survey window's Edit tab). */
+async function renameSelectedFeature() {
+  const features = parcelStatusState.selectedFeatures;
+  if (!features?.length) return;
+  if (features.length > 1) {
+    setParcelStatusFormError("Select a single feature to rename.");
+    return;
+  }
+  if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
+    setParcelStatusFormError("Only Admin or Surveyor can edit features.");
+    return;
+  }
+  setParcelStatusFormError("");
+
+  const feature = features[0];
+  const current = String(feature.get("_name") ?? "");
+  const name = await promptText({
+    title: "Rename Feature",
+    message: `Name for this ${String(feature.get("_typeName") || "feature").toLowerCase()}`,
+    value: current,
+    required: true,
+    confirmLabel: "Save"
+  });
+  if (name === null || name.trim() === current) return;
+
+  const { error } = await supabase
+    .from("vsl_feature")
+    .update({ name: name.trim() })
+    .eq("id", feature.getId());
+  if (error) {
+    setParcelStatusFormError(error.message);
+    return;
+  }
+  // Re-read the layer so the on-map label (for types that show one) and the
+  // panel's own selection line both pick the new name up.
+  feature.set("_name", name.trim());
+  window.dispatchEvent(new CustomEvent("vsl-features-changed"));
+  renderParcelStatusPreview();
+  setStatus(statusEl, `Renamed to "${name.trim()}".`);
+}
+
+/** Deletes the selected drawn features (vsl_feature). Unlike a block, a
+ *  feature has nothing hanging off it, so there's no linked-records guard —
+ *  just the confirmation. */
+async function deleteSelectedFeatures() {
+  const features = parcelStatusState.selectedFeatures;
+  if (!features?.length) return;
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+    setParcelStatusFormError("Sign in to delete features.");
+    return;
+  }
+  if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
+    setParcelStatusFormError("Only Admin or Surveyor can delete features.");
+    return;
+  }
+
+  const confirmed = await confirmDanger({
+    title: `Delete ${features.length} feature${features.length > 1 ? "s" : ""}`,
+    message: `You are about to permanently delete ${features.length} drawn feature(s). This action cannot be undone.`,
+    confirmLabel: "Delete"
+  });
+  if (!confirmed) return;
+
+  setParcelStatusFormError("");
+  setParcelStatusBusy(true, `Deleting ${features.length} feature(s)…`);
+  let errorCount = 0;
+  for (const f of features) {
+    const { error } = await supabase.from("vsl_feature").delete().eq("id", f.getId());
+    if (error) errorCount++;
+  }
+  setParcelStatusBusy(false);
+
+  if (errorCount) {
+    setParcelStatusFormError(`Failed to delete ${errorCount} of ${features.length} feature(s).`);
+    return;
+  }
+  setStatus(statusEl, `Deleted ${features.length} feature(s).`);
+  clearParcelStatusSelection();
+  await surveyDrawApi?.refreshFeaturesLayer?.();
+  window.dispatchEvent(new CustomEvent("vsl-features-changed"));
 }
 
 function openEditDetailsModal() {
@@ -3332,7 +3456,7 @@ function openEditDetailsModal() {
       nameInput.disabled = true;
       nameInput.readOnly = true;
     }
-    if (statusSelect) statusSelect.value = "not_in_cane";
+    if (statusSelect) statusSelect.value = "vacant";
     if (tonnesInput) tonnesInput.value = "";
     if (dateInput) dateInput.value = "";
     if (notesInput) notesInput.value = "";
@@ -3377,7 +3501,7 @@ async function saveEditDetailsForm(event) {
   const dateInput = document.getElementById("editDetailsLastHarvest");
   const notesInput = document.getElementById("editDetailsNotes");
 
-  const status = statusSelect?.value || "not_in_cane";
+  const status = statusSelect?.value || "vacant";
   const tonnesRaw = tonnesInput?.value?.trim() ?? "";
   const tonnes = tonnesRaw === "" ? null : parseNum(tonnesRaw);
   if (tonnesRaw !== "" && (tonnes == null || tonnes < 0)) {
@@ -3462,6 +3586,7 @@ function clearParcelStatusSelection() {
   parcelStatusState.selectedLayerType = null;
   blocksLayer.changed();
   parcelsLayer.changed();
+  surveyDrawApi?.setHighlightedFeatures?.([]);
   renderParcelStatusPreview();
 }
 
@@ -3530,16 +3655,21 @@ function tryParcelStatusMapClick(evt) {
   const hitOpts = { hitTolerance: 20 };
 
   if (mode === "FEATURE") {
-    // "Feature" tab — accept either layer, whichever is actually clicked.
-    map.forEachFeatureAtPixel(
-      evt.pixel,
-      (feature, layer) => {
-        hit = feature;
-        layerHit = layer === blocksLayer ? "BLOCKS" : "PARCELS";
-        return true;
-      },
-      { ...hitOpts, layerFilter: (layer) => layer === parcelsLayer || layer === blocksLayer }
-    );
+    // "Feature" tab — the drawn features (vsl_feature: trees, roads, walls,
+    // …) on survey-draw.js's own layer, NOT plots/blocks, which have their
+    // own two tabs.
+    const featuresLayer = surveyDrawApi?.getFeaturesLayer?.();
+    if (featuresLayer) {
+      map.forEachFeatureAtPixel(
+        evt.pixel,
+        (feature) => {
+          hit = feature;
+          return true;
+        },
+        { ...hitOpts, layerFilter: (layer) => layer === featuresLayer }
+      );
+    }
+    if (hit) layerHit = "FEATURES";
   } else if (mode === "PARCELS") {
     map.forEachFeatureAtPixel(
       evt.pixel,
@@ -3563,28 +3693,42 @@ function tryParcelStatusMapClick(evt) {
   }
 
   if (!hit) {
-    const label = mode === "FEATURE" ? "plot or block" : mode === "PARCELS" ? "parcel" : "block";
-    setStatus(statusEl, `Click a ${label} polygon.`, true);
+    const label = mode === "FEATURE" ? "drawn feature" : mode === "PARCELS" ? "parcel" : "block";
+    setStatus(statusEl, mode === "FEATURE" ? "Click a drawn feature." : `Click a ${label} polygon.`, true);
     return true;
   }
-  
+
   if (parcelStatusState.selectedLayerType !== layerHit) {
     parcelStatusState.selectedFeatures = [];
     parcelStatusState.selectedLayerType = layerHit;
   }
-  
+
   const existingIdx = parcelStatusState.selectedFeatures.findIndex(f => f.getId() === hit.getId());
   if (existingIdx > -1) {
     parcelStatusState.selectedFeatures.splice(existingIdx, 1);
   } else {
     parcelStatusState.selectedFeatures.push(hit);
   }
-  
+
   renderParcelStatusPreview();
   clearStatus(statusEl);
   blocksLayer.changed();
   parcelsLayer.changed();
+  syncFeatureSelectionHighlight();
   return true;
+}
+
+/** Drawn features don't live on blocksLayer/parcelsLayer, so their
+ *  "you picked this" emphasis can't come from those layers' style
+ *  functions — it goes through survey-draw.js's own highlight hook, the
+ *  same one the Search window's Feature tab uses. */
+function syncFeatureSelectionHighlight() {
+  if (!surveyDrawApi?.setHighlightedFeatures) return;
+  const ids =
+    parcelStatusState.selectedLayerType === "FEATURES"
+      ? parcelStatusState.selectedFeatures.map((f) => f.getId())
+      : [];
+  surveyDrawApi.setHighlightedFeatures(ids);
 }
 
 /** Busy overlay covering the Select window's body while Delete is in
@@ -3619,6 +3763,12 @@ function setupParcelStatusPanel() {
     const features = parcelStatusState.selectedFeatures;
     const lt = parcelStatusState.selectedLayerType;
     if (!features || features.length === 0 || !lt) return;
+
+    // Drawn features live in their own table with their own guards.
+    if (lt === "FEATURES") {
+      await deleteSelectedFeatures();
+      return;
+    }
 
     if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
       setParcelStatusFormError("Sign in to delete features.");
@@ -3721,7 +3871,13 @@ function setupParcelStatusPanel() {
     el?.addEventListener("click", () => activateModifyTab(mode));
   });
 
-  modifyBtn?.addEventListener("click", () => openEditDetailsModal());
+  modifyBtn?.addEventListener("click", () => {
+    if (parcelStatusState.selectedLayerType === "FEATURES") {
+      renameSelectedFeature();
+      return;
+    }
+    openEditDetailsModal();
+  });
 
   modalCloseBtn?.addEventListener("click", () => closeEditDetailsModal());
   modalForm?.addEventListener("submit", (e) => saveEditDetailsForm(e));
@@ -4789,6 +4945,9 @@ async function refreshParcelAlertBadges() {
 function clearSearchHighlight() {
   searchHighlight.blockId = null;
   searchHighlight.parcelId = null;
+  // The Feature tab's halo is owned by survey-draw.js's layer, not by the
+  // block/parcel styles below, so it has to be cleared through its own hook.
+  surveyDrawApi?.setHighlightedFeatures?.([]);
   if (map) {
     blocksLayer.changed();
     parcelsLayer.changed();
@@ -4881,9 +5040,9 @@ function closeSearchPanel(options = {}) {
 }
 
 function activateSearchTab(tab) {
-  const tabs = ["parcel", "place", "coords"];
-  const tabElMap = { coords: "tabCoords", parcel: "tabParcel", place: "tabPlace", extract: "tabExtract" };
-  const bodyElMap = { coords: "searchTabCoords", parcel: "searchTabParcel", place: "searchTabPlace", extract: "searchTabExtract" };
+  const tabs = ["parcel", "feature", "place", "coords"];
+  const tabElMap = { coords: "tabCoords", parcel: "tabParcel", feature: "tabFeature", place: "tabPlace", extract: "tabExtract" };
+  const bodyElMap = { coords: "searchTabCoords", parcel: "searchTabParcel", feature: "searchTabFeature", place: "searchTabPlace", extract: "searchTabExtract" };
   tabs.forEach((t) => {
     const tabEl = document.getElementById(tabElMap[t]);
     const bodyEl = document.getElementById(bodyElMap[t]);
@@ -4892,10 +5051,14 @@ function activateSearchTab(tab) {
     if (bodyEl) bodyEl.hidden = !active;
   });
   activeSearchTabId = tab;
+  // The Feature tab's options come from what's currently drawn on the map,
+  // so rebuild them each time it's shown rather than trusting a snapshot
+  // taken at startup.
+  if (tab === "feature") refreshFeatureSearchOptions?.();
 }
 
 function setupSearchTabSwitching() {
-  ["tabCoords", "tabParcel", "tabPlace", "tabExtract"].forEach((id) => {
+  ["tabCoords", "tabParcel", "tabFeature", "tabPlace", "tabExtract"].forEach((id) => {
     const btn = document.getElementById(id);
     btn?.addEventListener("click", () => {
       const tab = btn.dataset.tab;
@@ -4927,8 +5090,17 @@ function clearPlaceSearch() {
 function setupUnifiedSearchActionButtons() {
   const goBtn = document.getElementById("searchGoBtn");
   const clearBtn = document.getElementById("searchClearBtn");
-  const goBtnIdByTab = { parcel: "parcelSearchGoBtn", place: "placeSearchGoBtn", coords: "coordPlotSingleBtn" };
-  const clearBtnIdByTab = { parcel: "parcelSearchPopoverCancelBtn", coords: "coordClearMarkersBtn" };
+  const goBtnIdByTab = {
+    parcel: "parcelSearchGoBtn",
+    feature: "featureSearchGoBtn",
+    place: "placeSearchGoBtn",
+    coords: "coordPlotSingleBtn"
+  };
+  const clearBtnIdByTab = {
+    parcel: "parcelSearchPopoverCancelBtn",
+    feature: "featureSearchClearBtn",
+    coords: "coordClearMarkersBtn"
+  };
 
   goBtn?.addEventListener("click", () => {
     document.getElementById(goBtnIdByTab[activeSearchTabId])?.click();
@@ -4937,6 +5109,169 @@ function setupUnifiedSearchActionButtons() {
     const proxyId = clearBtnIdByTab[activeSearchTabId];
     if (proxyId) document.getElementById(proxyId)?.click();
     else clearPlaceSearch(); // "place" tab has no proxy clear button — clear its own state directly
+  });
+}
+
+// ── Feature search (Search window → Feature tab) ───────────────────────────
+// Finds already-drawn features (vsl_feature — trees, roads, walls, …) and
+// zooms to them. Unlike the Block/Plot tab there's no RPC involved: every
+// feature is already on the map in survey-draw.js's features layer, geometry
+// and all, so the three dropdowns are built straight from that source. Which
+// also means they can never drift from what's actually drawn.
+function setupFeatureSearch() {
+  const kindSelect = document.getElementById("featureKindSelect");
+  const typeSelect = document.getElementById("featureTypeSelect");
+  const nameSelect = document.getElementById("featureNameSelect");
+  const goBtn = document.getElementById("featureSearchGoBtn");
+  const clearBtn = document.getElementById("featureSearchClearBtn");
+  const errorEl = document.getElementById("featureSearchError");
+  if (!kindSelect || !typeSelect || !nameSelect) return;
+
+  function setFeatureSearchError(msg) {
+    if (!errorEl) return;
+    errorEl.textContent = msg || "";
+    errorEl.hidden = !msg;
+  }
+
+  // OL geometry type -> the vsl_feature_type.geometry_kind vocabulary the
+  // Kind dropdown uses.
+  function kindOfGeometry(type) {
+    if (type === "Point" || type === "MultiPoint") return "point";
+    if (type === "LineString" || type === "MultiLineString") return "line";
+    return "polygon";
+  }
+
+  function allEntries() {
+    const source = surveyDrawApi?.getFeaturesSource?.();
+    if (!source) return [];
+    return source.getFeatures().map((f) => ({
+      id: f.getId(),
+      name: f.get("_name") || "",
+      typeId: f.get("_typeId"),
+      typeName: f.get("_typeName") || "",
+      kind: kindOfGeometry(f.getGeometry()?.getType()),
+      olFeature: f
+    }));
+  }
+
+  // Each dropdown narrows the ones after it, but none of them is required —
+  // "Any" at every level means Go zooms to everything drawn.
+  function matching({ includeName = true } = {}) {
+    const kind = kindSelect.value;
+    const typeId = typeSelect.value;
+    const featureId = includeName ? nameSelect.value : "";
+    return allEntries().filter((e) => {
+      if (kind && e.kind !== kind) return false;
+      if (typeId && String(e.typeId) !== String(typeId)) return false;
+      if (featureId && String(e.id) !== String(featureId)) return false;
+      return true;
+    });
+  }
+
+  function fillSelect(select, options, anyLabel) {
+    const keep = select.value;
+    select.innerHTML =
+      `<option value="">${anyLabel}</option>` +
+      options.map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
+    if (keep && options.some((o) => String(o.value) === keep)) select.value = keep;
+  }
+
+  function refreshTypeOptions() {
+    const kind = kindSelect.value;
+    const seen = new Map();
+    for (const e of allEntries()) {
+      if (kind && e.kind !== kind) continue;
+      if (e.typeId != null && !seen.has(String(e.typeId))) {
+        seen.set(String(e.typeId), { value: e.typeId, label: e.typeName || `Type ${e.typeId}` });
+      }
+    }
+    const options = [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
+    fillSelect(typeSelect, options, "— Any Type —");
+  }
+
+  function refreshNameOptions() {
+    // Unnamed features still need to be selectable — fall back to their type
+    // name so the option isn't blank.
+    const options = matching({ includeName: false })
+      .map((e) => ({ value: e.id, label: e.name || `(unnamed ${e.typeName || "feature"})` }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+    fillSelect(nameSelect, options, "— Any Name —");
+  }
+
+  function refreshAll() {
+    refreshTypeOptions();
+    refreshNameOptions();
+  }
+  refreshFeatureSearchOptions = refreshAll;
+
+  kindSelect.addEventListener("change", () => {
+    // A type only belongs to one kind, so a kind switch invalidates both
+    // downstream picks.
+    typeSelect.value = "";
+    nameSelect.value = "";
+    refreshAll();
+    setFeatureSearchError("");
+  });
+  typeSelect.addEventListener("change", () => {
+    nameSelect.value = "";
+    refreshNameOptions();
+    setFeatureSearchError("");
+  });
+  nameSelect.addEventListener("change", () => setFeatureSearchError(""));
+
+  // Drawing, editing or deleting a feature changes what's searchable.
+  window.addEventListener("vsl-features-changed", () => refreshAll());
+
+  goBtn?.addEventListener("click", () => {
+    setFeatureSearchError("");
+    const hits = matching();
+    if (!hits.length) {
+      setFeatureSearchError(
+        allEntries().length ? "No features match those filters." : "No features have been drawn yet."
+      );
+      return;
+    }
+
+    const combined = ol.extent.createEmpty();
+    for (const hit of hits) {
+      const geom = hit.olFeature.getGeometry();
+      if (geom) ol.extent.extend(combined, geom.getExtent());
+    }
+    if (ol.extent.isEmpty(combined)) {
+      setFeatureSearchError("Those features have no geometry to zoom to.");
+      return;
+    }
+
+    surveyDrawApi?.setHighlightedFeatures?.(hits.map((h) => h.id));
+
+    // Same framing as the Block/Plot tab's fit — keep the panel itself from
+    // covering what was just zoomed to.
+    const dockEl = document.getElementById("searchPanel");
+    let leftPad = 96;
+    if (dockEl && !dockEl.hidden) {
+      const w = dockEl.getBoundingClientRect().width;
+      if (w > 0) leftPad = Math.min(360, Math.round(w + 24));
+    }
+    const fitOpts = { padding: [88, 96, 96, leftPad], maxZoom: 19, duration: 1350 };
+    if (ol.easing && typeof ol.easing.easeOut === "function") fitOpts.easing = ol.easing.easeOut;
+    map.getView().fit(combined, fitOpts);
+
+    const one = hits.length === 1 ? hits[0] : null;
+    setStatus(
+      statusEl,
+      one
+        ? `${one.name || one.typeName || "Feature"} — highlighted on the map.`
+        : `${hits.length} features highlighted on the map.`
+    );
+  });
+
+  clearBtn?.addEventListener("click", () => {
+    kindSelect.value = "";
+    typeSelect.value = "";
+    nameSelect.value = "";
+    refreshAll();
+    setFeatureSearchError("");
+    surveyDrawApi?.setHighlightedFeatures?.([]);
   });
 }
 
@@ -5906,6 +6241,7 @@ function bindEvents() {
   setupParcelSearchPopover();
   setupParcelStatusPanel();
   setupPlaceSearch();
+  setupFeatureSearch();
   setupUnifiedSearchActionButtons();
 
   const searchCloseBtn = document.getElementById("searchPanelCloseBtn");
@@ -6212,7 +6548,13 @@ async function initMap() {
     attachSnap: () => attachSnapInteractions(readSnapOptions()),
     detachSnap: detachSnapInteractions
   });
+  // Published for the Search window's Feature tab (setupFeatureSearch),
+  // which reads this layer's features and drives its highlight.
+  surveyDrawApi = surveyDrawHandles;
 
+  // Registers window.openFeatureTypeEditor, which the Manage Features list
+  // calls — so it has to be initialised before/alongside that list.
+  initFeatureTypeEditor({ cfg, supabase, setStatus, statusEl });
   initManageFeatures({ cfg, supabase, setStatus, statusEl });
   initManageEstates({ cfg, supabase, setStatus, statusEl });
 
@@ -6242,6 +6584,7 @@ async function initMap() {
     estatesLayer,
     getFeaturesLayer: () => surveyDrawHandles?.getFeaturesLayer?.() || null,
     CULTIVATION_PALETTE,
+    CULTIVATION_STATUS_LABELS,
     ALERT_SEVERITY_FILL,
     ALERT_SEVERITY_COLORS,
     getFeatureInteriorPoint,

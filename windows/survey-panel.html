@@ -203,18 +203,20 @@
               <option value="plot">Plot</option>
             </select>
             <!-- Non-interactive shape preview for whatever's picked above
-                 (js/survey-draw.js updateEntityIconPreview) — same box look
-                 as #drawManageFeaturesBtn, just not a button. -->
+                 (js/survey-draw.js updateEntityIconPreview). -->
             <span id="drawEntityIconPreview" class="uam-icon-btn uam-icon-preview" aria-hidden="true"></span>
           </div>
 
           <div id="drawFeatureRow" class="uam-field-row u-gap-8">
             <select id="drawFeatureSelect" class="uam-select">
-              <option value="">Feature…</option>
+              <option value="">— Select Feature —</option>
             </select>
-            <button type="button" id="drawManageFeaturesBtn" class="uam-icon-btn" title="Manage features" aria-label="Manage features">
-              <i class="fas fa-pen-to-square" aria-hidden="true"></i>
-            </button>
+            <!-- How the selected feature type will actually draw — the same
+                 swatch the Manage Features list shows in its Icon column
+                 (featureTypeSwatchHtml), so the icon/line style/fill you pick
+                 there is what you see here. Not a button: managing feature
+                 types moved to the footer button at the bottom of this tab. -->
+            <span id="drawFeaturePreview" class="uam-icon-btn uam-icon-preview" aria-hidden="true"></span>
           </div>
 
           <!-- Only shown for Block/Plot (see drawEntityTypeSelect above) —
@@ -254,6 +256,15 @@
                geometry kind and toggles [hidden]). Errors/status now go to
                the global status bar (setStatus) same as the Edit tab. -->
           <ul id="drawHintList" class="uam-hint uam-hint--blue uam-hint--box" hidden></ul>
+
+          <!-- Pinned to the bottom of the tab body (see .uam-tab__footer):
+               a secondary action that belongs to this tab as a whole rather
+               than to the Feature dropdown specifically. -->
+          <div class="uam-tab__footer">
+            <button type="button" id="drawManageFeaturesBtn" class="uam-btn uam-btn--ghost u-w-100">
+              <i class="fas fa-pen-to-square" aria-hidden="true"></i> Manage Features
+            </button>
+          </div>
         </div>
 
         <!-- ── EDIT TAB ──

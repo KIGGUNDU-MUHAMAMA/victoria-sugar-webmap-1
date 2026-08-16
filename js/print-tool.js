@@ -46,7 +46,7 @@ export function initPrintTool({
   // Layer refs + styling data — every one of these is redrawn as real PDF
   // vectors rather than rasterized. See drawMapVectors below.
   blocksLayer, parcelsLayer, estatesLayer, getFeaturesLayer,
-  CULTIVATION_PALETTE, ALERT_SEVERITY_FILL,
+  CULTIVATION_PALETTE, CULTIVATION_STATUS_LABELS, ALERT_SEVERITY_FILL,
   ALERT_SEVERITY_COLORS, getFeatureInteriorPoint, surveyFeatureAreaAcresText
 }) {
   const topBtn = document.getElementById("printTopBtn");
@@ -69,12 +69,41 @@ export function initPrintTool({
    *  only text. */
   const TEXT_SIZE_DEFAULT = 5;
 
+  /** Icon size works exactly like text size: 1–10 with 5 neutral, and the
+   *  chosen value over 5 becomes the multiplier on BASE_FEATURE_ICON_PT
+   *  (and the dot fallback). Independent of text size so icons can be
+   *  dialled up without inflating every label with them. */
+  const ICON_SIZE_DEFAULT = 5;
+
+  /**
+   * Print settings, grouped the same way the settings window's tabs are.
+   * `featureTypes` is null until the user touches the Features tab, which
+   * means "every type" — that way a newly-drawn feature type shows up on
+   * prints without anyone having to go and tick it.
+   */
   const settings = {
-    legend: true, northArrow: true, qr: true, date: true, source: true,
+    // Text labels
     textSize: TEXT_SIZE_DEFAULT,
+    // Features
+    iconSize: ICON_SIZE_DEFAULT,
+    labels: {
+      estate: true, block: true, plot: true, area: true,
+      ratoon: true, feature: true, distance: false, alerts: true
+    },
+    // Layers
+    layers: { estate: true, block: true, plot: true, titleBoundary: true },
     hatching: true,
-    basemap: true,
-    boostQuality: false
+    // Basemaps — off by default: the vectors are the point of the print,
+    // and skipping the imagery also skips the slow tile capture.
+    basemap: false,
+    boostQuality: false,
+    // Features — null = all types
+    featureTypes: null,
+    // Map details
+    details: {
+      title: true, legend: true, northArrow: true, qr: true,
+      summary: true, date: true, source: true, scale: true, printedBy: false
+    }
   };
 
   /** When on (the default), the selection can only be drawn/resized at the
@@ -123,18 +152,32 @@ export function initPrintTool({
   const PAGE_STAMP_BAND_PT = 16;
   const PAGE_GAP_PT = 10;
 
-  /** Landscape: side column down the right. */
+  /** Landscape: side column down the right. The legend fills it from the
+   *  top; summary and then a QR + north-arrow row sit at the bottom. */
   const SIDE_COLUMN_PT = 110;
-  const NORTH_ARROW_BOX_PT = 54;
 
   /** Portrait: a legend bar across the bottom with a square north-arrow
    *  cell at its right end. */
   const BOTTOM_BAR_PT = 62;
   const BOTTOM_ARROW_W_PT = 62;
 
-  /** QR cell — a square, so its height equals the column width in
-   *  landscape and the bar height in portrait. */
-  const QR_CAPTION_PT = 10;
+  /** QR cell caption height. In landscape the QR is deliberately the same
+   *  square as the north-arrow box rather than the full column width —
+   *  a 110pt QR ate most of the column and left the legend no room for its
+   *  Features group. Portrait still sizes it to the bar height. */
+  /** Cap on the bottom-row squares (QR / north arrow) so they stay
+   *  sensible if the side column is ever widened. */
+  const BOTTOM_SQUARE_MAX_PT = 56;
+
+  /** Gap between the stacked cells inside the landscape side column
+   *  (arrow / legend / summary / QR). Tighter than PAGE_GAP_PT — that one
+   *  separates the map from the column, where a bigger gap reads better. */
+  const SIDE_CELL_GAP_PT = 4;
+
+  /** Selection summary cell — a fixed block in landscape (it holds four
+   *  label/value rows), a fixed width in the portrait bottom bar. */
+  const SUMMARY_BOX_PT = 60;
+  const SUMMARY_BAR_W_PT = 130;
 
   /** A4 in points, as jsPDF reports it. */
   const A4_LONG_PT = 841.89;
@@ -149,6 +192,7 @@ export function initPrintTool({
     const showLegend = !!opts.legend;
     const showNorthArrow = !!opts.northArrow;
     const showQr = !!opts.qr;
+    const showSummary = !!opts.summary;
     const showStamp = !!opts.stamp;
     const landscape = orientation === "landscape";
     const pageW = landscape ? A4_LONG_PT : A4_SHORT_PT;
@@ -157,29 +201,56 @@ export function initPrintTool({
     const m = PAGE_MARGIN_PT;
     const mapTop = m + PAGE_TITLE_BAND_PT;
     const stampH = showStamp ? PAGE_STAMP_BAND_PT : 0;
-    const hasExtras = showLegend || showNorthArrow || showQr;
+    const hasExtras = showLegend || showNorthArrow || showQr || showSummary;
 
     const layout = {
       pageW, pageH, margin: m, mapTop, stampH, landscape,
-      showLegend, showNorthArrow, showQr
+      showLegend, showNorthArrow, showQr, showSummary
     };
 
     if (landscape) {
-      // Extras live in a column down the right-hand side: north arrow on
-      // top, legend in the middle, QR square pinned to the bottom.
+      // Extras stack down the right-hand column, bottom-anchored in the
+      // order the user reads them: north arrow, legend, summary, QR.
       const sideColW = hasExtras ? SIDE_COLUMN_PT : 0;
       const sideGap = sideColW ? PAGE_GAP_PT : 0;
       layout.mapAreaW = pageW - m * 2 - sideColW - sideGap;
       layout.mapAreaH = pageH - m - stampH - mapTop;
       layout.sideColW = sideColW;
       layout.sideX = m + layout.mapAreaW + sideGap;
-      // Square QR cell, plus room for its caption underneath.
-      layout.qrSize = showQr ? sideColW : 0;
-      layout.qrH = showQr ? layout.qrSize + QR_CAPTION_PT : 0;
-      layout.qrY = mapTop + layout.mapAreaH - layout.qrH;
+
+      const frameBottom = mapTop + layout.mapAreaH;
+
+      // Bottom row: QR and north arrow sit SIDE BY SIDE as two squares,
+      // rather than the arrow taking a full-width cell at the top of the
+      // column. That frees the whole top of the column for the legend,
+      // which is what needed the room. Each is half the column, or the
+      // full column when only one of them is switched on.
+      const bothBottom = showQr && showNorthArrow;
+      const bottomCellW = bothBottom ? (sideColW - SIDE_CELL_GAP_PT) / 2 : sideColW;
+      const bottomRowH = (showQr || showNorthArrow)
+        ? Math.min(bottomCellW, BOTTOM_SQUARE_MAX_PT)
+        : 0;
+      layout.bottomRowH = bottomRowH;
+      layout.bottomRowY = frameBottom - bottomRowH;
+      layout.bottomCellW = Math.min(bottomCellW, BOTTOM_SQUARE_MAX_PT);
+      // QR on the left, arrow on the right (see the reference layout).
+      layout.qrSize = showQr ? layout.bottomCellW : 0;
+      layout.qrX = layout.sideX;
+      layout.qrY = layout.bottomRowY;
+      layout.arrowW = showNorthArrow ? layout.bottomCellW : 0;
+      layout.arrowX = showQr
+        ? layout.sideX + layout.bottomCellW + SIDE_CELL_GAP_PT
+        : layout.sideX;
+      layout.arrowY = layout.bottomRowY;
+
+      // Summary sits directly above that row.
+      layout.summaryH = showSummary ? SUMMARY_BOX_PT : 0;
+      layout.summaryY = layout.bottomRowY
+        - (bottomRowH && showSummary ? SIDE_CELL_GAP_PT : 0)
+        - layout.summaryH;
     } else {
-      // Extras live in a bar across the bottom: legend left, then the QR
-      // square, then the north arrow at the right end.
+      // Extras live in a bar across the bottom: legend, summary, QR, then
+      // the north arrow at the right end.
       const barH = hasExtras ? BOTTOM_BAR_PT : 0;
       const barGap = barH ? PAGE_GAP_PT : 0;
       layout.mapAreaW = pageW - m * 2;
@@ -188,10 +259,15 @@ export function initPrintTool({
       layout.barY = mapTop + layout.mapAreaH + barGap;
       layout.barArrowW = showNorthArrow ? BOTTOM_ARROW_W_PT : 0;
       layout.qrSize = showQr ? barH : 0;
-      const gaps = PAGE_GAP_PT *
-        ((showLegend && (showQr || showNorthArrow) ? 1 : 0) + (showQr && showNorthArrow ? 1 : 0));
-      layout.barLegendW = layout.mapAreaW - layout.barArrowW - layout.qrSize - gaps;
-      layout.qrX = m + layout.barLegendW + (showLegend && showQr ? PAGE_GAP_PT : 0);
+      layout.summaryW = showSummary ? SUMMARY_BAR_W_PT : 0;
+      // One gap between each pair of cells that are both present.
+      const cells = [showLegend, showSummary, showQr, showNorthArrow].filter(Boolean).length;
+      const gaps = PAGE_GAP_PT * Math.max(0, cells - 1);
+      layout.barLegendW = layout.mapAreaW - layout.barArrowW - layout.qrSize - layout.summaryW - gaps;
+      let x = m + (showLegend ? layout.barLegendW + PAGE_GAP_PT : 0);
+      layout.summaryX = x;
+      if (showSummary) x += layout.summaryW + PAGE_GAP_PT;
+      layout.qrX = x;
     }
     return layout;
   }
@@ -200,10 +276,11 @@ export function initPrintTool({
    *  exactly, for the orientation the user is aiming at. */
   function targetAspectRatio(orientation) {
     const l = computePageLayout(orientation, {
-      legend: settings.legend,
-      northArrow: settings.northArrow,
-      qr: settings.qr,
-      stamp: settings.date || settings.source
+      legend: settings.details.legend,
+      northArrow: settings.details.northArrow,
+      qr: settings.details.qr,
+      summary: settings.details.summary,
+      stamp: settings.details.date || settings.details.source || settings.details.printedBy
     });
     return l.mapAreaW / l.mapAreaH;
   }
@@ -454,64 +531,192 @@ export function initPrintTool({
   });
 
   // ---------------------------------------------------------------------
-  // Setup popup
+  // Print settings window
+  //
+  // A tabbed window (vertical tabs, same shape as the Survey window) rather
+  // than one long list — there are far more options now than fit on a
+  // single page. Built data-driven from SETTINGS_TABS so adding an option
+  // is one entry, not new markup + new wiring in three places.
+  //
+  // Field kinds:
+  //   check  — boolean, bound to settings[group][key]
+  //   select — numeric/string, bound to settings[key]
+  //   note   — static hint line, no binding
+  // `reflow: true` marks a field that changes the PAGE FURNITURE (and so
+  // the map frame's aspect ratio), which means a ratio-locked selection has
+  // to be re-snapped when it changes.
   // ---------------------------------------------------------------------
-  // A proper little window centred over the map — its own titled header
-  // with a close button — rather than the bare inline popover it used to
-  // be. Sits outside the bottom stack so it isn't constrained by it.
+  const SETTINGS_TABS = [
+    {
+      id: "labels", label: "Text labels", icon: "fa-font",
+      fields: [
+        { kind: "select", key: "textSize", label: "Text size",
+          options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], value: TEXT_SIZE_DEFAULT },
+        { kind: "check", group: "labels", key: "estate", label: "Estate names" },
+        { kind: "check", group: "labels", key: "block", label: "Block names" },
+        { kind: "check", group: "labels", key: "plot", label: "Plot names" },
+        { kind: "check", group: "labels", key: "area", label: "Plot area" },
+        { kind: "check", group: "labels", key: "ratoon", label: "Ratoon numbers" },
+        { kind: "check", group: "labels", key: "feature", label: "Feature labels" },
+        { kind: "check", group: "labels", key: "alerts", label: "Alerts" },
+        { kind: "check", group: "labels", key: "distance", label: "Line distances" }
+      ]
+    },
+    {
+      id: "layers", label: "Layers", icon: "fa-layer-group",
+      fields: [
+        { kind: "check", group: "layers", key: "estate", label: "Estates" },
+        { kind: "check", group: "layers", key: "block", label: "Blocks" },
+        { kind: "check", group: "layers", key: "plot", label: "Plots" },
+        { kind: "check", group: "layers", key: "titleBoundary", label: "Title boundaries", disabled: true },
+        { kind: "check", key: "hatching", label: "Status colour fills" },
+      ]
+    },
+    {
+      id: "basemaps", label: "Basemaps", icon: "fa-image",
+      fields: [
+        { kind: "check", key: "basemap", label: "Print basemap image", id: "vslPrintBasemapCb" },
+        { kind: "check", key: "boostQuality", label: "Higher image quality (slower)", sub: true, id: "vslPrintBoostCb" },
+      ]
+    },
+    {
+      id: "features", label: "Features", icon: "fa-shapes", custom: "features",
+      fields: [
+        { kind: "select", key: "iconSize", label: "Icon size",
+          options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], value: ICON_SIZE_DEFAULT }
+      ]
+    },
+    {
+      id: "details", label: "Map details", icon: "fa-file-lines",
+      fields: [
+        { kind: "check", group: "details", key: "title", label: "Title", reflow: true },
+        { kind: "check", group: "details", key: "legend", label: "Legend", reflow: true },
+        { kind: "check", group: "details", key: "northArrow", label: "North arrow", reflow: true },
+        { kind: "check", group: "details", key: "summary", label: "Selection summary", reflow: true },
+        { kind: "check", group: "details", key: "qr", label: "Location QR", reflow: true },
+        { kind: "check", group: "details", key: "date", label: "Date", reflow: true },
+        { kind: "check", group: "details", key: "source", label: "Source", reflow: true },
+        { kind: "check", group: "details", key: "scale", label: "Scale" },
+        { kind: "check", group: "details", key: "printedBy", label: "Printed by" }
+      ]
+    }
+  ];
+
   const setupPopup = document.createElement("div");
   setupPopup.className = "vsl-print-setup";
   setupPopup.hidden = true;
+
+  const tabBtnsHtml = SETTINGS_TABS.map((t, i) =>
+    `<button type="button" class="vsl-print-settings__tab${i === 0 ? " active" : ""}" data-tab="${t.id}">
+       <i class="fas ${t.icon}" aria-hidden="true"></i><span>${t.label}</span>
+     </button>`).join("");
+
+  function fieldHtml(f) {
+    if (f.kind === "note") {
+      return `<p class="vsl-print-setup__note"${f.id ? ` id="${f.id}"` : ""}${f.hidden ? " hidden" : ""}>${f.text}</p>`;
+    }
+    if (f.kind === "select") {
+      const opts = f.options.map((o) => `<option value="${o}"${o === f.value ? " selected" : ""}>${o}</option>`).join("");
+      return `<label class="vsl-print-setup__row vsl-print-setup__row--select">
+                <span>${f.label}</span>
+                <select data-key="${f.key}">${opts}</select>
+              </label>`;
+    }
+    const cls = `vsl-print-setup__row${f.sub ? " vsl-print-setup__row--sub" : ""}`;
+    // Initial checked state comes from the settings object, so the markup
+    // and the state agree from the very first render. (They used to
+    // disagree — every box rendered unchecked, and enterPrintMode's
+    // readSettings() then read that back and switched everything off.)
+    const initial = f.group ? settings[f.group]?.[f.key] : settings[f.key];
+    return `<label class="${cls}">
+              <input type="checkbox"
+                     data-group="${f.group || ""}" data-key="${f.key}"
+                     ${f.id ? `id="${f.id}"` : ""}
+                     ${f.reflow ? 'data-reflow="1"' : ""}
+                     ${initial ? "checked" : ""}
+                     ${f.disabled ? "disabled" : ""}>
+              <span>${f.label}</span>
+            </label>`;
+  }
+
+  // A tab can have plain fields, custom content, or both — the Features
+  // tab has an icon-size dropdown above its generated type list.
+  const tabPanesHtml = SETTINGS_TABS.map((t, i) => {
+    let body = (t.fields || []).map(fieldHtml).join("");
+    if (t.custom === "features") {
+      body += `<div class="vsl-print-features" id="vslPrintFeatureList"></div>`;
+    }
+    return `<div class="vsl-print-settings__pane${i === 0 ? " active" : ""}" data-pane="${t.id}">${body}</div>`;
+  }).join("");
+
   setupPopup.innerHTML = `
     <div class="vsl-print-setup__head">
-      <span class="vsl-print-setup__title"><i class="fas fa-gear" aria-hidden="true"></i> Print setup</span>
+      <span class="vsl-print-setup__title"><i class="fas fa-gear" aria-hidden="true"></i> Print settings</span>
       <button type="button" class="vsl-print-setup__close" id="vslPrintSetupCloseBtn" title="Close" aria-label="Close">
         <i class="fas fa-times" aria-hidden="true"></i>
       </button>
     </div>
-    <div class="vsl-print-setup__body">
-      <p class="vsl-print-setup__heading">Show on page</p>
-      <label class="vsl-print-setup__row"><input type="checkbox" id="vslPrintLegendCb" checked> Legend</label>
-      <label class="vsl-print-setup__row"><input type="checkbox" id="vslPrintNorthArrowCb" checked> North arrow</label>
-      <label class="vsl-print-setup__row"><input type="checkbox" id="vslPrintQrCb" checked> Show QR</label>
-      <label class="vsl-print-setup__row"><input type="checkbox" id="vslPrintDateCb" checked> Date</label>
-      <label class="vsl-print-setup__row"><input type="checkbox" id="vslPrintSourceCb" checked> Source</label>
-
-      <p class="vsl-print-setup__heading">Map</p>
-      <label class="vsl-print-setup__row vsl-print-setup__row--select">
-        <span>Text size</span>
-        <select id="vslPrintTextSizeSelect">
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5" selected>5</option>
-          <option value="6">6</option>
-          <option value="7">7</option>
-          <option value="8">8</option>
-          <option value="9">9</option>
-          <option value="10">10</option>
-        </select>
-      </label>
-      <label class="vsl-print-setup__row"><input type="checkbox" id="vslPrintHatchingCb" checked> Status colour fills</label>
-      <label class="vsl-print-setup__row" id="vslPrintBasemapRow"><input type="checkbox" id="vslPrintBasemapCb" checked> Basemap image</label>
-      <label class="vsl-print-setup__row vsl-print-setup__row--sub"><input type="checkbox" id="vslPrintBoostCb"> Higher image quality (slower)</label>
-      <p class="vsl-print-setup__note" id="vslPrintBasemapNote" hidden>No basemap layer is switched on.</p>
+    <div class="vsl-print-settings">
+      <div class="vsl-print-settings__tabs">${tabBtnsHtml}</div>
+      <div class="vsl-print-settings__body">${tabPanesHtml}</div>
     </div>
   `;
   viewportWrap.appendChild(setupPopup);
 
   const setupCloseBtn = setupPopup.querySelector("#vslPrintSetupCloseBtn");
-  const legendCb = setupPopup.querySelector("#vslPrintLegendCb");
-  const northArrowCb = setupPopup.querySelector("#vslPrintNorthArrowCb");
-  const qrCb = setupPopup.querySelector("#vslPrintQrCb");
-  const dateCb = setupPopup.querySelector("#vslPrintDateCb");
-  const sourceCb = setupPopup.querySelector("#vslPrintSourceCb");
-  const textSizeSelect = setupPopup.querySelector("#vslPrintTextSizeSelect");
-  const hatchingCb = setupPopup.querySelector("#vslPrintHatchingCb");
+  const featureListEl = setupPopup.querySelector("#vslPrintFeatureList");
   const basemapCb = setupPopup.querySelector("#vslPrintBasemapCb");
   const boostCb = setupPopup.querySelector("#vslPrintBoostCb");
   const basemapNote = setupPopup.querySelector("#vslPrintBasemapNote");
+
+  // Tab switching.
+  setupPopup.querySelectorAll(".vsl-print-settings__tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.tab;
+      setupPopup.querySelectorAll(".vsl-print-settings__tab")
+        .forEach((b) => b.classList.toggle("active", b === btn));
+      setupPopup.querySelectorAll(".vsl-print-settings__pane")
+        .forEach((p) => p.classList.toggle("active", p.dataset.pane === id));
+    });
+  });
+
+  /** Pushes the settings object OUT to the controls — used on open, so the
+   *  window always reflects real state rather than its markup defaults. */
+  function writeSettingsToForm() {
+    setupPopup.querySelectorAll("input[type=checkbox][data-key]").forEach((el) => {
+      const g = el.dataset.group;
+      const v = g ? settings[g]?.[el.dataset.key] : settings[el.dataset.key];
+      el.checked = !!v;
+    });
+    setupPopup.querySelectorAll("select[data-key]").forEach((el) => {
+      el.value = String(settings[el.dataset.key]);
+    });
+  }
+
+  /** Pulls the controls back INTO the settings object. */
+  function readSettings() {
+    setupPopup.querySelectorAll("input[type=checkbox][data-key]").forEach((el) => {
+      const g = el.dataset.group;
+      if (g) { if (settings[g]) settings[g][el.dataset.key] = !!el.checked; }
+      else settings[el.dataset.key] = !!el.checked;
+    });
+    setupPopup.querySelectorAll("select[data-key]").forEach((el) => {
+      // Fall back to whatever the setting already held, so a malformed
+      // value can't silently reset textSize and iconSize to each other's
+      // default.
+      settings[el.dataset.key] = Number(el.value) || settings[el.dataset.key];
+    });
+    // Basemap can be wanted but unavailable — the effective value is both.
+    settings.basemap = !!basemapCb?.checked && !!findVisibleBasemap();
+  }
+
+  setupPopup.addEventListener("change", (e) => {
+    const el = e.target;
+    if (!el.matches("input[type=checkbox][data-key], select[data-key]")) return;
+    readSettings();
+    syncBasemapAvailability();
+    if (el.dataset.reflow) reflowLockedSelection();
+  });
 
   /** Walks the layer tree for a visible base layer that actually renders
    *  something — "No Basemap" is a real layer in the group (a 1px blank
@@ -535,42 +740,70 @@ export function initPrintTool({
 
   /** Greys out the basemap options when there's no imagery to print. */
   function syncBasemapAvailability() {
+    if (!basemapCb) return;
     const available = !!findVisibleBasemap();
     basemapCb.disabled = !available;
-    boostCb.disabled = !available || !basemapCb.checked;
-    basemapNote.hidden = available;
-    setupPopup.querySelector("#vslPrintBasemapRow")
-      .classList.toggle("is-disabled", !available);
+    basemapCb.closest(".vsl-print-setup__row")?.classList.toggle("is-disabled", !available);
+    if (boostCb) {
+      boostCb.disabled = !available || !basemapCb.checked;
+      boostCb.closest(".vsl-print-setup__row")?.classList.toggle("is-disabled", boostCb.disabled);
+    }
+    if (basemapNote) basemapNote.hidden = available;
   }
 
-  function readSettings() {
-    settings.legend = !!legendCb.checked;
-    settings.northArrow = !!northArrowCb.checked;
-    settings.qr = !!qrCb.checked;
-    settings.date = !!dateCb.checked;
-    settings.source = !!sourceCb.checked;
-    settings.textSize = Number(textSizeSelect.value) || TEXT_SIZE_DEFAULT;
-    settings.hatching = !!hatchingCb.checked;
-    settings.basemap = !!basemapCb.checked && !!findVisibleBasemap();
-    settings.boostQuality = !!boostCb.checked;
-  }
-
-  // Only these change the page's furniture, so only these need the locked
-  // selection re-snapped to the new map-frame ratio.
-  [legendCb, northArrowCb, qrCb, dateCb, sourceCb].forEach((el) => {
-    el.addEventListener("change", () => {
-      readSettings();
-      reflowLockedSelection();
+  // ---------------------------------------------------------------------
+  // Features tab — lists only the feature TYPES actually drawn on the map,
+  // not the whole ~50-entry library, so the list is about this estate
+  // rather than about what could theoretically exist. Types come off the
+  // loaded features layer (_typeId/_typeName, set in js/survey-draw.js).
+  // ---------------------------------------------------------------------
+  function usedFeatureTypes() {
+    const src = getFeaturesLayer?.()?.getSource();
+    if (!src) return [];
+    const byId = new Map();
+    src.forEachFeature((f) => {
+      const id = f.get("_typeId");
+      if (id == null || byId.has(id)) return;
+      byId.set(id, {
+        id,
+        name: f.get("_typeName") || "Feature",
+        color: f.get("_color") || "#3f8f3f",
+        icon: f.get("_icon") || "",
+        kind: (f.getGeometry()?.getType() || "").toLowerCase()
+      });
     });
-  });
-  // These only affect what's drawn inside the frame — no reflow needed.
-  [textSizeSelect, hatchingCb, boostCb].forEach((el) => {
-    el.addEventListener("change", readSettings);
-  });
-  basemapCb.addEventListener("change", () => {
-    readSettings();
-    syncBasemapAvailability();
-  });
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function renderFeatureList() {
+    const types = usedFeatureTypes();
+    if (!types.length) {
+      featureListEl.innerHTML =
+        `<p class="vsl-print-setup__note">No features have been drawn on the map yet.</p>`;
+      return;
+    }
+    const on = (id) => settings.featureTypes === null || settings.featureTypes.has(id);
+    featureListEl.innerHTML = types.map((t) => `
+      <label class="vsl-print-setup__row">
+        <input type="checkbox" data-feature-type="${t.id}"${on(t.id) ? " checked" : ""}>
+        <span class="vsl-print-features__swatch" style="color:${t.color}">
+          <i class="fas ${t.icon || "fa-circle-dot"}" aria-hidden="true"></i>
+        </span>
+        <span>${t.name}</span>
+      </label>`).join("");
+
+    featureListEl.querySelectorAll("input[data-feature-type]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        // First interaction converts "all types" (null) into an explicit set.
+        if (settings.featureTypes === null) {
+          settings.featureTypes = new Set(types.map((t) => t.id));
+        }
+        const id = Number(cb.dataset.featureType);
+        if (cb.checked) settings.featureTypes.add(id);
+        else settings.featureTypes.delete(id);
+      });
+    });
+  }
 
   // ---------------------------------------------------------------------
   // Legend data.
@@ -585,16 +818,259 @@ export function initPrintTool({
   // hook -> #legendStatusList, see buildLegendList in map-app.js) so the
   // printed legend can never drift from the app's own.
   // ---------------------------------------------------------------------
-  function readLegendItems() {
-    window.vslBuildLegendList?.();
-    const source = document.getElementById("legendStatusList");
-    if (!source) return [];
-    return [...source.querySelectorAll(".legend-panel__item")]
-      .map((li) => ({
-        color: li.querySelector(".legend-panel__swatch")?.style.background,
-        label: li.querySelector("span:last-child")?.textContent?.trim() || ""
-      }))
-      .filter((i) => i.label);
+  // ---------------------------------------------------------------------
+  // Feature icons in the PDF.
+  //
+  // jsPDF has only its own core fonts, so a Font Awesome character can't
+  // be written as text — it would come out as a missing-glyph box. The
+  // icons are therefore shipped as SVG files in /icons, named exactly like
+  // vsl_feature_type.icon ("fa-tree" -> icons/fa-tree.svg), pulled from
+  // the Font Awesome Free 6.4.0 package (same version webmap.html loads).
+  //
+  // Files rather than the webfont because a font-based render depends on
+  // the FA stylesheet having loaded and on reading a glyph out of a
+  // ::before rule — both silent-failure paths. A file either exists or
+  // doesn't. Each icon is fetched, tinted, rasterised to a PNG once, and
+  // cached by icon+colour; preloadFeatureIcons() warms that cache before
+  // the (synchronous) PDF drawing needs it.
+  // ---------------------------------------------------------------------
+  const ICON_DIR = "./icons";
+  const ICON_RASTER_PX = 96; // rasterised large, scaled down in the PDF
+
+  const faIconCache = new Map();   // "fa-tree|46,125,50" -> PNG data URL
+  const faSvgTextCache = new Map(); // "fa-tree" -> raw SVG source
+
+  /** Loads one icon's SVG source from /icons. Missing files resolve to
+   *  null rather than throwing — the caller falls back to a dot. */
+  async function loadIconSvg(iconClass) {
+    if (faSvgTextCache.has(iconClass)) return faSvgTextCache.get(iconClass);
+    let text = null;
+    try {
+      const res = await fetch(`${ICON_DIR}/${iconClass}.svg`);
+      if (res.ok) text = await res.text();
+    } catch { text = null; }
+    faSvgTextCache.set(iconClass, text);
+    return text;
+  }
+
+  /** Rasterises one icon in one colour and caches the PNG. Font Awesome's
+   *  SVGs carry no fill attribute (so they'd paint black), hence the
+   *  injected fill on the <svg> element itself — the paths inherit it. */
+  async function loadIconPng(iconClass, rgb) {
+    const key = `${iconClass}|${rgb.join(",")}`;
+    if (faIconCache.has(key)) return faIconCache.get(key);
+    const svgText = await loadIconSvg(iconClass);
+    if (!svgText) { faIconCache.set(key, null); return null; }
+
+    let url = null;
+    try {
+      const colored = svgText.replace(
+        /<svg\b/,
+        `<svg fill="rgb(${rgb[0]},${rgb[1]},${rgb[2]})"`
+      );
+      const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(colored);
+      const img = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => reject(new Error("icon decode failed"));
+        im.src = svgUrl;
+      });
+      // Square canvas with the glyph centred — FA viewBoxes vary in width
+      // (448x512, 640x512, …), so letterbox rather than stretch.
+      const px = ICON_RASTER_PX;
+      const canvas = document.createElement("canvas");
+      canvas.width = px;
+      canvas.height = px;
+      const ctx = canvas.getContext("2d");
+      const iw = img.naturalWidth || img.width || px;
+      const ih = img.naturalHeight || img.height || px;
+      const scale = Math.min(px / iw, px / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      ctx.drawImage(img, (px - dw) / 2, (px - dh) / 2, dw, dh);
+      url = canvas.toDataURL("image/png");
+    } catch { url = null; }
+
+    faIconCache.set(key, url);
+    return url;
+  }
+
+  /** Warms the icon cache for every point-feature type inside `extent`,
+   *  so the (synchronous) legend drawing can just read from it. Called
+   *  from generatePdf before the document is built. */
+  async function preloadFeatureIcons(extent) {
+    const src = getFeaturesLayer?.()?.getSource();
+    if (!src || !extent) return;
+    const wanted = new Map();
+    src.getFeaturesInExtent(extent).forEach((f) => {
+      if (!featureTypeEnabled(f)) return;
+      const kind = (f.getGeometry()?.getType() || "").toLowerCase();
+      if (!kind.includes("point")) return;
+      const icon = f.get("_icon");
+      if (!icon) return;
+      const rgb = parseRgba(f.get("_color") || "#3f8f3f").rgb;
+      wanted.set(`${icon}|${rgb.join(",")}`, { icon, rgb });
+    });
+    await Promise.all([...wanted.values()].map((w) => loadIconPng(w.icon, w.rgb)));
+  }
+
+  /** Synchronous cache read for the legend swatch. Returns null when the
+   *  icon wasn't preloaded or its file is missing. */
+  function faIconDataUrl(iconClass, rgb) {
+    return faIconCache.get(`${iconClass}|${rgb.join(",")}`) || null;
+  }
+
+  /** vsl_feature_type.linetype -> a jsPDF dash pattern (null = solid or
+   *  "none", which the caller skips entirely). Scaled by the stroke width
+   *  where one is known, so a thick dashed line doesn't print as a solid
+   *  one with nicks in it — the same proportions the map uses. */
+  function dashPatternFor(linetype, widthPt) {
+    const t = String(linetype || "").toLowerCase();
+    if (!t || t.includes("solid") || t.includes("none")) return null;
+    const w = Number(widthPt) > 0 ? Number(widthPt) : 1;
+    if (t.includes("dot")) return [w, w * 2];
+    if (t.includes("dash")) return [w * 3, w * 2];
+    return null;
+  }
+
+  /** One stroke's printed thickness. vsl_feature_type.line_weight is in
+   *  screen pixels, which means nothing on paper — so it's read as a
+   *  multiplier of the print's own feature stroke size (calibrated at the
+   *  column's default of 2), keeping a "thick" road thick relative to
+   *  everything else at whatever scale the sheet ends up. */
+  function featureStrokePt(feature, sizes) {
+    const weight = Number(feature.get("_weight")) || 2;
+    return sizes.featureStroke * (weight / 2);
+  }
+
+  /**
+   * The stroke passes that draw a single/double/triple line, in paint order.
+   * Identical arithmetic to the map's lineStrokeStyles (js/survey-draw.js) —
+   * a wide stroke in the feature's colour with the middle knocked back out
+   * in white, so the visible result is `n` lines of `weightPt` separated by
+   * `spacingPt`:
+   *   double: outer 2w+s, knockout s
+   *   triple: outer 3w+2s, knockout w+2s, then a dotted centre line on top
+   * Spacing arrives already converted from ground metres (sizes.ptPerMeter),
+   * so a 6m-wide double line prints 6m wide at the sheet's scale.
+   */
+  function pdfLineStrokes(rgb, weightPt, dash, lineStyle, spacingPt) {
+    const w = Math.max(0.05, Number(weightPt) || 0.5);
+    const s = Math.max(w * 0.5, Number(spacingPt) || 0);
+    const white = [255, 255, 255];
+    if (lineStyle === "double") {
+      return [
+        { rgb, width: 2 * w + s, dash },
+        { rgb: white, width: s, dash: null }
+      ];
+    }
+    if (lineStyle === "triple") {
+      return [
+        { rgb, width: 3 * w + 2 * s, dash },
+        { rgb: white, width: w + 2 * s, dash: null },
+        { rgb, width: w, dash: dashPatternFor("dotted", w) }
+      ];
+    }
+    return [{ rgb, width: w, dash }];
+  }
+
+  /**
+   * The printed legend, as ordered groups of symbol rows. Each row carries
+   * a `sym` describing HOW to draw its swatch, so the legend can show a
+   * dashed estate outline, a hollow plot square, a filled status square, a
+   * short line and a point icon side by side rather than forcing
+   * everything into one coloured box.
+   *
+   *   sym.kind: "poly"  — square; fill (rgb|null), stroke, dash
+   *             "line"  — short horizontal rule; stroke, dash
+   *             "point" — filled dot (icon glyphs aren't in the PDF fonts)
+   *
+   * Groups mirror what's actually on the page, and each is skipped when
+   * its layer/labels are switched off, so the legend never advertises
+   * something that wasn't printed.
+   */
+  function buildLegendGroups(extent) {
+    const groups = [];
+
+    // 1. Land properties — how each land layer is drawn.
+    const land = [];
+    if (settings.layers.estate) {
+      land.push({ label: "Estate", sym: { kind: "poly", fill: null, stroke: ESTATE_STROKE_RGB, dash: true } });
+    }
+    if (settings.layers.block) {
+      land.push({ label: "Block", sym: { kind: "poly", fill: null, stroke: BLOCK_STROKE_RGB } });
+    }
+    if (settings.layers.plot) {
+      land.push({ label: "Plot", sym: { kind: "poly", fill: null, stroke: PARCEL_STROKE_RGB } });
+    }
+    if (settings.layers.titleBoundary) {
+      land.push({ label: "Title boundary", sym: { kind: "poly", fill: null, stroke: TITLE_BOUNDARY_RGB, dash: true } });
+    }
+    if (land.length) groups.push({ title: "LAND PROPERTIES", items: land });
+
+    // 2. Plot status — only meaningful when the fills are actually drawn.
+    if (settings.layers.plot && settings.hatching && CULTIVATION_PALETTE) {
+      const status = Object.keys(CULTIVATION_PALETTE).map((key) => {
+        const parsed = parseRgba(CULTIVATION_PALETTE[key].fill);
+        // Vacant is a fully transparent fill — show it as a hollow box.
+        const fill = parsed.a === 0 ? null : parsed.rgb;
+        return {
+          label: CULTIVATION_STATUS_LABELS?.[key] || key,
+          sym: { kind: "poly", fill, stroke: parseRgba(CULTIVATION_PALETTE[key].stroke).rgb }
+        };
+      });
+      if (status.length) groups.push({ title: "PLOT STATUS", items: status });
+    }
+
+    // 3. Alerts — the three severities, same colours as the map.
+    if (settings.labels.alerts && ALERT_SEVERITY_COLORS) {
+      const alerts = ["critical", "warning", "information"]
+        .filter((k) => ALERT_SEVERITY_COLORS[k])
+        .map((k) => ({
+          label: k.charAt(0).toUpperCase() + k.slice(1),
+          sym: {
+            kind: "poly",
+            fill: parseRgba(ALERT_SEVERITY_FILL?.[k] || ALERT_SEVERITY_COLORS[k]).rgb,
+            stroke: parseRgba(ALERT_SEVERITY_COLORS[k]).rgb
+          }
+        }));
+      if (alerts.length) groups.push({ title: "ALERTS", items: alerts });
+    }
+
+    // 4. Features — only the types actually inside this print, and only
+    //    those still ticked in the Features tab.
+    const featSrc = getFeaturesLayer?.()?.getSource();
+    if (featSrc && extent) {
+      const byId = new Map();
+      featSrc.getFeaturesInExtent(extent).forEach((f) => {
+        if (!featureTypeEnabled(f)) return;
+        const id = f.get("_typeId");
+        const key = id == null ? f.get("_typeName") || "?" : id;
+        if (byId.has(key)) return;
+        const kind = (f.getGeometry()?.getType() || "").toLowerCase();
+        const rgb = parseRgba(f.get("_color") || "#3f8f3f").rgb;
+        const dash = dashPatternFor(f.get("_linetype"), 1.2);
+        byId.set(key, {
+          label: f.get("_typeName") || "Feature",
+          sym: kind.includes("point")
+            // Its real icon, in the type's own colour.
+            ? { kind: "point", fill: rgb, icon: f.get("_icon") || "" }
+            : kind.includes("line")
+              // A short rule in the type's colour and line style. `lineStyle`
+              // makes the swatch show a double/triple as two/three rules —
+              // drawn as genuinely separate lines here rather than by the
+              // knockout trick, since a legend swatch has no ground scale to
+              // knock out against.
+              ? { kind: "line", stroke: rgb, dashPattern: dash, lineStyle: f.get("_lineStyle") || "single" }
+              // Filled square, same shape as a plot swatch.
+              : { kind: "poly", fill: rgb, fillAlpha: 0.35, stroke: rgb, dashPattern: dash }
+        });
+      });
+      const feats = [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+      if (feats.length) groups.push({ title: "FEATURES", items: feats });
+    }
+
+    return groups;
   }
 
   // ---------------------------------------------------------------------
@@ -919,9 +1395,13 @@ export function initPrintTool({
   function openSetupPopup() {
     setupPopup.hidden = false;
     setupBtn.classList.add("active");
-    // The user may have switched basemaps (or off) since it last opened.
+    // Reflect real state, not markup defaults: the controls are filled
+    // from `settings`, the Features list is rebuilt (types drawn since it
+    // last opened), and basemap availability re-checked (the user may have
+    // switched basemaps or turned them off in the meantime).
+    writeSettingsToForm();
+    renderFeatureList();
     syncBasemapAvailability();
-    readSettings();
     if (setupOutsideHandler) return;
     setupOutsideHandler = (e) => {
       if (setupPopup.contains(e.target) || setupBtn.contains(e.target)) return;
@@ -1066,6 +1546,22 @@ export function initPrintTool({
   // live map style functions in map-app.js so the print never drifts from
   // what's shown on screen.
   // ---------------------------------------------------------------------
+  /** Page points per ground metre for a given extent drawn `drawW` points
+   *  wide. See the note at its call site in drawMapVectors. */
+  function ptPerMeterFor(extent, drawW) {
+    const [minX, minY, maxX, maxY] = extent;
+    const spanX = (maxX - minX) || 1;
+    const ptPerMapUnit = drawW / spanX;
+    let cosLat = 1;
+    try {
+      const lat = ol.proj.toLonLat([(minX + maxX) / 2, (minY + maxY) / 2])[1];
+      cosLat = Math.cos((lat * Math.PI) / 180) || 1;
+    } catch {
+      cosLat = 1;
+    }
+    return ptPerMapUnit / cosLat;
+  }
+
   function makeProjector(extent, drawX, drawY, drawW, drawH) {
     const [minX, minY, maxX, maxY] = extent;
     const spanX = (maxX - minX) || 1;
@@ -1261,6 +1757,7 @@ export function initPrintTool({
   const PARCEL_STROKE_RGB = [46, 125, 50]; // #2e7d32
   const EDGE_DISTANCE_RGB = [25, 118, 210]; // #1976d2
   const ESTATE_STROKE_RGB = [215, 98, 19]; // #D76213 — matches estatesLayer
+  const TITLE_BOUNDARY_RGB = [123, 31, 162]; // #7b1fa2 — placeholder until the layer exists
   const FEATURE_LABEL_RGB = [29, 42, 29]; // #1d2a1d — matches displayLabelStyle
 
   // ---------------------------------------------------------------------
@@ -1301,20 +1798,15 @@ export function initPrintTool({
   const BASE_ESTATE_STROKE_PT = 3;   // estate boundary (dashed)
   const BASE_ESTATE_DASH_PT = 6;     // estate dash length
   const BASE_FEATURE_STROKE_PT = 2;  // custom feature line / polygon outline
-  const BASE_FEATURE_POINT_PT = 5;   // custom point feature marker radius
+  const BASE_FEATURE_POINT_PT = 20;   // point feature dot radius (icon fallback)
+  const BASE_FEATURE_ICON_PT = 50;   // point feature ICON box (width = height)
 
   //---------- TEXT CONSTANTS (per 1km of selection) --------------------\\
   const BASE_BLOCK_LABEL_PT = 40;   // block name
   const BASE_PARCEL_LABEL_PT = 20;  // plot name / area / ratoon / Alerts(n)
-  const BASE_EDGE_DISTANCE_PT = 10; // "123.4m" edge labels (off by default)
+  const BASE_EDGE_DISTANCE_PT = 12; // "123.4m" edge labels (off by default)
   const BASE_ESTATE_LABEL_PT = 60;  // estate name
-  const BASE_FEATURE_LABEL_PT = 18; // custom feature name
-
-  /** Draw each plot edge's length along that edge. Off by default — on a
-   *  selection of any size it puts a rotated number on every boundary
-   *  segment of every plot, which is a lot of ink. There's no longer a
-   *  Standard/High split gating this; it's just this one switch. */
-  const PRINT_EDGE_DISTANCES = false;
+  const BASE_FEATURE_LABEL_PT = 30; // custom feature name
 
   /** Haversine — good enough for a printed edge-length label, avoids
    *  needing map-app.js's own vincentyDistanceMeters wired through. */
@@ -1361,9 +1853,13 @@ export function initPrintTool({
     // factor. Applied ONLY to the text sizes; line widths keep their own
     // scale so boosting label size doesn't fatten every boundary with it.
     const mf = (Number(settings.textSize) || TEXT_SIZE_DEFAULT) / TEXT_SIZE_DEFAULT;
+    // Icon-size multiplier — same 1–10 / neutral-at-5 scheme as text, but
+    // its own dropdown, so icons and labels size independently.
+    const imf = (Number(settings.iconSize) || ICON_SIZE_DEFAULT) / ICON_SIZE_DEFAULT;
     return {
       selectionKm: d,
       textMF: mf,
+      iconMF: imf,
       parcelHalo: BASE_PARCEL_HALO_PT / d,
       parcelStroke: BASE_PARCEL_STROKE_PT / d,
       blockStroke: BASE_BLOCK_STROKE_PT / d,
@@ -1374,7 +1870,8 @@ export function initPrintTool({
       estateDash: BASE_ESTATE_DASH_PT / d,
       estateLabel: (BASE_ESTATE_LABEL_PT * mf) / d,
       featureStroke: BASE_FEATURE_STROKE_PT / d,
-      featurePoint: BASE_FEATURE_POINT_PT / d,
+      featurePoint: (BASE_FEATURE_POINT_PT * imf) / d,
+      featureIcon: (BASE_FEATURE_ICON_PT * imf) / d,
       featureLabel: (BASE_FEATURE_LABEL_PT * mf) / d
     };
   }
@@ -1400,6 +1897,12 @@ export function initPrintTool({
   const EDGE_LABEL_ANGLE_SIGN = -1;
   const EDGE_LABEL_FIT_RATIO = 1.15;
   const EDGE_LABEL_OFFSET_PT = 0;
+
+  /** Fraction of the font size used to lift the baseline so the glyphs
+   *  straddle the line instead of resting on it. Roughly half Helvetica's
+   *  cap height. Increase to push labels further off the line, decrease to
+   *  sink them into it. */
+  const EDGE_LABEL_CENTER_FACTOR = 0.36;
 
   /** Per-edge distance labels along a ring — the print equivalent of the
    *  live parcelsLayer style function's `resolution <= 4` segment-length
@@ -1443,10 +1946,31 @@ export function initPrintTool({
 
       const midX = (p1[0] + p2[0]) / 2;
       const midY = (p1[1] + p2[1]) / 2;
-      const lx = midX + (-dy / len) * EDGE_LABEL_OFFSET_PT;
-      const ly = midY + (dx / len) * EDGE_LABEL_OFFSET_PT;
+
+      // Centre the glyphs ON the line. jsPDF anchors text on its baseline,
+      // so glyphs sit wholly to one side of the anchor; its own
+      // baseline:"middle" option isn't applied in the ROTATED text's frame,
+      // which is why it looked right on near-horizontal edges and pushed
+      // off to the side on near-vertical ones. So the correction is done
+      // here instead, rotated by the same angle as the text.
+      //
+      // "Down relative to the text" is (0, +h) in the text's own frame;
+      // rotating that by the jsPDF angle `a` (positive = counter-clockwise
+      // on the page, where page y grows downward) gives:
+      //     dx = h*sin(a),  dy = h*cos(a)
+      // At a=0 that's a straight downward nudge, which is exactly what
+      // centres glyphs that sit above their baseline.
+      const a = (angleDeg * Math.PI) / 180;
+      const h = fontSize * EDGE_LABEL_CENTER_FACTOR;
+      const perpX = h * Math.sin(a);
+      const perpY = h * Math.cos(a);
+
+      const lx = midX + (-dy / len) * EDGE_LABEL_OFFSET_PT + perpX;
+      const ly = midY + (dx / len) * EDGE_LABEL_OFFSET_PT + perpY;
       if (frame && !pointInRect([lx, ly], frame)) continue; // off-page edge
-      drawHaloText(doc, text, lx, ly, { fontSize, colorRGB: EDGE_DISTANCE_RGB, angle: angleDeg });
+      drawHaloText(doc, text, lx, ly, {
+        fontSize, colorRGB: EDGE_DISTANCE_RGB, angle: angleDeg
+      });
     }
   }
 
@@ -1457,7 +1981,7 @@ export function initPrintTool({
     let fillRGB = null, fillAlpha = 1;
     // "Status colour fills" off in Setup means outlines only — no
     // cultivation-status shading at all.
-    if (settings.hatching && status && CULTIVATION_PALETTE?.[status] && status !== "not_in_cane") {
+    if (settings.hatching && status && CULTIVATION_PALETTE?.[status] && status !== "vacant") {
       const parsed = parseRgba(CULTIVATION_PALETTE[status].fill);
       fillRGB = parsed.rgb;
       fillAlpha = parsed.a;
@@ -1470,6 +1994,7 @@ export function initPrintTool({
         strokeColor: BLOCK_STROKE_RGB, strokeWidth: sizes.blockStroke
       });
     });
+    if (!settings.labels.block) return;
     const ip = getFeatureInteriorPoint?.(geometry);
     if (!ip) return;
     const anchor = project(ip.getCoordinates());
@@ -1493,7 +2018,7 @@ export function initPrintTool({
     if (settings.hatching) {
       fillRGB = [255, 255, 255];
       fillAlpha = 0.05;
-      if (status && CULTIVATION_PALETTE?.[status] && status !== "not_in_cane") {
+      if (status && CULTIVATION_PALETTE?.[status] && status !== "vacant") {
         const parsed = parseRgba(CULTIVATION_PALETTE[status].fill);
         fillRGB = parsed.rgb;
         fillAlpha = parsed.a;
@@ -1515,10 +2040,11 @@ export function initPrintTool({
       });
     });
 
-    // Plot edge lengths, rotated to follow each edge — opt-in via
-    // PRINT_EDGE_DISTANCES. Plots only; blocks never had these on screen
-    // either.
-    if (PRINT_EDGE_DISTANCES) {
+    // Plot edge lengths, rotated to follow each edge — the "Line
+    // distances" toggle, off by default because it puts a number on every
+    // boundary segment of every plot. Plots only; blocks never had these
+    // on screen either.
+    if (settings.labels.distance) {
       forEachOuterRing(geometry, (ring) => drawEdgeDistanceLabels(doc, ring, project, sizes.edgeDistance, frame));
     }
 
@@ -1530,19 +2056,26 @@ export function initPrintTool({
     const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
     const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
 
+    // Each line of the plot label is its own toggle in the Text labels tab.
     const expArea = feature.get("expected_area_acres");
-    const area = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
+    const areaText = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
+    const area = settings.labels.area ? areaText : "";
     const ratoonVal = feature.get("ratoon_number");
-    const hasRatoon = ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
+    const hasRatoon = settings.labels.ratoon &&
+      ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
     const ratoonLine = hasRatoon ? `R:${ratoonVal}` : null;
-    let text = area ? `${label}\n${area}` : label;
-    let lineCount = area ? 2 : 1;
-    if (ratoonLine) { text += `\n${ratoonLine}`; lineCount += 1; }
+
+    const parts = [];
+    if (settings.labels.plot) parts.push(label);
+    if (area) parts.push(area);
+    if (ratoonLine) parts.push(ratoonLine);
+    const text = parts.join("\n");
+    const lineCount = parts.length || 1;
 
     const fontSize = sizes.parcelLabel;
-    drawHaloText(doc, text, px, py, { fontSize, colorRGB: PARCEL_STROKE_RGB });
+    if (text) drawHaloText(doc, text, px, py, { fontSize, colorRGB: PARCEL_STROKE_RGB });
 
-    if (alertSeverity && alertCount) {
+    if (settings.labels.alerts && alertSeverity && alertCount) {
       const alertRGB = parseRgba(ALERT_SEVERITY_COLORS?.[alertSeverity] || "").rgb;
       const offsetPt = (lineCount + 1.6) * fontSize * 0.42;
       drawHaloText(doc, `Alerts(${alertCount})`, px, py + offsetPt, { fontSize, colorRGB: alertRGB });
@@ -1569,7 +2102,7 @@ export function initPrintTool({
     if (doc.setLineDash) doc.setLineDash([], 0);
 
     const name = String(feature.get("estate_name") ?? "").trim();
-    if (!name) return;
+    if (!name || !settings.labels.estate) return;
     // Same anchor as on screen: top-left corner of the geometry's extent.
     const ext = geometry.getExtent();
     const anchor = project([ext[0], ext[3]]);
@@ -1582,10 +2115,10 @@ export function initPrintTool({
   }
 
   /** Saved custom features (trees, boreholes, roads, walls, …) — polygons
-   *  get a translucent fill + outline, lines a stroke, points a filled
-   *  dot, all in the feature type's own colour, with the feature's name
-   *  beneath. Icons aren't reproduced (they're Font Awesome glyphs the PDF
-   *  has no font for) — the coloured marker plus the name carries it. */
+   *  get a translucent fill + outline, lines a stroke, and points get
+   *  their real Font Awesome icon from /icons (see preloadFeatureIcons),
+   *  falling back to a filled dot when an icon can't be loaded. All in the
+   *  feature type's own colour, with the feature's name beneath. */
   function drawCustomFeatureVector(doc, feature, project, sizes, frame) {
     const geometry = feature.getGeometry();
     if (!geometry) return;
@@ -1593,41 +2126,89 @@ export function initPrintTool({
     const colorRGB = parseRgba(feature.get("_color") || "#3f8f3f").rgb;
     const name = String(feature.get("_name") ?? "").trim();
     let labelAnchor = null;
+    // Points label to the right of their marker, lines and polygons stay
+    // centred — same split as the live map (see displayLabelStyle in
+    // js/survey-draw.js).
+    let labelAlign = "center";
 
     if (type === "Point" || type === "MultiPoint") {
       const coords = type === "Point" ? [geometry.getCoordinates()] : geometry.getCoordinates();
+      const iconClass = feature.get("_icon") || "";
+      const iconUrl = iconClass ? faIconDataUrl(iconClass, colorRGB) : null;
+      labelAlign = "left";
+      // jsPDF draws text from its baseline, so the anchor is nudged down by
+      // roughly a third of the cap height to sit level with the marker.
+      const vCentre = sizes.featureLabel * 0.35;
       coords.forEach((c) => {
         const p = project(c);
         if (!pointInRect(p, frame)) return;
-        const r = sizes.featurePoint;
-        doc.setFillColor(colorRGB[0], colorRGB[1], colorRGB[2]);
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(Math.max(0.1, r * 0.25));
-        doc.circle(p[0], p[1], r, "FD");
-        if (!labelAnchor) labelAnchor = [p[0], p[1] + r * 2.4];
+        if (iconUrl) {
+          // Icon box centred on the point, so it sits where the dot did.
+          const s = sizes.featureIcon;
+          doc.addImage(iconUrl, "PNG", p[0] - s / 2, p[1] - s / 2, s, s);
+          if (!labelAnchor) labelAnchor = [p[0] + s * 0.6, p[1] + vCentre];
+        } else {
+          const r = sizes.featurePoint;
+          doc.setFillColor(colorRGB[0], colorRGB[1], colorRGB[2]);
+          doc.setDrawColor(255, 255, 255);
+          doc.setLineWidth(Math.max(0.1, r * 0.25));
+          doc.circle(p[0], p[1], r, "FD");
+          if (!labelAnchor) labelAnchor = [p[0] + r * 1.6, p[1] + vCentre];
+        }
       });
     } else if (type === "LineString" || type === "MultiLineString") {
+      const linetype = feature.get("_linetype") || "solid";
       const lines = type === "LineString" ? [geometry.getCoordinates()] : geometry.getCoordinates();
-      doc.setDrawColor(colorRGB[0], colorRGB[1], colorRGB[2]);
-      doc.setLineWidth(sizes.featureStroke);
+      const weightPt = featureStrokePt(feature, sizes);
+      const spacingPt = (Number(feature.get("_lineSpacingM")) || 0) * sizes.ptPerMeter;
+      // "No line" prints nothing but still gets its label, same as on screen
+      // — so the segments below are still walked, just never stroked.
+      const passes =
+        linetype === "none"
+          ? []
+          : pdfLineStrokes(
+              colorRGB, weightPt, dashPatternFor(linetype, weightPt),
+              feature.get("_lineStyle"), spacingPt
+            );
+
+      // Every clipped segment of this feature, resolved once and reused by
+      // each pass — a double/triple line is the same geometry painted two
+      // or three times at different widths, so re-projecting per pass would
+      // be pure waste (and risks the passes disagreeing).
+      const segments = [];
       lines.forEach((line) => {
         const pts = line.map(project);
         for (let i = 0; i < pts.length - 1; i++) {
           const seg = clipSegmentToRect(pts[i], pts[i + 1], frame);
           if (!seg) continue;
-          doc.line(seg[0][0], seg[0][1], seg[1][0], seg[1][1]);
+          segments.push(seg);
           if (!labelAnchor) labelAnchor = [(seg[0][0] + seg[1][0]) / 2, (seg[0][1] + seg[1][1]) / 2];
         }
       });
+
+      passes.forEach((pass) => {
+        doc.setDrawColor(pass.rgb[0], pass.rgb[1], pass.rgb[2]);
+        doc.setLineWidth(pass.width);
+        if (doc.setLineDash) doc.setLineDash(pass.dash || [], 0);
+        segments.forEach((seg) => doc.line(seg[0][0], seg[0][1], seg[1][0], seg[1][1]));
+      });
+      if (doc.setLineDash) doc.setLineDash([], 0);
     } else {
+      const polyLinetype = feature.get("_linetype") || "solid";
+      const polyWeightPt = featureStrokePt(feature, sizes);
+      const polyDash = polyLinetype === "none" ? null : dashPatternFor(polyLinetype, polyWeightPt);
+      if (polyDash && doc.setLineDash) doc.setLineDash(polyDash, 0);
       forEachOuterRing(geometry, (ring) => {
         const clipped = clipPolygonToRect(ring.map(project), frame);
         if (clipped.length < 3) return;
         drawClosedPath(doc, clipped, {
           fill: colorRGB, fillAlpha: 0.18,
-          strokeColor: colorRGB, strokeWidth: sizes.featureStroke
+          // "No line" polygons print as bare fill, same as on screen.
+          strokeColor: polyLinetype === "none" ? null : colorRGB,
+          strokeWidth: polyWeightPt
         });
       });
+      if (doc.setLineDash) doc.setLineDash([], 0);
       const ip = getFeatureInteriorPoint?.(geometry);
       if (ip) {
         const a = project(ip.getCoordinates());
@@ -1635,10 +2216,11 @@ export function initPrintTool({
       }
     }
 
-    if (name && labelAnchor) {
+    if (name && labelAnchor && settings.labels.feature) {
       drawHaloText(doc, name, labelAnchor[0], labelAnchor[1], {
         fontSize: sizes.featureLabel,
-        colorRGB: FEATURE_LABEL_RGB
+        colorRGB: FEATURE_LABEL_RGB,
+        align: labelAlign
       });
     }
   }
@@ -1652,19 +2234,40 @@ export function initPrintTool({
    *  computed once here and passed down, so the whole page is drawn at one
    *  consistent scale. `frame` is the map rectangle everything is trimmed
    *  to, so nothing bleeds out to the page border. */
+  /** True when this feature's TYPE is switched on in the Features tab.
+   *  `null` there means "all types", including any drawn since. */
+  function featureTypeEnabled(feature) {
+    if (settings.featureTypes === null) return true;
+    const id = feature.get("_typeId");
+    return id == null ? true : settings.featureTypes.has(id);
+  }
+
   function drawMapVectors(doc, extent, drawX, drawY, drawW, drawH) {
     if (!extent) return;
     const project = makeProjector(extent, drawX, drawY, drawW, drawH);
     const sizes = computePrintSizes(extent);
+    // Page points per real ground metre — the sheet's scale, in effect.
+    // Needed by anything measured on the ground rather than on screen (so
+    // far: line_spacing_m, the gap inside a double/triple line). Web-
+    // Mercator units are only true metres at the equator, hence the cosine
+    // correction, same as the map's metersToPixels.
+    sizes.ptPerMeter = ptPerMeterFor(extent, drawW);
     const frame = { x0: drawX, y0: drawY, x1: drawX + drawW, y1: drawY + drawH };
 
-    estatesLayer?.getSource()?.getFeaturesInExtent(extent)
-      .forEach((f) => drawEstateVector(doc, f, project, sizes, frame));
-    blocksLayer?.getSource()?.getFeaturesInExtent(extent)
-      .forEach((f) => drawBlockVector(doc, f, project, sizes, frame));
-    parcelsLayer?.getSource()?.getFeaturesInExtent(extent)
-      .forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
+    if (settings.layers.estate) {
+      estatesLayer?.getSource()?.getFeaturesInExtent(extent)
+        .forEach((f) => drawEstateVector(doc, f, project, sizes, frame));
+    }
+    if (settings.layers.block) {
+      blocksLayer?.getSource()?.getFeaturesInExtent(extent)
+        .forEach((f) => drawBlockVector(doc, f, project, sizes, frame));
+    }
+    if (settings.layers.plot) {
+      parcelsLayer?.getSource()?.getFeaturesInExtent(extent)
+        .forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
+    }
     getFeaturesLayer?.()?.getSource()?.getFeaturesInExtent(extent)
+      .filter(featureTypeEnabled)
       .forEach((f) => drawCustomFeatureVector(doc, f, project, sizes, frame));
   }
 
@@ -1730,6 +2333,33 @@ export function initPrintTool({
     return [153, 153, 153];
   }
 
+  /** Signed-in user's name for the "Printed by" line, via map-app.js's
+   *  window hook. Null for guests, in which case the line is skipped. */
+  function currentUserName() {
+    try { return window.vslCurrentUserName?.() || null; } catch { return null; }
+  }
+
+  /** Counts + total area of what's inside the printed area, for the
+   *  summary cell. Estates and blocks are counted by how many INTERSECT
+   *  the selection; plots likewise, with their expected areas summed (the
+   *  same expected_area_acres the plot labels show, falling back to
+   *  computed geometry area when a plot has none recorded). */
+  function computeSelectionSummary(extent) {
+    if (!extent) return null;
+    const estates = estatesLayer?.getSource()?.getFeaturesInExtent(extent)?.length || 0;
+    const blocks = blocksLayer?.getSource()?.getFeaturesInExtent(extent)?.length || 0;
+    const plotFeatures = parcelsLayer?.getSource()?.getFeaturesInExtent(extent) || [];
+    let totalAcres = 0;
+    plotFeatures.forEach((f) => {
+      const expected = Number(f.get("expected_area_acres"));
+      if (Number.isFinite(expected) && expected > 0) { totalAcres += expected; return; }
+      const txt = surveyFeatureAreaAcresText?.(f) || "";
+      const parsed = parseFloat(txt);
+      if (Number.isFinite(parsed)) totalAcres += parsed;
+    });
+    return { estates, blocks, plots: plotFeatures.length, totalAcres };
+  }
+
   /** Google Maps link for the centre of the printed area — same format
    *  the Feature Info export uses, so a scan lands in the same place. */
   function googleMapsLinkForExtent(extent) {
@@ -1761,7 +2391,7 @@ export function initPrintTool({
   function buildPrintFilename() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    return `VSL Map Print ${pad(d.getSeconds())}S${pad(d.getMinutes())}M${pad(d.getHours())}H${pad(d.getDate())}D.pdf`;
+    return `VSL Map Print ${pad(d.getSeconds())}${pad(d.getMinutes())}${pad(d.getHours())}${pad(d.getDate())}.pdf`;
   }
 
   async function generatePdf() {
@@ -1805,12 +2435,17 @@ export function initPrintTool({
         croppedDataUrl = cropped.toDataURL("image/png");
       }
 
+      // Feature icons for the legend. These are local files, but loading
+      // and rasterising them is async, so the cache is warmed here — the
+      // legend drawing further down is synchronous and just reads it.
+      await preloadFeatureIcons(extent);
+
       // QR for the centre of the printed area. Fetched from a remote
       // service, so a failure here must not sink the whole print — the
       // page just goes out without it.
       const mapsLink = googleMapsLinkForExtent(extent);
       let qrDataUrl = null;
-      if (settings.qr && mapsLink) {
+      if (settings.details.qr && mapsLink) {
         setCapturingOverlay(true, "Fetching QR code…");
         try {
           qrDataUrl = await fetchQrCodeDataUrl(mapsLink);
@@ -1829,13 +2464,19 @@ export function initPrintTool({
       // Page geometry comes from computePageLayout — the SAME function the
       // on-screen selection lock reads, so a locked selection fills its
       // frame exactly with no letterboxing.
-      const legendItems = settings.legend ? readLegendItems() : [];
-      const showLegend = settings.legend && legendItems.length > 0;
-      const showNorthArrow = !!settings.northArrow;
+      const legendGroups = settings.details.legend ? buildLegendGroups(extent) : [];
+      const showLegend = settings.details.legend && legendGroups.length > 0;
+      const showNorthArrow = !!settings.details.northArrow;
       const showQr = !!qrDataUrl;
-      const showStamp = !!(settings.date || settings.source);
+      const summary = settings.details.summary ? computeSelectionSummary(extent) : null;
+      const showSummary = !!summary;
+      const showStamp = !!(
+        settings.details.date || settings.details.source ||
+        (settings.details.printedBy && currentUserName())
+      );
       const L = computePageLayout(orientation, {
-        legend: showLegend, northArrow: showNorthArrow, qr: showQr, stamp: showStamp
+        legend: showLegend, northArrow: showNorthArrow, qr: showQr,
+        summary: showSummary, stamp: showStamp
       });
       const margin = L.margin;
       const mapTop = L.mapTop;
@@ -1883,8 +2524,8 @@ export function initPrintTool({
       doc.rect(margin, mapTop, mapAreaW, mapAreaH, "S");
 
       // Title, centred over the map frame. Nothing is drawn when the user
-      // left it blank — no "Untitled Map" placeholder on the page.
-      if (title) {
+      // left it blank (no "Untitled Map" placeholder) or switched it off.
+      if (title && settings.details.title) {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
         doc.setTextColor(30, 42, 30);
@@ -1892,25 +2533,97 @@ export function initPrintTool({
       }
 
       /** North arrow drawn to fill a given cell. */
+      /** North arrow, sized to whatever cell it's given — it shares the
+       *  bottom row with the QR in landscape and sits in the bar in
+       *  portrait, so the geometry is proportional rather than fixed. */
       const drawNorthArrowCell = (x, y, w, h) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
         doc.setLineWidth(1);
         doc.rect(x, y, w, h, "FD");
+
         const cx = x + w / 2;
-        const cy = y + h / 2;
+        const s = Math.min(w, h);
+        // Arrow occupies the upper ~62%, the "N" sits under it.
+        const headH = s * 0.26;
+        const shaftH = s * 0.20;
+        const top = y + h * 0.16;
+        const halfW = s * 0.16;
+
         doc.setFillColor(30, 42, 30);
-        doc.triangle(cx, cy - 13, cx - 8, cy - 1, cx + 8, cy - 1, "F");
-        doc.rect(cx - 3, cy - 2, 6, 10, "F");
+        doc.triangle(cx, top, cx - halfW, top + headH, cx + halfW, top + headH, "F");
+        doc.rect(cx - s * 0.055, top + headH - 0.5, s * 0.11, shaftH, "F");
+
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
+        doc.setFontSize(Math.max(6.5, Math.min(10, s * 0.2)));
         doc.setTextColor(30, 42, 30);
-        doc.text("N", cx, cy + 19, { align: "center" });
+        doc.text("N", cx, top + headH + shaftH + s * 0.2, { align: "center" });
       };
 
       /** Legend drawn into a given cell. `columns` lays the swatch rows out
        *  side by side, which is what makes the short, wide portrait bar
        *  usable instead of clipping most of the list. */
+      /** One legend swatch, drawn per its symbol kind — see
+       *  buildLegendGroups for what each kind means. */
+      const drawLegendSwatch = (sym, cx, cy, size) => {
+        doc.setLineWidth(0.5);
+        const dash = sym.dashPattern || (sym.dash ? [1.2, 1.2] : null);
+
+        if (sym.kind === "line") {
+          doc.setDrawColor(sym.stroke[0], sym.stroke[1], sym.stroke[2]);
+          const lw = 1.2;
+          doc.setLineWidth(lw);
+          const y = cy - size / 2;
+          // One rule per parallel line, offset by a legible fixed gap (the
+          // real spacing is in ground metres and would be meaningless in a
+          // swatch this size). Triple's centre rule is dotted, matching the
+          // map and the printed feature.
+          const count = sym.lineStyle === "triple" ? 3 : sym.lineStyle === "double" ? 2 : 1;
+          const step = lw + 1.4;
+          const offsets = count === 1 ? [0] : count === 2 ? [-step / 2, step / 2] : [-step, 0, step];
+          offsets.forEach((off, i) => {
+            const isCentre = count === 3 && i === 1;
+            const d = isCentre ? dashPatternFor("dotted", lw) : dash;
+            if (doc.setLineDash) doc.setLineDash(d || [], 0);
+            doc.line(cx, y + off, cx + size, y + off);
+          });
+          if (doc.setLineDash) doc.setLineDash([], 0);
+          return;
+        }
+
+        if (sym.kind === "point") {
+          // Real Font Awesome icon where we can resolve one; a plain dot
+          // is the fallback for icon classes that don't resolve.
+          const iconUrl = sym.icon ? faIconDataUrl(sym.icon, sym.fill) : null;
+          if (iconUrl) {
+            doc.addImage(iconUrl, "PNG", cx, cy - size + 1, size, size);
+          } else {
+            doc.setFillColor(sym.fill[0], sym.fill[1], sym.fill[2]);
+            doc.setDrawColor(255, 255, 255);
+            doc.circle(cx + size / 2, cy - size / 2 + 1, size / 2.4, "FD");
+          }
+          return;
+        }
+
+        // Polygon square: filled or hollow, solid or dashed edge.
+        const top = cy - size + 2;
+        if (sym.fill) {
+          setFillAlpha(doc, sym.fillAlpha ?? 1);
+          doc.setFillColor(sym.fill[0], sym.fill[1], sym.fill[2]);
+          doc.rect(cx, top, size, size, "F");
+          resetAlpha(doc);
+        }
+        const st = sym.stroke || [120, 120, 120];
+        doc.setDrawColor(st[0], st[1], st[2]);
+        if (dash && doc.setLineDash) doc.setLineDash(dash, 0);
+        doc.rect(cx, top, size, size, "S");
+        if (doc.setLineDash) doc.setLineDash([], 0);
+      };
+
+      /** Grouped legend. Rows flow down each column and wrap into the next
+       *  one, so the same builder serves the tall landscape column and the
+       *  short wide portrait bar; `columns` just says how many are
+       *  available. Group headings flow with their rows. */
       const drawLegendCell = (x, y, w, h, columns) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
@@ -1922,66 +2635,117 @@ export function initPrintTool({
         doc.setTextColor(30, 42, 30);
         doc.text("LEGEND", x + 8, y + 14);
 
-        const rowsTop = y + 26;
-        const perCol = Math.ceil(legendItems.length / columns);
-        const colW = (w - 16) / columns;
-        const rowsAvail = h - (rowsTop - y) - 6;
-        const rowH = Math.min(15, Math.max(8, rowsAvail / Math.max(1, perCol)));
-        const swatch = Math.min(9, rowH - 3);
+        // Flatten groups into a single stream of heading/item rows, then
+        // deal it into columns.
+        // A blank spacer row before each group after the first, so the
+        // groups read as separate blocks. Moving the north arrow out of
+        // the top of the column bought back the height for these.
+        const stream = [];
+        legendGroups.forEach((g, gi) => {
+          if (gi > 0) stream.push({ type: "gap" });
+          stream.push({ type: "head", label: g.title });
+          g.items.forEach((it) => stream.push({ type: "item", ...it }));
+        });
 
-        doc.setFont("helvetica", "normal");
-        legendItems.forEach((item, i) => {
+        const rowsTop = y + 26;
+        const colW = (w - 16) / columns;
+        const avail = h - (rowsTop - y) - 6;
+        const perCol = Math.ceil(stream.length / columns);
+        const rowH = Math.min(11, Math.max(6.5, avail / Math.max(1, perCol)));
+        const swatch = Math.min(8, rowH - 2);
+
+        stream.forEach((row, i) => {
           const col = Math.floor(i / perCol);
-          const row = i % perCol;
+          const idx = i % perCol;
           const cx = x + 8 + col * colW;
-          const cy = rowsTop + row * rowH;
-          if (cy > y + h - 4) return;
-          const rgb = rgbFromColorString(item.color);
-          doc.setFillColor(rgb[0], rgb[1], rgb[2]);
-          doc.setDrawColor(150);
-          doc.setLineWidth(0.4);
-          doc.rect(cx, cy - swatch + 2, swatch, swatch, "FD");
-          doc.setFontSize(Math.min(7.6, rowH - 3));
+          const cy = rowsTop + idx * rowH;
+          if (cy > y + h - 3 || col >= columns) return;
+          if (row.type === "gap") return; // blank separator row
+          if (row.type === "head") {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(Math.min(6.4, rowH - 2));
+            doc.setTextColor(120, 120, 120);
+            doc.text(row.label, cx, cy, { maxWidth: colW - 6 });
+            return;
+          }
+          drawLegendSwatch(row.sym, cx, cy, swatch);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(Math.min(7, rowH - 2));
           doc.setTextColor(60, 60, 60);
-          doc.text(item.label, cx + swatch + 5, cy, { maxWidth: colW - swatch - 10 });
+          doc.text(row.label, cx + swatch + 5, cy, { maxWidth: colW - swatch - 10 });
         });
       };
 
       /** Square QR cell + caption, linking to the centre of the printed
        *  area on Google Maps. */
+      // No caption under the QR any more — it now shares a row with the
+      // north arrow at the very bottom of the column, so there's nothing
+      // below it to caption into, and "Scan for location" wouldn't fit a
+      // half-column square anyway.
       const drawQrCell = (x, y, size) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
         doc.setLineWidth(1);
         doc.rect(x, y, size, size, "FD");
-        const pad = 4;
+        const pad = Math.max(2, size * 0.07);
         doc.addImage(qrDataUrl, "PNG", x + pad, y + pad, size - pad * 2, size - pad * 2);
+      };
+
+      /** Selection summary — estate/block/plot counts and total plot area
+       *  for whatever falls inside the printed area. */
+      const drawSummaryCell = (x, y, w, h) => {
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(120);
+        doc.setLineWidth(1);
+        doc.rect(x, y, w, h, "FD");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(30, 42, 30);
+        doc.text("SUMMARY", x + 8, y + 13);
+
+        const rows = [
+          ["Estates", String(summary.estates)],
+          ["Blocks", String(summary.blocks)],
+          ["Plots", String(summary.plots)],
+          ["Total area", `${summary.totalAcres.toFixed(2)} ac`]
+        ];
+        const top = y + 25;
+        const rowH = Math.min(12, Math.max(7, (h - (top - y) - 5) / rows.length));
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(6.5);
-        doc.setTextColor(110, 110, 110);
-        doc.text("Scan for location", x + size / 2, y + size + 7.5, { align: "center" });
+        doc.setFontSize(Math.min(7.4, rowH - 2));
+        rows.forEach(([k, v], i) => {
+          const ry = top + i * rowH;
+          if (ry > y + h - 3) return;
+          doc.setTextColor(110, 110, 110);
+          doc.text(k, x + 8, ry);
+          doc.setTextColor(30, 42, 30);
+          doc.text(v, x + w - 8, ry, { align: "right" });
+        });
       };
 
       if (L.landscape) {
-        // Extras stack down the right-hand column: arrow on top, QR pinned
-        // to the bottom, legend filling whatever is left between them.
-        let sideY = mapTop;
-        if (showNorthArrow) {
-          drawNorthArrowCell(L.sideX, sideY, L.sideColW, NORTH_ARROW_BOX_PT);
-          sideY += NORTH_ARROW_BOX_PT + 8;
+        // Extras stack down the right-hand column: arrow on top, then the
+        // legend filling what's left, with summary and QR pinned bottom.
+        // Legend runs from the very top of the column down to whatever
+        // sits below it; summary next, then the QR + north arrow row.
+        const stackTop = showSummary
+          ? L.summaryY
+          : (L.bottomRowH ? L.bottomRowY : mapTop + mapAreaH);
+        const legendBottom = stackTop - (showSummary || L.bottomRowH ? SIDE_CELL_GAP_PT : 0);
+        if (showLegend && legendBottom - mapTop > 30) {
+          drawLegendCell(L.sideX, mapTop, L.sideColW, legendBottom - mapTop, 1);
         }
-        const legendBottom = mapTop + mapAreaH - (showQr ? L.qrH + 8 : 0);
-        if (showLegend && legendBottom - sideY > 30) {
-          drawLegendCell(L.sideX, sideY, L.sideColW, legendBottom - sideY, 1);
-        }
-        if (showQr) drawQrCell(L.sideX, L.qrY, L.qrSize);
+        if (showSummary) drawSummaryCell(L.sideX, L.summaryY, L.sideColW, L.summaryH);
+        if (showQr) drawQrCell(L.qrX, L.qrY, L.qrSize);
+        if (showNorthArrow) drawNorthArrowCell(L.arrowX, L.arrowY, L.arrowW, L.bottomRowH);
       } else {
-        // Extras sit in a bar under the map: legend left, then the QR
-        // square, then the arrow at the right end. Two columns of swatches,
-        // since the bar is wide and short.
+        // Extras sit in a bar under the map: legend, summary, QR, then the
+        // arrow at the right end. Two columns of swatches, since the bar is
+        // wide and short.
         if (showLegend) {
           drawLegendCell(margin, L.barY, L.barLegendW, L.barH, 2);
         }
+        if (showSummary) drawSummaryCell(L.summaryX, L.barY, L.summaryW, L.barH);
         if (showQr) drawQrCell(L.qrX, L.barY, L.qrSize);
         if (showNorthArrow) {
           drawNorthArrowCell(margin + mapAreaW - L.barArrowW, L.barY, L.barArrowW, L.barH);
@@ -1989,27 +2753,33 @@ export function initPrintTool({
       }
 
       // Approx. scale, bottom-right under the map frame.
-      const scaleDenom = computeScaleDenominator();
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.text(
-        `Scale approx. 1:${scaleDenom.toLocaleString()}`,
-        margin + mapAreaW,
-        pageH - margin + 2,
-        { align: "right" }
-      );
+      if (settings.details.scale) {
+        const scaleDenom = computeScaleDenominator();
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text(
+          `Scale approx. 1:${scaleDenom.toLocaleString()}`,
+          margin + mapAreaW,
+          pageH - margin + 2,
+          { align: "right" }
+        );
+      }
 
-      // Date/source, stamped bottom-left of the page (each independently
-      // toggled in Setup).
-      if (settings.date || settings.source) {
-        const parts = [];
-        if (settings.date) parts.push(new Date().toLocaleDateString());
-        if (settings.source) parts.push(window.location.hostname || "Victoria Sugar Webmap");
+      // Date / source / printed-by, stamped bottom-left of the page (each
+      // independently toggled in the Map details tab).
+      const stampParts = [];
+      if (settings.details.date) stampParts.push(new Date().toLocaleDateString());
+      if (settings.details.source) stampParts.push(window.location.hostname || "Victoria Sugar Webmap");
+      if (settings.details.printedBy) {
+        const who = currentUserName();
+        if (who) stampParts.push(`Printed by: ${who}`);
+      }
+      if (stampParts.length) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
         doc.setTextColor(130, 130, 130);
-        doc.text(parts.join("  •  "), margin, pageH - margin + 2, { align: "left" });
+        doc.text(stampParts.join("  •  "), margin, pageH - margin + 2, { align: "left" });
       }
 
       doc.save(buildPrintFilename());
@@ -2036,7 +2806,10 @@ export function initPrintTool({
     toolbar.hidden = false;
     topBtn.classList.add("active");
     topBtn.setAttribute("aria-expanded", "true");
-    readSettings();
+    // Deliberately NOT readSettings() here — that reads the form back into
+    // the settings object, which would clobber the defaults with whatever
+    // the (possibly never-opened) settings window happens to hold. The
+    // window pushes state the other way, via writeSettingsToForm on open.
     // Straight into area-selection — that's the first thing you'd do
     // anyway, so there's no reason to make the crosshair button a second
     // click. The toast says what to do next.

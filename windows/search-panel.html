@@ -14,6 +14,9 @@
         <button type="button" class="search-tab" id="tabParcel" role="tab" aria-selected="true" aria-controls="searchTabParcel" data-tab="parcel">
           <i class="fas fa-map-location-dot" aria-hidden="true"></i> Block / Plot
         </button>
+        <button type="button" class="search-tab" id="tabFeature" role="tab" aria-selected="false" aria-controls="searchTabFeature" data-tab="feature">
+          <i class="fas fa-location-crosshairs" aria-hidden="true"></i> Feature
+        </button>
         <button type="button" class="search-tab" id="tabPlace" role="tab" aria-selected="false" aria-controls="searchTabPlace" data-tab="place">
           <i class="fas fa-magnifying-glass-location" aria-hidden="true"></i> Place
         </button>
@@ -50,7 +53,41 @@
           <p id="parcelSearchPopoverError" class="search-panel__error" role="alert" hidden></p>
         </div>
 
-        <!-- ── TAB 2: Place Search ── -->
+        <!-- ── TAB 2: Feature Search ──
+             Drawn features (trees, roads, walls, … — vsl_feature), narrowed
+             by the same cascade shape as the Block/Plot tab above: Kind →
+             Type → Name. Type alone zooms to every feature of that type;
+             adding a Name zooms to that one. See setupFeatureSearch() in
+             map-app.js. -->
+        <div id="searchTabFeature" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabFeature" hidden>
+          <div class="futuristic-grid-3">
+            <div class="futuristic-grid-item">
+              <label class="search-panel__label" for="featureKindSelect">Kind</label>
+              <select id="featureKindSelect" class="search-panel__input">
+                <option value="">— Any Kind —</option>
+                <option value="point">Point</option>
+                <option value="line">Line</option>
+                <option value="polygon">Polygon</option>
+              </select>
+            </div>
+            <div class="futuristic-grid-item">
+              <label class="search-panel__label" for="featureTypeSelect">Type</label>
+              <select id="featureTypeSelect" class="search-panel__input">
+                <option value="">— Any Type —</option>
+              </select>
+            </div>
+            <div class="futuristic-grid-item">
+              <label class="search-panel__label" for="featureNameSelect">Name</label>
+              <select id="featureNameSelect" class="search-panel__input">
+                <option value="">— Any Name —</option>
+              </select>
+            </div>
+          </div>
+
+          <p id="featureSearchError" class="search-panel__error" role="alert" hidden></p>
+        </div>
+
+        <!-- ── TAB 3: Place Search ── -->
         <div id="searchTabPlace" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabPlace" hidden>
           <label class="visually-hidden" for="placeSearchInput">Place or address</label>
           <div class="search-panel__place-row futuristic-place-row">
@@ -61,7 +98,7 @@
           <p class="search-panel__attrib">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors · Nominatim</p>
         </div>
 
-        <!-- ── TAB 3: Coordinate Search ── -->
+        <!-- ── TAB 4: Coordinate Search ── -->
         <div id="searchTabCoords" class="search-panel__tab-body" role="tabpanel" aria-labelledby="tabCoords" hidden>
           <label class="search-panel__label u-hidden" for="coordDrawerCrsSelect">Coordinate system</label>
           <select id="coordDrawerCrsSelect" class="search-panel__input u-hidden"></select>
@@ -102,6 +139,8 @@
         <button type="button" id="parcelSearchPopoverCancelBtn" title="Clear highlight"></button>
         <button type="button" id="parcelSearchGoBtn" title="Go"></button>
         <button type="button" id="placeSearchGoBtn" title="Go"></button>
+        <button type="button" id="featureSearchGoBtn" title="Go"></button>
+        <button type="button" id="featureSearchClearBtn" title="Clear feature highlight"></button>
         <button type="button" id="coordClearMarkersBtn" title="Clear Markers"></button>
         <button type="button" id="coordPlotSingleBtn" title="Plot on Map"></button>
       </div>

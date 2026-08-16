@@ -45,7 +45,7 @@ export function initPrintTool({
   map, setStatus, statusEl, closeOtherPanels,
   // Layer refs + styling data — every one of these is redrawn as real PDF
   // vectors rather than rasterized. See drawMapVectors below.
-  blocksLayer, parcelsLayer, estatesLayer, getFeaturesLayer,
+  blocksLayer, parcelsLayer, estatesLayer, getFeaturesLayer, getFeatureLabelsLayer,
   CULTIVATION_PALETTE, CULTIVATION_STATUS_LABELS, ALERT_SEVERITY_FILL,
   ALERT_SEVERITY_COLORS, getFeatureInteriorPoint, surveyFeatureAreaAcresText
 }) {
@@ -960,19 +960,26 @@ export function initPrintTool({
     const white = [255, 255, 255];
     if (lineStyle === "double") {
       return [
-        { rgb, width: 2 * w + s, dash },
-        { rgb: white, width: s, dash: null }
+        { role: "casing", rgb, width: 2 * w + s, dash },
+        { role: "knockout", rgb: white, width: s, dash: null }
       ];
     }
     if (lineStyle === "triple") {
       return [
-        { rgb, width: 3 * w + 2 * s, dash },
-        { rgb: white, width: w + 2 * s, dash: null },
-        { rgb, width: w, dash: dashPatternFor("dotted", w) }
+        { role: "casing", rgb, width: 3 * w + 2 * s, dash },
+        { role: "knockout", rgb: white, width: w + 2 * s, dash: null },
+        { role: "fill", rgb, width: w, dash: dashPatternFor("dotted", w) }
       ];
     }
-    return [{ rgb, width: w, dash }];
+    // A single stroke is a "fill", not a casing: it has no knockout of its
+    // own, and being painted in the fill round means a neighbouring road's
+    // knockout can't erase it where the two cross.
+    return [{ role: "fill", rgb, width: w, dash }];
   }
+
+  /** The order every line stroke on the page is painted in — ALL casings,
+   *  then ALL knockouts, then ALL fills. See drawFeaturePlans. */
+  const LINE_PASS_ORDER = ["casing", "knockout", "fill"];
 
   /**
    * The printed legend, as ordered groups of symbol rows. Each row carries
@@ -1463,7 +1470,14 @@ export function initPrintTool({
 
       // Every layer that gets redrawn as PDF vectors is hidden for the
       // capture, so the raster underneath carries only the imagery.
-      const vectorLayers = [estatesLayer, blocksLayer, parcelsLayer, getFeaturesLayer?.()].filter(Boolean);
+      const vectorLayers = [
+        estatesLayer, blocksLayer, parcelsLayer,
+        getFeaturesLayer?.(),
+        // Feature names live on their own decluttered layer (see
+        // featureLabelsLayer in js/survey-draw.js) and are redrawn as PDF
+        // text further down, so they have to be hidden here too.
+        getFeatureLabelsLayer?.()
+      ].filter(Boolean);
       const wasVisible = vectorLayers.map((l) => l.getVisible());
       vectorLayers.forEach((l) => l.setVisible(false));
 
@@ -1635,9 +1649,41 @@ export function initPrintTool({
    *  call because jsPDF reads/normalizes that object internally. */
   function drawHaloText(doc, text, x, y, opts) {
     const { align = "center", fontSize, colorRGB, angle } = opts;
-    const textOpts = () => (angle ? { align, angle } : { align });
     doc.setFont("helvetica", "bold");
     doc.setFontSize(fontSize);
+
+    // ── jsPDF align + angle correction ──
+    //
+    // jsPDF (2.5.1) subtracts the alignment offset along the PAGE x-axis and
+    // only THEN rotates the text about that already-shifted point. The
+    // offset is never rotated with the text, so a centred label sitting on a
+    // tilted line ends up displaced from its anchor by roughly
+    //     (width/2) x sin(angle)   perpendicular to the line
+    //     (width/2) x (1 - cos(angle))  along it
+    // — an error that grows with the LENGTH of the text, which is why a long
+    // road name floated far off its road while a three-letter one barely
+    // moved, and why horizontal labels (angle 0, sin 0) always looked fine.
+    //
+    // Fix: never let jsPDF do the centring on rotated text. Draw left-
+    // aligned, which lands exactly on the anchor, and walk the anchor back
+    // half a text width along the text's OWN baseline. A jsPDF angle A gives
+    // a baseline running (cos A, -sin A) on the page, y growing downward.
+    let ax = x;
+    let ay = y;
+    let drawAlign = align;
+    if (angle) {
+      const back = align === "center" ? doc.getTextWidth(text) / 2
+        : align === "right" ? doc.getTextWidth(text)
+          : 0;
+      if (back) {
+        const a = (angle * Math.PI) / 180;
+        ax = x - back * Math.cos(a);
+        ay = y + back * Math.sin(a);
+      }
+      drawAlign = "left";
+    }
+
+    const textOpts = () => (angle ? { align: drawAlign, angle } : { align: drawAlign });
     doc.setTextColor(255, 255, 255);
     // Halo thickness has to track the font size now that sizes scale with
     // the selection — a fixed offset that looked right at 7pt would smear
@@ -1646,10 +1692,10 @@ export function initPrintTool({
     // reproduces the previous look exactly at that size.
     const d = fontSize * 0.05;
     [[-d, 0], [d, 0], [0, -d], [0, d], [-d, -d], [d, -d], [-d, d], [d, d]].forEach(([dx, dy]) => {
-      doc.text(text, x + dx, y + dy, textOpts());
+      doc.text(text, ax + dx, ay + dy, textOpts());
     });
     doc.setTextColor(colorRGB[0], colorRGB[1], colorRGB[2]);
-    doc.text(text, x, y, textOpts());
+    doc.text(text, ax, ay, textOpts());
   }
 
   function forEachOuterRing(geometry, cb) {
@@ -1806,7 +1852,35 @@ export function initPrintTool({
   const BASE_PARCEL_LABEL_PT = 20;  // plot name / area / ratoon / Alerts(n)
   const BASE_EDGE_DISTANCE_PT = 12; // "123.4m" edge labels (off by default)
   const BASE_ESTATE_LABEL_PT = 60;  // estate name
-  const BASE_FEATURE_LABEL_PT = 30; // custom feature name
+  const BASE_FEATURE_LABEL_PT = 25; // custom feature name
+
+  //---------- REPEATED ROAD LABELS (tuning) ----------------------------\\
+  // On the live map, OpenLayers repeats a road's name along it for us (see
+  // LINE_LABEL_REPEAT_PX in js/survey-draw.js). It gives no way to read back
+  // WHERE it put them, so the PDF walks the geometry itself and picks its
+  // own spots. These are the knobs for that.
+
+  /** Distance between one name and the next, in page points, per 1km of
+   *  selection — same per-km scaling as every BASE_* above, so the labels
+   *  stay proportional to the text as the sheet scale changes. At the
+   *  default it works out to a gap of about 30x the label's font size.
+   *  Smaller = more names per road. */
+  const BASE_FEATURE_LABEL_REPEAT_PT = 900;
+
+  /** A name is only placed where a single straight run of road is at least
+   *  this many times the text's width. It's what keeps names off bends and
+   *  short stubs: the text always sits wholly within one straight piece.
+   *  Higher = fussier, fewer labels. */
+  const FEATURE_LABEL_FIT_FACTOR = 1.15;
+
+  /** Rough width of one character as a fraction of the font size, used to
+   *  guess how wide a name will be before it's drawn. Helvetica Bold
+   *  averages near 0.55. Only affects the fit and overlap tests. */
+  const FEATURE_LABEL_CHAR_WIDTH_FACTOR = 0.55;
+
+  /** Hard ceiling on repeats per road, so one very long feature on a very
+   *  zoomed-in sheet can't carpet the page with its own name. */
+  const FEATURE_LABEL_MAX_REPEATS = 12;
 
   /** Haversine — good enough for a printed edge-length label, avoids
    *  needing map-app.js's own vincentyDistanceMeters wired through. */
@@ -1866,6 +1940,7 @@ export function initPrintTool({
       blockLabel: (BASE_BLOCK_LABEL_PT * mf) / d,
       parcelLabel: (BASE_PARCEL_LABEL_PT * mf) / d,
       edgeDistance: (BASE_EDGE_DISTANCE_PT * mf) / d,
+      featureLabelRepeat: BASE_FEATURE_LABEL_REPEAT_PT / d,
       estateStroke: BASE_ESTATE_STROKE_PT / d,
       estateDash: BASE_ESTATE_DASH_PT / d,
       estateLabel: (BASE_ESTATE_LABEL_PT * mf) / d,
@@ -2119,9 +2194,125 @@ export function initPrintTool({
    *  their real Font Awesome icon from /icons (see preloadFeatureIcons),
    *  falling back to a filled dot when an icon can't be loaded. All in the
    *  feature type's own colour, with the feature's name beneath. */
-  function drawCustomFeatureVector(doc, feature, project, sizes, frame) {
+  /** Lift of a line-following label off the stroke it sits on, as a
+   *  fraction of the font size. Subtracted from EDGE_LABEL_CENTER_FACTOR,
+   *  so 0 leaves the text straddling the line and larger values raise it.
+   *  0.18 reproduces the live map's `offsetY: -2` at its 11px label font
+   *  (see displayLabelStyle in js/survey-draw.js). */
+  const FEATURE_LINE_LABEL_LIFT_FACTOR = 0.18;
+
+  /** The jsPDF rotation that makes text run along a segment.
+   *
+   *  Same convention as drawEdgeDistanceLabels: page y grows downward while
+   *  a positive jsPDF angle turns counter-clockwise, hence the sign flip.
+   *  Folding into (-90, 90] keeps the text reading left-to-right instead of
+   *  upside-down; since the text is centred on its anchor, a 180 degree fold
+   *  doesn't move it. */
+  function lineLabelAngle(dx, dy) {
+    let angleDeg = EDGE_LABEL_ANGLE_SIGN * Math.atan2(dy, dx) * (180 / Math.PI);
+    if (angleDeg > 90) angleDeg -= 180;
+    else if (angleDeg <= -90) angleDeg += 180;
+    return angleDeg;
+  }
+
+  /** Nudges a rotated label off the stroke it sits on.
+   *
+   *  jsPDF anchors text on its baseline, and its baseline:"middle" isn't
+   *  applied in the ROTATED frame — so the vertical centring is done here,
+   *  rotated by the same angle. "Down in the text's own frame" is
+   *  (sin a, cos a) on the page; moving the baseline that way by ~half the
+   *  cap height straddles the line, and subtracting the lift raises the text
+   *  just clear of the stroke. */
+  function liftLabelOffLine(at, angleDeg, fontSize) {
+    const a = (angleDeg * Math.PI) / 180;
+    const h = fontSize * (EDGE_LABEL_CENTER_FACTOR - FEATURE_LINE_LABEL_LIFT_FACTOR);
+    return [at[0] + h * Math.sin(a), at[1] + h * Math.cos(a)];
+  }
+
+  /** Guess at how wide a name will print, without needing the document.
+   *  Only feeds the fit and overlap tests, so an approximation is fine. */
+  function estimateTextWidth(text, fontSize) {
+    return String(text || "").length * fontSize * FEATURE_LABEL_CHAR_WIDTH_FACTOR;
+  }
+
+  /** The page rectangle a label occupies, used to stop repeated names
+   *  landing on top of each other. Rotated text is measured by its
+   *  unrotated box, which is close enough at the shallow angles roads
+   *  usually run at. */
+  function labelBox(at, text, fontSize, align) {
+    const w = estimateTextWidth(text, fontSize);
+    const h = fontSize;
+    const x0 = align === "left" ? at[0] : at[0] - w / 2;
+    return { x0, y0: at[1] - h * 0.8, x1: x0 + w, y1: at[1] + h * 0.3 };
+  }
+
+  function boxesOverlap(a, b) {
+    return !(a.x1 < b.x0 || b.x1 < a.x0 || a.y1 < b.y0 || b.y1 < a.y0);
+  }
+
+  /**
+   * Walks a road on the page and returns every good spot to repeat its name.
+   *
+   * OpenLayers does this internally on the live map but exposes nothing
+   * about where it landed, so the PDF works it out from scratch: march along
+   * the projected line, and every `repeatPt` of travel consider dropping a
+   * label. A spot is only used when the straight piece of road it falls on
+   * is long enough to hold the whole name with room to spare — which is what
+   * keeps text off bends and off short stubs at junctions, without needing a
+   * separate angle rule.
+   *
+   * Returns anchors with the road's local bearing, ready to rotate.
+   */
+  function planLineLabelAnchors(lines, project, frame, text, fontSize, repeatPt) {
+    const anchors = [];
+    if (!(repeatPt > 0)) return anchors;
+    const textW = estimateTextWidth(text, fontSize);
+    const needed = textW * FEATURE_LABEL_FIT_FACTOR;
+
+    for (const line of lines) {
+      const pts = line.map(project);
+      // Start half an interval in, so a road that's only just long enough
+      // gets its name near the middle rather than jammed against one end.
+      let nextAt = repeatPt / 2;
+      let travelled = 0;
+
+      for (let i = 0; i < pts.length - 1 && anchors.length < FEATURE_LABEL_MAX_REPEATS; i++) {
+        const [x0, y0] = pts[i];
+        const [x1, y1] = pts[i + 1];
+        const segLen = Math.hypot(x1 - x0, y1 - y0);
+        if (segLen <= 0) continue;
+
+        while (nextAt <= travelled + segLen && anchors.length < FEATURE_LABEL_MAX_REPEATS) {
+          const into = nextAt - travelled;
+          nextAt += repeatPt;
+
+          // The whole name has to sit inside this one straight run.
+          if (segLen < needed) continue;
+          if (into < needed / 2 || segLen - into < needed / 2) continue;
+
+          const t = into / segLen;
+          const at = [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t];
+          if (!pointInRect(at, frame)) continue;
+
+          anchors.push({ at, dx: x1 - x0, dy: y1 - y0 });
+        }
+        travelled += segLen;
+      }
+    }
+    return anchors;
+  }
+
+  /**
+   * Works out everything one custom feature needs drawn, WITHOUT drawing any
+   * of it. Splitting "decide" from "paint" is what lets drawFeaturePlans
+   * below paint every feature's casing before any feature's knockout — see
+   * the note there for why that matters at junctions.
+   *
+   * Returns null for a feature with nothing visible in this frame.
+   */
+  function planCustomFeature(feature, project, sizes, frame) {
     const geometry = feature.getGeometry();
-    if (!geometry) return;
+    if (!geometry) return null;
     const type = geometry.getType();
     const colorRGB = parseRgba(feature.get("_color") || "#3f8f3f").rgb;
     const name = String(feature.get("_name") ?? "").trim();
@@ -2130,6 +2321,10 @@ export function initPrintTool({
     // centred — same split as the live map (see displayLabelStyle in
     // js/survey-draw.js).
     let labelAlign = "center";
+    // Rotation for line features whose type asks for it (degrees, jsPDF
+    // convention). Stays null for everything else, which keeps the label
+    // horizontal exactly as before.
+    let labelAngle = null;
 
     if (type === "Point" || type === "MultiPoint") {
       const coords = type === "Point" ? [geometry.getCoordinates()] : geometry.getCoordinates();
@@ -2139,23 +2334,27 @@ export function initPrintTool({
       // jsPDF draws text from its baseline, so the anchor is nudged down by
       // roughly a third of the cap height to sit level with the marker.
       const vCentre = sizes.featureLabel * 0.35;
+      const marks = [];
       coords.forEach((c) => {
         const p = project(c);
         if (!pointInRect(p, frame)) return;
         if (iconUrl) {
-          // Icon box centred on the point, so it sits where the dot did.
           const s = sizes.featureIcon;
-          doc.addImage(iconUrl, "PNG", p[0] - s / 2, p[1] - s / 2, s, s);
+          marks.push({ p, iconUrl, size: s });
           if (!labelAnchor) labelAnchor = [p[0] + s * 0.6, p[1] + vCentre];
         } else {
           const r = sizes.featurePoint;
-          doc.setFillColor(colorRGB[0], colorRGB[1], colorRGB[2]);
-          doc.setDrawColor(255, 255, 255);
-          doc.setLineWidth(Math.max(0.1, r * 0.25));
-          doc.circle(p[0], p[1], r, "FD");
+          marks.push({ p, radius: r });
           if (!labelAnchor) labelAnchor = [p[0] + r * 1.6, p[1] + vCentre];
         }
       });
+      if (!marks.length) return null;
+      return {
+        kind: "point",
+        colorRGB,
+        marks,
+        label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: null } : null
+      };
     } else if (type === "LineString" || type === "MultiLineString") {
       const linetype = feature.get("_linetype") || "solid";
       const lines = type === "LineString" ? [geometry.getCoordinates()] : geometry.getCoordinates();
@@ -2176,53 +2375,223 @@ export function initPrintTool({
       // or three times at different widths, so re-projecting per pass would
       // be pure waste (and risks the passes disagreeing).
       const segments = [];
+      // The label rides the LONGEST visible segment rather than the first
+      // one. The first segment of a road is often a short stub off a
+      // junction — anchoring there gave the label an arbitrary tilt and
+      // crowded the corner. The longest run is both the most representative
+      // direction and the piece with room for the text, which is roughly
+      // what OL's placement:"line" settles on.
+      let bestSeg = null;
+      let bestLen = -1;
       lines.forEach((line) => {
         const pts = line.map(project);
         for (let i = 0; i < pts.length - 1; i++) {
           const seg = clipSegmentToRect(pts[i], pts[i + 1], frame);
           if (!seg) continue;
           segments.push(seg);
-          if (!labelAnchor) labelAnchor = [(seg[0][0] + seg[1][0]) / 2, (seg[0][1] + seg[1][1]) / 2];
+          const segLen = Math.hypot(seg[1][0] - seg[0][0], seg[1][1] - seg[0][1]);
+          if (segLen > bestLen) {
+            bestLen = segLen;
+            bestSeg = seg;
+          }
         }
       });
 
-      passes.forEach((pass) => {
+      // Follow the line only when the feature type asks for it, matching
+      // the live map: displayLabelStyle sets placement:"line" only for
+      // _labelDir === "along". Any other setting stays horizontal, which
+      // is what it looks like on screen too — and, as on the map, a
+      // horizontal label is placed once rather than repeated.
+      const along = feature.get("_labelDir") === "along";
+
+      if (bestSeg) {
+        labelAnchor = [
+          (bestSeg[0][0] + bestSeg[1][0]) / 2,
+          (bestSeg[0][1] + bestSeg[1][1]) / 2
+        ];
+        if (along && bestLen > 0) {
+          labelAngle = lineLabelAngle(bestSeg[1][0] - bestSeg[0][0], bestSeg[1][1] - bestSeg[0][1]);
+          labelAnchor = liftLabelOffLine(labelAnchor, labelAngle, sizes.featureLabel);
+        }
+      }
+
+      // Extra copies of the name further along the road — the printed
+      // equivalent of OpenLayers' `repeat`. Drawn only if they don't collide
+      // with a name already on the page (see drawFeaturePlans), so the
+      // primary label above is never lost to one of its own repeats.
+      const repeats = [];
+      if (along && name) {
+        planLineLabelAnchors(lines, project, frame, name, sizes.featureLabel, sizes.featureLabelRepeat)
+          .forEach((anchor) => {
+            const angle = lineLabelAngle(anchor.dx, anchor.dy);
+            repeats.push({
+              text: name,
+              at: liftLabelOffLine(anchor.at, angle, sizes.featureLabel),
+              align: "center",
+              angle
+            });
+          });
+      }
+
+      if (!segments.length) return null;
+      return {
+        kind: "line",
+        segments,
+        passes,
+        label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: labelAngle } : null,
+        repeats
+      };
+    }
+
+    // Polygon.
+    const polyLinetype = feature.get("_linetype") || "solid";
+    const polyWeightPt = featureStrokePt(feature, sizes);
+    const rings = [];
+    forEachOuterRing(geometry, (ring) => {
+      const clipped = clipPolygonToRect(ring.map(project), frame);
+      if (clipped.length >= 3) rings.push(clipped);
+    });
+    if (!rings.length) return null;
+
+    const ip = getFeatureInteriorPoint?.(geometry);
+    if (ip) {
+      const a = project(ip.getCoordinates());
+      if (pointInRect(a, frame)) labelAnchor = a;
+    }
+
+    return {
+      kind: "polygon",
+      rings,
+      fill: colorRGB,
+      // "No line" polygons print as bare fill, same as on screen.
+      strokeColor: polyLinetype === "none" ? null : colorRGB,
+      strokeWidth: polyWeightPt,
+      dash: polyLinetype === "none" ? null : dashPatternFor(polyLinetype, polyWeightPt),
+      label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: labelAngle } : null
+    };
+  }
+
+  function drawPointPlan(doc, plan) {
+    plan.marks.forEach((m) => {
+      if (m.iconUrl) {
+        // Icon box centred on the point, so it sits where the dot did.
+        doc.addImage(m.iconUrl, "PNG", m.p[0] - m.size / 2, m.p[1] - m.size / 2, m.size, m.size);
+      } else {
+        doc.setFillColor(plan.colorRGB[0], plan.colorRGB[1], plan.colorRGB[2]);
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(Math.max(0.1, m.radius * 0.25));
+        doc.circle(m.p[0], m.p[1], m.radius, "FD");
+      }
+    });
+  }
+
+  function drawPolygonPlan(doc, plan) {
+    if (plan.dash && doc.setLineDash) doc.setLineDash(plan.dash, 0);
+    plan.rings.forEach((ring) => {
+      drawClosedPath(doc, ring, {
+        fill: plan.fill,
+        fillAlpha: 0.18,
+        strokeColor: plan.strokeColor,
+        strokeWidth: plan.strokeWidth
+      });
+    });
+    if (doc.setLineDash) doc.setLineDash([], 0);
+  }
+
+  /** Paints just the strokes of `plan` that belong to `role`. */
+  function drawLinePassRole(doc, plan, role) {
+    plan.passes
+      .filter((pass) => pass.role === role)
+      .forEach((pass) => {
         doc.setDrawColor(pass.rgb[0], pass.rgb[1], pass.rgb[2]);
         doc.setLineWidth(pass.width);
         if (doc.setLineDash) doc.setLineDash(pass.dash || [], 0);
-        segments.forEach((seg) => doc.line(seg[0][0], seg[0][1], seg[1][0], seg[1][1]));
+        plan.segments.forEach((seg) => doc.line(seg[0][0], seg[0][1], seg[1][0], seg[1][1]));
       });
-      if (doc.setLineDash) doc.setLineDash([], 0);
-    } else {
-      const polyLinetype = feature.get("_linetype") || "solid";
-      const polyWeightPt = featureStrokePt(feature, sizes);
-      const polyDash = polyLinetype === "none" ? null : dashPatternFor(polyLinetype, polyWeightPt);
-      if (polyDash && doc.setLineDash) doc.setLineDash(polyDash, 0);
-      forEachOuterRing(geometry, (ring) => {
-        const clipped = clipPolygonToRect(ring.map(project), frame);
-        if (clipped.length < 3) return;
-        drawClosedPath(doc, clipped, {
-          fill: colorRGB, fillAlpha: 0.18,
-          // "No line" polygons print as bare fill, same as on screen.
-          strokeColor: polyLinetype === "none" ? null : colorRGB,
-          strokeWidth: polyWeightPt
-        });
+  }
+
+  /** Draws one label and returns the page rectangle it took up (or null if
+   *  there was nothing to draw), so later labels can avoid it. */
+  function drawOneLabel(doc, label, sizes) {
+    if (!label) return null;
+    drawHaloText(doc, label.text, label.at[0], label.at[1], {
+      fontSize: sizes.featureLabel,
+      colorRGB: FEATURE_LABEL_RGB,
+      align: label.align,
+      // null for points/polygons and for lines not set to "along" —
+      // drawHaloText treats a falsy angle as "no rotation".
+      angle: label.angle
+    });
+    return labelBox(label.at, label.text, sizes.featureLabel, label.align);
+  }
+
+  /**
+   * Paints every custom feature on the page, grouped by what's being drawn
+   * rather than by which feature it belongs to.
+   *
+   * Drawing each feature start-to-finish is what produced the broken
+   * junctions: a road paints its wide casing, then its white core, and the
+   * NEXT road's white core then lands on top of the first road's finished
+   * pixels, cutting a white slice straight through it. Painting every
+   * casing, then every core, then every centreline means roads that cross
+   * share one continuous casing layer and one continuous core layer, so the
+   * junction merges instead of one road erasing the other. It's the same
+   * ordering Mapnik/QGIS use for cased roads.
+   *
+   * Round caps and joins go on for the whole line phase. jsPDF's doc.line()
+   * emits each segment as its own two-point path, so there is no join at a
+   * corner at all — a round cap on each segment end puts a disc of radius
+   * width/2 at the shared vertex, and discs of different radii around the
+   * same point stay concentric. That's what stops the narrower knockout from
+   * biting a wedge out of the wider casing at bends (a mitre or bevel join
+   * projects by an amount that depends on the stroke width, so the two
+   * passes disagreed about where the corner was).
+   */
+  function drawFeaturePlans(doc, plans, sizes) {
+    // Fills first, so lines and markers sit on top of them.
+    plans.filter((p) => p.kind === "polygon").forEach((p) => drawPolygonPlan(doc, p));
+
+    const linePlans = plans.filter((p) => p.kind === "line");
+    if (linePlans.length) {
+      const hasCap = typeof doc.setLineCap === "function";
+      const hasJoin = typeof doc.setLineJoin === "function";
+      if (hasCap) doc.setLineCap(1); // 1 = round
+      if (hasJoin) doc.setLineJoin(1);
+
+      LINE_PASS_ORDER.forEach((role) => {
+        linePlans.forEach((plan) => drawLinePassRole(doc, plan, role));
       });
+
       if (doc.setLineDash) doc.setLineDash([], 0);
-      const ip = getFeatureInteriorPoint?.(geometry);
-      if (ip) {
-        const a = project(ip.getCoordinates());
-        if (pointInRect(a, frame)) labelAnchor = a;
-      }
+      // Back to jsPDF's defaults so the blocks/parcels/legend drawing that
+      // follows isn't silently restyled.
+      if (hasCap) doc.setLineCap(0); // 0 = butt
+      if (hasJoin) doc.setLineJoin(0); // 0 = mitre
     }
 
-    if (name && labelAnchor && settings.labels.feature) {
-      drawHaloText(doc, name, labelAnchor[0], labelAnchor[1], {
-        fontSize: sizes.featureLabel,
-        colorRGB: FEATURE_LABEL_RGB,
-        align: labelAlign
+    plans.filter((p) => p.kind === "point").forEach((p) => drawPointPlan(doc, p));
+
+    // Labels last of all — no stroke can paint over a name this way.
+    //
+    // Two rounds, and the order matters. Every feature's PRIMARY label goes
+    // down first and unconditionally, so nothing that used to be labelled
+    // stops being labelled. The repeats then fill in along each road, but
+    // only where they don't land on a name already on the page — a poor
+    // man's version of the declutter OpenLayers does for the live map.
+    if (!settings.labels.feature) return;
+    const placed = [];
+    plans.forEach((p) => {
+      const box = drawOneLabel(doc, p.label, sizes);
+      if (box) placed.push(box);
+    });
+    plans.forEach((p) => {
+      (p.repeats || []).forEach((rep) => {
+        const box = labelBox(rep.at, rep.text, sizes.featureLabel, rep.align);
+        if (placed.some((b) => boxesOverlap(b, box))) return;
+        drawOneLabel(doc, rep, sizes);
+        placed.push(box);
       });
-    }
+    });
   }
 
   /** Draws everything that intersects `extent`, bottom-up in the same
@@ -2266,9 +2635,14 @@ export function initPrintTool({
       parcelsLayer?.getSource()?.getFeaturesInExtent(extent)
         .forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
     }
-    getFeaturesLayer?.()?.getSource()?.getFeaturesInExtent(extent)
+    // Planned first, painted second — the whole feature set has to be known
+    // before any of it is drawn, so the casing/knockout/fill rounds can span
+    // every feature. See drawFeaturePlans.
+    const featurePlans = (getFeaturesLayer?.()?.getSource()?.getFeaturesInExtent(extent) || [])
       .filter(featureTypeEnabled)
-      .forEach((f) => drawCustomFeatureVector(doc, f, project, sizes, frame));
+      .map((f) => planCustomFeature(f, project, sizes, frame))
+      .filter(Boolean);
+    drawFeaturePlans(doc, featurePlans, sizes);
   }
 
   /** Plain pixel-accurate crop — `rect` must already be in the same pixel

@@ -85,11 +85,17 @@
   display: none;
 }
 
+/* Holds either the single bare input (`field`) or the labelled multi-field
+   form (`fields`). Flex-wrap so fields marked `half` pair up on one line
+   (Estate + Block, Status + Ratoon) while the rest span full width. */
 .vsl-popup-field {
   padding: 10px 20px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .vsl-popup-field[hidden] {
-  display: none;
+  display: none !important;
 }
 
 .vsl-popup-input,
@@ -109,6 +115,41 @@
 .vsl-popup-input:focus,
 .vsl-popup-select:focus {
   border-color: var(--primary, #3f8f3f);
+}
+
+/* Multi-field form (showPopup's `fields` / promptFields) — labelled rows
+   instead of the single bare input the `field` option renders. Used by the
+   Select window's Modify action. */
+.vsl-popup-formrow {
+  display: block;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.vsl-popup-formrow--half {
+  flex: 1 1 calc(50% - 5px);
+}
+.vsl-popup-formrow__label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted, #6b7280);
+}
+/* A field that can't apply to the current selection (e.g. the name when
+   several plots are picked) — visibly inert rather than silently ignored. */
+.vsl-popup-formrow--disabled .vsl-popup-formrow__label {
+  opacity: 0.6;
+}
+.vsl-popup-input:disabled,
+.vsl-popup-select:disabled {
+  background: #f3f4f6;
+  color: var(--muted, #6b7280);
+  cursor: not-allowed;
+}
+.vsl-popup-textarea {
+  resize: vertical;
+  min-height: 58px;
+  line-height: 1.35;
 }
 
 /* Shown when a `required` button is clicked with the field still empty

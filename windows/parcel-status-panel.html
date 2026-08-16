@@ -30,7 +30,26 @@
             Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
           </div>
 
-          <div id="parcelStatusSelectionLabel" class="panel-empty-hint">Select on map</div>
+          <!-- Selection summary on the left, row actions on the right —
+               the same "ACTION" column shape the Survey window's Estates
+               tab uses, reusing .vsl-icon-action-btn so Modify/Delete look
+               identical everywhere. The whole column is hidden for anyone
+               who isn't Admin/Surveyor (see syncParcelStatusPermissions). -->
+          <div class="parcel-status-panel__row">
+            <div id="parcelStatusSelectionLabel" class="panel-empty-hint">Select on map</div>
+
+            <div id="parcelStatusActionCol" class="parcel-status-panel__actions" hidden>
+              <span class="parcel-status-panel__actions-title">ACTION</span>
+              <div class="parcel-status-panel__actions-btns">
+                <button type="button" id="parcelStatusModifyBtn" class="vsl-icon-action-btn" title="Modify" aria-label="Modify">
+                  <i class="fas fa-pen" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="parcelStatusDeleteBtn" class="vsl-icon-action-btn vsl-icon-action-btn--danger" title="Delete" aria-label="Delete">
+                  <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+          </div>
 
           <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
         </div>
@@ -45,16 +64,16 @@
         </div>
       </div>
 
-      <!-- Footer buttons now use the same .futuristic-icon-btn(--modal-pad)
+      <!-- Footer is the LOGGING actions now — Modify/Delete moved into the
+           body's ACTION column above. Same .futuristic-icon-btn(--modal-pad)
            family as every other .popWinActionBtns footer in the app
-           (search-panel, log-activity-modal, etc.) instead of the generic
-           .btn-primary/.btn-secondary form-input styling, which had no
-           dedicated .btn-primary base rule of its own and was falling back
-           to the plain <button> reset (different padding/margin/radius) —
-           that mismatch was the real cause of this window's padding/height
-           looking inconsistent with the rest of the app's windows. -->
+           (search-panel, log-activity-modal, etc.).
+
+           Hidden entirely on the Feature tab: a tree or a road has no
+           cultivation activity or agronomic alert to log against it, so
+           only Modify/Delete apply there. -->
       <div id="parcelStatusActionsRow" class="popWinActionBtns" hidden>
-        <button type="button" id="parcelStatusModifyBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad"><i class="fas fa-pen" aria-hidden="true"></i> Modify</button>
-        <button type="button" id="parcelStatusDeleteBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger"><i class="fas fa-trash-alt" aria-hidden="true"></i> Delete</button>
+        <button type="button" id="parcelStatusLogActivityBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad"><i class="fas fa-plus" aria-hidden="true"></i> Activity</button>
+        <button type="button" id="parcelStatusLogAlertBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Alert</button>
       </div>
     </div>

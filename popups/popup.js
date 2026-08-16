@@ -24,8 +24,16 @@ function escapeHtml(s) {
  * @param {string} [opts.title]
  * @param {string} [opts.message]
  * @param {{type:"text"|"select", value?:string, placeholder?:string, options?:{value:string,label:string}[]}} [opts.field]
- *   At most one field — every current use case (estate name, CRS picker,
- *   starting-ID prompt) only ever needs one.
+ *   A single unlabelled field (estate name, CRS picker, starting-ID prompt).
+ * @param {{key:string, label?:string, type?:"text"|"textarea"|"select", value?:string,
+ *          placeholder?:string, required?:boolean, half?:boolean,
+ *          disabled?:boolean,
+ *          options?:{value:string,label:string}[]}[]} [opts.fields]
+ *   Several labelled fields instead — used by the Select window's Modify
+ *   action, which edits a couple of properties at once. A `readField`
+ *   button then resolves with an OBJECT keyed by each field's `key`
+ *   (rather than a bare string), and `required` is enforced per field.
+ *   Ignored when `field` is given; the two are alternatives.
  * @param {{label:string, value?:*, variant?:"primary"|"danger"|"ghost", primary?:boolean, readField?:boolean, required?:boolean}[]} [opts.buttons]
  *   Defaults to a single "OK" button. `readField: true` resolves with the
  *   field's current value instead of `value`; `required: true` blocks the
@@ -40,6 +48,7 @@ export function showPopup({
   title = "",
   message = "",
   field = null,
+  fields = null,
   buttons = null
 } = {}) {
   return new Promise((resolve) => {
@@ -65,10 +74,65 @@ export function showPopup({
     messageEl.textContent = message;
     messageEl.hidden = !message;
 
+    const multi = !field && Array.isArray(fields) && fields.length > 0;
     fieldEl.innerHTML = "";
-    fieldEl.hidden = !field;
+    fieldEl.hidden = !field && !multi;
     let inputEl = null;
-    if (field) {
+    /** key -> element, for the multi-field form. */
+    const multiInputs = new Map();
+
+    if (multi) {
+      fields.forEach((f) => {
+        const row = document.createElement("label");
+        // `half: true` puts a field on the same line as its neighbour —
+        // the container is a flex-wrap row, so two consecutive halves
+        // share a line and anything full-width forces a new one.
+        row.className = "vsl-popup-formrow" + (f.half ? " vsl-popup-formrow--half" : "");
+        if (f.label) {
+          const lab = document.createElement("span");
+          lab.className = "vsl-popup-formrow__label";
+          lab.textContent = f.label;
+          row.appendChild(lab);
+        }
+        let el;
+        if (f.type === "select") {
+          el = document.createElement("select");
+          el.className = "vsl-popup-select";
+          (f.options || []).forEach((o) => {
+            const opt = document.createElement("option");
+            opt.value = o.value;
+            opt.textContent = o.label;
+            if (String(o.value) === String(f.value ?? "")) opt.selected = true;
+            el.appendChild(opt);
+          });
+        } else if (f.type === "textarea") {
+          el = document.createElement("textarea");
+          el.className = "vsl-popup-input vsl-popup-textarea";
+          el.rows = 3;
+          el.placeholder = f.placeholder || "";
+          el.value = f.value || "";
+        } else {
+          el = document.createElement("input");
+          el.type = "text";
+          el.className = "vsl-popup-input";
+          el.placeholder = f.placeholder || "";
+          el.value = f.value || "";
+        }
+        if (f.disabled) {
+          el.disabled = true;
+          row.classList.add("vsl-popup-formrow--disabled");
+        }
+        const clearInvalid = () =>
+          el.classList.remove("vsl-popup-input--invalid", "vsl-popup-select--invalid");
+        el.addEventListener("input", clearInvalid);
+        el.addEventListener("change", clearInvalid);
+        row.appendChild(el);
+        fieldEl.appendChild(row);
+        // Disabled fields still report their value, but never block submit
+        // on `required` — there's nothing the person could do about it.
+        multiInputs.set(f.key, { el, required: !!f.required && !f.disabled });
+      });
+    } else if (field) {
       if (field.type === "select") {
         inputEl = document.createElement("select");
         inputEl.className = "vsl-popup-select";
@@ -123,7 +187,25 @@ export function showPopup({
       btn.className = `vsl-popup-btn vsl-popup-btn--${b.variant || "ghost"}`;
       btn.textContent = b.label;
       btn.addEventListener("click", () => {
-        if (b.readField && inputEl) {
+        if (b.readField && multi) {
+          // Validate every required field before resolving, focusing the
+          // first offender rather than failing on all of them at once.
+          const out = {};
+          let firstBad = null;
+          multiInputs.forEach(({ el, required }, key) => {
+            const raw = el.tagName === "SELECT" ? el.value : el.value.trim();
+            if (required && !raw && !firstBad) firstBad = el;
+            out[key] = raw;
+          });
+          if (firstBad) {
+            firstBad.classList.add(
+              firstBad.tagName === "SELECT" ? "vsl-popup-select--invalid" : "vsl-popup-input--invalid"
+            );
+            firstBad.focus();
+            return;
+          }
+          finish(out);
+        } else if (b.readField && inputEl) {
           const raw = inputEl.tagName === "SELECT" ? inputEl.value : inputEl.value.trim();
           if (b.required && !raw) {
             inputEl.classList.add(inputEl.tagName === "SELECT" ? "vsl-popup-select--invalid" : "vsl-popup-input--invalid");
@@ -198,6 +280,28 @@ export function promptSelect({ title, message, options, value, confirmLabel = "O
     title,
     message,
     field: { type: "select", options, value },
+    buttons: [
+      { label: "Cancel", value: null, variant: "ghost" },
+      { label: confirmLabel, readField: true, variant: "primary", primary: true }
+    ]
+  });
+}
+
+/** Small labelled form in a popup — several fields edited at once, e.g.
+ *  the Select window's Modify action (a plot's name/estate/block).
+ *  Resolves an object keyed by each field's `key`, or null if cancelled.
+ *
+ *  @param {{key:string,label?:string,type?:"text"|"textarea"|"select",
+ *           value?:string,placeholder?:string,required?:boolean,
+ *           options?:{value:string,label:string}[]}[]} fields
+ */
+export function promptFields({ title, message, fields, icon, confirmLabel = "Save" }) {
+  return showPopup({
+    theme: "default",
+    icon,
+    title,
+    message,
+    fields,
     buttons: [
       { label: "Cancel", value: null, variant: "ghost" },
       { label: confirmLabel, readField: true, variant: "primary", primary: true }

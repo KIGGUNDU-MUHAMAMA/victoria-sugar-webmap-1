@@ -26,6 +26,50 @@
 import { promptText, confirmDanger } from "../popups/popup.js";
 import { featureTypeSwatchHtml } from "./feature-type-editor.js";
 
+// ── On-map line label tuning ────────────────────────────────────────────
+// These three are the knobs for how a road's name repeats along it. They
+// only apply to feature types set to "Along the line"; a "Horizontal" label
+// is still placed once, in the middle, because OpenLayers' repeat only works
+// for text that follows the geometry.
+
+/** Distance between one label and the next, in SCREEN pixels. Because it's
+ *  screen-based, the spacing looks the same at every zoom — zoom out and a
+ *  road simply gets fewer copies of its name. Smaller = more labels.
+ *  Roughly: 200 is dense, 320 is comfortable, 500 is sparse. */
+const LINE_LABEL_REPEAT_PX = 320;
+
+/** Skip any placement where the road bends by more than this many degrees,
+ *  so a name never wraps around a corner into an unreadable arc. Lower is
+ *  stricter (fewer, straighter labels); OpenLayers' own default is 45. */
+const LINE_LABEL_MAX_ANGLE_DEG = 40;
+
+/** When false, a label is only drawn where the road is actually long enough
+ *  to hold the whole name — the tidy, GIS-like behaviour. Set true to force
+ *  the name on regardless, which is what produced the text sprawling past
+ *  junctions. */
+const LINE_LABEL_ALLOW_OVERFLOW = false;
+
+// ── Paint order inside the features layer ───────────────────────────────
+// OpenLayers doesn't draw a layer feature-by-feature. It collects every
+// style returned for every feature, groups them by zIndex, and paints the
+// groups in ascending order. That's what lets a road's casing be drawn with
+// EVERY other road's casing, before any road's white core goes down.
+//
+// It matters because of how a double/triple line is made: a wide coloured
+// stroke with its middle knocked back out in white. Drawn one road at a
+// time, the second road's white core lands on top of the first road's
+// finished pixels and cuts a white slice straight through it at the
+// crossing. Grouped by role, the casings merge into one continuous layer and
+// the cores into another, so junctions join up the way they do in QGIS or on
+// Google Maps.
+const Z_HIGHLIGHT = 0; // search/selection halo, under everything it marks
+const Z_POLYGON = 10;
+const Z_LINE_CASING = 20;
+const Z_LINE_KNOCKOUT = 30;
+const Z_LINE_FILL = 40; // single lines and the centre line of a triple
+const Z_POINT = 50;
+const Z_LABEL = 60; // all text on top of all geometry
+
 const OL_TYPE_BY_ENTITY = { point: "Point", line: "LineString", polygon: "Polygon", block: "Polygon", plot: "Polygon" };
 // "block"/"plot" are direct drawEntityTypeSelect values — see
 // isSystemEntity()/currentFeatureType().
@@ -214,8 +258,40 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     style: (feature, resolution) => styleForFeature(feature, resolution),
     zIndex: 910
   });
+
+  // Labels live on their own layer over the SAME source, purely so they can
+  // be decluttered while the geometry can't.
+  //
+  // Decluttering means OpenLayers measures what each label would cover and
+  // silently drops any that would land on one already placed — without it,
+  // two roads crossing print their names in the same spot and a repeated
+  // road name collides with everything it passes. But OL declutters images
+  // as well as text, and it only gained per-style opt-outs (declutterMode)
+  // after 7.3, the version this app loads. Decluttering the single combined
+  // layer would therefore have started hiding point markers when they
+  // crowd — a borehole quietly vanishing off a survey map is much worse than
+  // an overlapping label. Two layers gets the labels decluttered and leaves
+  // every icon, stroke and fill untouched.
+  //
+  // Everything else keeps pointing at featuresLayer (snapping, the Select
+  // window's hit-testing, the print tool), which still carries the geometry.
+  const featureLabelsLayer = new ol.layer.Vector({
+    source: featuresSource,
+    style: (feature) => labelStyleForFeature(feature),
+    declutter: true,
+    zIndex: 911
+  });
+
+  /** Both feature layers read the same source and the same feature
+   *  properties, so anything that invalidates one invalidates the other. */
+  function redrawFeatureLayers() {
+    featuresLayer.changed();
+    featureLabelsLayer.changed();
+  }
   featuresLayer.set("displayInLayerSwitcher", false);
   map.addLayer(featuresLayer);
+  featureLabelsLayer.set("displayInLayerSwitcher", false);
+  map.addLayer(featureLabelsLayer);
 
   // Finished-but-not-yet-saved shapes this session (see pendingDrawn Map
   // below) — dashed outline + always-on name label so it's visually clear
@@ -273,7 +349,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       }
       svgIconCache.set(iconName, url);
       svgIconPending.delete(iconName);
-      featuresLayer.changed();
+      redrawFeatureLayers();
       pendingLayer.changed();
     })();
     return null;
@@ -289,7 +365,11 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         src: url,
         scale: (radius * 1.25) / ICON_PX,
         rotation: (rotationDeg * Math.PI) / 180
-      })
+      }),
+      // Same band as the chip it sits on — without the explicit zIndex it
+      // would default to 0 and end up painted underneath the polygons and
+      // lines.
+      zIndex: Z_POINT
     });
   }
 
@@ -364,13 +444,25 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     }
     if (along) {
       textOpts.placement = "line";
-      textOpts.overflow = true;
+      textOpts.overflow = LINE_LABEL_ALLOW_OVERFLOW;
+      // `repeat` is what turns one label into a road labelled all the way
+      // along, the way Google does it: OpenLayers walks the geometry itself
+      // and drops the name every LINE_LABEL_REPEAT_PX screen pixels, turning
+      // each copy to follow the road at that spot. We don't compute any of
+      // those positions or angles — OL does. It only works with
+      // placement:"line", which is why a "Horizontal" label still appears
+      // just once (see the module constants at the top).
+      textOpts.repeat = LINE_LABEL_REPEAT_PX;
+      // Radians, per OL's API — keeps a name off the sharp bends.
+      textOpts.maxAngle = (LINE_LABEL_MAX_ANGLE_DEG * Math.PI) / 180;
       // Lift it just clear of the stroke it's sitting on.
       textOpts.offsetY = -2;
     } else {
       textOpts.offsetY = offsetY;
     }
-    return new ol.style.Style({ text: new ol.style.Text(textOpts) });
+    // Above every stroke and fill on this layer, and left in the default
+    // declutter mode so a name is what gets dropped when things collide.
+    return new ol.style.Style({ text: new ol.style.Text(textOpts), zIndex: Z_LABEL });
   }
 
   // Feature ids the Search window's Feature tab is currently pointing at —
@@ -389,13 +481,18 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
           fill: new ol.style.Fill({ color: hexToRgba(HIGHLIGHT_COLOR, 0.35) }),
           stroke: new ol.style.Stroke({ color: HIGHLIGHT_COLOR, width: 3 })
         }),
-        zIndex: -1
+        zIndex: Z_HIGHLIGHT
       });
     }
     const weight = Math.max(1, Number(feature.get("_weight")) || 2);
     return new ol.style.Style({
-      stroke: new ol.style.Stroke({ color: hexToRgba(HIGHLIGHT_COLOR, 0.85), width: weight + 8 }),
-      zIndex: -1
+      stroke: new ol.style.Stroke({
+        color: hexToRgba(HIGHLIGHT_COLOR, 0.85),
+        width: weight + 8,
+        lineCap: "round",
+        lineJoin: "round"
+      }),
+      zIndex: Z_HIGHLIGHT
     });
   }
 
@@ -451,22 +548,44 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     // A sub-pixel gap would render as one blurred thick line, so never let
     // the bundle collapse below something visibly separated.
     const s = Math.max(1, Number(spacingPx) || 0);
-    const stroke = (strokeColor, width, strokeDash) =>
+    const stroke = (strokeColor, width, strokeDash, zIndex) =>
       new ol.style.Style({
-        stroke: new ol.style.Stroke({ color: strokeColor, width, lineDash: strokeDash })
+        stroke: new ol.style.Stroke({
+          color: strokeColor,
+          width,
+          lineDash: strokeDash,
+          // Round is already OpenLayers' default for both, but they're
+          // pinned here on purpose: the passes of one line MUST agree about
+          // where a corner is. A mitre join projects past the vertex by an
+          // amount that depends on the stroke width, and flips to a bevel
+          // once the bend is sharp enough — so the narrow knockout and the
+          // wide casing would disagree at exactly the sharp corners, and the
+          // knockout would bite a wedge out of the casing. A round join is
+          // just a disc of radius width/2 at the vertex, and discs of
+          // different radii around the same point stay concentric.
+          lineCap: "round",
+          lineJoin: "round"
+        }),
+        zIndex
       });
 
     if (lineStyle === "double") {
-      return [stroke(color, 2 * w + s, dash), stroke(LINE_GAP_COLOR, s)];
+      return [
+        stroke(color, 2 * w + s, dash, Z_LINE_CASING),
+        stroke(LINE_GAP_COLOR, s, undefined, Z_LINE_KNOCKOUT)
+      ];
     }
     if (lineStyle === "triple") {
       return [
-        stroke(color, 3 * w + 2 * s, dash),
-        stroke(LINE_GAP_COLOR, w + 2 * s),
-        stroke(color, w, lineDashFor("dotted", w))
+        stroke(color, 3 * w + 2 * s, dash, Z_LINE_CASING),
+        stroke(LINE_GAP_COLOR, w + 2 * s, undefined, Z_LINE_KNOCKOUT),
+        stroke(color, w, lineDashFor("dotted", w), Z_LINE_FILL)
       ];
     }
-    return [stroke(color, w, dash)];
+    // A single stroke is a "fill", not a casing: it has no knockout of its
+    // own, and being painted in the fill round means a neighbouring road's
+    // white core can't erase it where the two cross.
+    return [stroke(color, w, dash, Z_LINE_FILL)];
   }
 
   // `resolution` is handed in by OL (see featuresLayer's style option) and is
@@ -496,13 +615,12 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
             rotation: (rotationDeg * Math.PI) / 180,
             fill: new ol.style.Fill({ color }),
             stroke: new ol.style.Stroke({ color: "#fff", width: 1.5 })
-          })
+          }),
+          zIndex: Z_POINT
         })
       ];
       const iconStyle = iconImageStyle(feature.get("_icon"), radius, rotationDeg);
       if (iconStyle) styles.push(iconStyle);
-      const label = displayLabelStyle(feature, 0, radius + 6);
-      if (label) styles.push(label);
       return styles;
     }
     const weight = Math.max(1, Number(feature.get("_weight")) || (geomType?.includes("Line") ? 3 : 2));
@@ -513,13 +631,9 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       // "No line" draws nothing but still gets its label — useful for a
       // route or boundary that should only be annotated, not outlined.
       const spacingPx = metersToPixels(feature.get("_lineSpacingM"), resolution, feature);
-      const styles =
-        linetype === "none"
-          ? []
-          : lineStrokeStyles(color, weight, dash, feature.get("_lineStyle"), spacingPx);
-      const label = displayLabelStyle(feature, -10);
-      if (label) styles.push(label);
-      return styles;
+      return linetype === "none"
+        ? []
+        : lineStrokeStyles(color, weight, dash, feature.get("_lineStyle"), spacingPx);
     }
 
     const styles = [
@@ -527,13 +641,37 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         stroke:
           linetype === "none"
             ? undefined
-            : new ol.style.Stroke({ color, width: weight, lineDash: dash }),
-        fill: new ol.style.Fill({ color: hexToRgba(color, 0.18) })
+            : new ol.style.Stroke({
+                color,
+                width: weight,
+                lineDash: dash,
+                lineCap: "round",
+                lineJoin: "round"
+              }),
+        fill: new ol.style.Fill({ color: hexToRgba(color, 0.18) }),
+        // Fills sit under every line so a road crossing a wetland stays
+        // visible.
+        zIndex: Z_POLYGON
       })
     ];
-    const label = displayLabelStyle(feature, 0);
-    if (label) styles.push(label);
     return styles;
+  }
+
+  /** The label half of a feature's styling, rendered on featureLabelsLayer.
+   *  Split out from the geometry above so it can be decluttered on its own —
+   *  see that layer's comment. The per-kind offsets are what used to be
+   *  passed inline: a point's name sits to the right of its marker, a line's
+   *  just above the stroke, a polygon's in the middle. */
+  function labelStyleForFeature(feature) {
+    const geomType = feature.getGeometry()?.getType();
+    if (geomType === "Point" || geomType === "MultiPoint") {
+      const radius = Math.max(3, Number(feature.get("_iconSize")) || 10);
+      return displayLabelStyle(feature, 0, radius + 6);
+    }
+    if (geomType === "LineString" || geomType === "MultiLineString") {
+      return displayLabelStyle(feature, -10);
+    }
+    return displayLabelStyle(feature, 0);
   }
 
   // Same shapes/colors as styleForFeature above, but dashed (still-pending,
@@ -666,6 +804,8 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         olFeature.set("_typeId", row.feature_type_id ?? null);
         olFeature.set("_typeName", row.feature_type_name || "");
         olFeature.set("_linetype", row.linetype ?? null);
+        // Description — editable from the Select window's Modify popup.
+        olFeature.set("_notes", row.notes ?? null);
         olFeature.set("_lineStyle", row.line_style || "single");
         olFeature.set("_lineSpacingM", row.line_spacing_m ?? 3);
         olFeature.set("_labelDir", row.label_direction || "horizontal");
@@ -1290,6 +1430,11 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       populateFeatureSelect();
     },
     getFeaturesLayer: () => featuresLayer,
+    // The decluttered text-only companion to the layer above. Only the print
+    // tool needs it, to hide it along with every other vector layer while it
+    // captures the basemap raster — left visible, feature names would be
+    // baked into that image AND drawn again as PDF text on top.
+    getFeatureLabelsLayer: () => featureLabelsLayer,
     getFeaturesSource: () => featuresSource,
     refreshFeaturesLayer,
     // Used by the Search window's Feature tab and the Select window's
@@ -1300,7 +1445,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     setHighlightedFeatures: (ids) => {
       highlightedIds.clear();
       for (const id of ids || []) highlightedIds.add(String(id));
-      featuresLayer.changed();
+      redrawFeatureLayers();
     }
   };
 }

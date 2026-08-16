@@ -744,6 +744,38 @@ button:hover {
   margin-bottom: 0.65rem;
 }
 
+/* Body row: what's selected on the left, an ACTION column of icon buttons
+   on the right. The column is hidden outright for anyone who isn't Admin/
+   Surveyor (renderParcelStatusPreview), so this only ever lays out
+   controls the person is actually allowed to use. */
+.parcel-status-panel__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.parcel-status-panel__actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+.parcel-status-panel__actions[hidden] {
+  display: none !important;
+}
+.parcel-status-panel__actions-title {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.parcel-status-panel__actions-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .parcel-status-layer-row {
   display: flex;
   flex-direction: column;
@@ -2909,8 +2941,8 @@ select.search-panel__input {
   /* Shared "docks in the left/right map stack, becomes a bottom sheet on
      phones" hook — applied alongside .popWinMain on search-panel.html,
      measure-panel.html and parcel-status-panel.html's root elements. Not
-     used by edit-details-modal, log-activity-modal, log-alert-modal, or
-     feature-info-panel — those are all centered vsl-modal-overlay dialogs
+     used by log-activity-modal, log-alert-modal or feature-info-panel —
+     those are all centered vsl-modal-overlay dialogs
      instead, which already behave reasonably on phones without this. */
   .popWin-mobileDock {
     width: 100%;
@@ -4785,8 +4817,8 @@ select.search-panel__input {
   z-index: 2100;
 }
 /* Background/border/radius/shadow now come from .popWinMain (applied
-   alongside this class in edit-details-modal.html) — .vsl-modal-card only
-   controls this modal's sizing/entrance animation on top of that. */
+   alongside this class on each modal's card) — .vsl-modal-card only
+   controls sizing/entrance animation on top of that. */
 .vsl-modal-card {
   width: 90%;
   max-width: 440px;
@@ -4796,7 +4828,7 @@ select.search-panel__input {
   display: flex;
   flex-direction: column;
 }
-/* .popWinBody (applied alongside this on #editDetailsForm) owns the
+/* .popWinBody (applied alongside this on the modal's form) owns the
    padding/scroll now, so this only sets the field-stacking layout. */
 .vsl-modal-form {
   display: flex;
@@ -4882,8 +4914,8 @@ select.search-panel__input {
    POPUP WINDOW TEMPLATE
    -------------------------------------------------------------
    Shared shell for every popup/panel window (search-panel, measure-panel,
-   parcel-status-panel, edit-details-modal, feature-info-panel — and any
-   window built after them). See windows/pop-window-template.html for the
+   parcel-status-panel, feature-info-panel — and any window built after
+   them). See windows/pop-window-template.html for the
    reference markup this styles.
 
    Classes: .popWinMain (root — hidden by default, provides the card look),
@@ -5864,7 +5896,7 @@ select.search-panel__input {
    Log Activity / Log Alert modals — the .popWinTabs bar (normally
    tab buttons) instead holds a single select for activity name /
    alert severity. Shares .vsl-modal-overlay/.vsl-modal-card/
-   .popWinMain/.popWinBody with edit-details-modal.html.
+   .popWinMain/.popWinBody with the app's other modal windows.
    ============================================================= */
 .popWinTabs__select {
   width: 100%;

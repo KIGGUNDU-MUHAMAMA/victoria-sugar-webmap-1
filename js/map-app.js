@@ -14,7 +14,7 @@ import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
 import { initExportTools } from "./export-tools.js";
 import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
 import { initPrintTool } from "./print-tool.js";
-import { confirmDanger, promptText } from "../popups/popup.js";
+import { confirmDanger, promptFields } from "../popups/popup.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -3291,15 +3291,23 @@ function disarmParcelStatusPick() {
   parcelStatusState.pickArmed = false;
 }
 
+/** Only Admin/Surveyor may modify or delete land records, so the Select
+ *  window's whole ACTION column is theirs alone. */
+function canModifyLand() {
+  return currentProfile?.role === "ADMIN" || currentProfile?.role === "SURVEYOR";
+}
+
 function renderParcelStatusPreview() {
   const selectionLabel = document.getElementById("parcelStatusSelectionLabel");
   const actionsRow = document.getElementById("parcelStatusActionsRow");
+  const actionCol = document.getElementById("parcelStatusActionCol");
   const features = parcelStatusState.selectedFeatures;
-  
-  if (!features || features.length === 0) {
+  const isFeatureTab = parcelStatusState.selectedLayerType === "FEATURES";
+  const hasSelection = !!features?.length;
+
+  if (!hasSelection) {
     if (selectionLabel) selectionLabel.textContent = "Select on map";
-    if (actionsRow) actionsRow.hidden = true;
-  } else if (parcelStatusState.selectedLayerType === "FEATURES") {
+  } else if (isFeatureTab) {
     // Drawn features are individually named things rather than a numbered
     // grid, so name what's picked instead of just counting it.
     if (selectionLabel) {
@@ -3309,56 +3317,231 @@ function renderParcelStatusPreview() {
             (features[0].get("_typeName") ? ` · ${features[0].get("_typeName")}` : "")
           : `Selection: ${features.length} features`;
     }
-    if (actionsRow) actionsRow.hidden = false;
   } else {
     if (selectionLabel) selectionLabel.textContent = `Selection: ${features.length}`;
-    if (actionsRow) actionsRow.hidden = false;
   }
+
+  // Modify/Delete: any selection, but Admin/Surveyor only.
+  if (actionCol) actionCol.hidden = !hasSelection || !canModifyLand();
+
+  // Log Activity/Alert: plots and blocks only — a drawn feature has no
+  // cultivation activity or agronomic alert to log against it.
+  if (actionsRow) actionsRow.hidden = !hasSelection || isFeatureTab;
 }
 
-/** Rename a drawn feature — the Select window's Modify action when the
- *  Feature tab is active. The Edit Details modal it opens for plots/blocks
- *  is all cultivation status/harvest fields, none of which a tree or a road
- *  has; a feature's name is the one thing worth editing here (its shape is
- *  the Survey window's Edit tab). */
-async function renameSelectedFeature() {
+// ---------------------------------------------------------------------------
+// Select window > Modify — a small popup form (popups/popup.js promptFields)
+// rather than a full modal, holding just the handful of properties that are
+// actually re-assignable per record type:
+//
+//   Block   — name, estate
+//   Plot    — name, estate, block
+//   Feature — name, description
+//
+// Cultivation status/harvest live in the Edit Details modal; geometry lives
+// in the Survey window's Edit tab. This is only about identity/parentage.
+// ---------------------------------------------------------------------------
+
+/** id/name option lists for the parent dropdowns, fetched per open so a
+ *  block or estate added since page load is offered. */
+async function fetchEstateOptions() {
+  const { data } = await supabase
+    .from("vsl_estate").select("id, estate_name").order("estate_name", { ascending: true });
+  return (data || []).map((e) => ({ value: String(e.id), label: e.estate_name || `Estate ${e.id}` }));
+}
+
+async function fetchBlockOptions(estateId) {
+  let q = supabase.from("vsl_blocks").select("id, block_name, estate_id");
+  if (estateId) q = q.eq("estate_id", estateId);
+  const { data } = await q.order("block_name", { ascending: true });
+  return (data || []).map((b) => ({ value: String(b.id), label: b.block_name || `Block ${b.id}` }));
+}
+
+/** Ratoon cycle options for the Modify popup — 0 (plant crop) through 5. */
+const RATOON_OPTIONS = [0, 1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }));
+
+/** Cultivation status options, straight off the shared label map so this
+ *  can't drift from the map styling or the legend. */
+function cultivationStatusOptions() {
+  return Object.keys(CULTIVATION_STATUS_LABELS).map((k) => ({
+    value: k,
+    label: CULTIVATION_STATUS_LABELS[k]
+  }));
+}
+
+/** Value shared by every selected row, or "" when they differ — so a
+ *  multi-selection starts on the common value where there is one and on
+ *  blank where there isn't, instead of silently showing the first row's. */
+function sharedValue(rows, key) {
+  if (!rows.length) return "";
+  const first = rows[0]?.[key];
+  return rows.every((r) => r?.[key] === first) ? String(first ?? "") : "";
+}
+
+/**
+ * The Select window's Modify action.
+ *
+ * Works on several records at once. Only fields the user actually CHANGED
+ * are written — a blank "mixed" dropdown left alone therefore leaves each
+ * record's own value intact, rather than flattening them all to one. The
+ * name is per-record by definition, so it's disabled (and skipped) as soon
+ * as more than one row is selected.
+ */
+async function openModifySelectedPopup() {
   const features = parcelStatusState.selectedFeatures;
-  if (!features?.length) return;
-  if (features.length > 1) {
-    setParcelStatusFormError("Select a single feature to rename.");
-    return;
-  }
-  if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
-    setParcelStatusFormError("Only Admin or Surveyor can edit features.");
+  const lt = parcelStatusState.selectedLayerType;
+  if (!features?.length || !lt) return;
+
+  if (!canModifyLand()) {
+    setParcelStatusFormError("Only Admin or Surveyor can modify records.");
     return;
   }
   setParcelStatusFormError("");
 
-  const feature = features[0];
-  const current = String(feature.get("_name") ?? "");
-  const name = await promptText({
-    title: "Rename Feature",
-    message: `Name for this ${String(feature.get("_typeName") || "feature").toLowerCase()}`,
-    value: current,
-    required: true,
-    confirmLabel: "Save"
-  });
-  if (name === null || name.trim() === current) return;
+  const ids = features.map((f) => f.getId());
+  const many = ids.length > 1;
+  // Shown IN the disabled name box for a multi-selection. It's also what
+  // `initial.name` is set to below, so patchFrom sees no change and this
+  // placeholder can never be written to the records as an actual name.
+  const NAME_MULTI = "Multiple editing";
 
-  const { error } = await supabase
-    .from("vsl_feature")
-    .update({ name: name.trim() })
-    .eq("id", feature.getId());
-  if (error) {
-    setParcelStatusFormError(error.message);
-    return;
+  /** Applies only what changed, to every selected row. */
+  const patchFrom = (result, initial, map) => {
+    const patch = {};
+    Object.entries(map).forEach(([field, key]) => {
+      if (result[key] === undefined) return;
+      if (String(result[key]) === String(initial[key] ?? "")) return; // untouched
+      patch[field] = result[key] === "" ? null : result[key];
+    });
+    return patch;
+  };
+
+  try {
+    if (lt === "FEATURES") {
+      const initial = {
+        name: many ? NAME_MULTI : String(features[0].get("_name") ?? ""),
+        notes: many ? "" : String(features[0].get("_notes") ?? "")
+      };
+      const result = await promptFields({
+        title: many ? `Modify ${ids.length} Features` : "Modify Feature",
+        icon: "fa-pen",
+        fields: [
+          { key: "name", label: "Name", type: "text", value: initial.name,
+            required: !many, disabled: many },
+          { key: "notes", label: "Description", type: "textarea", value: initial.notes }
+        ]
+      });
+      if (!result) return;
+      const patch = patchFrom(result, initial, { name: "name", notes: "notes" });
+      if (many) delete patch.name; // never bulk-rename
+      if (!Object.keys(patch).length) return;
+      const { error } = await supabase.from("vsl_feature").update(patch).in("id", ids);
+      if (error) throw error;
+      features.forEach((f) => {
+        if (patch.name !== undefined) f.set("_name", patch.name);
+        if (patch.notes !== undefined) f.set("_notes", patch.notes);
+      });
+      window.dispatchEvent(new CustomEvent("vsl-features-changed"));
+      setStatus(statusEl, `Updated ${ids.length} feature(s).`);
+      renderParcelStatusPreview();
+      return;
+    }
+
+    const estateOptions = await fetchEstateOptions();
+
+    if (lt === "BLOCKS") {
+      const { data: rows } = await supabase
+        .from("vsl_blocks").select("id, block_name, estate_id").in("id", ids);
+      const list = rows || [];
+      const initial = {
+        block_name: many ? NAME_MULTI : String(list[0]?.block_name ?? ""),
+        estate_id: sharedValue(list, "estate_id")
+      };
+      const result = await promptFields({
+        title: many ? `Modify ${ids.length} Blocks` : "Modify Block",
+        icon: "fa-pen",
+        fields: [
+          { key: "block_name", label: "Block name", type: "text", value: initial.block_name,
+            required: !many, disabled: many },
+          { key: "estate_id", label: "Estate", type: "select", value: initial.estate_id,
+            options: [{ value: "", label: "— Estate —" }, ...estateOptions] }
+        ]
+      });
+      if (!result) return;
+      const patch = patchFrom(result, initial, { block_name: "block_name", estate_id: "estate_id" });
+      if (many) delete patch.block_name;
+      if (!Object.keys(patch).length) return;
+      const { error } = await supabase.from("vsl_blocks").update(patch).in("id", ids);
+      if (error) throw error;
+      setStatus(statusEl, `Updated ${ids.length} block(s).`);
+    } else {
+      const { data: rows } = await supabase
+        .from("vsl_parcels")
+        .select("id, parcel_name, block_id, cultivation_status, ratoon_number")
+        .in("id", ids);
+      const list = rows || [];
+
+      // A plot's estate is its block's estate — offered here so plots can
+      // be moved wholesale, with the block list filtered to match whichever
+      // estate they currently share (all blocks when they're mixed).
+      const blockIds = [...new Set(list.map((r) => r.block_id).filter(Boolean))];
+      const { data: blockRows } = blockIds.length
+        ? await supabase.from("vsl_blocks").select("id, estate_id").in("id", blockIds)
+        : { data: [] };
+      const sharedEstate = sharedValue(blockRows || [], "estate_id");
+      const blockOptions = await fetchBlockOptions(sharedEstate || null);
+
+      const initial = {
+        parcel_name: many ? NAME_MULTI : String(list[0]?.parcel_name ?? ""),
+        estate_id: sharedEstate,
+        block_id: sharedValue(list, "block_id"),
+        cultivation_status: sharedValue(list, "cultivation_status"),
+        ratoon_number: sharedValue(list, "ratoon_number")
+      };
+
+      const result = await promptFields({
+        title: many ? `Modify ${ids.length} Plots` : "Modify Plot",
+        icon: "fa-pen",
+        fields: [
+          { key: "parcel_name", label: "Plot name", type: "text", value: initial.parcel_name,
+            required: !many, disabled: many },
+          // Estate and Block share a line.
+          { key: "estate_id", label: "Estate", type: "select", half: true, value: initial.estate_id,
+            options: [{ value: "", label: "— Estate —" }, ...estateOptions] },
+          { key: "block_id", label: "Block", type: "select", half: true, value: initial.block_id,
+            options: [{ value: "", label: "— Block —" }, ...blockOptions] },
+          { key: "cultivation_status", label: "Status", type: "select", half: true,
+            value: initial.cultivation_status,
+            options: [{ value: "", label: "— Status —" }, ...cultivationStatusOptions()] },
+          { key: "ratoon_number", label: "Ratoon", type: "select", half: true,
+            value: initial.ratoon_number,
+            options: [{ value: "", label: "— Ratoon —" }, ...RATOON_OPTIONS] }
+        ]
+      });
+      if (!result) return;
+
+      const patch = patchFrom(result, initial, {
+        parcel_name: "parcel_name",
+        block_id: "block_id",
+        cultivation_status: "cultivation_status",
+        ratoon_number: "ratoon_number"
+      });
+      if (many) delete patch.parcel_name;
+      // estate_id isn't a column on vsl_parcels — it's implied by the block,
+      // so changing it only matters through the block picked alongside it.
+      if (patch.ratoon_number != null) patch.ratoon_number = Number(patch.ratoon_number);
+      if (!Object.keys(patch).length) return;
+
+      const { error } = await supabase.from("vsl_parcels").update(patch).in("id", ids);
+      if (error) throw error;
+      setStatus(statusEl, `Updated ${ids.length} plot(s).`);
+    }
+
+    clearParcelStatusSelection();
+    await loadLayersFromDb();
+  } catch (err) {
+    setParcelStatusFormError(err?.message || "Couldn't save the change.");
   }
-  // Re-read the layer so the on-map label (for types that show one) and the
-  // panel's own selection line both pick the new name up.
-  feature.set("_name", name.trim());
-  window.dispatchEvent(new CustomEvent("vsl-features-changed"));
-  renderParcelStatusPreview();
-  setStatus(statusEl, `Renamed to "${name.trim()}".`);
 }
 
 /** Deletes the selected drawn features (vsl_feature). Unlike a block, a
@@ -3400,185 +3583,6 @@ async function deleteSelectedFeatures() {
   clearParcelStatusSelection();
   await surveyDrawApi?.refreshFeaturesLayer?.();
   window.dispatchEvent(new CustomEvent("vsl-features-changed"));
-}
-
-function openEditDetailsModal() {
-  const modal = document.getElementById("editDetailsModal");
-  const form = document.getElementById("editDetailsForm");
-  const nameInput = document.getElementById("editDetailsNameInput");
-  const nameLabel = document.getElementById("editDetailsNameLabel");
-  const statusSelect = document.getElementById("editDetailsStatusSelect");
-  const tonnesInput = document.getElementById("editDetailsHarvestTonnes");
-  const dateInput = document.getElementById("editDetailsLastHarvest");
-  const notesInput = document.getElementById("editDetailsNotes");
-  const errorEl = document.getElementById("editDetailsError");
-  const titleEl = document.getElementById("editDetailsTitle");
-
-  if (!modal || !form) return;
-  if (errorEl) errorEl.hidden = true;
-
-  const features = parcelStatusState.selectedFeatures;
-  const lt = parcelStatusState.selectedLayerType;
-  if (!features || !features.length || !lt) return;
-
-  if (titleEl) {
-    const typeLabel = lt === "BLOCKS" ? "Block" : "Parcel";
-    titleEl.textContent = `Edit Details (${features.length} ${features.length === 1 ? typeLabel : typeLabel + "s"} selected)`;
-  }
-
-  if (nameLabel) {
-    nameLabel.textContent = lt === "BLOCKS" ? "Block Name" : "Parcel Name";
-  }
-
-  if (features.length === 1) {
-    const f = features[0];
-    if (nameInput) {
-      nameInput.value = String(f.get(lt === "BLOCKS" ? "block_name" : "parcel_name") ?? "");
-      nameInput.disabled = false;
-      nameInput.readOnly = false;
-    }
-    if (statusSelect) statusSelect.value = cultivationKeyFromFeature(f);
-    if (tonnesInput) {
-      const tonnes = f.get("harvest_tonnes");
-      tonnesInput.value = tonnes != null && tonnes !== "" ? String(tonnes) : "";
-    }
-    if (dateInput) {
-      const d = f.get("last_harvest_date");
-      dateInput.value = d ? String(d).slice(0, 10) : "";
-    }
-    if (notesInput) {
-      notesInput.value = String(f.get("cultivation_notes") ?? "");
-    }
-  } else {
-    // Bulk editing
-    if (nameInput) {
-      nameInput.value = "(Multiple selected)";
-      nameInput.disabled = true;
-      nameInput.readOnly = true;
-    }
-    if (statusSelect) statusSelect.value = "vacant";
-    if (tonnesInput) tonnesInput.value = "";
-    if (dateInput) dateInput.value = "";
-    if (notesInput) notesInput.value = "";
-  }
-
-  modal.hidden = false;
-}
-
-function closeEditDetailsModal() {
-  const modal = document.getElementById("editDetailsModal");
-  if (modal) modal.hidden = true;
-}
-
-async function saveEditDetailsForm(event) {
-  event.preventDefault();
-  const features = parcelStatusState.selectedFeatures;
-  const lt = parcelStatusState.selectedLayerType;
-  const modal = document.getElementById("editDetailsModal");
-  const errorEl = document.getElementById("editDetailsError");
-  const saveBtn = event.target.querySelector("button[type='submit']");
-
-  if (!features || !features.length || !lt) return;
-
-  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
-    if (errorEl) {
-      errorEl.textContent = "Sign in to save changes.";
-      errorEl.hidden = false;
-    }
-    return;
-  }
-  if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
-    if (errorEl) {
-      errorEl.textContent = "Only Admin or Surveyor can save status.";
-      errorEl.hidden = false;
-    }
-    return;
-  }
-
-  const nameInput = document.getElementById("editDetailsNameInput");
-  const statusSelect = document.getElementById("editDetailsStatusSelect");
-  const tonnesInput = document.getElementById("editDetailsHarvestTonnes");
-  const dateInput = document.getElementById("editDetailsLastHarvest");
-  const notesInput = document.getElementById("editDetailsNotes");
-
-  const status = statusSelect?.value || "vacant";
-  const tonnesRaw = tonnesInput?.value?.trim() ?? "";
-  const tonnes = tonnesRaw === "" ? null : parseNum(tonnesRaw);
-  if (tonnesRaw !== "" && (tonnes == null || tonnes < 0)) {
-    if (errorEl) {
-      errorEl.textContent = "Harvest tonnes must be a non-negative number or blank.";
-      errorEl.hidden = false;
-    }
-    return;
-  }
-  const lastHarvest = dateInput?.value?.trim() || null;
-  const notes = notesInput?.value?.trim() ?? "";
-  const newName = nameInput?.value?.trim() ?? "";
-
-  if (saveBtn) saveBtn.disabled = true;
-  if (errorEl) errorEl.hidden = true;
-  setStatus(statusEl, `Saving details for ${features.length} item(s)...`);
-
-  let errorCount = 0;
-  for (const f of features) {
-    const { data, error } = await supabase.rpc("vsl_set_cultivation_status", {
-      p_layer_type: lt,
-      p_feature_id: f.getId(),
-      p_status: status,
-      p_harvest_tonnes: tonnes,
-      p_last_harvest_date: lastHarvest,
-      p_notes: notes || null
-    });
-    if (error || !data || data.success !== true) {
-      errorCount++;
-    }
-  }
-
-  if (features.length === 1 && newName !== "") {
-    const f = features[0];
-    const oldName = f.get(lt === "BLOCKS" ? "block_name" : "parcel_name") ?? "";
-    if (newName !== oldName) {
-      const tableName = lt === "BLOCKS" ? "vsl_blocks" : "vsl_parcels";
-      const updatePayload = lt === "BLOCKS" ? { block_name: newName } : { parcel_name: newName };
-      const { error } = await supabase
-        .from(tableName)
-        .update(updatePayload)
-        .eq("id", f.getId());
-      if (error) {
-        console.error(`[Victoria] Error updating name: ${error.message}`);
-        errorCount++;
-      }
-    }
-  }
-
-  if (saveBtn) saveBtn.disabled = false;
-
-  if (errorCount > 0) {
-    if (errorEl) {
-      errorEl.textContent = `Failed to save changes on ${errorCount} item(s).`;
-      errorEl.hidden = false;
-    }
-    setStatus(statusEl, `Failed to save changes.`, true);
-  } else {
-    if (modal) modal.hidden = true;
-    setStatus(statusEl, `Changes saved for ${features.length} item(s).`);
-    
-    const savedIds = features.map(f => String(f.getId()));
-    const savedLt = lt;
-    await loadLayersFromDb();
-    blocksLayer.changed();
-    parcelsLayer.changed();
-    
-    const src = savedLt === "PARCELS" ? parcelsSource : blocksSource;
-    const newFeatures = src.getFeatures().filter(x => savedIds.includes(String(x.getId())));
-    if (newFeatures.length > 0) {
-      parcelStatusState.selectedFeatures = newFeatures;
-      parcelStatusState.selectedLayerType = savedLt;
-      renderParcelStatusPreview();
-    } else {
-      clearParcelStatusSelection();
-    }
-  }
 }
 
 function clearParcelStatusSelection() {
@@ -3753,12 +3757,6 @@ function setupParcelStatusPanel() {
   const tabBlocks = document.getElementById("modifyTabBlocks");
   const tabFeature = document.getElementById("modifyTabFeature");
 
-  // Cancel button was removed from the footer (see edit-details-modal.html) —
-  // the header X close button is the only close/cancel affordance now, to
-  // avoid two controls doing the exact same thing.
-  const modalCloseBtn = document.getElementById("editDetailsCloseBtn");
-  const modalForm = document.getElementById("editDetailsForm");
-
   deleteBtn?.addEventListener("click", async () => {
     const features = parcelStatusState.selectedFeatures;
     const lt = parcelStatusState.selectedLayerType;
@@ -3871,16 +3869,34 @@ function setupParcelStatusPanel() {
     el?.addEventListener("click", () => activateModifyTab(mode));
   });
 
-  modifyBtn?.addEventListener("click", () => {
-    if (parcelStatusState.selectedLayerType === "FEATURES") {
-      renameSelectedFeature();
+  // Modify now opens the small per-type popup form for every tab, rather
+  // than the cultivation-status Edit Details modal for plots/blocks and a
+  // one-field rename for features. Edit Details is still reachable from
+  // the Feature Info panel, which is where status/harvest belong.
+  modifyBtn?.addEventListener("click", () => openModifySelectedPopup());
+
+  // Footer logging actions — the same modals the map's own selection
+  // toolbar and the Feature Info footer open, targeting whatever this
+  // panel currently has selected. Both are hidden on the Feature tab (see
+  // renderParcelStatusPreview), so no layer-type guard is needed here.
+  const logActivityBtn = document.getElementById("parcelStatusLogActivityBtn");
+  const logAlertBtn = document.getElementById("parcelStatusLogAlertBtn");
+
+  const openLogFor = (which) => {
+    const features = parcelStatusState.selectedFeatures;
+    const lt = parcelStatusState.selectedLayerType;
+    if (!features?.length || !lt || lt === "FEATURES") return;
+    if (features.length > 1) {
+      setParcelStatusFormError("Select a single plot or block to log against.");
       return;
     }
-    openEditDetailsModal();
-  });
+    setParcelStatusFormError("");
+    if (which === "alert") openLogAlertModal(features[0], lt);
+    else openLogActivityModal(features[0], lt);
+  };
 
-  modalCloseBtn?.addEventListener("click", () => closeEditDetailsModal());
-  modalForm?.addEventListener("submit", (e) => saveEditDetailsForm(e));
+  logActivityBtn?.addEventListener("click", () => openLogFor("activity"));
+  logAlertBtn?.addEventListener("click", () => openLogFor("alert"));
 }
 
 // ---------------------------------------------------------------------------
@@ -6583,6 +6599,9 @@ async function initMap() {
     // than captured here — it's rebuilt whenever feature types change.
     estatesLayer,
     getFeaturesLayer: () => surveyDrawHandles?.getFeaturesLayer?.() || null,
+    // Feature names sit on their own decluttered layer; the print tool needs
+    // it only so it can hide it while capturing the basemap raster.
+    getFeatureLabelsLayer: () => surveyDrawHandles?.getFeatureLabelsLayer?.() || null,
     CULTIVATION_PALETTE,
     CULTIVATION_STATUS_LABELS,
     ALERT_SEVERITY_FILL,

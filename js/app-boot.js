@@ -41,7 +41,10 @@ const WINDOW_FRAGMENTS = [
   { parent: "mapRightStack", url: "./windows/legend-panel.html" },
 
   // Body-level overlays/modals (position: fixed, so sibling order doesn't matter).
-  { parent: "body", url: "./windows/edit-details-modal.html" },
+  // NOTE: windows/edit-details-modal.html is gone — the cultivation-status/
+  // harvest form it held was only reachable from the Select window's Modify
+  // button, which now opens the small name/estate/block popup instead
+  // (openModifySelectedPopup in map-app.js).
   { parent: "body", url: "./windows/log-activity-modal.html" },
   { parent: "body", url: "./windows/log-alert-modal.html" },
   // Moved out of mapLeftStack (see comment in the file) so the phone-width

@@ -5219,10 +5219,10 @@ select.search-panel__input {
 .map-floating-snap-fab {
   position: fixed;
   top: 90px;
-  right: 30px;
+  right: 10px;
   z-index: 1100;
   width: 120px;
-  height: 100px;
+  height: 90px;
   border-radius: 14px;
   background: #ffffff;
   border: 1.5px solid rgba(63, 143, 63, 0.25);
@@ -5231,8 +5231,8 @@ select.search-panel__input {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 8px 10px;
 }
 
 /* Same [hidden] fix as .floating-btn elsewhere — this rule's own

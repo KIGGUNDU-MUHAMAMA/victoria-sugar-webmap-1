@@ -23,7 +23,7 @@
  * the generic vsl_feature table against its vsl_feature_type row.
  */
 
-import { promptText, confirmDanger } from "../popups/popup.js";
+import { promptFields, confirmDanger } from "../popups/popup.js";
 import { featureTypeSwatchHtml } from "./feature-type-editor.js";
 
 // ── On-map line label tuning ────────────────────────────────────────────
@@ -111,7 +111,7 @@ const SYSTEM_FEATURE_TYPES = {
   }
 };
 
-export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLayersFromDb, refreshEstateBoundaries, attachSnap, detachSnap }) {
+export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLayersFromDb, refreshEstateBoundaries, attachSnap, detachSnap, onFeaturesRefreshed }) {
   const entitySelect = document.getElementById("drawEntityTypeSelect");
   const entityIconPreview = document.getElementById("drawEntityIconPreview");
   const featureRow = document.getElementById("drawFeatureRow");
@@ -121,6 +121,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   const plotBlockFields = document.getElementById("drawPlotBlockFields");
   const automaticRow = document.getElementById("drawAutomaticRow");
   const automaticCb = document.getElementById("drawAutomaticCb");
+  const estateRow = document.getElementById("drawEstateRow");
   const estateSelect = document.getElementById("drawEstateSelect");
   const blockFilterRow = document.getElementById("drawBlockFilterRow");
   const blockSelect = document.getElementById("drawBlockSelect");
@@ -307,7 +308,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   map.addLayer(pendingLayer);
 
   // Point icons come from the SVG files in /icons — the same files the
-  // Feature Type editor's picker lists (icons/icons.json) and the print tool
+  // Feature Type editor's picker lists (icons/fa-icons/icons.json) and the print tool
   // rasterises. Rendering them from the files rather than from the Font
   // Awesome webfont means any icon added to that folder works on the map
   // too; a font-glyph render would only ever cover icons that happen to
@@ -318,7 +319,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   // chip — same fill injection print-tool.js's loadIconPng does) and cached
   // as a data URI. A miss returns null and schedules a repaint for when the
   // fetch lands, so the first frame just shows the bare chip.
-  const ICON_DIR = "./icons";
+  const ICON_DIR = "./icons/fa-icons";
   const ICON_PX = 64; // data-URI render box; scale is derived from this
   const svgIconCache = new Map(); // "fa-tree" -> data URI | null
   const svgIconPending = new Set();
@@ -434,7 +435,11 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     const textOpts = {
       text: along ? lines.join("  ·  ") : lines.join("\n"),
       font: "600 11px sans-serif",
-      fill: new ol.style.Fill({ color: "#1d2a1d" }),
+      // The name is drawn in the feature type's own colour, so a label reads
+      // as belonging to the road or marker it names rather than floating
+      // over the map as generic text. The white halo underneath is what
+      // keeps a pale colour legible over imagery.
+      fill: new ol.style.Fill({ color: feature.get("_color") || "#3f8f3f" }),
       stroke: new ol.style.Stroke({ color: "#fff", width: 3 }),
       textAlign: offsetX ? "left" : "center"
     };
@@ -489,7 +494,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       stroke: new ol.style.Stroke({
         color: hexToRgba(HIGHLIGHT_COLOR, 0.85),
         width: weight + 8,
-        lineCap: "round",
+        lineCap: "butt",
         lineJoin: "round"
       }),
       zIndex: Z_HIGHLIGHT
@@ -563,7 +568,13 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
           // knockout would bite a wedge out of the casing. A round join is
           // just a disc of radius width/2 at the vertex, and discs of
           // different radii around the same point stay concentric.
-          lineCap: "round",
+          // Round JOINS (corners between segments) are the fix; round CAPS
+          // (the two ends of the whole line) are not wanted — a round cap
+          // adds a semicircle of radius width/2 past the last vertex, so the
+          // drawn road would overshoot the surveyed geometry by half its own
+          // width. OpenLayers strokes a LineString as one path, so the join
+          // setting alone handles every corner.
+          lineCap: "butt",
           lineJoin: "round"
         }),
         zIndex
@@ -588,9 +599,21 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     return [stroke(color, w, dash, Z_LINE_FILL)];
   }
 
+  // Feature TYPE ids the user has switched off from the FEATURES group in
+  // the layer switcher (see setFeatureTypeVisible/getUsedFeatureTypes below,
+  // wired up from map-app.js's proxy toggle layers — there's no real
+  // per-type ol.layer to hide, since every custom feature shares one source,
+  // so hiding is done here in the shared style functions instead).
+  const hiddenFeatureTypeIds = new Set();
+  function isFeatureTypeHidden(feature) {
+    const id = feature.get("_typeId");
+    return id != null && hiddenFeatureTypeIds.has(id);
+  }
+
   // `resolution` is handed in by OL (see featuresLayer's style option) and is
   // needed to turn line_spacing_m's ground metres into pixels.
   function styleForFeature(feature, resolution) {
+    if (isFeatureTypeHidden(feature)) return undefined;
     const halo = highlightedIds.has(String(feature.getId())) ? highlightStyle(feature) : null;
     if (halo) {
       // Prepend the halo so it paints under the feature's own style — the
@@ -645,7 +668,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
                 color,
                 width: weight,
                 lineDash: dash,
-                lineCap: "round",
+                lineCap: "butt",
                 lineJoin: "round"
               }),
         fill: new ol.style.Fill({ color: hexToRgba(color, 0.18) }),
@@ -663,6 +686,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
    *  passed inline: a point's name sits to the right of its marker, a line's
    *  just above the stroke, a polygon's in the middle. */
   function labelStyleForFeature(feature) {
+    if (isFeatureTypeHidden(feature)) return undefined;
     const geomType = feature.getGeometry()?.getType();
     if (geomType === "Point" || geomType === "MultiPoint") {
       const radius = Math.max(3, Number(feature.get("_iconSize")) || 10);
@@ -679,13 +703,15 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   // name if any, else the feature type's own name as a placeholder — so
   // it's obvious *what's* queued regardless of that type's normal
   // display_params setting.
-  function nameLabelStyle(text, offsetY, offsetX) {
+  function nameLabelStyle(text, offsetY, offsetX, color) {
     if (!text) return null;
     return new ol.style.Style({
       text: new ol.style.Text({
         text,
         font: "600 11px sans-serif",
-        fill: new ol.style.Fill({ color: "#1d2a1d" }),
+        // Matches the saved-feature labels: the type's own colour, so a
+        // queued shape previews exactly how it will look once saved.
+        fill: new ol.style.Fill({ color: color || "#3f8f3f" }),
         stroke: new ol.style.Stroke({ color: "#fff", width: 3 }),
         offsetY,
         // Same right-of-the-marker placement as a saved point's label.
@@ -712,7 +738,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       ];
       const iconStyle = iconImageStyle(feature.get("_icon"), radius, 0);
       if (iconStyle) styles.push(iconStyle);
-      const nl = nameLabelStyle(label, 0, radius + 6);
+      const nl = nameLabelStyle(label, 0, radius + 6, color);
       if (nl) styles.push(nl);
       return styles;
     }
@@ -721,7 +747,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       const styles = [
         new ol.style.Style({ stroke: new ol.style.Stroke({ color, width: weight, lineDash: [8, 5] }) })
       ];
-      const nl = nameLabelStyle(label, -10);
+      const nl = nameLabelStyle(label, -10, 0, color);
       if (nl) styles.push(nl);
       return styles;
     }
@@ -731,7 +757,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         fill: new ol.style.Fill({ color: hexToRgba(color, 0.12) })
       })
     ];
-    const nl = nameLabelStyle(label, 0);
+    const nl = nameLabelStyle(label, 0, 0, color);
     if (nl) styles.push(nl);
     return styles;
   }
@@ -805,7 +831,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         olFeature.set("_typeName", row.feature_type_name || "");
         olFeature.set("_linetype", row.linetype ?? null);
         // Description — editable from the Select window's Modify popup.
-        olFeature.set("_notes", row.notes ?? null);
+        olFeature.set("_description", row.description ?? null);
         olFeature.set("_lineStyle", row.line_style || "single");
         olFeature.set("_lineSpacingM", row.line_spacing_m ?? 3);
         olFeature.set("_labelDir", row.label_direction || "horizontal");
@@ -821,6 +847,12 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     } catch (e) {
       console.error("[Victoria Survey] Error loading features layer:", e);
     }
+    // The set of used types (or their names/colors/icons) may have changed —
+    // lets map-app.js rebuild the FEATURES group in the layer switcher from
+    // fresh data, synchronously after this source update rather than racing
+    // it via the vsl-features-changed event both this function and that
+    // rebuild are ultimately triggered by.
+    onFeaturesRefreshed?.();
   }
 
   window.addEventListener("vsl-features-changed", refreshFeaturesLayer);
@@ -915,10 +947,22 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   function updatePlotBlockVisibility() {
     const show = isPlotBlockSelected();
     if (plotBlockFields) plotBlockFields.hidden = !show;
+    // Manage Features edits vsl_feature_type — Block/Plot aren't in that
+    // table at all (they're the two "system" entities, picked directly via
+    // drawEntityTypeSelect), so the button has nothing to manage while
+    // either is selected.
+    if (manageBtn) manageBtn.hidden = show;
     if (!show) return;
     const ft = currentFeatureType();
     const isPlot = ft?.code === "plot";
-    if (blockFilterRow) blockFilterRow.hidden = !isPlot;
+    // Under "Automatically Choose Block" both filters are resolved from the
+    // drawn geometry, so they're hidden outright rather than left on screen
+    // as disabled "— Auto … —" placeholders the person can't act on.
+    // applyDrawAutoState() below still populates/blanks them so the state is
+    // correct the moment auto is switched back off.
+    const autoPlot = isPlot && !!automaticCb?.checked;
+    if (blockFilterRow) blockFilterRow.hidden = !isPlot || autoPlot;
+    if (estateRow) estateRow.hidden = autoPlot;
     // "Automatically Choose Block" is Plot-only — a Block has no geometry
     // to resolve an Estate *from*, so it always needs one picked manually.
     // Not force-unchecked when hidden for Block — applyDrawAutoState()/
@@ -956,7 +1000,9 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     }
   }
   automaticCb?.addEventListener("change", () => {
-    applyDrawAutoState();
+    // updatePlotBlockVisibility() calls applyDrawAutoState() itself, and also
+    // shows/hides the Estate + Block rows which now depend on this checkbox.
+    updatePlotBlockVisibility();
     updateStartButtonState();
     rearmIfActive();
   });
@@ -1171,25 +1217,53 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       }
     }
 
-    const name = await promptText({
-      title: "Name",
-      message: `Enter a name for this ${ft.name.toLowerCase()} (Required)`,
-      placeholder: `${ft.name} name`,
-      required: true,
-      confirmLabel: "Add"
-    });
-    if (name === null) {
+    // Plot/Block vs. everything else split:
+    //
+    // A Plot or Block IS its name — it's the key people search, label and
+    // report on, and there's no sane fallback for an unnamed one — so it
+    // asks for a name only, and requires it.
+    //
+    // For ordinary features both fields stay optional: a surveyor walking a
+    // boundary shouldn't be forced to invent a name for every tree before
+    // the next shape can be placed. An unnamed feature simply falls back to
+    // its type's name on the map (see the "_name" fallback in
+    // refreshFeaturesLayer).
+    const systemEntity = !!ft.is_system && (ft.code === "plot" || ft.code === "block");
+    const details = systemEntity
+      ? await promptFields({
+          title: `${ft.name} Name`,
+          message: `Enter a name for this ${ft.name.toLowerCase()}`,
+          icon: "fa-circle-info",
+          confirmLabel: "Add",
+          fields: [
+            { key: "name", label: "Name", type: "text", placeholder: `${ft.name} name`, required: true }
+          ]
+        })
+      : await promptFields({
+          title: "Enter Details",
+          message: `Optional — ${ft.name.toLowerCase()}`,
+          icon: "fa-circle-info",
+          confirmLabel: "Add",
+          fields: [
+            { key: "name", label: "Name", type: "text", placeholder: `${ft.name} name`, required: false },
+            { key: "description", label: "Description", type: "textarea", placeholder: "Anything worth noting", required: false }
+          ]
+        });
+    if (details === null) {
       pendingSource.removeFeature(olFeature);
       feedback("Shape discarded.", false);
       return;
     }
 
-    const trimmedName = name.trim();
+    const trimmedName = String(details.name ?? "").trim();
+    const trimmedDescription = String(details.description ?? "").trim();
     olFeature.set("_pendingLabel", trimmedName || ft.name);
     pendingSource.changed();
 
     const tmpId = `tmp-${++tmpIdCounter}`;
-    pendingDrawn.set(tmpId, { tmpId, ft, olFeature, name: trimmedName, estateId, blockId });
+    pendingDrawn.set(tmpId, {
+      tmpId, ft, olFeature, name: trimmedName, description: trimmedDescription, estateId, blockId
+    });
     updateFooterState();
     feedback(`${pendingDrawn.size} shape${pendingDrawn.size === 1 ? "" : "s"} queued. Keep drawing or click Save.`, false);
   }
@@ -1272,7 +1346,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       const gj = new ol.format.GeoJSON();
 
       for (const entry of entries) {
-        const { ft, olFeature, name, estateId, blockId } = entry;
+        const { ft, olFeature, name, description, estateId, blockId } = entry;
         const geoJsonGeom = gj.writeGeometryObject(olFeature.getGeometry(), {
           featureProjection: "EPSG:3857",
           dataProjection: "EPSG:4326"
@@ -1304,11 +1378,12 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
               await supabase.from("vsl_parcels").update({ parcel_name: name }).eq("id", newId);
             }
           } else {
-            // vsl_create_feature already takes the name directly.
+            // vsl_create_feature takes the name and description directly.
             const { error } = await supabase.rpc("vsl_create_feature", {
               p_feature_type_id: ft.id,
               p_geojson: geoJsonGeom,
               p_name: name || null,
+              p_description: description || null,
               p_user_id: userId
             });
             if (error) throw error;
@@ -1437,6 +1512,35 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     getFeatureLabelsLayer: () => featureLabelsLayer,
     getFeaturesSource: () => featuresSource,
     refreshFeaturesLayer,
+    // FEATURES group in the layer switcher (map-app.js) — one row per type
+    // actually used on the map, each a lightweight proxy layer whose
+    // visibility toggle calls setFeatureTypeVisible below rather than
+    // controlling any real rendering of its own (every custom feature
+    // shares featuresLayer/featuresSource, so there's no separate per-type
+    // layer to hide). Same "types actually drawn" scan print-tool.js's own
+    // usedFeatureTypes() does, kept in survey-draw.js since it already owns
+    // featuresSource.
+    getUsedFeatureTypes: () => {
+      const byId = new Map();
+      featuresSource.forEachFeature((f) => {
+        const id = f.get("_typeId");
+        if (id == null || byId.has(id)) return;
+        byId.set(id, {
+          id,
+          name: f.get("_typeName") || "Feature",
+          color: f.get("_color") || "#3f8f3f",
+          icon: f.get("_icon") || "",
+          kind: (f.getGeometry()?.getType() || "").toLowerCase()
+        });
+      });
+      return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+    },
+    setFeatureTypeVisible: (typeId, visible) => {
+      if (typeId == null) return;
+      if (visible) hiddenFeatureTypeIds.delete(typeId);
+      else hiddenFeatureTypeIds.add(typeId);
+      redrawFeatureLayers();
+    },
     // Used by the Search window's Feature tab and the Select window's
     // Feature tab (both in map-app.js) — pass the ids to halo, or nothing/an
     // empty list to clear. One highlight set, deliberately: searching for a

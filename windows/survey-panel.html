@@ -52,6 +52,15 @@
               <option value="">Layer…</option>
               <option value="BLOCKS">BLOCKS</option>
               <option value="PARCELS">PLOTS</option>
+              <!-- Legal land-title boundary — same CSV/KML/DXF import
+                   pipeline as Blocks (id/eastings/northings/description
+                   columns -> one polygon per id), but never linked to an
+                   Estate (see updateLayerFields()/doPreview() in
+                   survey-import.js, both of which already skip the
+                   Estate/Block fields and their validation for any layer
+                   type that isn't BLOCKS/PARCELS, so this needed no extra
+                   hiding logic — just this option). -->
+              <option value="TITLES">LAND TITLES</option>
             </select>
           </div>
 
@@ -180,14 +189,12 @@
 
         <!-- ── DRAW TAB ── -->
         <div class="uam-tab" id="uamTabDraw" data-uam-panel="draw" hidden>
-          <!-- Kept in the DOM (just visually hidden) — map-app.js's
-               readSnapOptions() reads these three IDs for snap-to-existing-
-               geometry behaviour shared with the Measure tool. -->
-          <div class="u-hidden">
-            <input type="checkbox" id="snapBlocksCb" checked>
-            <input type="checkbox" id="snapParcelsCb" checked>
-            <input type="checkbox" id="snapSurveyCb" checked>
-          </div>
+          <!-- The snapBlocksCb/snapParcelsCb/snapSurveyCb checkboxes used to
+               sit here as an invisible `.u-hidden` block — readable by
+               map-app.js's readSnapOptions() but adjustable by nobody. They
+               now live in windows/snap-panel.html (the magnet button in
+               #mapRightBtnStack), same IDs, so readSnapOptions() is
+               unchanged and they're finally reachable. -->
 
           <!-- Block/Plot are picked directly here now — no more "choose
                Polygon, then find Block/Plot in the Feature list below".

@@ -1,0 +1,54 @@
+    <!-- Snap options — opened from the magnet button in #mapRightBtnStack,
+         docking top-right in .map-right-stack the same way the Legend does.
+
+         These three checkboxes are the ONLY copy of them in the app. They
+         used to live invisibly inside the Survey window's Draw tab (a
+         `.u-hidden` block), which meant the snapping behaviour every
+         drawing/measuring tool depends on could never actually be changed
+         by anyone. js/map-app.js readSnapOptions() still reads them by
+         these exact IDs, so nothing downstream had to change — they just
+         became visible and reachable.
+
+         The master "Snap to existing geometry" switch above them is a
+         convenience: unchecking it disables snapping wholesale without
+         losing which individual layers were ticked, so turning it back on
+         restores the previous choice (see readSnapOptions/syncSnapPanel in
+         js/map-app.js). -->
+    <div id="snapPanel" class="snap-panel popWinMain popWin-mobileDock" hidden>
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-magnet" aria-hidden="true"></i></span>
+          <h2 class="popWinTitle">Snap</h2>
+        </div>
+        <button type="button" class="popWinCloseBtn" id="snapCloseBtn" aria-label="Close snap options">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div class="popWinBody">
+        <label class="snap-panel__master">
+          <input type="checkbox" id="snapMasterCb" checked>
+          <span>Snap to existing geometry</span>
+        </label>
+
+        <p class="snap-panel__hint">
+          While drawing or measuring, the cursor jumps to nearby vertices and
+          edges on the layers ticked below.
+        </p>
+
+        <div class="snap-panel__group" id="snapPanelGroup">
+          <label class="snap-panel__row">
+            <input type="checkbox" id="snapBlocksCb" checked>
+            <span>Blocks</span>
+          </label>
+          <label class="snap-panel__row">
+            <input type="checkbox" id="snapParcelsCb" checked>
+            <span>Plots</span>
+          </label>
+          <label class="snap-panel__row">
+            <input type="checkbox" id="snapSurveyCb" checked>
+            <span>Survey preview</span>
+          </label>
+        </div>
+      </div>
+    </div>

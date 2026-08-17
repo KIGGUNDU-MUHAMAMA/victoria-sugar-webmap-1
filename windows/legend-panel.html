@@ -1,11 +1,15 @@
     <!-- Map legend — opened from the Legend button below the Layers control
-         (#mapRightBtnStack). Cultivation-status rows are built in JS from
-         CULTIVATION_PALETTE/CULTIVATION_STATUS_LABELS in js/map-app.js
-         (single source of truth, so colours here can never drift from what
-         the map actually draws — see buildLegendList). Future map-element
-         rows (roads, houses, trenches, trees, powerlines, etc.) can be
-         added as additional .legend-panel__section blocks below the
-         cultivation-status one. -->
+         (#mapRightBtnStack). Every row is built in JS by buildLegendList()
+         in js/map-app.js, from the same CULTIVATION_PALETTE /
+         CULTIVATION_STATUS_LABELS / ALERT_SEVERITY_* constants the map
+         styles itself with, so nothing here can drift from what's actually
+         drawn.
+
+         Four groups, matching the printed legend exactly (see
+         buildLegendGroups in js/print-tool.js): Land properties, Plot
+         status, Alerts, Features. The one deliberate difference is scope —
+         the PDF lists only the feature types inside the print area, while
+         this panel lists every type present anywhere on the map. -->
     <div id="legendPanel" class="legend-panel popWinMain popWin-mobileDock" hidden>
       <header class="popWinHead">
         <div class="popWinHead__inner">
@@ -18,9 +22,6 @@
       </header>
 
       <div class="popWinBody">
-        <div class="legend-panel__section">
-          <h3 class="legend-panel__heading">Cultivation status</h3>
-          <ul id="legendStatusList" class="legend-panel__list"></ul>
-        </div>
+        <div id="legendGroups"></div>
       </div>
     </div>

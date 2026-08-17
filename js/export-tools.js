@@ -263,6 +263,24 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
     }
   }
 
+  // Whether click/box selection is currently armed. Drives both the map
+  // interactions and the Select button's own on/off look, so the person can
+  // tell at a glance that clicking the map right now means "select for
+  // export" rather than "open this plot".
+  let selecting = false;
+
+  /** Paints the Select button to match `selecting`. The green
+   *  .uam-btn--selecting treatment is the same "this tool is live" signal
+   *  #toolsTopBtn's .uam-open gives while the Survey window is open. */
+  function syncSelectBtn() {
+    if (!exportSelectBtn) return;
+    exportSelectBtn.classList.toggle("uam-btn--selecting", selecting);
+    exportSelectBtn.setAttribute("aria-pressed", selecting ? "true" : "false");
+    exportSelectBtn.innerHTML = selecting
+      ? '<i class="fas fa-hand-pointer"></i> Selecting — click to stop'
+      : '<i class="fas fa-hand-pointer"></i> Select';
+  }
+
   // ── Select interaction management ─────────────────────────────────────────
   function removeSelectInteraction() {
     if (selectInteraction && map) {
@@ -275,6 +293,18 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
     }
   }
 
+  /** Tears selection mode down without touching what's already selected —
+   *  used when the Survey window closes or the Export tab is navigated away
+   *  from, so a half-made selection isn't silently still listening to map
+   *  clicks from behind a closed window. */
+  function stopSelection({ silent = false } = {}) {
+    if (!selecting) return;
+    selecting = false;
+    removeSelectInteraction();
+    syncSelectBtn();
+    if (!silent) showStatus("Selection mode off.");
+  }
+
   function startSelection() {
     removeSelectInteraction();
     selectedFeatures.clear();
@@ -285,6 +315,8 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
       showStatus("No plot/block layers available.", true);
       return;
     }
+    selecting = true;
+    syncSelectBtn();
 
     selectInteraction = new ol.interaction.Select({
       condition: ol.events.condition.click,
@@ -322,14 +354,26 @@ export function initExportTools({ map, parcelsLayer, blocksLayer, setStatus, sta
     showStatus("Click features to select, or hold Ctrl and drag a box to select many. Then press Export.");
   }
 
-  exportSelectBtn?.addEventListener("click", startSelection);
+  // Now a toggle: a second click leaves selection mode instead of silently
+  // restarting it (which used to clear the selection with no visible cause).
+  exportSelectBtn?.addEventListener("click", () => {
+    if (selecting) stopSelection();
+    else startSelection();
+  });
 
   exportCancelBtn?.addEventListener("click", () => {
-    removeSelectInteraction();
+    stopSelection({ silent: true });
     selectedFeatures.clear();
     updateSelCount();
     showStatus("Selection cancelled.");
   });
+
+  // Loosely-coupled hook, same pattern as window.closeSearchPanel /
+  // window.vslConfirmSurveyClose — js/unified-menu.js calls this when the
+  // Survey window closes or the Export tab is navigated away from.
+  window.vslStopExportSelection = () => stopSelection({ silent: true });
+
+  syncSelectBtn();
 
   // ── Export action ─────────────────────────────────────────────────────────
   exportDoBtn?.addEventListener("click", async () => {

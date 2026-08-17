@@ -45,7 +45,7 @@ export function initPrintTool({
   map, setStatus, statusEl, closeOtherPanels,
   // Layer refs + styling data — every one of these is redrawn as real PDF
   // vectors rather than rasterized. See drawMapVectors below.
-  blocksLayer, parcelsLayer, estatesLayer, getFeaturesLayer, getFeatureLabelsLayer,
+  blocksLayer, parcelsLayer, estatesLayer, titlesLayer, getFeaturesLayer, getFeatureLabelsLayer,
   CULTIVATION_PALETTE, CULTIVATION_STATUS_LABELS, ALERT_SEVERITY_FILL,
   ALERT_SEVERITY_COLORS, getFeatureInteriorPoint, surveyFeatureAreaAcresText
 }) {
@@ -88,7 +88,9 @@ export function initPrintTool({
     iconSize: ICON_SIZE_DEFAULT,
     labels: {
       estate: true, block: true, plot: true, area: true,
-      ratoon: true, feature: true, distance: false, alerts: true
+      ratoon: true, feature: true, distance: false, alerts: true,
+      // Land Title name + area — its own toggle, mirroring the plot area one.
+      titleDetails: true
     },
     // Layers
     layers: { estate: true, block: true, plot: true, titleBoundary: true },
@@ -102,7 +104,7 @@ export function initPrintTool({
     // Map details
     details: {
       title: true, legend: true, northArrow: true, qr: true,
-      summary: true, date: true, source: true, scale: true, printedBy: false
+      counts: true, comments: true, date: true, source: true, scale: true, printedBy: false
     }
   };
 
@@ -158,7 +160,10 @@ export function initPrintTool({
 
   /** Portrait: a legend bar across the bottom with a square north-arrow
    *  cell at its right end. */
-  const BOTTOM_BAR_PT = 62;
+  /** Portrait bottom-bar height. Sized so the legend's rows just fill it —
+   *  it also sets how big the stacked QR/north-arrow squares come out,
+   *  since those split the bar's height between them. */
+  const BOTTOM_BAR_PT = 120;
   const BOTTOM_ARROW_W_PT = 62;
 
   /** QR cell caption height. In landscape the QR is deliberately the same
@@ -177,7 +182,20 @@ export function initPrintTool({
   /** Selection summary cell — a fixed block in landscape (it holds four
    *  label/value rows), a fixed width in the portrait bottom bar. */
   const SUMMARY_BOX_PT = 60;
-  const SUMMARY_BAR_W_PT = 130;
+  /** Comments box width in the portrait bar — kept narrow so the legend
+   *  gets the width instead; it's reserved blank space, not content. */
+  const SUMMARY_BAR_W_PT = 80;
+
+  /** Width reserved for the right-aligned count column on a legend row. */
+  const COUNT_COL_PT = 22;
+
+  /** Gutter between legend columns — the vertical separator rule is drawn
+   *  down its middle, so this is the space around that line too. */
+  const LEGEND_COL_GAP_PT = 14;
+
+  /** Legend columns in the portrait bottom bar. The bar is wide and short,
+   *  so rows flow down each column and wrap into the next. */
+  const PORTRAIT_LEGEND_COLUMNS = 3;
 
   /** A4 in points, as jsPDF reports it. */
   const A4_LONG_PT = 841.89;
@@ -257,17 +275,35 @@ export function initPrintTool({
       layout.mapAreaH = pageH - m - stampH - mapTop - barH - barGap;
       layout.barH = barH;
       layout.barY = mapTop + layout.mapAreaH + barGap;
-      layout.barArrowW = showNorthArrow ? BOTTOM_ARROW_W_PT : 0;
-      layout.qrSize = showQr ? barH : 0;
+      // The QR and north arrow STACK into one narrow right-hand column —
+      // QR on top, arrow beneath — rather than sitting side by side. Two
+      // squares stacked are far narrower than two side by side, and that
+      // reclaimed width goes to the legend, which is the cell that
+      // actually needs it. The stack's width is whatever makes each half
+      // square, so the column ends up exactly bar-height tall.
+      const stackBoth = showQr && showNorthArrow;
+      const stackSquare = stackBoth ? (barH - SIDE_CELL_GAP_PT) / 2 : barH;
+      layout.stackSquare = stackSquare;
+      layout.stackW = (showQr || showNorthArrow) ? stackSquare : 0;
+      layout.qrSize = showQr ? stackSquare : 0;
+      layout.barArrowW = showNorthArrow ? stackSquare : 0;
       layout.summaryW = showSummary ? SUMMARY_BAR_W_PT : 0;
-      // One gap between each pair of cells that are both present.
-      const cells = [showLegend, showSummary, showQr, showNorthArrow].filter(Boolean).length;
+
+      // One gap between each pair of cells present — legend | comments |
+      // stack (the stack counts once, however many squares are in it).
+      const cells = [showLegend, showSummary, !!layout.stackW].filter(Boolean).length;
       const gaps = PAGE_GAP_PT * Math.max(0, cells - 1);
-      layout.barLegendW = layout.mapAreaW - layout.barArrowW - layout.qrSize - layout.summaryW - gaps;
+      layout.barLegendW = layout.mapAreaW - layout.stackW - layout.summaryW - gaps;
+
       let x = m + (showLegend ? layout.barLegendW + PAGE_GAP_PT : 0);
       layout.summaryX = x;
       if (showSummary) x += layout.summaryW + PAGE_GAP_PT;
+      layout.stackX = x;
       layout.qrX = x;
+      layout.qrY = layout.barY;
+      layout.arrowX = x;
+      // Arrow sits under the QR when both are on, else takes the column.
+      layout.arrowY = showQr ? layout.barY + stackSquare + SIDE_CELL_GAP_PT : layout.barY;
     }
     return layout;
   }
@@ -279,7 +315,7 @@ export function initPrintTool({
       legend: settings.details.legend,
       northArrow: settings.details.northArrow,
       qr: settings.details.qr,
-      summary: settings.details.summary,
+      summary: settings.details.comments,
       stamp: settings.details.date || settings.details.source || settings.details.printedBy
     });
     return l.mapAreaW / l.mapAreaH;
@@ -556,6 +592,7 @@ export function initPrintTool({
         { kind: "check", group: "labels", key: "block", label: "Block names" },
         { kind: "check", group: "labels", key: "plot", label: "Plot names" },
         { kind: "check", group: "labels", key: "area", label: "Plot area" },
+        { kind: "check", group: "labels", key: "titleDetails", label: "Title Details" },
         { kind: "check", group: "labels", key: "ratoon", label: "Ratoon numbers" },
         { kind: "check", group: "labels", key: "feature", label: "Feature labels" },
         { kind: "check", group: "labels", key: "alerts", label: "Alerts" },
@@ -568,7 +605,7 @@ export function initPrintTool({
         { kind: "check", group: "layers", key: "estate", label: "Estates" },
         { kind: "check", group: "layers", key: "block", label: "Blocks" },
         { kind: "check", group: "layers", key: "plot", label: "Plots" },
-        { kind: "check", group: "layers", key: "titleBoundary", label: "Title boundaries", disabled: true },
+        { kind: "check", group: "layers", key: "titleBoundary", label: "Land Titles" },
         { kind: "check", key: "hatching", label: "Status colour fills" },
       ]
     },
@@ -592,7 +629,8 @@ export function initPrintTool({
         { kind: "check", group: "details", key: "title", label: "Title", reflow: true },
         { kind: "check", group: "details", key: "legend", label: "Legend", reflow: true },
         { kind: "check", group: "details", key: "northArrow", label: "North arrow", reflow: true },
-        { kind: "check", group: "details", key: "summary", label: "Selection summary", reflow: true },
+        { kind: "check", group: "details", key: "counts", label: "Show counts in legend" },
+        { kind: "check", group: "details", key: "comments", label: "Comments box", reflow: true },
         { kind: "check", group: "details", key: "qr", label: "Location QR", reflow: true },
         { kind: "check", group: "details", key: "date", label: "Date", reflow: true },
         { kind: "check", group: "details", key: "source", label: "Source", reflow: true },
@@ -814,9 +852,13 @@ export function initPrintTool({
   // nothing to position interactively and nothing to show on screen — the
   // Setup checkboxes just decide whether that column gets drawn.
   //
-  // Still sourced from the real Legend panel (the window.vslBuildLegendList
-  // hook -> #legendStatusList, see buildLegendList in map-app.js) so the
-  // printed legend can never drift from the app's own.
+  // The printed legend is built here rather than scraped from the Legend
+  // panel's DOM, but from the SAME constants that panel uses
+  // (CULTIVATION_PALETTE / CULTIVATION_STATUS_LABELS / ALERT_SEVERITY_*,
+  // passed into initPrintTool), so the two can't drift. buildLegendList in
+  // js/map-app.js is the on-screen equivalent, group for group — the only
+  // difference being that it lists every feature type on the map, while
+  // this lists only those inside the selected print area.
   // ---------------------------------------------------------------------
   // ---------------------------------------------------------------------
   // Feature icons in the PDF.
@@ -824,7 +866,7 @@ export function initPrintTool({
   // jsPDF has only its own core fonts, so a Font Awesome character can't
   // be written as text — it would come out as a missing-glyph box. The
   // icons are therefore shipped as SVG files in /icons, named exactly like
-  // vsl_feature_type.icon ("fa-tree" -> icons/fa-tree.svg), pulled from
+  // vsl_feature_type.icon ("fa-tree" -> icons/fa-icons/fa-tree.svg), pulled from
   // the Font Awesome Free 6.4.0 package (same version webmap.html loads).
   //
   // Files rather than the webfont because a font-based render depends on
@@ -834,7 +876,7 @@ export function initPrintTool({
   // cached by icon+colour; preloadFeatureIcons() warms that cache before
   // the (synchronous) PDF drawing needs it.
   // ---------------------------------------------------------------------
-  const ICON_DIR = "./icons";
+  const ICON_DIR = "./icons/fa-icons";
   const ICON_RASTER_PX = 96; // rasterised large, scaled down in the PDF
 
   const faIconCache = new Map();   // "fa-tree|46,125,50" -> PNG data URL
@@ -998,31 +1040,49 @@ export function initPrintTool({
    */
   function buildLegendGroups(extent) {
     const groups = [];
+    // Every row can carry a `count` — how many of that thing fall inside
+    // the printed area. Rendered as a right-aligned column when "Show
+    // counts in legend" is on, which is what replaced the old separate
+    // Summary box.
+    const estateFeatures = estatesLayer?.getSource()?.getFeaturesInExtent(extent) || [];
+    const blockFeatures = blocksLayer?.getSource()?.getFeaturesInExtent(extent) || [];
+    const plotFeatures = parcelsLayer?.getSource()?.getFeaturesInExtent(extent) || [];
+    const titleFeatures = titlesLayer?.getSource()?.getFeaturesInExtent(extent) || [];
 
     // 1. Land properties — how each land layer is drawn.
     const land = [];
     if (settings.layers.estate) {
-      land.push({ label: "Estate", sym: { kind: "poly", fill: null, stroke: ESTATE_STROKE_RGB, dash: true } });
+      land.push({ label: "Estate", count: estateFeatures.length,
+        sym: { kind: "poly", fill: null, stroke: ESTATE_STROKE_RGB, dash: true } });
     }
     if (settings.layers.block) {
-      land.push({ label: "Block", sym: { kind: "poly", fill: null, stroke: BLOCK_STROKE_RGB } });
+      land.push({ label: "Block", count: blockFeatures.length,
+        sym: { kind: "poly", fill: null, stroke: BLOCK_STROKE_RGB } });
     }
     if (settings.layers.plot) {
-      land.push({ label: "Plot", sym: { kind: "poly", fill: null, stroke: PARCEL_STROKE_RGB } });
+      land.push({ label: "Plot", count: plotFeatures.length,
+        sym: { kind: "poly", fill: null, stroke: PARCEL_STROKE_RGB } });
     }
     if (settings.layers.titleBoundary) {
-      land.push({ label: "Title boundary", sym: { kind: "poly", fill: null, stroke: TITLE_BOUNDARY_RGB, dash: true } });
+      land.push({ label: "Land Title", count: titleFeatures.length,
+        sym: { kind: "poly", fill: null, stroke: TITLE_BOUNDARY_RGB, dash: true } });
     }
     if (land.length) groups.push({ title: "LAND PROPERTIES", items: land });
 
     // 2. Plot status — only meaningful when the fills are actually drawn.
     if (settings.layers.plot && settings.hatching && CULTIVATION_PALETTE) {
+      const statusCounts = {};
+      plotFeatures.forEach((f) => {
+        const k = f.get("cultivation_status") || "vacant";
+        statusCounts[k] = (statusCounts[k] || 0) + 1;
+      });
       const status = Object.keys(CULTIVATION_PALETTE).map((key) => {
         const parsed = parseRgba(CULTIVATION_PALETTE[key].fill);
         // Vacant is a fully transparent fill — show it as a hollow box.
         const fill = parsed.a === 0 ? null : parsed.rgb;
         return {
           label: CULTIVATION_STATUS_LABELS?.[key] || key,
+          count: statusCounts[key] || 0,
           sym: { kind: "poly", fill, stroke: parseRgba(CULTIVATION_PALETTE[key].stroke).rgb }
         };
       });
@@ -1031,10 +1091,16 @@ export function initPrintTool({
 
     // 3. Alerts — the three severities, same colours as the map.
     if (settings.labels.alerts && ALERT_SEVERITY_COLORS) {
+      const alertCounts = {};
+      plotFeatures.forEach((f) => {
+        const sev = f.get("_alert_severity");
+        if (sev) alertCounts[sev] = (alertCounts[sev] || 0) + (Number(f.get("_alert_count")) || 1);
+      });
       const alerts = ["critical", "warning", "information"]
         .filter((k) => ALERT_SEVERITY_COLORS[k])
         .map((k) => ({
           label: k.charAt(0).toUpperCase() + k.slice(1),
+          count: alertCounts[k] || 0,
           sym: {
             kind: "poly",
             fill: parseRgba(ALERT_SEVERITY_FILL?.[k] || ALERT_SEVERITY_COLORS[k]).rgb,
@@ -1053,12 +1119,13 @@ export function initPrintTool({
         if (!featureTypeEnabled(f)) return;
         const id = f.get("_typeId");
         const key = id == null ? f.get("_typeName") || "?" : id;
-        if (byId.has(key)) return;
+        if (byId.has(key)) { byId.get(key).count += 1; return; }
         const kind = (f.getGeometry()?.getType() || "").toLowerCase();
         const rgb = parseRgba(f.get("_color") || "#3f8f3f").rgb;
         const dash = dashPatternFor(f.get("_linetype"), 1.2);
         byId.set(key, {
           label: f.get("_typeName") || "Feature",
+          count: 1,
           sym: kind.includes("point")
             // Its real icon, in the type's own colour.
             ? { kind: "point", fill: rgb, icon: f.get("_icon") || "" }
@@ -1471,7 +1538,7 @@ export function initPrintTool({
       // Every layer that gets redrawn as PDF vectors is hidden for the
       // capture, so the raster underneath carries only the imagery.
       const vectorLayers = [
-        estatesLayer, blocksLayer, parcelsLayer,
+        estatesLayer, blocksLayer, parcelsLayer, titlesLayer,
         getFeaturesLayer?.(),
         // Feature names live on their own decluttered layer (see
         // featureLabelsLayer in js/survey-draw.js) and are redrawn as PDF
@@ -1803,8 +1870,13 @@ export function initPrintTool({
   const PARCEL_STROKE_RGB = [46, 125, 50]; // #2e7d32
   const EDGE_DISTANCE_RGB = [25, 118, 210]; // #1976d2
   const ESTATE_STROKE_RGB = [215, 98, 19]; // #D76213 — matches estatesLayer
-  const TITLE_BOUNDARY_RGB = [123, 31, 162]; // #7b1fa2 — placeholder until the layer exists
-  const FEATURE_LABEL_RGB = [29, 42, 29]; // #1d2a1d — matches displayLabelStyle
+  const TITLE_BOUNDARY_RGB = [123, 31, 162]; // #7b1fa2 — matches titlesLayer
+  // Fallback only. A feature's name prints in that feature type's OWN
+  // colour (see the `colorRGB` carried on every label in planCustomFeature),
+  // matching the live map — so a label reads as belonging to the road or
+  // marker it names. This neutral is used only if a plan somehow arrives
+  // without one.
+  const FEATURE_LABEL_RGB = [29, 42, 29]; // #1d2a1d
 
   // ---------------------------------------------------------------------
   // TUNABLE — BASE label/stroke sizes, in PDF points.
@@ -1843,6 +1915,8 @@ export function initPrintTool({
   const BASE_BLOCK_STROKE_PT = 2;    // block outline
   const BASE_ESTATE_STROKE_PT = 3;   // estate boundary (dashed)
   const BASE_ESTATE_DASH_PT = 6;     // estate dash length
+  const BASE_TITLE_STROKE_PT = 2;    // land title boundary (dashed)
+  const BASE_TITLE_DASH_PT = 5;      // land title dash length
   const BASE_FEATURE_STROKE_PT = 2;  // custom feature line / polygon outline
   const BASE_FEATURE_POINT_PT = 20;   // point feature dot radius (icon fallback)
   const BASE_FEATURE_ICON_PT = 50;   // point feature ICON box (width = height)
@@ -1852,6 +1926,7 @@ export function initPrintTool({
   const BASE_PARCEL_LABEL_PT = 20;  // plot name / area / ratoon / Alerts(n)
   const BASE_EDGE_DISTANCE_PT = 12; // "123.4m" edge labels (off by default)
   const BASE_ESTATE_LABEL_PT = 60;  // estate name
+  const BASE_TITLE_LABEL_PT = 20;   // land title name / area — same size as a plot's
   const BASE_FEATURE_LABEL_PT = 25; // custom feature name
 
   //---------- REPEATED ROAD LABELS (tuning) ----------------------------\\
@@ -1944,6 +2019,9 @@ export function initPrintTool({
       estateStroke: BASE_ESTATE_STROKE_PT / d,
       estateDash: BASE_ESTATE_DASH_PT / d,
       estateLabel: (BASE_ESTATE_LABEL_PT * mf) / d,
+      titleStroke: BASE_TITLE_STROKE_PT / d,
+      titleDash: BASE_TITLE_DASH_PT / d,
+      titleLabel: (BASE_TITLE_LABEL_PT * mf) / d,
       featureStroke: BASE_FEATURE_STROKE_PT / d,
       featurePoint: (BASE_FEATURE_POINT_PT * imf) / d,
       featureIcon: (BASE_FEATURE_ICON_PT * imf) / d,
@@ -2189,6 +2267,44 @@ export function initPrintTool({
     });
   }
 
+  /** Land Title boundary — dashed purple outline (no fill), name and area
+   *  centred inside the polygon (same anchor as drawParcelVector's label),
+   *  matching titlesLayer's own on-screen style exactly. */
+  function drawTitleVector(doc, feature, project, sizes, frame) {
+    const geometry = feature.getGeometry();
+    if (!geometry) return;
+    // Outline only — no fill pass, matching titlesLayer's on-screen style
+    // (a title tint would muddy the Block/Plot status colours beneath it).
+    // Dashes are drawn segment-by-segment because drawClosedPath has no
+    // dash-capable stroke option — same split drawEstateVector uses.
+    doc.setDrawColor(TITLE_BOUNDARY_RGB[0], TITLE_BOUNDARY_RGB[1], TITLE_BOUNDARY_RGB[2]);
+    doc.setLineWidth(sizes.titleStroke);
+    if (doc.setLineDash) doc.setLineDash([sizes.titleDash, sizes.titleDash * 1.2], 0);
+    forEachOuterRing(geometry, (ring) => {
+      const clipped = clipPolygonToRect(ring.map(project), frame);
+      if (clipped.length < 3) return;
+      for (let i = 0; i < clipped.length; i++) {
+        const a = clipped[i];
+        const b = clipped[(i + 1) % clipped.length];
+        doc.line(a[0], a[1], b[0], b[1]);
+      }
+    });
+    if (doc.setLineDash) doc.setLineDash([], 0);
+
+    if (!settings.labels.titleDetails) return;
+    const ip = getFeatureInteriorPoint?.(geometry);
+    if (!ip) return;
+    const anchor = project(ip.getCoordinates());
+    if (!pointInRect(anchor, frame)) return; // label anchored off-page
+    const name = String(feature.get("title_name") ?? "").trim();
+    const expArea = feature.get("expected_area_acres");
+    const areaText = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
+    const text = name && areaText ? `${name}\n${areaText}` : (name || areaText);
+    if (text) {
+      drawHaloText(doc, text, anchor[0], anchor[1], { fontSize: sizes.titleLabel, colorRGB: TITLE_BOUNDARY_RGB });
+    }
+  }
+
   /** Saved custom features (trees, boreholes, roads, walls, …) — polygons
    *  get a translucent fill + outline, lines a stroke, and points get
    *  their real Font Awesome icon from /icons (see preloadFeatureIcons),
@@ -2353,7 +2469,7 @@ export function initPrintTool({
         kind: "point",
         colorRGB,
         marks,
-        label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: null } : null
+        label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: null, colorRGB } : null
       };
     } else if (type === "LineString" || type === "MultiLineString") {
       const linetype = feature.get("_linetype") || "solid";
@@ -2370,11 +2486,23 @@ export function initPrintTool({
               feature.get("_lineStyle"), spacingPt
             );
 
-      // Every clipped segment of this feature, resolved once and reused by
-      // each pass — a double/triple line is the same geometry painted two
-      // or three times at different widths, so re-projecting per pass would
-      // be pure waste (and risks the passes disagreeing).
-      const segments = [];
+      // Clipped geometry, resolved once and reused by every pass — a
+      // double/triple line is the same shape painted two or three times at
+      // different widths, so re-projecting per pass would be pure waste (and
+      // risks the passes disagreeing).
+      //
+      // Kept as CONTIGUOUS RUNS of points, not loose segments. Each run is
+      // stroked as a single jsPDF path, which is the only way the PDF gets
+      // real line joins at corners — jsPDF's doc.line() emits every segment
+      // as its own two-point path, so a corner would be two unconnected
+      // strokes butted together. (Round caps used to paper over that, at the
+      // cost of a semicircle sticking out past both ends of every road.) A
+      // run breaks wherever clipping drops a piece or the line leaves and
+      // re-enters the page.
+      const paths = [];
+      let currentPath = null;
+      const SAME_PT = 0.01;
+      const isSamePoint = (a, b) => Math.abs(a[0] - b[0]) < SAME_PT && Math.abs(a[1] - b[1]) < SAME_PT;
       // The label rides the LONGEST visible segment rather than the first
       // one. The first segment of a road is often a short stub off a
       // junction — anchoring there gave the label an arbitrary tilt and
@@ -2385,10 +2513,19 @@ export function initPrintTool({
       let bestLen = -1;
       lines.forEach((line) => {
         const pts = line.map(project);
+        currentPath = null;
         for (let i = 0; i < pts.length - 1; i++) {
           const seg = clipSegmentToRect(pts[i], pts[i + 1], frame);
-          if (!seg) continue;
-          segments.push(seg);
+          if (!seg) {
+            currentPath = null; // gap — the next piece starts a fresh run
+            continue;
+          }
+          if (currentPath && isSamePoint(currentPath[currentPath.length - 1], seg[0])) {
+            currentPath.push(seg[1]);
+          } else {
+            currentPath = [seg[0], seg[1]];
+            paths.push(currentPath);
+          }
           const segLen = Math.hypot(seg[1][0] - seg[0][0], seg[1][1] - seg[0][1]);
           if (segLen > bestLen) {
             bestLen = segLen;
@@ -2428,17 +2565,18 @@ export function initPrintTool({
               text: name,
               at: liftLabelOffLine(anchor.at, angle, sizes.featureLabel),
               align: "center",
-              angle
+              angle,
+              colorRGB
             });
           });
       }
 
-      if (!segments.length) return null;
+      if (!paths.length) return null;
       return {
         kind: "line",
-        segments,
+        paths,
         passes,
-        label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: labelAngle } : null,
+        label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: labelAngle, colorRGB } : null,
         repeats
       };
     }
@@ -2467,7 +2605,7 @@ export function initPrintTool({
       strokeColor: polyLinetype === "none" ? null : colorRGB,
       strokeWidth: polyWeightPt,
       dash: polyLinetype === "none" ? null : dashPatternFor(polyLinetype, polyWeightPt),
-      label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: labelAngle } : null
+      label: name && labelAnchor ? { text: name, at: labelAnchor, align: labelAlign, angle: labelAngle, colorRGB } : null
     };
   }
 
@@ -2498,6 +2636,19 @@ export function initPrintTool({
     if (doc.setLineDash) doc.setLineDash([], 0);
   }
 
+  /** Strokes one contiguous run of points as a SINGLE jsPDF path, so the
+   *  corners between its segments get real line joins. doc.lines() takes
+   *  deltas from the previous point, which is why the run is differenced
+   *  here — same call drawClosedPath uses, just left open. */
+  function strokePath(doc, path) {
+    if (!path || path.length < 2) return;
+    const deltas = [];
+    for (let i = 1; i < path.length; i++) {
+      deltas.push([path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]]);
+    }
+    doc.lines(deltas, path[0][0], path[0][1], [1, 1], "S", false);
+  }
+
   /** Paints just the strokes of `plan` that belong to `role`. */
   function drawLinePassRole(doc, plan, role) {
     plan.passes
@@ -2506,7 +2657,7 @@ export function initPrintTool({
         doc.setDrawColor(pass.rgb[0], pass.rgb[1], pass.rgb[2]);
         doc.setLineWidth(pass.width);
         if (doc.setLineDash) doc.setLineDash(pass.dash || [], 0);
-        plan.segments.forEach((seg) => doc.line(seg[0][0], seg[0][1], seg[1][0], seg[1][1]));
+        plan.paths.forEach((path) => strokePath(doc, path));
       });
   }
 
@@ -2516,7 +2667,7 @@ export function initPrintTool({
     if (!label) return null;
     drawHaloText(doc, label.text, label.at[0], label.at[1], {
       fontSize: sizes.featureLabel,
-      colorRGB: FEATURE_LABEL_RGB,
+      colorRGB: label.colorRGB || FEATURE_LABEL_RGB,
       align: label.align,
       // null for points/polygons and for lines not set to "along" —
       // drawHaloText treats a falsy angle as "no rotation".
@@ -2538,14 +2689,16 @@ export function initPrintTool({
    * junction merges instead of one road erasing the other. It's the same
    * ordering Mapnik/QGIS use for cased roads.
    *
-   * Round caps and joins go on for the whole line phase. jsPDF's doc.line()
-   * emits each segment as its own two-point path, so there is no join at a
-   * corner at all — a round cap on each segment end puts a disc of radius
-   * width/2 at the shared vertex, and discs of different radii around the
-   * same point stay concentric. That's what stops the narrower knockout from
-   * biting a wedge out of the wider casing at bends (a mitre or bevel join
-   * projects by an amount that depends on the stroke width, so the two
-   * passes disagreed about where the corner was).
+   * Round JOINS go on for the whole line phase, butt caps stay. Each road is
+   * stroked as one path per contiguous run (see strokePath), so jsPDF applies
+   * genuine joins at its corners — a round join is a disc of radius width/2
+   * at the vertex, and discs of different radii around the same point stay
+   * concentric, which is what stops the narrow knockout biting a wedge out of
+   * the wide casing. (A mitre or bevel projects past the vertex by an amount
+   * that depends on stroke width, so the passes disagreed about where the
+   * corner was.) Caps stay butt: a round cap would add a semicircle past the
+   * last vertex, printing the road half a stroke width longer than it was
+   * surveyed.
    */
   function drawFeaturePlans(doc, plans, sizes) {
     // Fills first, so lines and markers sit on top of them.
@@ -2555,8 +2708,8 @@ export function initPrintTool({
     if (linePlans.length) {
       const hasCap = typeof doc.setLineCap === "function";
       const hasJoin = typeof doc.setLineJoin === "function";
-      if (hasCap) doc.setLineCap(1); // 1 = round
-      if (hasJoin) doc.setLineJoin(1);
+      if (hasCap) doc.setLineCap(0); // 0 = butt — ends stop where the road does
+      if (hasJoin) doc.setLineJoin(1); // 1 = round — corners agree across passes
 
       LINE_PASS_ORDER.forEach((role) => {
         linePlans.forEach((plan) => drawLinePassRole(doc, plan, role));
@@ -2635,6 +2788,10 @@ export function initPrintTool({
       parcelsLayer?.getSource()?.getFeaturesInExtent(extent)
         .forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
     }
+    if (settings.layers.titleBoundary) {
+      titlesLayer?.getSource()?.getFeaturesInExtent(extent)
+        .forEach((f) => drawTitleVector(doc, f, project, sizes, frame));
+    }
     // Planned first, painted second — the whole feature set has to be known
     // before any of it is drawn, so the casing/knockout/fill rounds can span
     // every feature. See drawFeaturePlans.
@@ -2711,27 +2868,6 @@ export function initPrintTool({
    *  window hook. Null for guests, in which case the line is skipped. */
   function currentUserName() {
     try { return window.vslCurrentUserName?.() || null; } catch { return null; }
-  }
-
-  /** Counts + total area of what's inside the printed area, for the
-   *  summary cell. Estates and blocks are counted by how many INTERSECT
-   *  the selection; plots likewise, with their expected areas summed (the
-   *  same expected_area_acres the plot labels show, falling back to
-   *  computed geometry area when a plot has none recorded). */
-  function computeSelectionSummary(extent) {
-    if (!extent) return null;
-    const estates = estatesLayer?.getSource()?.getFeaturesInExtent(extent)?.length || 0;
-    const blocks = blocksLayer?.getSource()?.getFeaturesInExtent(extent)?.length || 0;
-    const plotFeatures = parcelsLayer?.getSource()?.getFeaturesInExtent(extent) || [];
-    let totalAcres = 0;
-    plotFeatures.forEach((f) => {
-      const expected = Number(f.get("expected_area_acres"));
-      if (Number.isFinite(expected) && expected > 0) { totalAcres += expected; return; }
-      const txt = surveyFeatureAreaAcresText?.(f) || "";
-      const parsed = parseFloat(txt);
-      if (Number.isFinite(parsed)) totalAcres += parsed;
-    });
-    return { estates, blocks, plots: plotFeatures.length, totalAcres };
   }
 
   /** Google Maps link for the centre of the printed area — same format
@@ -2842,8 +2978,8 @@ export function initPrintTool({
       const showLegend = settings.details.legend && legendGroups.length > 0;
       const showNorthArrow = !!settings.details.northArrow;
       const showQr = !!qrDataUrl;
-      const summary = settings.details.summary ? computeSelectionSummary(extent) : null;
-      const showSummary = !!summary;
+      const showCounts = !!settings.details.counts;
+      const showSummary = !!settings.details.comments; // the reserved Comments box
       const showStamp = !!(
         settings.details.date || settings.details.source ||
         (settings.details.printedBy && currentUserName())
@@ -3022,31 +3158,142 @@ export function initPrintTool({
         });
 
         const rowsTop = y + 26;
-        const colW = (w - 16) / columns;
         const avail = h - (rowsTop - y) - 6;
-        const perCol = Math.ceil(stream.length / columns);
-        const rowH = Math.min(11, Math.max(6.5, avail / Math.max(1, perCol)));
-        const swatch = Math.min(8, rowH - 2);
 
-        stream.forEach((row, i) => {
-          const col = Math.floor(i / perCol);
-          const idx = i % perCol;
-          const cx = x + 8 + col * colW;
-          const cy = rowsTop + idx * rowH;
-          if (cy > y + h - 3 || col >= columns) return;
-          if (row.type === "gap") return; // blank separator row
-          if (row.type === "head") {
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(Math.min(6.4, rowH - 2));
-            doc.setTextColor(120, 120, 120);
-            doc.text(row.label, cx, cy, { maxWidth: colW - 6 });
-            return;
+        // ── Row height, then FLOW the rows into columns ───────────────
+        // Rows fill a column to its full height and then continue in the
+        // next one — the groups are one continuous list, not one column
+        // each. (Dealing them out as ceil(total/columns) per column made
+        // each group land in its own column purely by coincidence of
+        // their sizes, and left most of every column empty.)
+        //
+        // Row height starts at the comfortable maximum and only shrinks if
+        // the list wouldn't otherwise fit the columns available.
+        let rowH = 11;
+        let rowsPerCol = Math.max(1, Math.floor(avail / rowH));
+        while (rowsPerCol * columns < stream.length && rowH > 6.5) {
+          rowH = Math.max(6.5, rowH - 0.25);
+          rowsPerCol = Math.max(1, Math.floor(avail / rowH));
+        }
+
+        const swatch = Math.min(8, rowH - 2);
+        const itemFont = Math.min(7, rowH - 2);
+        const headFont = Math.min(6.4, rowH - 2);
+
+        const cols = Array.from({ length: columns }, () => []);
+        {
+          let c = 0;
+          for (const row of stream) {
+            if (c >= columns) break;
+            if (cols[c].length >= rowsPerCol) { c += 1; if (c >= columns) break; }
+            // A spacer is only a separator BETWEEN groups — never the
+            // first thing in a column.
+            if (row.type === "gap" && cols[c].length === 0) continue;
+            // Don't strand a group heading alone at the foot of a column;
+            // start it at the top of the next one instead.
+            if (row.type === "head" && cols[c].length === rowsPerCol - 1 && c < columns - 1) {
+              c += 1;
+            }
+            cols[c].push(row);
           }
-          drawLegendSwatch(row.sym, cx, cy, swatch);
+        }
+
+        // ── Column widths, measured from content ──────────────────────
+        // Columns used to split the box evenly, which stranded a lot of
+        // white space inside each one. Instead each column is only as wide
+        // as its own widest row needs (symbol + label + count, or its
+        // heading, whichever is wider), and they're packed left with a
+        // fixed gutter. Whatever's left over collects at the right of the
+        // box rather than being spread through every row.
+        const colContentW = [];
+        for (let c = 0; c < columns; c++) {
+          const rows = cols[c];
           doc.setFont("helvetica", "normal");
-          doc.setFontSize(Math.min(7, rowH - 2));
-          doc.setTextColor(60, 60, 60);
-          doc.text(row.label, cx + swatch + 5, cy, { maxWidth: colW - swatch - 10 });
+          doc.setFontSize(itemFont);
+          let widestLabel = 0;
+          let anyCount = false;
+          rows.forEach((r) => {
+            if (r.type !== "item") return;
+            widestLabel = Math.max(widestLabel, doc.getTextWidth(r.label));
+            if (showCounts && r.count != null) anyCount = true;
+          });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(headFont);
+          let widestHead = 0;
+          rows.forEach((r) => {
+            if (r.type === "head") widestHead = Math.max(widestHead, doc.getTextWidth(r.label));
+          });
+          const itemW = swatch + 5 + widestLabel + (anyCount ? 8 + COUNT_COL_PT : 0);
+          colContentW[c] = rows.length ? Math.max(itemW, widestHead) : 0;
+        }
+
+        // Pack the columns; if the measured widths don't fit (many long
+        // feature names), fall back to an even split so nothing overflows.
+        const usedCols = colContentW.filter((v) => v > 0).length;
+        const totalMeasured = colContentW.reduce((a, b) => a + b, 0)
+          + LEGEND_COL_GAP_PT * Math.max(0, usedCols - 1);
+        const fits = totalMeasured <= w - 16;
+        const colX = [];
+        if (fits) {
+          let cx0 = x + 8;
+          for (let c = 0; c < columns; c++) {
+            colX[c] = cx0;
+            if (colContentW[c] > 0) cx0 += colContentW[c] + LEGEND_COL_GAP_PT;
+          }
+        } else {
+          const even = (w - 16) / columns;
+          for (let c = 0; c < columns; c++) {
+            colX[c] = x + 8 + c * even;
+            colContentW[c] = even - LEGEND_COL_GAP_PT;
+          }
+        }
+
+        // Counts sit at the right edge of their own column's content, so
+        // they stay close to the labels instead of at the box edge.
+        const countX = [];
+        for (let c = 0; c < columns; c++) {
+          countX[c] = colX[c] + colContentW[c] - COUNT_COL_PT;
+        }
+
+        // ── Vertical separators between the columns ───────────────────
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.5);
+        for (let c = 1; c < columns; c++) {
+          if (!cols[c].length) continue;
+          const sx = colX[c] - LEGEND_COL_GAP_PT / 2;
+          doc.line(sx, rowsTop - 8, sx, y + h - 6);
+        }
+
+        cols.forEach((rows, col) => {
+          const cx = colX[col];
+          rows.forEach((row, idx) => {
+            const cy = rowsTop + idx * rowH;
+            if (cy > y + h - 3) return;
+            if (row.type === "gap") return; // blank separator row
+            if (row.type === "head") {
+              doc.setFont("helvetica", "bold");
+              doc.setFontSize(headFont);
+              doc.setTextColor(120, 120, 120);
+              doc.text(row.label, cx, cy, { maxWidth: colContentW[col] });
+              return;
+            }
+            drawLegendSwatch(row.sym, cx, cy, swatch);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(itemFont);
+            doc.setTextColor(60, 60, 60);
+
+            // symbol | label | count, packed left. Counts within a column
+            // share an x (see countX above) so the numbers still line up,
+            // and are right-aligned within their own narrow slot so the
+            // digits do too.
+            const showCount = showCounts && row.count != null;
+            const lx = cx + swatch + 5;
+            doc.text(row.label, lx, cy, { maxWidth: countX[col] - lx - 4 });
+            if (showCount) {
+              doc.setTextColor(30, 42, 30);
+              doc.text(String(row.count), countX[col] + COUNT_COL_PT, cy, { align: "right" });
+            }
+          });
         });
       };
 
@@ -3065,9 +3312,11 @@ export function initPrintTool({
         doc.addImage(qrDataUrl, "PNG", x + pad, y + pad, size - pad * 2, size - pad * 2);
       };
 
-      /** Selection summary — estate/block/plot counts and total plot area
-       *  for whatever falls inside the printed area. */
-      const drawSummaryCell = (x, y, w, h) => {
+      /** Reserved "Comments" box — the counts it used to hold moved into
+       *  the legend itself (a count column per row), which puts each
+       *  number next to the symbol it belongs to. The box is kept as
+       *  deliberate blank space for a written note. */
+      const drawCommentsCell = (x, y, w, h) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
         doc.setLineWidth(1);
@@ -3075,26 +3324,7 @@ export function initPrintTool({
         doc.setFont("helvetica", "bold");
         doc.setFontSize(8);
         doc.setTextColor(30, 42, 30);
-        doc.text("SUMMARY", x + 8, y + 13);
-
-        const rows = [
-          ["Estates", String(summary.estates)],
-          ["Blocks", String(summary.blocks)],
-          ["Plots", String(summary.plots)],
-          ["Total area", `${summary.totalAcres.toFixed(2)} ac`]
-        ];
-        const top = y + 25;
-        const rowH = Math.min(12, Math.max(7, (h - (top - y) - 5) / rows.length));
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(Math.min(7.4, rowH - 2));
-        rows.forEach(([k, v], i) => {
-          const ry = top + i * rowH;
-          if (ry > y + h - 3) return;
-          doc.setTextColor(110, 110, 110);
-          doc.text(k, x + 8, ry);
-          doc.setTextColor(30, 42, 30);
-          doc.text(v, x + w - 8, ry, { align: "right" });
-        });
+        doc.text("COMMENTS", x + 8, y + 13);
       };
 
       if (L.landscape) {
@@ -3109,20 +3339,21 @@ export function initPrintTool({
         if (showLegend && legendBottom - mapTop > 30) {
           drawLegendCell(L.sideX, mapTop, L.sideColW, legendBottom - mapTop, 1);
         }
-        if (showSummary) drawSummaryCell(L.sideX, L.summaryY, L.sideColW, L.summaryH);
+        if (showSummary) drawCommentsCell(L.sideX, L.summaryY, L.sideColW, L.summaryH);
         if (showQr) drawQrCell(L.qrX, L.qrY, L.qrSize);
         if (showNorthArrow) drawNorthArrowCell(L.arrowX, L.arrowY, L.arrowW, L.bottomRowH);
       } else {
-        // Extras sit in a bar under the map: legend, summary, QR, then the
-        // arrow at the right end. Two columns of swatches, since the bar is
-        // wide and short.
+        // Extras sit in a bar under the map: legend, comments, QR, then
+        // the arrow at the right end. The legend spans the bar's full
+        // height with its rows flowing across several columns; the QR and
+        // arrow are fixed squares centred vertically in it.
         if (showLegend) {
-          drawLegendCell(margin, L.barY, L.barLegendW, L.barH, 2);
+          drawLegendCell(margin, L.barY, L.barLegendW, L.barH, PORTRAIT_LEGEND_COLUMNS);
         }
-        if (showSummary) drawSummaryCell(L.summaryX, L.barY, L.summaryW, L.barH);
-        if (showQr) drawQrCell(L.qrX, L.barY, L.qrSize);
+        if (showSummary) drawCommentsCell(L.summaryX, L.barY, L.summaryW, L.barH);
+        if (showQr) drawQrCell(L.qrX, L.qrY, L.qrSize);
         if (showNorthArrow) {
-          drawNorthArrowCell(margin + mapAreaW - L.barArrowW, L.barY, L.barArrowW, L.barH);
+          drawNorthArrowCell(L.arrowX, L.arrowY, L.barArrowW, L.stackSquare);
         }
       }
 

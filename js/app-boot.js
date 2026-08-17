@@ -39,6 +39,10 @@ const WINDOW_FRAGMENTS = [
   // Right-hand tool stack.
   // Opened from the Legend button next to the Layers control (#mapRightBtnStack).
   { parent: "mapRightStack", url: "./windows/legend-panel.html" },
+  // Snap options — opened from the magnet button in that same stack. Holds
+  // the snapBlocksCb/snapParcelsCb/snapSurveyCb checkboxes that used to be
+  // hidden inside the Survey window's Draw tab.
+  { parent: "mapRightStack", url: "./windows/snap-panel.html" },
 
   // Body-level overlays/modals (position: fixed, so sibling order doesn't matter).
   // NOTE: windows/edit-details-modal.html is gone — the cultivation-status/

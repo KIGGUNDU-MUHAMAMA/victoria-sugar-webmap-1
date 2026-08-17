@@ -117,6 +117,12 @@
         <button type="button" class="floating-btn map-floating-legend" id="legendBtn" title="Legend" aria-label="Legend" aria-expanded="false">
           <i class="fas fa-list"></i>
         </button>
+        <!-- Opens windows/snap-panel.html (js/map-app.js setupSnapPanel) —
+             the snap-to-existing-geometry toggles that every drawing and
+             measuring tool reads via readSnapOptions(). -->
+        <button type="button" class="floating-btn map-floating-snap" id="snapBtn" title="Snap Options" aria-label="Snap Options" aria-expanded="false">
+          <i class="fas fa-magnet"></i>
+        </button>
       </div>
 
       <!-- Selected-feature action toolbar (OL Overlay target — positioned in JS
@@ -124,14 +130,29 @@
            UI-only for now; click handling/logic comes in a follow-up pass. -->
       <div class="parcel-action-toolbar" id="parcelActionToolbar" hidden>
         <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--activity" id="parcelActionLogActivityBtn" title="Log Activity" aria-label="Log Activity">
-          <i class="fas fa-plus" aria-hidden="true"></i>
+          <i class="fas fa-person-digging" aria-hidden="true"></i>
         </button>
         <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--alert" id="parcelActionLogAlertBtn" title="Log Alert" aria-label="Log Alert">
-          <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+          <i class="fas fa-bullhorn" aria-hidden="true"></i>
         </button>
         <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--info" id="parcelActionInfoBtn" title="Feature Info" aria-label="Feature Info">
           <i class="fas fa-info" aria-hidden="true"></i>
         </button>
+      </div>
+
+      <!-- The same idea for a DRAWN feature (tree, road, wall — vsl_feature),
+           but a readout rather than actions: those live in the Select window.
+           Rows are filled in by showFeatureInfoToolbar() in js/map-app.js —
+           name and description for every kind, plus length for a line or
+           area for a polygon. -->
+      <div class="feature-info-toolbar" id="featureInfoToolbar" hidden>
+        <div class="feature-info-toolbar__head">
+          <span class="feature-info-toolbar__swatch" id="featureInfoToolbarSwatch" aria-hidden="true"></span>
+          <span class="feature-info-toolbar__name" id="featureInfoToolbarName"></span>
+        </div>
+        <div class="feature-info-toolbar__type" id="featureInfoToolbarType"></div>
+        <p class="feature-info-toolbar__desc" id="featureInfoToolbarDesc" hidden></p>
+        <div class="feature-info-toolbar__measure" id="featureInfoToolbarMeasure" hidden></div>
       </div>
     </div>
   </div>

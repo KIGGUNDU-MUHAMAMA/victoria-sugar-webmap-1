@@ -382,7 +382,7 @@ button:hover {
 
 .webmap-app .map-right-stack {
   position: fixed;
-  right: 12px;
+  right: 70px;
   top: 96px;
   bottom: 12px;
   z-index: 1150;
@@ -3098,10 +3098,17 @@ select.search-panel__input {
   order: 1;
 }
 
-/* Open/toggled state — only Legend actually toggles a persistent panel
-   from this cluster (Locate Me is momentary, Fullscreen just flips
-   fullscreen state), but scoping this to .floating-btn.active keeps it
-   available for any future toggle-style button here too. */
+/* Snap — same in-flow treatment as Legend, one slot below it, so the
+   top-right cluster reads Layers → Legend → Snap top to bottom. */
+.floating-btn.map-floating-snap {
+  position: static;
+  order: 2;
+}
+
+/* Open/toggled state — Legend and Snap both toggle a persistent panel from
+   this cluster (Locate Me is momentary, Fullscreen just flips fullscreen
+   state); scoping this to .floating-btn.active keeps it available for any
+   future toggle-style button here too. */
 .floating-btn.active {
   background: #d4edcc;
   color: var(--primary-2);
@@ -3289,6 +3296,22 @@ select.search-panel__input {
   width: auto;
 }
 
+/* Same [hidden] fix as .futuristic-icon-btn/.floating-btn elsewhere in this
+   file: `display: inline-flex` above has equal specificity to the browser's
+   own `[hidden] { display: none }` and, being an author rule, would win —
+   so `btn.hidden = true` silently did nothing. Bit #drawManageFeaturesBtn,
+   which is meant to disappear whenever Block/Plot is the drawn entity
+   (updatePlotBlockVisibility in js/survey-draw.js). */
+.uam-btn[hidden] {
+  display: none !important;
+}
+
+/* The footer only exists to hold that button — when it's hidden the
+   footer's own top padding would otherwise leave a phantom gap. */
+.uam-tab__footer:has(> .uam-btn:only-child[hidden]) {
+  display: none;
+}
+
 .uam-btn--primary {
   background: var(--primary);
   color: #fff;
@@ -3302,6 +3325,21 @@ select.search-panel__input {
   background: var(--border);
   color: var(--muted);
   cursor: not-allowed;
+}
+
+/* "This tool is live" state for a .uam-btn toggle — currently
+   #exportSelectBtn while Export's click/box selection is armed. Green rather
+   than the usual blue --primary so it reads as "active/go" and is instantly
+   distinguishable from an ordinary primary button sitting next to it. */
+.uam-btn--selecting {
+  background: #1b9e5a !important;
+  color: #fff !important;
+  border: 1px solid #157f48 !important;
+  box-shadow: 0 0 0 3px rgba(27, 158, 90, 0.18);
+}
+
+.uam-btn--selecting:hover {
+  background: #157f48 !important;
 }
 
 .uam-btn--ghost {
@@ -5152,12 +5190,66 @@ select.search-panel__input {
 
 /* Legend window — smaller than Modify/Search. .map-right-stack's
    `align-items: stretch` would otherwise force it to the same width as
-   every other docked window, so it opts out with its own align-self. */
+   every other docked window, so it opts out with its own align-self.
+
+   flex-end (not flex-start) so it hugs the RIGHT edge of the stack, right
+   under the Layers/Legend buttons, instead of floating ~160px away at the
+   left end of the 400px column. */
 .legend-panel {
-  align-self: flex-start;
+  align-self: flex-end;
   width: 240px;
-  max-height: 360px;
+  max-height: 480px;
 }
+/* Snap options window — same top-right dock and same "opt out of
+   .map-right-stack's align-items: stretch" trick the Legend uses above, just
+   narrower still: it's four checkboxes and a line of help text. */
+.snap-panel {
+  align-self: flex-end;
+  width: 220px;
+}
+
+.snap-panel__master {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.snap-panel__hint {
+  margin: 0.45rem 0 0.7rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.snap-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Master switch off — the per-layer boxes keep their ticks (so the choice
+   survives a round trip) but are disabled, and dimming them says so. */
+.snap-panel__group--off {
+  opacity: 0.45;
+}
+
+.snap-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.snap-panel__group--off .snap-panel__row {
+  cursor: not-allowed;
+}
+
 .legend-panel__section + .legend-panel__section {
   margin-top: 0.9rem;
 }
@@ -5184,12 +5276,40 @@ select.search-panel__input {
   font-size: 0.82rem;
   color: var(--text);
 }
+/* Every legend symbol occupies the same 18px slot, so labels line up down
+   the column whether the row shows a square, a rule or an icon. */
+.legend-panel__sym {
+  width: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Polygon square — hollow (estate/block/plot/vacant) or filled (status,
+   alerts, polygon features), solid or dashed edge. Border width is 2px so
+   a dashed edge actually reads as dashed at this size. */
 .legend-panel__swatch {
-  width: 16px;
+  width: 18px;
   height: 16px;
   border-radius: 4px;
   flex-shrink: 0;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+}
+
+/* Line feature — a short rule in the type's own colour/line style. */
+.legend-panel__sym--line {
+  height: 16px;
+  border-top: 2px solid currentColor;
+  border-radius: 0;
+}
+
+/* Point feature — its actual Font Awesome glyph, tinted to the type's
+   colour (the same icon the map marker uses). */
+.legend-panel__sym--icon {
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 /* =============================================================
@@ -5854,6 +5974,91 @@ select.search-panel__input {
   z-index: -1;
 }
 
+/* ── Drawn-feature readout (#featureInfoToolbar) ──
+   Tapping a tree/road/wall on the map pops this over it: what's recorded
+   about that feature, rather than the plot toolbar's action buttons. Same
+   floating-card look and downward tail, sized as a small card instead of a
+   pill. See showFeatureInfoToolbar in js/map-app.js. */
+.feature-info-toolbar {
+  position: relative;
+  max-width: 240px;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+}
+.feature-info-toolbar[hidden] {
+  display: none !important;
+}
+.feature-info-toolbar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.08);
+  z-index: -1;
+}
+
+.feature-info-toolbar__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* Tinted to the feature type's own colour, so the card is recognisably
+   about the thing that was tapped. */
+.feature-info-toolbar__swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--primary);
+}
+.feature-info-toolbar__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feature-info-toolbar__type {
+  margin-top: 1px;
+  padding-left: 17px; /* aligns under the name, clear of the swatch */
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.feature-info-toolbar__type[hidden],
+.feature-info-toolbar__desc[hidden],
+.feature-info-toolbar__measure[hidden] {
+  display: none !important;
+}
+.feature-info-toolbar__desc {
+  margin: 5px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--text);
+  /* Long descriptions are clamped rather than allowed to grow into a wall
+     of text floating over the map. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.feature-info-toolbar__measure {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vsl-primary, #2e7d32);
+}
+
 .parcel-action-toolbar__btn {
   width: 34px;
   height: 34px;
@@ -5952,18 +6157,25 @@ select.search-panel__input {
    Same scoped-override pattern #logActivityModal uses on this same shared
    class, further down this file. */
 #featureInfoPanel.vsl-modal-card--wide {
-  max-width: 480px;
+  width: 400px;
+  max-width: 400px;
 }
 
 /* Feature Info panel — desktop-only exception to every other
-   vsl-modal-overlay dialog: it docks to the left edge, spans the full
-   viewport height, and doesn't dim/blur the map behind it (so the person
-   can still see/refer to the map while it's open), instead of the usual
-   centered + blurred-backdrop treatment. Width is untouched — still
-   .vsl-modal-card--wide's existing 90%/640px. Phones (<=480px, see that
-   media block below) keep the original centered/blurred/short modal as-is.
-   The overlay itself is pointer-events:none so clicks reach the map outside
-   the panel; the panel re-enables pointer events for itself. */
+   vsl-modal-overlay dialog: it docks to the left edge and doesn't dim/blur
+   the map behind it (so the person can still see/refer to the map while
+   it's open), instead of the usual centered + blurred-backdrop treatment.
+   Phones (<=480px, see that media block below) keep the original
+   centered/blurred/short modal as-is. The overlay itself is
+   pointer-events:none so clicks reach the map outside the panel; the panel
+   re-enables pointer events for itself.
+
+   It now floats as a rounded 400px card inset 10px from the viewport edges
+   rather than a full-bleed edge-to-edge column: at 400px a square-cornered
+   full-height slab reads as part of the browser chrome rather than as a
+   panel over the map, and the inset keeps the map visible all the way
+   around it. Height is capped by the 10px inset top and bottom instead of
+   being pinned to 100dvh. */
 @media (min-width: 901px) {
   #featureInfoOverlay {
     background: transparent;
@@ -5979,10 +6191,12 @@ select.search-panel__input {
   }
   #featureInfoPanel.popWinMain {
     max-height: none;
-    height: 100vh;
-    height: 100dvh;
-    border-radius: 0;
-    margin: 0;
+    height: calc(100vh - 20px);   /* fallback for browsers without dvh */
+    height: calc(100dvh - 20px);
+    margin: 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   }
 }
 
@@ -6646,14 +6860,68 @@ select.search-panel__input {
   color: var(--muted);
 }
 
-/* Icon library grid, inside the stacked picker overlay. */
+/* Icon library, inside the stacked picker overlay. The container scrolls;
+   each group inside it is a <details> with its own grid, so "Other" can
+   start collapsed without any JS state (see renderIconGrid). */
 .fte-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
-  gap: 6px;
   margin-top: 8px;
   max-height: 46vh;
   overflow-y: auto;
+}
+
+.fte-icon-group {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+.fte-icon-group:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.fte-icon-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none; /* kill the default <summary> triangle */
+  user-select: none;
+}
+.fte-icon-group__head::-webkit-details-marker {
+  display: none;
+}
+/* Own disclosure arrow, since the native one is suppressed above. */
+.fte-icon-group__head::before {
+  content: "\25B8"; /* right-pointing triangle */
+  font-size: 0.8rem;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.fte-icon-group[open] > .fte-icon-group__head::before {
+  transform: rotate(90deg);
+}
+
+.fte-icon-group__count {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: #f0f4ee;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.fte-icon-group__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+  padding-top: 4px;
 }
 
 .fte-icon-grid__btn {

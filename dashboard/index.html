@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Victoria Sugar Admin — Victoria Sugar Webmap</title>
 <link rel="icon" type="image/jpeg" href="../assets/victoria-sugar-logo.jpg"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
 <link rel="stylesheet" href="style.css"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -51,7 +52,7 @@
       <span class="nav-icon">❖</span><span class="nav-label"> Seasons</span>
     </a>
     <a href="#" class="nav-item" title="Activities" onclick="openPanel('activities',this)">
-      <span class="nav-icon">◷</span><span class="nav-label"> Activities</span>
+      <span class="nav-icon"><i class="fas fa-person-digging" aria-hidden="true"></i></span><span class="nav-label"> Activities</span>
     </a>
     <a href="#" class="nav-item" title="Costs" onclick="openPanel('costs',this)">
       <span class="nav-icon">◍</span><span class="nav-label"> Costs</span>
@@ -71,7 +72,7 @@
       <span class="nav-icon">✉</span><span class="nav-label"> Messages</span>
     </a>
     <a href="#" class="nav-item" title="Alerts" onclick="openPanel('alerts',this)">
-      <span class="nav-icon">⬡</span><span class="nav-label"> Alerts</span>
+      <span class="nav-icon"><i class="fas fa-bullhorn" aria-hidden="true"></i></span><span class="nav-label"> Alerts</span>
     </a>
 
     <div class="nav-section-label">SYSTEM</div>
@@ -89,7 +90,7 @@
     <div class="topbar-row">
       <div class="topbar-season">Season: <strong>2024-B</strong></div>
       <div class="topbar-alert-badge" onclick="openPanel('alerts',null)">
-        <span>⬡</span><span class="badge-count" id="topbar-alert-count">0</span>
+        <span><i class="fas fa-bullhorn" aria-hidden="true"></i></span><span class="badge-count" id="topbar-alert-count">0</span>
       </div>
       <div class="topbar-avatar" id="topbar-avatar" title="Account">AM</div>
     </div>

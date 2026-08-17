@@ -35,8 +35,13 @@ const LABEL_NAMES = { name: "Name", length: "Length", area: "Area" };
 // point/line are capped at one label by the DB constraint; polygon allows two.
 const LABELS_EXCLUSIVE = { point: true, line: true, polygon: false };
 
-const ICON_MANIFEST_URL = "./icons/icons.json";
-const ICON_DIR = "./icons";
+// The icon library lives in one folder: the SVGs and the icons.json that
+// names them, groups them and lists what each can be searched by. The map
+// (js/survey-draw.js) and the PDF (js/print-tool.js) read the same files.
+const ICON_MANIFEST_URL = "./icons/fa-icons/icons.json";
+const ICON_DIR = "./icons/fa-icons";
+/** Group shown last and collapsed — the leftovers drawer. */
+const OTHER_GROUP = "Other";
 
 /** Nominal scale for drawing line_spacing_m in a swatch, which has no map
  *  resolution to work from. Purely so the preview responds to the number —
@@ -172,7 +177,10 @@ export function initFeatureTypeEditor({ cfg, supabase, setStatus, statusEl }) {
   let editingId = null;
   let editingRow = null;
   let onSaved = null;
-  let iconLibrary = null; // lazily loaded from icons/icons.json
+  // { keywords: { "fa-tree": "tree, forest, …" }, groups: [{ label, names }] }
+  // — lazily loaded from icons/fa-icons/icons.json the first time the picker
+  // is opened, then reused.
+  let iconLibrary = null;
 
   function restHeaders() {
     return {
@@ -189,45 +197,100 @@ export function initFeatureTypeEditor({ cfg, supabase, setStatus, statusEl }) {
 
   // ── Icon picker ──────────────────────────────────────────────────────
   // The browser can't list a directory, so the library is whatever
-  // icons/icons.json says it is. Adding an icon = drop the SVG in /icons
-  // and add its name to that file.
+  // icons/fa-icons/icons.json says it is. That file holds both the keywords
+  // each icon can be found by and the groups the picker lays them out in —
+  // adding an icon means dropping the SVG in that folder, giving it some
+  // keywords, and listing it in a group.
   async function loadIconLibrary() {
     if (iconLibrary) return iconLibrary;
     try {
       const res = await fetch(ICON_MANIFEST_URL, { cache: "no-cache" });
       if (!res.ok) throw new Error(`icons.json (${res.status})`);
       const data = await res.json();
-      iconLibrary = Array.isArray(data) ? data : Array.isArray(data?.icons) ? data.icons : [];
+      const keywords = data?.icons && !Array.isArray(data.icons) ? data.icons : {};
+      const names = Object.keys(keywords);
+      const rawGroups = data?._groups && typeof data._groups === "object" ? data._groups : {};
+
+      // Group order comes from the file, except that "Other" is always last
+      // — it's the leftovers drawer, so it shouldn't sit above the icons
+      // someone actually curated. Anything listed in no group at all still
+      // has to be reachable, so it falls into Other too.
+      const named = new Set(Object.values(rawGroups).flat());
+      const orphans = names.filter((n) => !named.has(n));
+      const order = Object.keys(rawGroups).filter((g) => g !== OTHER_GROUP);
+      if (rawGroups[OTHER_GROUP] || orphans.length) order.push(OTHER_GROUP);
+
+      iconLibrary = {
+        keywords,
+        groups: order
+          .map((label) => ({
+            label,
+            names: (label === OTHER_GROUP
+              ? [...(rawGroups[OTHER_GROUP] || []), ...orphans]
+              : rawGroups[label] || []
+            ).filter((n) => keywords[n] !== undefined)
+          }))
+          .filter((g) => g.names.length)
+      };
     } catch (e) {
       console.error("[Victoria Survey] Couldn't load the icon library:", e);
-      iconLibrary = [];
+      iconLibrary = { keywords: {}, groups: [] };
     }
     return iconLibrary;
   }
 
+  function iconButtonHtml(name) {
+    const on = name === iconInput.value;
+    // The keywords ride along in the tooltip, which doubles as a hint about
+    // what else would have found this icon.
+    const kw = iconLibrary?.keywords?.[name] || "";
+    return `
+      <button type="button" class="fte-icon-grid__btn${on ? " fte-icon-grid__btn--active" : ""}"
+              data-icon="${escapeHtml(name)}" title="${escapeHtml(name.replace(/^fa-/, ""))}${kw ? " — " + escapeHtml(kw) : ""}"
+              role="option" aria-selected="${on}">
+        <img src="${ICON_DIR}/${encodeURIComponent(name)}.svg" alt="${escapeHtml(name)}" loading="lazy">
+      </button>`;
+  }
+
+  /** An icon matches on its name OR any of its keywords, so "borehole",
+   *  "well" and "pump" all find fa-bore-hole. */
+  function iconMatches(name, q) {
+    if (!q) return true;
+    if (name.replace(/^fa-/, "").includes(q)) return true;
+    return (iconLibrary?.keywords?.[name] || "").includes(q);
+  }
+
   function renderIconGrid(filterText) {
     const q = (filterText || "").trim().toLowerCase();
-    const list = (iconLibrary || []).filter((name) =>
-      q ? name.replace(/^fa-/, "").includes(q) : true
-    );
-    if (!list.length) {
+    const groups = (iconLibrary?.groups || [])
+      .map((g) => ({ label: g.label, names: g.names.filter((n) => iconMatches(n, q)) }))
+      .filter((g) => g.names.length);
+
+    if (!groups.length) {
       pickerGrid.innerHTML = "";
-      pickerError.textContent = (iconLibrary || []).length
+      pickerError.textContent = Object.keys(iconLibrary?.keywords || {}).length
         ? "No icons match that search."
-        : "No icons found — check icons/icons.json.";
+        : "No icons found — check icons/fa-icons/icons.json.";
       pickerError.hidden = false;
       return;
     }
     pickerError.hidden = true;
-    pickerGrid.innerHTML = list
-      .map(
-        (name) => `
-        <button type="button" class="fte-icon-grid__btn${name === iconInput.value ? " fte-icon-grid__btn--active" : ""}"
-                data-icon="${escapeHtml(name)}" title="${escapeHtml(name)}" role="option"
-                aria-selected="${name === iconInput.value}">
-          <img src="${ICON_DIR}/${encodeURIComponent(name)}.svg" alt="${escapeHtml(name)}" loading="lazy">
-        </button>`
-      )
+
+    // <details> for the collapsing, so there's no open/closed state to track
+    // here. "Other" starts shut — it's the long tail — but a search opens
+    // everything, otherwise a match hidden inside it looks like no match.
+    pickerGrid.innerHTML = groups
+      .map((g) => {
+        const open = q || g.label !== OTHER_GROUP ? " open" : "";
+        return `
+        <details class="fte-icon-group"${open}>
+          <summary class="fte-icon-group__head">
+            <span>${escapeHtml(g.label)}</span>
+            <span class="fte-icon-group__count">${g.names.length}</span>
+          </summary>
+          <div class="fte-icon-group__grid">${g.names.map(iconButtonHtml).join("")}</div>
+        </details>`;
+      })
       .join("");
   }
 

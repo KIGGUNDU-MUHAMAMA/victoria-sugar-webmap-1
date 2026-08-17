@@ -64,6 +64,9 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
   async function closeMenu() {
     if (!(await confirmLeaveIfEditing())) return;
+    // Export's click/box selection listens on the map itself, so it would
+    // otherwise keep swallowing map clicks after this window is gone.
+    if (typeof window.vslStopExportSelection === "function") window.vslStopExportSelection();
     overlay.hidden = true;
     overlay.setAttribute("aria-hidden", "true");
     fabBtn.classList.remove("uam-open");
@@ -92,6 +95,11 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     const current = [...navBtns].find(b => b.getAttribute("aria-selected") === "true")?.dataset.uamTab;
     if (current === tabId) return;
     if (!(await confirmLeaveIfEditing())) return;
+    // Same reason as closeMenu(): leaving the Export tab should leave its
+    // map-level selection mode too, not leave it armed behind another tab.
+    if (current === "export" && typeof window.vslStopExportSelection === "function") {
+      window.vslStopExportSelection();
+    }
     navBtns.forEach(btn => {
       const active = btn.dataset.uamTab === tabId;
       btn.setAttribute("aria-selected", active ? "true" : "false");

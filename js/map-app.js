@@ -31,6 +31,10 @@ const stopDrawBtn = document.getElementById("stopDrawBtn");
 const snapBlocksCb = document.getElementById("snapBlocksCb");
 const snapParcelsCb = document.getElementById("snapParcelsCb");
 const snapSurveyCb = document.getElementById("snapSurveyCb");
+// Master on/off for snapping as a whole (windows/snap-panel.html). Kept
+// separate from the three per-layer boxes so switching it off and back on
+// restores whichever layers were ticked, rather than clearing them.
+const snapMasterCb = document.getElementById("snapMasterCb");
 const clearMeasuresBtn = document.getElementById("clearMeasuresBtn");
 const clearDrawingsBtn = document.getElementById("clearDrawingsBtn");
 const drawToolsFeedback = document.getElementById("drawToolsFeedback");
@@ -54,6 +58,8 @@ let isAuthenticated = false;
 let selectedFeature = null;
 let selectedLayerType = null;
 let parcelActionOverlay;
+/** Overlay behind #featureInfoToolbar — the drawn-feature readout card. */
+let featureInfoOverlay;
 // Whether a plain map click is allowed to select a block/parcel and show
 // the floating .parcel-action-toolbar (Log Activity/Alert/Info). Survey's
 // Edit tab (selecting a feature to reshape) and Draw tab (drawing a new
@@ -80,6 +86,12 @@ let sentinelHubLayer;
 let sentinelGroupRef;
 let droneImagesGroupRef;
 let annotationsGroupRef;
+/** FEATURES group in the layer switcher — one proxy row per custom feature
+ *  type actually used on the map, rebuilt by rebuildFeaturesSwitcherGroup()
+ *  whenever features change. See buildLayerTree() and initSurveyDraw's
+ *  onFeaturesRefreshed hook. */
+let featuresGroupRef;
+let layerSwitcherRef;
 /** Set by initSentinelAnalytics so openSearchPanel can close the Sentinel dock. */
 let vslCloseSentinelPanel = () => {};
 
@@ -88,6 +100,13 @@ const MAP_DRAW_PROJ = "EPSG:3857";
 const blocksSource = new ol.source.Vector();
 const parcelsSource = new ol.source.Vector();
 const estatesSource = new ol.source.Vector();
+// Legal land-title boundaries (vsl_title) — never linked to an Estate, drawn
+// as an outline only so it can sit over Blocks/Plots without hiding their
+// cultivation-status fill, for spotting cultivation that's strayed outside
+// the legal boundary. See loadLayersFromDb() (bbox-loaded alongside blocks/
+// parcels via vsl_get_features_bbox) and the "Title boundary" legend row in
+// buildLegendList().
+const titlesSource = new ol.source.Vector();
 const editSource = new ol.source.Vector();
 
 /** Set by parcel search RPC; layer styles emphasize these ids after bbox reload. */
@@ -722,7 +741,7 @@ let infoPanelRecords = {};
 
 const RECORD_LIST_KEY = { alert: "alerts", activity: "activities", harvest: "harvests", media: "media", comment: "comments" };
 const RECORD_DETAIL_TITLES = { alert: "Alert details", activity: "Activity details", harvest: "Harvest details", media: "Media details", comment: "Comment details" };
-const RECORD_DETAIL_ICONS = { alert: "fa-triangle-exclamation", activity: "fa-list-check", harvest: "fa-wheat-awn", media: "fa-image", comment: "fa-comment" };
+const RECORD_DETAIL_ICONS = { alert: "fa-bullhorn", activity: "fa-person-digging", harvest: "fa-wheat-awn", media: "fa-image", comment: "fa-comment" };
 const RECORD_TABLE_BY_KIND = { alert: "vsl_alerts", activity: "vsl_activities", harvest: "vsl_harvests", media: "vsl_media", comment: "vsl_comments" };
 
 // The real "who did this" column(s) per record kind (created_by isn't even
@@ -2561,6 +2580,11 @@ const estatesLayer = new ol.layer.Vector({
   title: "Estates",
   visible: true,
   declutter: false,
+  // Explicit zIndex — decoupled from array order in overlaysGroup, whose
+  // array order instead controls only the layer-switcher panel's row order
+  // (ol-layerswitcher renders each group's children reversed; see the
+  // comment on overlaysGroup below).
+  zIndex: 1,
   source: estatesSource,
   style: (feature) => {
     const geometry = feature.getGeometry();
@@ -2586,6 +2610,62 @@ const estatesLayer = new ol.layer.Vector({
             textBaseline: "bottom",
             offsetY: -2,
             offsetX: 4
+          })
+        }));
+      }
+    }
+    return styles;
+  }
+});
+
+// Land Title boundary — same "#7b1fa2, dashed" symbol the "Land properties"
+// group in buildLegendList()/print-tool.js already declares. Outline only,
+// no fill (like estatesLayer), with the title's
+// name + area centered inside the polygon (getFeatureInteriorPoint), matching
+// how parcelsLayer anchors its own name/area label — not at a corner, since a
+// corner collides with whatever Block/Plot label already occupies that spot.
+const titlesLayer = new ol.layer.Vector({
+  title: "Land Titles",
+  visible: true,
+  declutter: false,
+  zIndex: 4,
+  source: titlesSource,
+  style: (feature) => {
+    const geometry = feature.getGeometry();
+    // Outline only — NO fill. A title boundary is meant to be read against
+    // whatever Block/Plot fill sits underneath it, and any tint of its own
+    // (however faint) muddies those status colours where titles overlap.
+    // Kept fill-free in the PDF too (see drawTitleVector in print-tool.js).
+    // Picked in the Select window's Feature tab — same orange "you chose
+    // this" emphasis blocksLayer/parcelsLayer use for their own selections,
+    // still fill-free so the land underneath stays readable.
+    const isStatusHi =
+      parcelStatusState.selectedLayerType === "TITLES" &&
+      parcelStatusState.selectedFeatures.some((f) => String(f.getId()) === String(feature.getId()));
+    const styles = [
+      new ol.style.Style({
+        stroke: isStatusHi
+          ? new ol.style.Stroke({ color: "#ff6d00", width: 4, lineDash: [6, 5] })
+          : new ol.style.Stroke({ color: "#7b1fa2", width: 2, lineDash: [6, 5] })
+      })
+    ];
+    const interiorPoint = getFeatureInteriorPoint(geometry);
+    const name = String(feature.get("title_name") ?? "").trim();
+    if (interiorPoint) {
+      const expArea = feature.get("expected_area_acres");
+      const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
+      const text = name && area ? `${name}\n${area}` : (name || area || "");
+      if (text) {
+        styles.push(new ol.style.Style({
+          geometry: interiorPoint,
+          text: new ol.style.Text({
+            text,
+            font: "700 12px Inter, sans-serif",
+            fill: new ol.style.Fill({ color: "#7b1fa2" }),
+            stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
+            textAlign: "center",
+            overflow: true,
+            lineHeight: LABEL_LINE_HEIGHT
           })
         }));
       }
@@ -2622,6 +2702,7 @@ const blocksLayer = new ol.layer.Vector({
   title: "Blocks",
   visible: true,
   declutter: true,
+  zIndex: 2,
   source: blocksSource,
   style: (feature, resolution) => {
     const bid = feature.getId();
@@ -2663,6 +2744,7 @@ const parcelsLayer = new ol.layer.Vector({
   title: "Parcels",
   visible: true,
   declutter: true,
+  zIndex: 3,
   source: parcelsSource,
   style: (feature, resolution) => {
     const pid = feature.getId();
@@ -3021,11 +3103,28 @@ function buildLayerTree() {
 
   // BASE MAPS Group
   const baseGroup = new ol.layer.Group({
-    title: "Base Maps",
+    title: "BASE MAPS",
     fold: "open",
     layers: [googleHybrid, esriImagery, noBasemap]
   });
   baseGroupRef = baseGroup;
+
+  // FEATURES Group — one row per custom feature TYPE actually drawn on the
+  // map (trees, boreholes, roads, walls, …), each a lightweight PROXY layer
+  // with an empty source: every real custom feature lives on ONE shared
+  // layer (survey-draw.js's featuresLayer/featuresSource), so there is no
+  // separate per-type layer to add/remove here. Toggling a proxy row's
+  // visibility instead calls survey-draw.js's setFeatureTypeVisible(), which
+  // hides that type's features via featuresLayer's own style function and
+  // triggers a redraw — see rebuildFeaturesSwitcherGroup(). Starts empty;
+  // populated once survey-draw.js has loaded features (see
+  // onFeaturesRefreshed passed into initSurveyDraw).
+  const featuresGroup = new ol.layer.Group({
+    title: "FEATURES",
+    fold: "close",
+    layers: []
+  });
+  featuresGroupRef = featuresGroup;
 
   // DRONE IMAGES Group — placeholder subgroup (structured like SENTINEL
   // below: children with type "base" render as radio buttons, and a group
@@ -3068,10 +3167,16 @@ function buildLayerTree() {
   sentinelGroupRef = sentinelGroup;
 
   // LAND LAYERS Group
+  // ol-layerswitcher renders every group's children in REVERSE array order
+  // (LayerSwitcher.reverse defaults to true), so this array is deliberately
+  // the opposite of the desired panel order — panel top-to-bottom reads
+  // Estates, Blocks, Plots, Land titles. Actual map stacking is controlled
+  // independently via each layer's own explicit zIndex (see their
+  // definitions above), not by this array's order.
   const overlaysGroup = new ol.layer.Group({
     title: "LAND LAYERS",
     fold: "open",
-    layers: [estatesLayer, blocksLayer, parcelsLayer]
+    layers: [titlesLayer, parcelsLayer, blocksLayer, estatesLayer]
   });
   overlaysGroup.setZIndex(20);
 
@@ -3091,15 +3196,49 @@ function buildLayerTree() {
   annotationsGroupRef = annotationsGroup;
 
   // Order on map (bottom to top). Layer switcher shows reverse (top to bottom).
-  // 1. baseGroup
-  // 2. droneGroup
-  // 3. sentinelGroup
-  // 4. overlaysGroup (Survey Layers)
-  // 5. annotationsGroup
-  const stack = [baseGroup];
+  // 1. featuresGroup (proxy-only, empty sources — placement here is purely
+  //    to land it as the LAST/bottom row in the switcher, directly below
+  //    BASE MAPS; it has no effect on actual map stacking)
+  // 2. baseGroup
+  // 3. droneGroup
+  // 4. sentinelGroup
+  // 5. overlaysGroup (Survey Layers)
+  // 6. annotationsGroup
+  const stack = [featuresGroup, baseGroup];
   stack.push(droneGroup, sentinelGroup, overlaysGroup, annotationsGroup);
   
   return stack;
+}
+
+/** Repopulates the FEATURES group with one proxy row per feature type
+ *  currently used on the map, reading from survey-draw.js's
+ *  getUsedFeatureTypes(). Called via onFeaturesRefreshed, so it always runs
+ *  right after featuresSource itself has just been refreshed (boot, Draw tab
+ *  save, Manage Features CRUD, …) — never on stale data. Existing proxy rows
+ *  are torn down and rebuilt from scratch each time rather than diffed —
+ *  the list is short (one row per type in use, typically well under 20) so
+ *  this is cheap, and it trivially handles types being renamed/recolored/
+ *  removed without needing to reconcile a diff.
+ */
+function rebuildFeaturesSwitcherGroup() {
+  if (!featuresGroupRef) return;
+  const types = surveyDrawApi?.getUsedFeatureTypes?.() || [];
+  const collection = featuresGroupRef.getLayers();
+  collection.clear();
+  types.forEach((t) => {
+    const proxyLayer = new ol.layer.Vector({
+      title: t.name,
+      visible: true,
+      source: new ol.source.Vector()
+    });
+    proxyLayer.on("change:visible", () => {
+      surveyDrawApi?.setFeatureTypeVisible?.(t.id, proxyLayer.getVisible());
+    });
+    collection.push(proxyLayer);
+  });
+  if (typeof layerSwitcherRef?.renderPanel === "function") {
+    layerSwitcherRef.renderPanel();
+  }
 }
 
 function setBasemapByTitle(targetTitle) {
@@ -3170,14 +3309,96 @@ function syncDrawToolsMapInset() {
 }
 
 function readSnapOptions() {
+  // Master off = nothing snaps, whatever the per-layer boxes say. The boxes
+  // keep their own state so it comes back intact when it's switched on again.
+  const on = snapMasterCb ? !!snapMasterCb.checked : true;
   return {
-    snapBlocks: !!snapBlocksCb?.checked,
-    snapParcels: !!snapParcelsCb?.checked,
-    snapSurvey: !!snapSurveyCb?.checked
+    snapBlocks: on && !!snapBlocksCb?.checked,
+    snapParcels: on && !!snapParcelsCb?.checked,
+    snapSurvey: on && !!snapSurveyCb?.checked
   };
 }
 
-function detachSnapInteractions() {
+/** True while a snapping-capable tool is live. Deliberately keyed on
+ *  lastSnapOptions rather than activeSnapInteractions.length: with every box
+ *  unticked a live drawing tool has zero Snap interactions, and ticking one
+ *  should still take effect on the next click rather than only after the
+ *  tool is restarted. Null means no tool is running, so a panel change must
+ *  not arm snapping on an idle map. */
+function snapInteractionsActive() {
+  return lastSnapOptions !== null;
+}
+
+function closeSnapPanel() {
+  const panel = document.getElementById("snapPanel");
+  const btn = document.getElementById("snapBtn");
+  if (panel) panel.hidden = true;
+  btn?.classList.remove("active");
+  btn?.setAttribute("aria-expanded", "false");
+}
+
+function openSnapPanel() {
+  const panel = document.getElementById("snapPanel");
+  const btn = document.getElementById("snapBtn");
+  if (!panel) return;
+  syncSnapPanel();
+  panel.hidden = false;
+  btn?.classList.add("active");
+  btn?.setAttribute("aria-expanded", "true");
+}
+
+/** Greys out the per-layer rows while the master switch is off, so it's
+ *  obvious they aren't doing anything rather than looking ticked-and-live. */
+function syncSnapPanel() {
+  const on = snapMasterCb ? !!snapMasterCb.checked : true;
+  const group = document.getElementById("snapPanelGroup");
+  if (group) group.classList.toggle("snap-panel__group--off", !on);
+  for (const cb of [snapBlocksCb, snapParcelsCb, snapSurveyCb]) {
+    if (cb) cb.disabled = !on;
+  }
+}
+
+function setupSnapPanel() {
+  const btn = document.getElementById("snapBtn");
+  const closeBtn = document.getElementById("snapCloseBtn");
+
+  btn?.addEventListener("click", () => {
+    const panel = document.getElementById("snapPanel");
+    if (panel && !panel.hidden) closeSnapPanel();
+    else openSnapPanel();
+  });
+  closeBtn?.addEventListener("click", closeSnapPanel);
+
+  for (const cb of [snapMasterCb, snapBlocksCb, snapParcelsCb, snapSurveyCb]) {
+    cb?.addEventListener("change", () => {
+      syncSnapPanel();
+      // Only re-arm a tool that was already snapping (see
+      // snapInteractionsActive) — never start snapping on an idle map.
+      if (!snapInteractionsActive()) return;
+      const masterOn = snapMasterCb ? !!snapMasterCb.checked : true;
+      if (lastSnapOptions?.snapAllVisible) {
+        // Measure snaps to everything visible; the per-layer boxes don't
+        // apply to it, but the master switch still turns it off entirely.
+        if (masterOn) attachSnapInteractions({ snapAllVisible: true });
+        else detachSnapInteractions({ keepMode: true });
+      } else {
+        attachSnapInteractions(readSnapOptions());
+      }
+    });
+  }
+
+  syncSnapPanel();
+}
+
+/** The opts object the live snap interactions were built from — see
+ *  attachSnapInteractions. Null whenever nothing is snapping. */
+let lastSnapOptions = null;
+
+/** `keepMode` is for attachSnapInteractions' own internal clear-then-rebuild
+ *  — a rebuild isn't a disarm, so it must not forget which mode is live.
+ *  Every external caller is a genuine "stop snapping", and clears it. */
+function detachSnapInteractions({ keepMode = false } = {}) {
+  if (!keepMode) lastSnapOptions = null;
   if (!map) return;
   for (const s of activeSnapInteractions) {
     map.removeInteraction(s);
@@ -3187,8 +3408,12 @@ function detachSnapInteractions() {
 
 function attachSnapInteractions(opts) {
   try {
-    detachSnapInteractions();
+    detachSnapInteractions({ keepMode: true });
     if (!map || !opts) return;
+    // Remembered so setupSnapPanel() can re-arm mid-tool in whichever mode
+    // the active tool asked for: the Measure tool snaps to every visible
+    // layer, drawing snaps to just the ticked ones.
+    lastSnapOptions = opts;
     const tol = 12;
 
     if (opts.snapAllVisible) {
@@ -3303,10 +3528,20 @@ function renderParcelStatusPreview() {
   const actionCol = document.getElementById("parcelStatusActionCol");
   const features = parcelStatusState.selectedFeatures;
   const isFeatureTab = parcelStatusState.selectedLayerType === "FEATURES";
+  const isTitleTab = parcelStatusState.selectedLayerType === "TITLES";
   const hasSelection = !!features?.length;
 
   if (!hasSelection) {
     if (selectionLabel) selectionLabel.textContent = "Select on map";
+  } else if (isTitleTab) {
+    // Titles are named legal parcels — name the one that's picked, same as
+    // a drawn feature, rather than counting an anonymous selection.
+    if (selectionLabel) {
+      selectionLabel.textContent =
+        features.length === 1
+          ? `${features[0].get("title_name") || "Land Title"} · Title`
+          : `Selection: ${features.length} land titles`;
+    }
   } else if (isFeatureTab) {
     // Drawn features are individually named things rather than a numbered
     // grid, so name what's picked instead of just counting it.
@@ -3324,9 +3559,10 @@ function renderParcelStatusPreview() {
   // Modify/Delete: any selection, but Admin/Surveyor only.
   if (actionCol) actionCol.hidden = !hasSelection || !canModifyLand();
 
-  // Log Activity/Alert: plots and blocks only — a drawn feature has no
-  // cultivation activity or agronomic alert to log against it.
-  if (actionsRow) actionsRow.hidden = !hasSelection || isFeatureTab;
+  // Log Activity/Alert: plots and blocks only — neither a drawn feature nor
+  // a land title has cultivation activity or an agronomic alert to log
+  // against it (a title is a legal boundary, not a growing area).
+  if (actionsRow) actionsRow.hidden = !hasSelection || isFeatureTab || isTitleTab;
 }
 
 // ---------------------------------------------------------------------------
@@ -3355,6 +3591,27 @@ async function fetchBlockOptions(estateId) {
   if (estateId) q = q.eq("estate_id", estateId);
   const { data } = await q.order("block_name", { ascending: true });
   return (data || []).map((b) => ({ value: String(b.id), label: b.block_name || `Block ${b.id}` }));
+}
+
+/** An OL geometry type mapped to the vsl_feature_type.geometry_kind
+ *  vocabulary. Used to keep a feature's retyping options to its own kind. */
+function geometryKindOf(feature) {
+  const t = feature?.getGeometry?.()?.getType() || "";
+  if (t === "Point" || t === "MultiPoint") return "point";
+  if (t === "LineString" || t === "MultiLineString") return "line";
+  return "polygon";
+}
+
+/** Every active feature type of one geometry kind, as dropdown options —
+ *  what a selected feature is allowed to be retyped to. */
+async function fetchFeatureTypeOptions(kind) {
+  const { data } = await supabase
+    .from("vsl_feature_type")
+    .select("id, name, code")
+    .eq("geometry_kind", kind)
+    .eq("is_active", true)
+    .order("code", { ascending: true });
+  return (data || []).map((t) => ({ value: String(t.id), label: `${t.name} (${t.code})` }));
 }
 
 /** Ratoon cycle options for the Modify popup — 0 (plant crop) through 5. */
@@ -3417,30 +3674,105 @@ async function openModifySelectedPopup() {
   };
 
   try {
-    if (lt === "FEATURES") {
+    if (lt === "TITLES") {
+      // A title carries only its name and the acreage the deed states —
+      // there's no estate/block parentage to reassign (a title is never
+      // linked to one; see the vsl_title comment above titlesLayer).
+      const { data: rows } = await supabase
+        .from("vsl_title").select("id, title_name, expected_area_acres").in("id", ids);
+      const list = rows || [];
       const initial = {
-        name: many ? NAME_MULTI : String(features[0].get("_name") ?? ""),
-        notes: many ? "" : String(features[0].get("_notes") ?? "")
+        title_name: many ? NAME_MULTI : String(list[0]?.title_name ?? ""),
+        expected_area_acres: many ? "" : String(list[0]?.expected_area_acres ?? "")
       };
       const result = await promptFields({
-        title: many ? `Modify ${ids.length} Features` : "Modify Feature",
+        title: many ? `Modify ${ids.length} Land Titles` : "Modify Land Title",
         icon: "fa-pen",
         fields: [
-          { key: "name", label: "Name", type: "text", value: initial.name,
+          { key: "title_name", label: "Title name", type: "text", value: initial.title_name,
             required: !many, disabled: many },
-          { key: "notes", label: "Description", type: "textarea", value: initial.notes }
+          { key: "expected_area_acres", label: "Titled area (acres)", type: "text",
+            value: initial.expected_area_acres, placeholder: "e.g. 42.5" }
         ]
       });
       if (!result) return;
-      const patch = patchFrom(result, initial, { name: "name", notes: "notes" });
+      const patch = patchFrom(result, initial, {
+        title_name: "title_name", expected_area_acres: "expected_area_acres"
+      });
+      if (many) delete patch.title_name; // never bulk-rename
+      if (patch.expected_area_acres !== undefined && patch.expected_area_acres !== null) {
+        const acres = Number(patch.expected_area_acres);
+        if (!Number.isFinite(acres) || acres < 0) {
+          setParcelStatusFormError("Titled area must be a positive number.");
+          return;
+        }
+        patch.expected_area_acres = acres;
+      }
+      if (!Object.keys(patch).length) return;
+      const { error } = await supabase.from("vsl_title").update(patch).in("id", ids);
+      if (error) throw error;
+      setStatus(statusEl, `Updated ${ids.length} land title(s).`);
+      clearParcelStatusSelection();
+      await loadLayersFromDb();
+      return;
+    }
+
+    if (lt === "FEATURES") {
+      // Retyping is only offered when everything selected is the same
+      // geometry kind. A point type can't be applied to a line — the
+      // geometry wouldn't match how that type is drawn, and the code bands
+      // (1-99 point, 100-199 line, 200-299 polygon) exist precisely to keep
+      // those separate. Mixed selections therefore get name/description
+      // only, with a line explaining why.
+      const kinds = new Set(features.map((f) => geometryKindOf(f)));
+      const oneKind = kinds.size === 1 ? [...kinds][0] : null;
+      const typeOptions = oneKind ? await fetchFeatureTypeOptions(oneKind) : [];
+      const sharedTypeId = sharedValue(
+        features.map((f) => ({ feature_type_id: f.get("_typeId") })),
+        "feature_type_id"
+      );
+
+      const initial = {
+        name: many ? NAME_MULTI : String(features[0].get("_name") ?? ""),
+        description: many ? "" : String(features[0].get("_description") ?? ""),
+        feature_type_id: sharedTypeId
+      };
+      const fields = [
+        { key: "name", label: "Name", type: "text", value: initial.name,
+          required: false, disabled: many },
+        { key: "description", label: "Description", type: "textarea", value: initial.description }
+      ];
+      if (oneKind && typeOptions.length) {
+        fields.push({
+          key: "feature_type_id", label: "Type", type: "select", value: initial.feature_type_id,
+          options: [{ value: "", label: many && !sharedTypeId ? "— Mixed types —" : "— Type —" }, ...typeOptions]
+        });
+      }
+
+      const result = await promptFields({
+        title: many ? `Modify ${ids.length} Features` : "Modify Feature",
+        message: oneKind ? undefined : "Mixed point/line/polygon selection — select one kind at a time to change the type.",
+        icon: "fa-pen",
+        fields
+      });
+      if (!result) return;
+      const patch = patchFrom(result, initial, {
+        name: "name", description: "description", feature_type_id: "feature_type_id"
+      });
       if (many) delete patch.name; // never bulk-rename
       if (!Object.keys(patch).length) return;
       const { error } = await supabase.from("vsl_feature").update(patch).in("id", ids);
       if (error) throw error;
       features.forEach((f) => {
         if (patch.name !== undefined) f.set("_name", patch.name);
-        if (patch.notes !== undefined) f.set("_notes", patch.notes);
+        if (patch.description !== undefined) f.set("_description", patch.description);
       });
+      // A type change rewrites colour, icon, line style and labels, none of
+      // which live on the feature row — so the layer is reloaded rather than
+      // patched in place.
+      if (patch.feature_type_id !== undefined) {
+        await surveyDrawApi?.refreshFeaturesLayer?.();
+      }
       window.dispatchEvent(new CustomEvent("vsl-features-changed"));
       setStatus(statusEl, `Updated ${ids.length} feature(s).`);
       renderParcelStatusPreview();
@@ -3585,11 +3917,54 @@ async function deleteSelectedFeatures() {
   window.dispatchEvent(new CustomEvent("vsl-features-changed"));
 }
 
+/** Deletes the selected Land Titles (vsl_title). Titles are standalone legal
+ *  boundaries — nothing is keyed to them the way plots are keyed to a block —
+ *  so, like a drawn feature, there's no linked-records guard, just the
+ *  confirmation. */
+async function deleteSelectedTitles() {
+  const features = parcelStatusState.selectedFeatures;
+  if (!features?.length) return;
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+    setParcelStatusFormError("Sign in to delete land titles.");
+    return;
+  }
+  if (!canModifyLand()) {
+    setParcelStatusFormError("Only Admin or Surveyor can delete land titles.");
+    return;
+  }
+
+  const confirmed = await confirmDanger({
+    title: `Delete ${features.length} land title${features.length > 1 ? "s" : ""}`,
+    message: `You are about to permanently delete ${features.length} land title(s). This action cannot be undone.`,
+    confirmLabel: "Delete"
+  });
+  if (!confirmed) return;
+
+  setParcelStatusFormError("");
+  setParcelStatusBusy(true, `Deleting ${features.length} land title(s)…`);
+  const ids = features.map((f) => f.getId());
+  let errorCount = 0;
+  for (const id of ids) {
+    const { error } = await supabase.from("vsl_title").delete().eq("id", id);
+    if (error) errorCount++;
+  }
+  setParcelStatusBusy(false);
+
+  if (errorCount) {
+    setParcelStatusFormError(`Failed to delete ${errorCount} of ${features.length} land title(s).`);
+    return;
+  }
+  setStatus(statusEl, `Deleted ${features.length} land title(s).`);
+  clearParcelStatusSelection();
+  await loadLayersFromDb();
+}
+
 function clearParcelStatusSelection() {
   parcelStatusState.selectedFeatures = [];
   parcelStatusState.selectedLayerType = null;
   blocksLayer.changed();
   parcelsLayer.changed();
+  titlesLayer.changed();
   surveyDrawApi?.setHighlightedFeatures?.([]);
   renderParcelStatusPreview();
 }
@@ -3660,8 +4035,11 @@ function tryParcelStatusMapClick(evt) {
 
   if (mode === "FEATURE") {
     // "Feature" tab — the drawn features (vsl_feature: trees, roads, walls,
-    // …) on survey-draw.js's own layer, NOT plots/blocks, which have their
-    // own two tabs.
+    // …) on survey-draw.js's own layer PLUS Land Titles (vsl_title, on
+    // titlesLayer). Neither is a plot or a block, so neither has a tab of
+    // its own; they share this one. Drawn features are hit-tested first
+    // because a title is a large background polygon that would otherwise
+    // swallow every click on a tree standing inside it.
     const featuresLayer = surveyDrawApi?.getFeaturesLayer?.();
     if (featuresLayer) {
       map.forEachFeatureAtPixel(
@@ -3673,7 +4051,19 @@ function tryParcelStatusMapClick(evt) {
         { ...hitOpts, layerFilter: (layer) => layer === featuresLayer }
       );
     }
-    if (hit) layerHit = "FEATURES";
+    if (hit) {
+      layerHit = "FEATURES";
+    } else {
+      map.forEachFeatureAtPixel(
+        evt.pixel,
+        (feature) => {
+          hit = feature;
+          return true;
+        },
+        { ...hitOpts, layerFilter: (layer) => layer === titlesLayer }
+      );
+      if (hit) layerHit = "TITLES";
+    }
   } else if (mode === "PARCELS") {
     map.forEachFeatureAtPixel(
       evt.pixel,
@@ -3698,7 +4088,11 @@ function tryParcelStatusMapClick(evt) {
 
   if (!hit) {
     const label = mode === "FEATURE" ? "drawn feature" : mode === "PARCELS" ? "parcel" : "block";
-    setStatus(statusEl, mode === "FEATURE" ? "Click a drawn feature." : `Click a ${label} polygon.`, true);
+    setStatus(
+      statusEl,
+      mode === "FEATURE" ? "Click a drawn feature or a land title." : `Click a ${label} polygon.`,
+      true
+    );
     return true;
   }
 
@@ -3718,6 +4112,7 @@ function tryParcelStatusMapClick(evt) {
   clearStatus(statusEl);
   blocksLayer.changed();
   parcelsLayer.changed();
+  titlesLayer.changed();
   syncFeatureSelectionHighlight();
   return true;
 }
@@ -3765,6 +4160,10 @@ function setupParcelStatusPanel() {
     // Drawn features live in their own table with their own guards.
     if (lt === "FEATURES") {
       await deleteSelectedFeatures();
+      return;
+    }
+    if (lt === "TITLES") {
+      await deleteSelectedTitles();
       return;
     }
 
@@ -4389,6 +4788,70 @@ function hideParcelActionToolbar() {
   const el = document.getElementById("parcelActionToolbar");
   if (el) el.hidden = true;
   parcelActionOverlay?.setPosition(undefined);
+  hideFeatureInfoToolbar();
+}
+
+/**
+ * The drawn-feature counterpart to the toolbar above: tap a tree, road or
+ * wall and a small card appears over it with what's actually recorded —
+ * name and description for every kind, plus length for a line or area for a
+ * polygon. A readout, not actions; editing and deleting live in the Select
+ * window's Feature tab.
+ *
+ * Measurements are computed from the geometry on the spot rather than read
+ * from vsl_feature.length_m/area_m2, so they can't disagree with what the
+ * map is drawing after a shape is edited.
+ */
+function showFeatureInfoToolbar(feature) {
+  const el = document.getElementById("featureInfoToolbar");
+  const geometry = feature?.getGeometry?.();
+  if (!el || !featureInfoOverlay || !geometry) return;
+
+  const kind = geometryKindOf(feature);
+  const typeName = String(feature.get("_typeName") ?? "");
+  const name = String(feature.get("_name") ?? "").trim();
+  const description = String(feature.get("_description") ?? "").trim();
+
+  const swatch = document.getElementById("featureInfoToolbarSwatch");
+  if (swatch) swatch.style.background = feature.get("_color") || "#3f8f3f";
+  document.getElementById("featureInfoToolbarName").textContent = name || typeName || "Feature";
+  const typeEl = document.getElementById("featureInfoToolbarType");
+  // Only worth a second line when it isn't just repeating the name above.
+  typeEl.textContent = name && typeName ? typeName : "";
+  typeEl.hidden = !typeEl.textContent;
+
+  const descEl = document.getElementById("featureInfoToolbarDesc");
+  descEl.textContent = description;
+  descEl.hidden = !description;
+
+  const measureEl = document.getElementById("featureInfoToolbarMeasure");
+  let measure = "";
+  if (kind === "line") {
+    const m = ol.sphere.getLength(geometry, { projection: "EPSG:3857" });
+    if (Number.isFinite(m)) measure = m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${m.toFixed(1)} m`;
+  } else if (kind === "polygon") {
+    const m2 = ol.sphere.getArea(geometry, { projection: "EPSG:3857" });
+    if (Number.isFinite(m2)) measure = `${(m2 / 10000).toFixed(2)} ha`;
+  }
+  measureEl.textContent = measure;
+  measureEl.hidden = !measure;
+
+  // Anchored the same way the plot toolbar is: a point sits on its own
+  // coordinate, anything else on a point guaranteed to be inside the shape.
+  const anchor =
+    kind === "point"
+      ? geometry.getClosestPoint(ol.extent.getCenter(geometry.getExtent()))
+      : getFeatureInteriorPoint(geometry)?.getCoordinates()
+        || ol.extent.getCenter(geometry.getExtent());
+
+  el.hidden = false;
+  featureInfoOverlay.setPosition(anchor);
+}
+
+function hideFeatureInfoToolbar() {
+  const el = document.getElementById("featureInfoToolbar");
+  if (el) el.hidden = true;
+  featureInfoOverlay?.setPosition(undefined);
 }
 
 function setupParcelActionToolbar() {
@@ -4408,6 +4871,17 @@ function setupParcelActionToolbar() {
     stopEvent: true
   });
   map.addOverlay(parcelActionOverlay);
+
+  const featureInfoEl = document.getElementById("featureInfoToolbar");
+  if (featureInfoEl) {
+    featureInfoOverlay = new ol.Overlay({
+      element: featureInfoEl,
+      positioning: "bottom-center",
+      offset: [0, -16],
+      stopEvent: true
+    });
+    map.addOverlay(featureInfoOverlay);
+  }
 
   document.getElementById("parcelActionLogActivityBtn")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
@@ -4433,34 +4907,158 @@ function setupParcelActionToolbar() {
  * trenches, trees, powerlines, etc. — see the user's request) can be
  * appended the same way, each as its own .legend-panel__section.
  */
+/**
+ * Builds the Legend panel — the same four groups the printed legend uses
+ * (see buildLegendGroups in js/print-tool.js), from the same constants the
+ * map styles itself with, so the panel, the map and the PDF can't disagree.
+ *
+ * The one deliberate difference from the PDF: the printed legend lists only
+ * the feature types that fall inside the selected print area, whereas this
+ * panel lists every type present anywhere on the map — you're looking at
+ * the whole map, so the key should cover the whole map.
+ *
+ * Symbol kinds mirror how each thing is actually drawn:
+ *   poly  — square, hollow or filled, solid or dashed edge
+ *   line  — short rule in the type's colour/line style
+ *   icon  — the feature type's own Font Awesome glyph
+ */
 function buildLegendList() {
-  const list = document.getElementById("legendStatusList");
-  if (!list) return;
-  list.innerHTML = "";
-  Object.keys(CULTIVATION_STATUS_LABELS).forEach((key) => {
-    const palette = CULTIVATION_PALETTE[key];
-    if (!palette) return;
-    const li = document.createElement("li");
-    li.className = "legend-panel__item";
+  const root = document.getElementById("legendGroups");
+  if (!root) return;
+  root.innerHTML = "";
 
-    const swatch = document.createElement("span");
-    swatch.className = "legend-panel__swatch";
-    swatch.style.background = palette.fill;
-    swatch.style.borderColor = palette.stroke;
+  const groups = [];
 
-    const label = document.createElement("span");
-    label.textContent = CULTIVATION_STATUS_LABELS[key];
+  // 1. Land properties — how each land layer is drawn on the map.
+  groups.push({
+    title: "Land properties",
+    items: [
+      { label: "Estate", sym: { kind: "poly", stroke: "#D76213", dashed: true } },
+      { label: "Block", sym: { kind: "poly", stroke: "#d32f2f" } },
+      { label: "Plot", sym: { kind: "poly", stroke: "#2e7d32" } },
+      { label: "Land Title", sym: { kind: "poly", stroke: "#7b1fa2", dashed: true } }
+    ]
+  });
 
-    li.appendChild(swatch);
-    li.appendChild(label);
-    list.appendChild(li);
+  // 2. Plot status. Vacant's palette fill is fully transparent, so it shows
+  //    as a hollow box here exactly as it prints and draws.
+  groups.push({
+    title: "Plot status",
+    items: Object.keys(CULTIVATION_STATUS_LABELS).map((key) => {
+      const palette = CULTIVATION_PALETTE[key] || {};
+      return {
+        label: CULTIVATION_STATUS_LABELS[key],
+        sym: { kind: "poly", fill: palette.fill, stroke: palette.stroke }
+      };
+    })
+  });
+
+  // 3. Alerts — the three severities.
+  groups.push({
+    title: "Alerts",
+    items: Object.keys(ALERT_SEVERITY_COLORS).map((key) => ({
+      label: SEVERITY_LABELS[key] || key,
+      sym: {
+        kind: "poly",
+        fill: ALERT_SEVERITY_FILL?.[key] || ALERT_SEVERITY_COLORS[key],
+        stroke: ALERT_SEVERITY_COLORS[key]
+      }
+    }))
+  });
+
+  // 4. Features — every type drawn anywhere on the map, deduped by type.
+  const featureItems = [];
+  const seenTypes = new Map();
+  surveyDrawApi?.getFeaturesLayer?.()?.getSource()?.forEachFeature((f) => {
+    const id = f.get("_typeId");
+    const key = id == null ? (f.get("_typeName") || "?") : id;
+    if (seenTypes.has(key)) return;
+    const kind = (f.getGeometry()?.getType() || "").toLowerCase();
+    const color = f.get("_color") || "#3f8f3f";
+    seenTypes.set(key, true);
+    featureItems.push({
+      label: f.get("_typeName") || "Feature",
+      sym: kind.includes("point")
+        ? { kind: "icon", icon: f.get("_icon") || "fa-circle-dot", stroke: color }
+        : kind.includes("line")
+          ? { kind: "line", stroke: color, dashed: isDashedLinetype(f.get("_linetype")) }
+          : { kind: "poly", fill: hexToTranslucent(color, 0.35), stroke: color,
+              dashed: isDashedLinetype(f.get("_linetype")) }
+    });
+  });
+  featureItems.sort((a, b) => a.label.localeCompare(b.label));
+  if (featureItems.length) groups.push({ title: "Features", items: featureItems });
+
+  groups.forEach((g) => {
+    const section = document.createElement("div");
+    section.className = "legend-panel__section";
+
+    const heading = document.createElement("h3");
+    heading.className = "legend-panel__heading";
+    heading.textContent = g.title;
+    section.appendChild(heading);
+
+    const ul = document.createElement("ul");
+    ul.className = "legend-panel__list";
+    g.items.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "legend-panel__item";
+      li.appendChild(buildLegendSwatch(item.sym));
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      li.appendChild(label);
+      ul.appendChild(li);
+    });
+
+    section.appendChild(ul);
+    root.appendChild(section);
   });
 }
-// js/print-tool.js reuses this exact same cultivation-status data (colors
-// can never drift from what the map actually draws) for its own legend
-// overlay, by calling this then reading #legendStatusList's rendered
-// <li>s — same loosely-coupled window.* hook pattern as
-// vslSetParcelClickEnabled/vslConfirmSurveyClose elsewhere in this app.
+
+/** vsl_feature_type.linetype -> dashed or not. The column is all NULL
+ *  today, so everything draws solid until it's populated. */
+function isDashedLinetype(linetype) {
+  const t = String(linetype || "").toLowerCase();
+  return t.includes("dash") || t.includes("dot");
+}
+
+/** "#rrggbb" -> "rgba(r,g,b,a)" for the translucent polygon-feature fill
+ *  (features are drawn at 0.18 alpha on the map; a little stronger reads
+ *  better in a 16px swatch). */
+function hexToTranslucent(hex, alpha) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex).trim());
+  if (!m) return hex;
+  const [r, g, b] = m.slice(1).map((h) => parseInt(h, 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** One legend swatch, drawn per its symbol kind. */
+function buildLegendSwatch(sym) {
+  if (sym.kind === "icon") {
+    const el = document.createElement("span");
+    el.className = "legend-panel__sym legend-panel__sym--icon";
+    el.style.color = sym.stroke;
+    el.innerHTML = `<i class="fas ${sym.icon}" aria-hidden="true"></i>`;
+    return el;
+  }
+  if (sym.kind === "line") {
+    const el = document.createElement("span");
+    el.className = "legend-panel__sym legend-panel__sym--line";
+    el.style.borderTopColor = sym.stroke;
+    el.style.borderTopStyle = sym.dashed ? "dashed" : "solid";
+    return el;
+  }
+  const el = document.createElement("span");
+  el.className = "legend-panel__sym legend-panel__swatch";
+  el.style.background = sym.fill || "transparent";
+  el.style.borderColor = sym.stroke || "rgba(0,0,0,0.25)";
+  el.style.borderStyle = sym.dashed ? "dashed" : "solid";
+  return el;
+}
+
+// js/print-tool.js builds its own legend independently (buildLegendGroups)
+// rather than scraping this one's DOM, but keeps calling this hook so the
+// panel is rebuilt/kept in sync when a print is produced.
 window.vslBuildLegendList = buildLegendList;
 
 function closeLegendPanel() {
@@ -4544,6 +5142,27 @@ function setupInfoPopup() {
     selectedFeature = null;
     selectedLayerType = null;
     closeInfoPopup(); // hides the info panel (if open) and the selection toolbar
+
+    // Drawn features (trees, roads, walls) are checked FIRST and on their
+    // own: they sit above the plots and blocks on the map, so a tap that
+    // lands on one should read as picking that feature, not the plot it
+    // happens to stand in.
+    const drawnFeaturesLayer = surveyDrawApi?.getFeaturesLayer?.();
+    if (drawnFeaturesLayer) {
+      let drawnHit = null;
+      map.forEachFeatureAtPixel(
+        evt.pixel,
+        (feature) => {
+          drawnHit = feature;
+          return true;
+        },
+        { layerFilter: (layer) => layer === drawnFeaturesLayer, hitTolerance: 12 }
+      );
+      if (drawnHit) {
+        showFeatureInfoToolbar(drawnHit);
+        return;
+      }
+    }
 
     map.forEachFeatureAtPixel(
       evt.pixel,
@@ -4848,6 +5467,7 @@ async function loadLayersFromDb() {
 
   blocksSource.clear(true);
   parcelsSource.clear(true);
+  titlesSource.clear(true);
 
   const geojsonFmt = new ol.format.GeoJSON();
   const projOpts = { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" };
@@ -4884,6 +5504,7 @@ async function loadLayersFromDb() {
     feature.setId(row.feature_id);
     if (row.layer_type === "BLOCKS") blocksSource.addFeature(feature);
     if (row.layer_type === "PARCELS") parcelsSource.addFeature(feature);
+    if (row.layer_type === "TITLES") titlesSource.addFeature(feature);
     n += 1;
   }
   const rowCount = (data || []).length;
@@ -6488,6 +7109,7 @@ async function initMap() {
       target: document.getElementById("mapRightBtnStack") || undefined
     });
     map.addControl(layerSwitcher);
+    layerSwitcherRef = layerSwitcher;
     if (typeof layerSwitcher.renderPanel === "function") {
       setTimeout(() => {
         layerSwitcher.renderPanel();
@@ -6519,6 +7141,7 @@ async function initMap() {
   setupInfoPopup();
   setupParcelActionToolbar();
   setupLegendPanel();
+  setupSnapPanel();
   setupLogActivityModal();
   setupLogAlertModal();
   setupRecordDetailModal();
@@ -6562,7 +7185,11 @@ async function initMap() {
     // readSnapOptions()/attachSnapInteractions()/detachSnapInteractions()
     // defined above in this file.
     attachSnap: () => attachSnapInteractions(readSnapOptions()),
-    detachSnap: detachSnapInteractions
+    detachSnap: detachSnapInteractions,
+    // Rebuilds the FEATURES group in the layer switcher every time
+    // featuresSource is repopulated (boot, Draw tab save, Manage Features
+    // CRUD, …) — see rebuildFeaturesSwitcherGroup().
+    onFeaturesRefreshed: () => rebuildFeaturesSwitcherGroup()
   });
   // Published for the Search window's Feature tab (setupFeatureSearch),
   // which reads this layer's features and drives its highlight.
@@ -6598,6 +7225,7 @@ async function initMap() {
     // by survey-draw, so it's fetched lazily through its handle rather
     // than captured here — it's rebuilt whenever feature types change.
     estatesLayer,
+    titlesLayer,
     getFeaturesLayer: () => surveyDrawHandles?.getFeaturesLayer?.() || null,
     // Feature names sit on their own decluttered layer; the print tool needs
     // it only so it can hide it while capturing the basemap raster.

@@ -29,6 +29,13 @@ const DELETE_VERTEX_COLOR = "#c62828";
 // elsewhere in this app.
 const OUTLINE_COLOR = "#ff8f00";
 
+// How many past geometry states each pending edit keeps, for the Snap
+// widget's Undo button (see performEditUndo/MAX_UNDO_STEPS usage below).
+// Oldest state drops off once a feature's been reshaped more than this many
+// times in one session — undo depth is bounded to keep memory sane on a
+// long editing session, not because 10 is otherwise meaningful.
+const MAX_UNDO_STEPS = 10;
+
 export function initSurveyEdit({
   map,
   cfg,
@@ -200,6 +207,11 @@ export function initSurveyEdit({
   let focusedKey = null;
   const modifyFeatures = new ol.Collection();
 
+  // Pre-drag snapshot of the focused feature, taken on "modifystart" and
+  // consumed (pushed onto that feature's undoStack) on the paired
+  // "modifyend" — see the Modify interaction setup in startSession().
+  let modifyStartSnapshot = null;
+
   // Side channel written by the Modify style function (see below) so
   // deleteCondition knows whether the pointer is currently sitting on an
   // existing vertex, without reaching into OL's private internals for that
@@ -250,7 +262,11 @@ export function initSurveyEdit({
         // Only meaningful for block/parcel (see liveAreaAcres/modifyend
         // below) — snapshotted so Cancel/discard can put the true original
         // value back, not whatever it got live-recomputed to mid-edit.
-        originalExpectedArea: kind === "block" || kind === "parcel" ? feature.get("expected_area_acres") : undefined
+        originalExpectedArea: kind === "block" || kind === "parcel" ? feature.get("expected_area_acres") : undefined,
+        // Undo history for this one feature — see performEditUndo() and the
+        // modifystart/modifyend pair below that fill it. Capped at
+        // MAX_UNDO_STEPS, oldest dropped first.
+        undoStack: []
       });
     }
     modifyFeatures.push(feature);
@@ -298,7 +314,7 @@ export function initSurveyEdit({
     // whole session — see window.vslSetParcelClickEnabled (map-app.js).
     // Otherwise clicking a plot to edit it would also pop that up.
     window.vslSetParcelClickEnabled?.(false);
-    window.vslEnterDraftingMode?.();
+    window.vslEnterDraftingMode?.(performEditUndo);
     feedback("Click a plot, block, or feature on the map to edit it…", false);
 
     const layers = [blocksLayer, parcelsLayer, getFeaturesLayer?.()].filter(Boolean);
@@ -344,10 +360,35 @@ export function initSurveyEdit({
     // Custom vsl_feature polygons/lines need no equivalent: their area/
     // length labels (js/survey-draw.js styleForFeature) are computed fresh
     // from geometry on every render already, nothing cached to go stale.
+    // Snapshot the focused feature's pre-drag state so the paired
+    // "modifyend" below has something to push onto its undoStack — this is
+    // what performEditUndo() pops from (see the Snap widget's Undo button).
+    modifyInteraction.on("modifystart", () => {
+      if (!focusedKey) {
+        modifyStartSnapshot = null;
+        return;
+      }
+      const entry = pendingEdits.get(focusedKey);
+      if (!entry) {
+        modifyStartSnapshot = null;
+        return;
+      }
+      modifyStartSnapshot = {
+        geometry: entry.feature.getGeometry().clone(),
+        expectedArea: entry.feature.get("expected_area_acres")
+      };
+    });
+
     modifyInteraction.on("modifyend", () => {
       if (!focusedKey) return;
       const entry = pendingEdits.get(focusedKey);
-      if (!entry || (entry.kind !== "block" && entry.kind !== "parcel")) return;
+      if (!entry) return;
+      if (modifyStartSnapshot) {
+        entry.undoStack.push(modifyStartSnapshot);
+        if (entry.undoStack.length > MAX_UNDO_STEPS) entry.undoStack.shift();
+        modifyStartSnapshot = null;
+      }
+      if (entry.kind !== "block" && entry.kind !== "parcel") return;
       const areaAcres = liveAreaAcres(entry.feature.getGeometry());
       if (areaAcres != null) entry.feature.set("expected_area_acres", areaAcres);
     });
@@ -413,6 +454,23 @@ export function initSurveyEdit({
     window.vslExitDraftingMode?.();
   }
 
+  // Reached via the Snap widget's Undo button (window.vslDraftingUndo, set
+  // by enterDraftingMode() above). Pops the focused feature's most recent
+  // pre-drag snapshot and restores it — one step per click, up to
+  // MAX_UNDO_STEPS steps deep. No-op if nothing's focused yet or its
+  // history is empty (e.g. right after Start Editing, before any drag).
+  function performEditUndo() {
+    if (!focusedKey) return;
+    const entry = pendingEdits.get(focusedKey);
+    if (!entry || !entry.undoStack.length) return;
+    const snapshot = entry.undoStack.pop();
+    entry.feature.setGeometry(snapshot.geometry.clone());
+    if (entry.kind === "block" || entry.kind === "parcel") {
+      entry.feature.set("expected_area_acres", snapshot.expectedArea);
+    }
+    feedback(`Undid last change to ${labelFor(entry.feature, entry.kind)}.`, false);
+  }
+
   function confirmDiscardChanges() {
     return confirmDanger({
       title: "Discard Unsaved Edits?",
@@ -434,9 +492,14 @@ export function initSurveyEdit({
     await stopSession({ restore: true });
   });
 
-  // Explicit Cancel (footer button) — this click *is* the "discard"
-  // confirmation, no extra popup on top of it.
+  // Explicit Cancel (footer button) — confirms first, same as the
+  // Start/Stop toggle's stop branch, since this discards every pending
+  // edit too.
   cancelBtn?.addEventListener("click", async () => {
+    if (pendingEdits.size > 0) {
+      const discard = await confirmDiscardChanges();
+      if (!discard) return;
+    }
     await stopSession({ restore: true });
   });
 

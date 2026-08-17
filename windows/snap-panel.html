@@ -31,9 +31,11 @@
       </div>
       <!-- Delegates to whichever drafting tool is currently live — each one
            passes its own undo function into enterDraftingMode() (see
-           js/map-app.js), stored as window.vslDraftingUndo. A no-op click
-           when the live tool doesn't have one (the Edit tab doesn't, since
-           it edits existing geometry rather than sketching new vertices). -->
+           js/map-app.js), stored as window.vslDraftingUndo. Draw/Measure
+           undo the last sketched vertex; the Edit tab (js/survey-edit.js,
+           performEditUndo) steps the focused feature back through up to
+           MAX_UNDO_STEPS prior drag states. No-op if nothing's focused or
+           its history is empty. -->
       <button type="button" id="snapFabUndoBtn" class="map-floating-snap-fab__undo">
         <i class="fas fa-rotate-left" aria-hidden="true"></i> Undo
       </button>

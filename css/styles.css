@@ -3012,6 +3012,16 @@ select.search-panel__input {
   z-index: 50;
 }
 
+/* Same [hidden] fix as .floating-btn/.dashboard-btn elsewhere in this file —
+   this class's own `display: flex` would otherwise beat the browser's
+   default [hidden]{display:none} at equal specificity. Covers both
+   #mapLeftBtnStack and #mapRightBtnStack (.map-fab-cluster--right also
+   carries .map-btn-stack) — see enterDraftingMode()/exitDraftingMode() in
+   js/map-app.js, which hide both while a drafting tool is live. */
+.map-btn-stack[hidden] {
+  display: none !important;
+}
+
 /* ── FAB Cluster ── */
 .map-fab-cluster {
   position: absolute;
@@ -3098,14 +3108,7 @@ select.search-panel__input {
   order: 1;
 }
 
-/* Snap — same in-flow treatment as Legend, one slot below it, so the
-   top-right cluster reads Layers → Legend → Snap top to bottom. */
-.floating-btn.map-floating-snap {
-  position: static;
-  order: 2;
-}
-
-/* Open/toggled state — Legend and Snap both toggle a persistent panel from
+/* Open/toggled state — Legend toggles a persistent panel from
    this cluster (Locate Me is momentary, Fullscreen just flips fullscreen
    state); scoping this to .floating-btn.active keeps it available for any
    future toggle-style button here too. */
@@ -5200,54 +5203,95 @@ select.search-panel__input {
   width: 240px;
   max-height: 480px;
 }
-/* Snap options window — same top-right dock and same "opt out of
-   .map-right-stack's align-items: stretch" trick the Legend uses above, just
-   narrower still: it's four checkboxes and a line of help text. */
-.snap-panel {
-  align-self: flex-end;
-  width: 220px;
-}
+/* Snap toggle — a small self-contained floating widget, NOT a docked
+   .map-right-stack window (see windows/snap-panel.html's own comment for
+   why it's mounted on body instead). Fixed to the viewport, sitting sticky
+   just to the left of the OL layer-switcher button in #mapRightBtnStack:
+   that cluster is `right: 20px` wide with 40px buttons, so `right: 70px`
+   here (20 + 40 + 10px gap) lands this flush against its left edge.
 
-.snap-panel__master {
+   Shown/hidden purely via [hidden], in step with whatever editing-capable
+   tool is live (Measure pick mode, Draw/Edit session) — see
+   showSnapFab()/hideSnapFab() in js/map-app.js. No collapse/expand of its
+   own any more: it's just this one box, present for exactly as long as
+   drafting mode is (a close button that only hid the box while the tool
+   stayed live had nothing to close it back TO, so it was removed). */
+.map-floating-snap-fab {
+  position: fixed;
+  top: 90px;
+  right: 30px;
+  z-index: 1100;
+  width: 120px;
+  height: 100px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1.5px solid rgba(63, 143, 63, 0.25);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.1);
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.82rem;
+  justify-content: center;
+  padding: 0 14px;
+}
+
+/* Same [hidden] fix as .floating-btn elsewhere — this rule's own
+   `display: flex` would otherwise beat the browser's default
+   [hidden]{display:none} at equal specificity. Controlled by
+   showSnapFab()/hideSnapFab() in js/map-app.js — present only while an
+   editing-capable tool (Measure pick mode, Draw/Edit session) is live. */
+.map-floating-snap-fab[hidden] {
+  display: none !important;
+}
+
+/* Toggle + "Snap" label, side by side (not stacked). */
+.map-floating-snap-fab__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.map-floating-snap-fab__label {
+  font-size: 0.9rem;
   font-weight: 700;
+  color: var(--ink, #222);
+  white-space: nowrap;
+}
+
+/* The toggle switch itself — a plain <button role="switch">, not a
+   checkbox, per spec. Track + sliding thumb, same green the rest of the
+   app's "on" states use. State lives in the aria-checked attribute
+   (js/map-app.js reads/writes it directly), with .snap-toggle--on mirroring
+   it purely for the visual — see setSnapMasterOn() in js/map-app.js. */
+.snap-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  background: #ccc;
   cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+  transition: background 0.15s ease;
 }
 
-.snap-panel__hint {
-  margin: 0.45rem 0 0.7rem;
-  font-size: 0.68rem;
-  line-height: 1.4;
-  color: var(--muted);
+.snap-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: left 0.15s ease;
 }
 
-.snap-panel__group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-left: 10px;
-  border-left: 2px solid rgba(0, 0, 0, 0.08);
+.snap-toggle--on {
+  background: var(--primary, #3f8f3f);
 }
 
-/* Master switch off — the per-layer boxes keep their ticks (so the choice
-   survives a round trip) but are disabled, and dimming them says so. */
-.snap-panel__group--off {
-  opacity: 0.45;
-}
-
-.snap-panel__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-
-.snap-panel__group--off .snap-panel__row {
-  cursor: not-allowed;
+.snap-toggle--on .snap-toggle__thumb {
+  left: 20px;
 }
 
 .legend-panel__section + .legend-panel__section {

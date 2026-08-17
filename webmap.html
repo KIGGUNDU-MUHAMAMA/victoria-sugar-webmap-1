@@ -117,12 +117,11 @@
         <button type="button" class="floating-btn map-floating-legend" id="legendBtn" title="Legend" aria-label="Legend" aria-expanded="false">
           <i class="fas fa-list"></i>
         </button>
-        <!-- Opens windows/snap-panel.html (js/map-app.js setupSnapPanel) —
-             the snap-to-existing-geometry toggles that every drawing and
-             measuring tool reads via readSnapOptions(). -->
-        <button type="button" class="floating-btn map-floating-snap" id="snapBtn" title="Snap Options" aria-label="Snap Options" aria-expanded="false">
-          <i class="fas fa-magnet"></i>
-        </button>
+        <!-- The Snap toggle used to be a button here that opened a docked
+             panel. It's now its own self-contained floating widget (icon +
+             hover flyout in one), fixed-positioned by its own CSS sticky
+             next to the Layers button rather than living in this cluster —
+             see windows/snap-panel.html / .map-floating-snap-fab. -->
       </div>
 
       <!-- Selected-feature action toolbar (OL Overlay target — positioned in JS

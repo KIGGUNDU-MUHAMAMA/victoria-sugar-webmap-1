@@ -131,6 +131,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   const hintList = document.getElementById("drawHintList");
   const saveBtn = document.getElementById("drawSaveBtn");
   const cancelBtn = document.getElementById("drawCancelBtn");
+  const undoBtn = document.getElementById("drawUndoBtn");
 
   if (!entitySelect || !featureSelect) return null;
 
@@ -782,6 +783,11 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   let featuresSnapInteraction = null;
   let pendingSnapInteraction = null;
   let sessionActive = false;
+  // True between a drawstart and its matching drawend/abort — lets Undo
+  // decide whether to remove the in-progress sketch's last vertex
+  // (removeLastPoint) or, once there's no sketch to trim, pop the most
+  // recently finished-but-unsaved shape off pendingDrawn instead.
+  let sketchInProgress = false;
   let tmpIdCounter = 0;
   // One entry per shape finished this session, keyed by a throwaway tmp id
   // — none of this exists in the database yet. Cleared on Save (once every
@@ -1131,6 +1137,15 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       pendingSnapInteraction = null;
     }
     detachSnap?.();
+    sketchInProgress = false;
+    updateUndoButtonState();
+  }
+
+  /** Disabled whenever there's nothing for Undo to do: no session, no
+   *  in-progress sketch, and no finished-but-unsaved shape queued either. */
+  function updateUndoButtonState() {
+    if (!undoBtn) return;
+    undoBtn.disabled = !sessionActive || (!sketchInProgress && pendingDrawn.size === 0);
   }
 
   // (Re)arms a fresh Draw interaction for whatever's currently selected —
@@ -1171,11 +1186,18 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     // type on its own, which is exactly the "keep drawing until Finish"
     // behaviour asked for. Only switching type (via this same
     // armInteraction(), above) tears it down and rebuilds it.
+    drawInteraction.on("drawstart", () => {
+      sketchInProgress = true;
+      updateUndoButtonState();
+    });
     drawInteraction.on("drawend", (evt) => {
+      sketchInProgress = false;
       sketchSource.clear(true);
       handleShapeFinished(ft, evt.feature);
+      updateUndoButtonState();
     });
     showHint(olType, ft.name.toLowerCase());
+    updateUndoButtonState();
   }
 
   // Runs once per finished shape: shows it immediately in the pending
@@ -1270,6 +1292,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
 
   function updateFooterState() {
     if (saveBtn) saveBtn.disabled = pendingDrawn.size === 0;
+    updateUndoButtonState();
   }
 
   function confirmDiscardChanges() {
@@ -1295,6 +1318,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     hideHint();
     updateFooterState();
     window.vslSetParcelClickEnabled?.(true);
+    window.vslExitDraftingMode?.();
     feedback("", false);
   }
 
@@ -1309,7 +1333,9 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       setDrawToggleState(false);
       hideHint();
       window.vslSetParcelClickEnabled?.(true);
+      window.vslExitDraftingMode?.();
       feedback(pendingDrawn.size ? `${pendingDrawn.size} shape(s) ready — Save or Cancel below.` : "", false);
+      updateUndoButtonState();
       return;
     }
     const ft = currentFeatureType();
@@ -1324,7 +1350,9 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     // whole session — otherwise clicking to place a vertex on top of an
     // existing plot/block would also pop that up.
     window.vslSetParcelClickEnabled?.(false);
+    window.vslEnterDraftingMode?.();
     armInteraction();
+    updateUndoButtonState();
   });
 
   saveBtn?.addEventListener("click", async () => {
@@ -1427,6 +1455,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     hideHint();
     updateFooterState();
     window.vslSetParcelClickEnabled?.(true);
+    window.vslExitDraftingMode?.();
   });
 
   // Explicit Cancel (footer button) — this click *is* the "discard"
@@ -1437,6 +1466,26 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       if (!discard) return;
     }
     endSession();
+  });
+
+  // Undo — while a shape is actively being sketched, removes just its last
+  // placed vertex (OL's own Draw.removeLastPoint, same call the Measure
+  // tool's Undo button already uses); once there's no in-progress sketch
+  // left to trim, removes the most recently finished-but-unsaved shape from
+  // the pending queue instead, so "undo" always means "undo my last action"
+  // rather than only ever working mid-shape.
+  undoBtn?.addEventListener("click", () => {
+    if (sketchInProgress && drawInteraction && typeof drawInteraction.removeLastPoint === "function") {
+      drawInteraction.removeLastPoint();
+      return;
+    }
+    const lastKey = [...pendingDrawn.keys()].pop();
+    if (!lastKey) return;
+    const entry = pendingDrawn.get(lastKey);
+    pendingSource.removeFeature(entry.olFeature);
+    pendingDrawn.delete(lastKey);
+    updateFooterState();
+    feedback(pendingDrawn.size ? `${pendingDrawn.size} shape(s) queued. Keep drawing or click Save.` : "", false);
   });
 
   // Same composable "expose a global hook" pattern survey-edit.js uses for

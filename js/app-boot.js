@@ -39,10 +39,12 @@ const WINDOW_FRAGMENTS = [
   // Right-hand tool stack.
   // Opened from the Legend button next to the Layers control (#mapRightBtnStack).
   { parent: "mapRightStack", url: "./windows/legend-panel.html" },
-  // Snap options — opened from the magnet button in that same stack. Holds
-  // the snapBlocksCb/snapParcelsCb/snapSurveyCb checkboxes that used to be
-  // hidden inside the Survey window's Draw tab.
-  { parent: "mapRightStack", url: "./windows/snap-panel.html" },
+  // Snap toggle — a small fixed-position floating widget (not a docked
+  // .map-right-stack window), positioned by its own CSS sticky next to the
+  // layer-switcher button. Mounted on body like the modals below rather
+  // than inside mapRightStack, since it doesn't participate in that
+  // stack's flex column at all. See windows/snap-panel.html.
+  { parent: "body", url: "./windows/snap-panel.html" },
 
   // Body-level overlays/modals (position: fixed, so sibling order doesn't matter).
   // NOTE: windows/edit-details-modal.html is gone — the cultivation-status/

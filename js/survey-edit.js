@@ -298,6 +298,7 @@ export function initSurveyEdit({
     // whole session — see window.vslSetParcelClickEnabled (map-app.js).
     // Otherwise clicking a plot to edit it would also pop that up.
     window.vslSetParcelClickEnabled?.(false);
+    window.vslEnterDraftingMode?.();
     feedback("Click a plot, block, or feature on the map to edit it…", false);
 
     const layers = [blocksLayer, parcelsLayer, getFeaturesLayer?.()].filter(Boolean);
@@ -409,6 +410,7 @@ export function initSurveyEdit({
     if (hintList) hintList.hidden = true;
     feedback("", false);
     window.vslSetParcelClickEnabled?.(true);
+    window.vslExitDraftingMode?.();
   }
 
   function confirmDiscardChanges() {

@@ -28,12 +28,9 @@ const measureAdvancedBtn = document.getElementById("measureAdvancedBtn");
 const drawLineBtn = document.getElementById("drawLineBtn");
 const drawPolygonBtn = document.getElementById("drawPolygonBtn");
 const stopDrawBtn = document.getElementById("stopDrawBtn");
-const snapBlocksCb = document.getElementById("snapBlocksCb");
-const snapParcelsCb = document.getElementById("snapParcelsCb");
-const snapSurveyCb = document.getElementById("snapSurveyCb");
-// Master on/off for snapping as a whole (windows/snap-panel.html). Kept
-// separate from the three per-layer boxes so switching it off and back on
-// restores whichever layers were ticked, rather than clearing them.
+// Snap-to-existing-geometry toggle (windows/snap-panel.html) — a single
+// on/off switch (no more per-layer boxes) read via isSnapMasterOn()/
+// readSnapOptions() below.
 const snapMasterCb = document.getElementById("snapMasterCb");
 const clearMeasuresBtn = document.getElementById("clearMeasuresBtn");
 const clearDrawingsBtn = document.getElementById("clearDrawingsBtn");
@@ -3308,86 +3305,109 @@ function syncDrawToolsMapInset() {
   });
 }
 
+/** Reads the toggle's own state (aria-checked, not .checked — it's a
+ *  <button role="switch"> now, not a checkbox). Snapping no longer has
+ *  per-layer granularity: master on means "snap to every snappable layer",
+ *  master off means none of them. */
+function isSnapMasterOn() {
+  return snapMasterCb ? snapMasterCb.getAttribute("aria-checked") !== "false" : true;
+}
+
+/** Writes both the a11y state and the visual .snap-toggle--on class in one
+ *  place, so nothing can update one without the other. */
+function setSnapMasterOn(on) {
+  if (!snapMasterCb) return;
+  snapMasterCb.setAttribute("aria-checked", on ? "true" : "false");
+  snapMasterCb.classList.toggle("snap-toggle--on", on);
+}
+
 function readSnapOptions() {
-  // Master off = nothing snaps, whatever the per-layer boxes say. The boxes
-  // keep their own state so it comes back intact when it's switched on again.
-  const on = snapMasterCb ? !!snapMasterCb.checked : true;
-  return {
-    snapBlocks: on && !!snapBlocksCb?.checked,
-    snapParcels: on && !!snapParcelsCb?.checked,
-    snapSurvey: on && !!snapSurveyCb?.checked
-  };
+  const on = isSnapMasterOn();
+  return { snapBlocks: on, snapParcels: on, snapSurvey: on };
 }
 
 /** True while a snapping-capable tool is live. Deliberately keyed on
- *  lastSnapOptions rather than activeSnapInteractions.length: with every box
- *  unticked a live drawing tool has zero Snap interactions, and ticking one
- *  should still take effect on the next click rather than only after the
- *  tool is restarted. Null means no tool is running, so a panel change must
- *  not arm snapping on an idle map. */
+ *  lastSnapOptions rather than activeSnapInteractions.length: with the
+ *  master off a live drawing tool has zero Snap interactions, and turning
+ *  it on should still take effect on the next click rather than only after
+ *  the tool is restarted. Null means no tool is running, so a toggle change
+ *  must not arm snapping on an idle map. */
 function snapInteractionsActive() {
   return lastSnapOptions !== null;
 }
 
-function closeSnapPanel() {
+/** Shows the floating Snap widget — called only while an editing-capable
+ *  tool is actually live (Measure pick mode, Draw/Edit tab sessions; see
+ *  their own call sites). Also exposed on window so survey-draw.js/
+ *  survey-edit.js, which don't import map-app.js, can call it directly. */
+function showSnapFab() {
   const panel = document.getElementById("snapPanel");
-  const btn = document.getElementById("snapBtn");
-  if (panel) panel.hidden = true;
-  btn?.classList.remove("active");
-  btn?.setAttribute("aria-expanded", "false");
+  if (panel) panel.hidden = false;
 }
 
-function openSnapPanel() {
-  const panel = document.getElementById("snapPanel");
-  const btn = document.getElementById("snapBtn");
-  if (!panel) return;
-  syncSnapPanel();
-  panel.hidden = false;
-  btn?.classList.add("active");
-  btn?.setAttribute("aria-expanded", "true");
-}
-
-/** Greys out the per-layer rows while the master switch is off, so it's
- *  obvious they aren't doing anything rather than looking ticked-and-live. */
-function syncSnapPanel() {
-  const on = snapMasterCb ? !!snapMasterCb.checked : true;
-  const group = document.getElementById("snapPanelGroup");
-  if (group) group.classList.toggle("snap-panel__group--off", !on);
-  for (const cb of [snapBlocksCb, snapParcelsCb, snapSurveyCb]) {
-    if (cb) cb.disabled = !on;
+/** Hides the floating Snap widget when its editing-capable tool ends, and —
+ *  per spec — unconditionally forces the master toggle back ON first, even
+ *  if the user had just switched it off. That's deliberate: it stops
+ *  snapping being silently left disabled the next time some other tool
+ *  starts, from a toggle the user has no way to see or remember they
+ *  touched once this widget is gone. */
+function hideSnapFab() {
+  setSnapMasterOn(true);
+  if (snapInteractionsActive()) {
+    if (lastSnapOptions?.snapAllVisible) attachSnapInteractions({ snapAllVisible: true });
+    else attachSnapInteractions(readSnapOptions());
   }
+  const panel = document.getElementById("snapPanel");
+  if (panel) panel.hidden = true;
 }
+window.vslShowSnapFab = showSnapFab;
+window.vslHideSnapFab = hideSnapFab;
+
+/** "Drafting mode" — the one place that owns every behavior common to a
+ *  tool that lets the user click on the map to place vertices (Measure
+ *  pick mode, the Draw tab, the Edit tab). Previously each of these grew
+ *  its own ad hoc bits of this — some set a crosshair cursor, some didn't;
+ *  none hid the floating button stacks — so it drifted inconsistent. Any
+ *  future shared drafting behavior belongs here, not back in each tool.
+ *  Exposed on window so survey-draw.js/survey-edit.js, which don't import
+ *  map-app.js, can call it directly (same pattern as vslShowSnapFab). */
+function enterDraftingMode() {
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "crosshair";
+  showSnapFab();
+  document.getElementById("mapLeftBtnStack")?.setAttribute("hidden", "");
+  document.getElementById("mapRightBtnStack")?.setAttribute("hidden", "");
+}
+
+function exitDraftingMode() {
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "";
+  hideSnapFab();
+  document.getElementById("mapLeftBtnStack")?.removeAttribute("hidden");
+  document.getElementById("mapRightBtnStack")?.removeAttribute("hidden");
+}
+window.vslEnterDraftingMode = enterDraftingMode;
+window.vslExitDraftingMode = exitDraftingMode;
 
 function setupSnapPanel() {
-  const btn = document.getElementById("snapBtn");
-  const closeBtn = document.getElementById("snapCloseBtn");
-
-  btn?.addEventListener("click", () => {
-    const panel = document.getElementById("snapPanel");
-    if (panel && !panel.hidden) closeSnapPanel();
-    else openSnapPanel();
+  setSnapMasterOn(isSnapMasterOn());
+  snapMasterCb?.addEventListener("click", () => {
+    const next = !isSnapMasterOn();
+    setSnapMasterOn(next);
+    // Only re-arm a tool that was already snapping (see
+    // snapInteractionsActive) — never start snapping on an idle map.
+    if (!snapInteractionsActive()) return;
+    if (lastSnapOptions?.snapAllVisible) {
+      // Measure snaps to everything visible; the master switch still turns
+      // it off entirely.
+      if (next) attachSnapInteractions({ snapAllVisible: true });
+      else detachSnapInteractions({ keepMode: true });
+    } else if (next) {
+      attachSnapInteractions(readSnapOptions());
+    } else {
+      detachSnapInteractions({ keepMode: true });
+    }
   });
-  closeBtn?.addEventListener("click", closeSnapPanel);
-
-  for (const cb of [snapMasterCb, snapBlocksCb, snapParcelsCb, snapSurveyCb]) {
-    cb?.addEventListener("change", () => {
-      syncSnapPanel();
-      // Only re-arm a tool that was already snapping (see
-      // snapInteractionsActive) — never start snapping on an idle map.
-      if (!snapInteractionsActive()) return;
-      const masterOn = snapMasterCb ? !!snapMasterCb.checked : true;
-      if (lastSnapOptions?.snapAllVisible) {
-        // Measure snaps to everything visible; the per-layer boxes don't
-        // apply to it, but the master switch still turns it off entirely.
-        if (masterOn) attachSnapInteractions({ snapAllVisible: true });
-        else detachSnapInteractions({ keepMode: true });
-      } else {
-        attachSnapInteractions(readSnapOptions());
-      }
-    });
-  }
-
-  syncSnapPanel();
 }
 
 /** The opts object the live snap interactions were built from — see
@@ -6724,9 +6744,11 @@ function setupWalkMode() {
       if (markBtn) markBtn.style.display = "none";
       if (finishBtn) finishBtn.style.display = "none";
       startSmartMeasure();
+      enterDraftingMode();
     } else {
       isWalkModeActive = false;
       stopActiveTool();
+      exitDraftingMode();
       editSource.clear(true);
       if (startContainer) startContainer.style.display = "block";
       if (activeContainer) activeContainer.style.display = "none";
@@ -6949,9 +6971,11 @@ function bindEvents() {
           window.dispatchEvent(new CustomEvent('vsl-measure-mode', {detail:'pick'}));
         } else {
           startSmartMeasure();
+          enterDraftingMode();
         }
       } else {
         stopActiveTool();
+        exitDraftingMode();
       }
     }
   });
@@ -6963,6 +6987,7 @@ function bindEvents() {
     }
     if (measurePanel) measurePanel.hidden = true;
     stopActiveTool();
+    exitDraftingMode();
   };
   measurePanelCloseBtn?.addEventListener("click", handleCloseMeasurePanel);
   measurePanelCloseBtn?.addEventListener("touchstart", handleCloseMeasurePanel, { passive: false });
@@ -7044,13 +7069,7 @@ async function initUser() {
     if (undoMeasureBtn) undoMeasureBtn.disabled = true;
     if (stopDrawBtn) stopDrawBtn.disabled = true;
     if (clearMeasuresBtn) clearMeasuresBtn.disabled = true;
-    for (const el of [
-      snapBlocksCb,
-      snapParcelsCb,
-      snapSurveyCb
-    ]) {
-      if (el) el.disabled = true;
-    }
+    if (snapMasterCb) snapMasterCb.disabled = true;
     // surveyPreviewBtn now does double duty as Preview AND Save (see
     // survey-import.js) — disabling it alone covers both for MANAGMENT.
     const sp = document.getElementById("surveyPreviewBtn");
@@ -7179,9 +7198,7 @@ async function initMap() {
     loadLayersFromDb,
     refreshEstateBoundaries: loadEstateBoundaries,
     // Same shared snap-to-existing-geometry mechanism the Measure tool
-    // already uses (blocks/parcels sources, gated by the snapBlocksCb/
-    // snapParcelsCb checkboxes that live — hidden — right in the Draw
-    // tab's own markup). attachSnap/detachSnap wrap the module-scoped
+    // already uses. attachSnap/detachSnap wrap the module-scoped
     // readSnapOptions()/attachSnapInteractions()/detachSnapInteractions()
     // defined above in this file.
     attachSnap: () => attachSnapInteractions(readSnapOptions()),

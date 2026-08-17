@@ -28,6 +28,13 @@
           <span class="snap-toggle__thumb"></span>
         </button>
         <span class="map-floating-snap-fab__label">Snap</span>
-        
       </div>
+      <!-- Delegates to whichever drafting tool is currently live — each one
+           passes its own undo function into enterDraftingMode() (see
+           js/map-app.js), stored as window.vslDraftingUndo. A no-op click
+           when the live tool doesn't have one (the Edit tab doesn't, since
+           it edits existing geometry rather than sketching new vertices). -->
+      <button type="button" id="snapFabUndoBtn" class="map-floating-snap-fab__undo">
+        <i class="fas fa-rotate-left" aria-hidden="true"></i> Undo
+      </button>
     </div>

@@ -3370,13 +3370,20 @@ window.vslHideSnapFab = hideSnapFab;
  *  none hid the floating button stacks — so it drifted inconsistent. Any
  *  future shared drafting behavior belongs here, not back in each tool.
  *  Exposed on window so survey-draw.js/survey-edit.js, which don't import
- *  map-app.js, can call it directly (same pattern as vslShowSnapFab). */
-function enterDraftingMode() {
+ *  map-app.js, can call it directly (same pattern as vslShowSnapFab).
+ *
+ *  `undoFn`, if given, is stored as window.vslDraftingUndo — what the Snap
+ *  widget's Undo button calls (see setupSnapPanel()). Optional: the Edit
+ *  tab has no equivalent of "undo the last placed vertex" (it edits
+ *  existing geometry rather than sketching new), so it enters drafting mode
+ *  without one and the button is simply a no-op while Edit is live. */
+function enterDraftingMode(undoFn) {
   const mapEl = document.getElementById("map");
   if (mapEl) mapEl.style.cursor = "crosshair";
   showSnapFab();
   document.getElementById("mapLeftBtnStack")?.setAttribute("hidden", "");
   document.getElementById("mapRightBtnStack")?.setAttribute("hidden", "");
+  window.vslDraftingUndo = typeof undoFn === "function" ? undoFn : null;
 }
 
 function exitDraftingMode() {
@@ -3385,11 +3392,16 @@ function exitDraftingMode() {
   hideSnapFab();
   document.getElementById("mapLeftBtnStack")?.removeAttribute("hidden");
   document.getElementById("mapRightBtnStack")?.removeAttribute("hidden");
+  window.vslDraftingUndo = null;
 }
 window.vslEnterDraftingMode = enterDraftingMode;
 window.vslExitDraftingMode = exitDraftingMode;
 
 function setupSnapPanel() {
+  document.getElementById("snapFabUndoBtn")?.addEventListener("click", () => {
+    window.vslDraftingUndo?.();
+  });
+
   setSnapMasterOn(isSnapMasterOn());
   snapMasterCb?.addEventListener("click", () => {
     const next = !isSnapMasterOn();
@@ -6727,6 +6739,15 @@ function locateMe() {
 let isWalkModeActive = false;
 let walkModeCoords = [];
 
+/** The Measure tool's pick-mode undo — same call the tool's own
+ *  #undoMeasureBtn already makes, shared here so it can also be passed into
+ *  enterDraftingMode() as the Snap widget's Undo hook. */
+function undoActiveMeasureVertex() {
+  if (activeInteraction && typeof activeInteraction.removeLastPoint === "function") {
+    activeInteraction.removeLastPoint();
+  }
+}
+
 function setupWalkMode() {
   window.addEventListener("vsl-measure-mode", (e) => {
     const mode = e.detail; // 'pick' or 'walk'
@@ -6744,7 +6765,7 @@ function setupWalkMode() {
       if (markBtn) markBtn.style.display = "none";
       if (finishBtn) finishBtn.style.display = "none";
       startSmartMeasure();
-      enterDraftingMode();
+      enterDraftingMode(undoActiveMeasureVertex);
     } else {
       isWalkModeActive = false;
       stopActiveTool();
@@ -6971,7 +6992,7 @@ function bindEvents() {
           window.dispatchEvent(new CustomEvent('vsl-measure-mode', {detail:'pick'}));
         } else {
           startSmartMeasure();
-          enterDraftingMode();
+          enterDraftingMode(undoActiveMeasureVertex);
         }
       } else {
         stopActiveTool();

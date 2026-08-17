@@ -5228,9 +5228,11 @@ select.search-panel__input {
   border: 1.5px solid rgba(63, 143, 63, 0.25);
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.1);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0 14px;
+  gap: 12px;
+  padding: 12px 14px;
 }
 
 /* Same [hidden] fix as .floating-btn elsewhere — this rule's own
@@ -5254,6 +5256,33 @@ select.search-panel__input {
   font-weight: 700;
   color: var(--ink, #222);
   white-space: nowrap;
+}
+
+/* Undo — delegates to whichever drafting tool is live (window.
+   vslDraftingUndo, set by enterDraftingMode()). Full box width, secondary/
+   outline styling so it doesn't compete visually with the Snap toggle. */
+.map-floating-snap-fab__undo {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #f5f5f5;
+  color: var(--ink, #222);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.map-floating-snap-fab__undo:hover {
+  background: #ebebeb;
+}
+
+.map-floating-snap-fab__undo:active {
+  transform: scale(0.97);
 }
 
 /* The toggle switch itself — a plain <button role="switch">, not a

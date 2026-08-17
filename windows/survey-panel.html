@@ -252,17 +252,11 @@
           </div>
 
           <div class="uam-field-row u-gap-8">
+            <!-- Undo now lives in the floating Snap widget instead (shown
+                 while this tab is drafting) — see performUndo()/
+                 window.vslEnterDraftingMode() in js/survey-draw.js. -->
             <button type="button" id="drawStartBtn" class="uam-btn uam-btn--primary u-w-100">
               <i id="drawStartBtnIcon" class="fas fa-play" aria-hidden="true"></i> <span id="drawStartBtnLabel">Start Drawing</span>
-            </button>
-            <!-- Removes the last placed vertex of the shape currently being
-                 sketched (mirrors the Measure tool's own Undo button); once
-                 the in-progress sketch has none left, removes the most
-                 recently finished-but-unsaved shape from the pending queue
-                 instead. Disabled whenever there's nothing to undo — see
-                 updateUndoButtonState() in js/survey-draw.js. -->
-            <button type="button" id="drawUndoBtn" class="uam-icon-btn" title="Undo last point" aria-label="Undo last point" disabled>
-              <i class="fas fa-rotate-left" aria-hidden="true"></i>
             </button>
           </div>
 

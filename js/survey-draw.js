@@ -1139,6 +1139,39 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     sketchInProgress = false;
   }
 
+  // Arms/disarms this tab's own custom-feature snap targets — already-saved
+  // features (featuresSource) and this session's not-yet-saved shapes
+  // (pendingSource) — in step with the Snap master toggle. Separate from
+  // attachSnap/detachSnap (map-app.js's blocks/parcels/survey snap): those
+  // two sources are local to this tab, not part of that shared mechanism,
+  // but they must obey the same on/off switch rather than snapping
+  // unconditionally regardless of it. Called both when (re)arming a fresh
+  // Draw interaction and live, mid-session, via window.vslDraftingSnapSync
+  // (see the enterDraftingMode() call below and its click handler in
+  // map-app.js).
+  function syncFeatureSnaps(on) {
+    if (on) {
+      if (!drawInteraction) return; // nothing armed to snap onto yet
+      if (!featuresSnapInteraction) {
+        featuresSnapInteraction = new ol.interaction.Snap({ source: featuresSource, pixelTolerance: 12 });
+        map.addInteraction(featuresSnapInteraction);
+      }
+      if (!pendingSnapInteraction) {
+        pendingSnapInteraction = new ol.interaction.Snap({ source: pendingSource, pixelTolerance: 12 });
+        map.addInteraction(pendingSnapInteraction);
+      }
+    } else {
+      if (featuresSnapInteraction) {
+        map.removeInteraction(featuresSnapInteraction);
+        featuresSnapInteraction = null;
+      }
+      if (pendingSnapInteraction) {
+        map.removeInteraction(pendingSnapInteraction);
+        pendingSnapInteraction = null;
+      }
+    }
+  }
+
   // (Re)arms a fresh Draw interaction for whatever's currently selected —
   // called on Start, and again whenever the entity/feature dropdowns
   // change while a session is already active (switching what's being
@@ -1168,10 +1201,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     // interaction above for OL to actually apply the snap while placing a
     // vertex.
     attachSnap?.();
-    featuresSnapInteraction = new ol.interaction.Snap({ source: featuresSource, pixelTolerance: 12 });
-    map.addInteraction(featuresSnapInteraction);
-    pendingSnapInteraction = new ol.interaction.Snap({ source: pendingSource, pixelTolerance: 12 });
-    map.addInteraction(pendingSnapInteraction);
+    syncFeatureSnaps(window.vslIsSnapMasterOn?.() !== false);
     // No removal/re-creation here on drawend — a source-backed Draw
     // interaction is immediately ready for the *next* shape of the same
     // type on its own, which is exactly the "keep drawing until Finish"
@@ -1336,7 +1366,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     // whole session — otherwise clicking to place a vertex on top of an
     // existing plot/block would also pop that up.
     window.vslSetParcelClickEnabled?.(false);
-    window.vslEnterDraftingMode?.(performUndo);
+    window.vslEnterDraftingMode?.(performUndo, syncFeatureSnaps);
     armInteraction();
   });
 

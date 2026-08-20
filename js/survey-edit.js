@@ -305,6 +305,28 @@ export function initSurveyEdit({
       : '<i class="fas fa-circle-play" aria-hidden="true"></i> Start Editing';
   }
 
+  // Arms/disarms this tab's own custom-feature snap target (already-saved
+  // vsl_feature polygons/lines/points) in step with the Snap master toggle.
+  // Separate from attachSnap/detachSnap (map-app.js's blocks/parcels/survey
+  // snap): that source is local to this tab, not part of the shared
+  // mechanism, but it must obey the same on/off switch rather than snapping
+  // unconditionally regardless of it. Called both when starting a session
+  // and live, mid-session, via window.vslDraftingSnapSync (see the
+  // enterDraftingMode() call below and its click handler in map-app.js).
+  function syncFeatureSnap(on) {
+    if (on) {
+      if (featuresSnapInteraction) return;
+      const layer = getFeaturesLayer?.();
+      if (layer?.getSource) {
+        featuresSnapInteraction = new ol.interaction.Snap({ source: layer.getSource(), pixelTolerance: 12 });
+        map.addInteraction(featuresSnapInteraction);
+      }
+    } else if (featuresSnapInteraction) {
+      map.removeInteraction(featuresSnapInteraction);
+      featuresSnapInteraction = null;
+    }
+  }
+
   function startSession() {
     if (sessionActive) return;
     sessionActive = true;
@@ -314,7 +336,7 @@ export function initSurveyEdit({
     // whole session — see window.vslSetParcelClickEnabled (map-app.js).
     // Otherwise clicking a plot to edit it would also pop that up.
     window.vslSetParcelClickEnabled?.(false);
-    window.vslEnterDraftingMode?.(performEditUndo);
+    window.vslEnterDraftingMode?.(performEditUndo, syncFeatureSnap);
     feedback("Click a plot, block, or feature on the map to edit it…", false);
 
     const layers = [blocksLayer, parcelsLayer, getFeaturesLayer?.()].filter(Boolean);
@@ -399,11 +421,7 @@ export function initSurveyEdit({
     // must be added *after* modifyInteraction above for OL to actually
     // apply the snap while a node is being dragged.
     attachSnap?.();
-    const featuresLayerForSnap = getFeaturesLayer?.();
-    if (featuresLayerForSnap?.getSource) {
-      featuresSnapInteraction = new ol.interaction.Snap({ source: featuresLayerForSnap.getSource(), pixelTolerance: 12 });
-      map.addInteraction(featuresSnapInteraction);
-    }
+    syncFeatureSnap(window.vslIsSnapMasterOn?.() !== false);
 
     selectInteraction.on("select", (evt) => {
       const feature = evt.selected?.[0];

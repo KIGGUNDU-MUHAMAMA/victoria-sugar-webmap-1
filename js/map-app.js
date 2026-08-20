@@ -3312,6 +3312,12 @@ function syncDrawToolsMapInset() {
 function isSnapMasterOn() {
   return snapMasterCb ? snapMasterCb.getAttribute("aria-checked") !== "false" : true;
 }
+// Exposed so survey-draw.js/survey-edit.js (which own a couple of raw
+// ol.interaction.Snap instances of their own — custom-feature and
+// in-session pending-shape snapping, neither routed through
+// attachSnapInteractions below) can gate those on the same switch instead
+// of arming them unconditionally regardless of it.
+window.vslIsSnapMasterOn = isSnapMasterOn;
 
 /** Writes both the a11y state and the visual .snap-toggle--on class in one
  *  place, so nothing can update one without the other. */
@@ -3376,14 +3382,23 @@ window.vslHideSnapFab = hideSnapFab;
  *  widget's Undo button calls (see setupSnapPanel()). Optional: the Edit
  *  tab has no equivalent of "undo the last placed vertex" (it edits
  *  existing geometry rather than sketching new), so it enters drafting mode
- *  without one and the button is simply a no-op while Edit is live. */
-function enterDraftingMode(undoFn) {
+ *  without one and the button is simply a no-op while Edit is live.
+ *
+ *  `snapSyncFn`, if given, is stored as window.vslDraftingSnapSync — called
+ *  with the new on/off state whenever the Snap toggle is flipped while this
+ *  tool is live (see setupSnapPanel()'s click handler), so a tool's own
+ *  extra Snap interactions (custom-feature/pending-shape snapping in
+ *  survey-draw.js/survey-edit.js — neither routed through
+ *  attachSnapInteractions below) stay in step with the toggle instead of
+ *  only reacting to it the next time the tool restarts. */
+function enterDraftingMode(undoFn, snapSyncFn) {
   const mapEl = document.getElementById("map");
   if (mapEl) mapEl.style.cursor = "crosshair";
   showSnapFab();
   document.getElementById("mapLeftBtnStack")?.setAttribute("hidden", "");
   document.getElementById("mapRightBtnStack")?.setAttribute("hidden", "");
   window.vslDraftingUndo = typeof undoFn === "function" ? undoFn : null;
+  window.vslDraftingSnapSync = typeof snapSyncFn === "function" ? snapSyncFn : null;
 }
 
 function exitDraftingMode() {
@@ -3393,6 +3408,7 @@ function exitDraftingMode() {
   document.getElementById("mapLeftBtnStack")?.removeAttribute("hidden");
   document.getElementById("mapRightBtnStack")?.removeAttribute("hidden");
   window.vslDraftingUndo = null;
+  window.vslDraftingSnapSync = null;
 }
 window.vslEnterDraftingMode = enterDraftingMode;
 window.vslExitDraftingMode = exitDraftingMode;
@@ -3406,6 +3422,11 @@ function setupSnapPanel() {
   snapMasterCb?.addEventListener("click", () => {
     const next = !isSnapMasterOn();
     setSnapMasterOn(next);
+    // The live tool's own extra Snap interactions (Draw/Edit tabs' custom-
+    // feature/pending-shape snapping) aren't part of attachSnapInteractions
+    // below — sync them separately so toggling mid-session actually takes
+    // effect immediately instead of only on the next Start.
+    window.vslDraftingSnapSync?.(next);
     // Only re-arm a tool that was already snapping (see
     // snapInteractionsActive) — never start snapping on an idle map.
     if (!snapInteractionsActive()) return;

@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Victoria Sugar Webmap</title>
+  <!-- Supabase: publishable key only in public JS (see js/supabase-client.js). Never put secret/service_role or JWT signing secrets in HTML. -->
+  <link rel="icon" type="image/jpeg" href="./assets/victoria-sugar-logo.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/styles.css?v=2.2.0">
+  <link rel="stylesheet" href="css/utilities.css?v=1.0">
+  <link rel="stylesheet" href="toast/toast.css?v=1.0">
+  <link rel="stylesheet" href="popups/popup.css?v=1.0">
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2196f3">
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ol@7.3.0/dist/ol.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ol-layerswitcher@4.1.0/dist/ol-layerswitcher.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5"></script>
+  <!-- PMTiles reader for the drone orthomosaic archives. Exposes the
+       global `pmtiles`; js/drone-tiles.js drives it through a custom
+       source so every range request carries the Supabase token. -->
+  <script src="https://cdn.jsdelivr.net/npm/pmtiles@3.0.6/dist/pmtiles.js"></script>
+  <script src="./config/app-config.js?v=1.6"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body class="webmap-app webmap-app--sidebar">
+  <script src="./js/dom-guards.js"></script>
+  <div class="map-loader" id="mapLoader"><div class="map-loader-spinner"></div></div>
+
+
+
+  <div class="project-toolbar">
+    <div class="project-brand">
+      <div class="project-title-row">
+        <img class="project-brand-logo" src="./assets/victoria-sugar-logo.jpg" width="132" height="44" alt="Victoria Sugar Limited">
+        <div >
+          <h1>VICTORIA SUGAR LTD</h1>
+          <p>Land monitoring system</p>
+        </div>
+      </div>
+    </div>
+    <!-- Search/Survey/Measure/Modify/Select moved into #mapLeftBtnStack and
+         Full Screen into #mapRightBtnStack (icon-only, next to Locate Me) —
+         see the map-btn-stack blocks below. Only the profile/account button
+         stays in the top toolbar. -->
+    <div class="map-top-controls">
+      <button type="button" class="control-btn control-btn--avatar-only" id="logoutBtn" title="My Profile">
+        <span id="profileAvatarSlot" class="vsl-profile-avatar-slot"><i class="fas fa-user"></i></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="map-main" id="mapMain">
+    <div class="map-viewport-wrap">
+      <div id="map"></div>
+      <div class="map-frame" aria-hidden="true"></div>
+      
+      <!-- Left floating button stack — this outer div is just an invisible,
+           absolutely-positioned anchor (no background/border of its own);
+           the buttons inside are laid out with plain flex + gap instead of
+           each having its own fixed position. That means new buttons can be
+           added/removed/hidden here freely (button.hidden = true) and the
+           rest of the stack packs up to fill the gap automatically — no
+           per-button CSS to update. See .map-btn-stack in styles.css. -->
+      <div class="map-btn-stack map-btn-stack--left" id="mapLeftBtnStack">
+        <button type="button" class="dashboard-btn" title="Dashboard" onclick="window.location.href='dashboard/'">
+          <i class="fas fa-bars"></i>
+        </button>
+        <!-- Opens the Feature Info panel directly (js/map-app.js
+             openFeatureInfoPanelManual), with an empty Estate/Block/Plot
+             filter bar so the person can browse to any estate/block/plot
+             without clicking it on the map first. -->
+        <button type="button" class="dashboard-btn" id="mapFeatureInfoBtn" title="Feature Info">
+          <i class="fas fa-circle-info"></i>
+        </button>
+        <!-- Formerly in .map-top-controls (top toolbar) — moved here,
+             icon-only, same IDs so all existing js/map-app.js wiring
+             (getElementById + click handlers) keeps working unchanged. -->
+        <button type="button" class="dashboard-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
+          <i class="fas fa-magnifying-glass"></i>
+        </button>
+        <button type="button" class="dashboard-btn" id="toolsTopBtn" title="Survey">
+          <i class="fas fa-drafting-compass"></i>
+        </button>
+        <button type="button" class="dashboard-btn" id="measureTopBtn" title="Measure Tools">
+          <i class="fas fa-ruler-combined"></i>
+        </button>
+        <button type="button" class="dashboard-btn" id="parcelStatusBtn" title="Select">
+          <i class="fas fa-arrow-pointer"></i>
+        </button>
+        <!-- Print/PDF Plot — was a placeholder tab inside the Survey window;
+             moved out here (js/print-tool.js) since it's really its own
+             map tool (pan/zoom to frame, then export), not part of the
+             import/draw/edit workflow the Survey window otherwise covers. -->
+        <button type="button" class="dashboard-btn" id="printTopBtn" title="Print Map">
+          <i class="fas fa-print"></i>
+        </button>
+      </div>
+
+      <!-- LOCATE ME BUTTON, FULL SCREEN, LAYERS (reparented via JS target
+           option) and LEGEND — visual order is controlled entirely by CSS
+           `order` on #mapRightBtnStack children (see styles.css), not by
+           DOM position, since the layer-switcher control is appended here
+           by OpenLayers at runtime, after these static buttons. -->
+      <div class="map-fab-cluster map-fab-cluster--right map-btn-stack" id="mapRightBtnStack">
+        <button type="button" class="floating-btn map-floating-fullscreen" id="fullscreenBtn" title="Full Screen" aria-label="Full Screen">
+          <i class="fas fa-expand"></i>
+        </button>
+        <button type="button" class="floating-btn map-floating-locate" id="locateBtn" title="Locate Me" aria-label="Locate Me">
+          <i class="fas fa-location-crosshairs"></i>
+        </button>
+        <!-- New: opens windows/legend-panel.html (js/map-app.js setupLegendPanel). -->
+        <button type="button" class="floating-btn map-floating-legend" id="legendBtn" title="Legend" aria-label="Legend" aria-expanded="false">
+          <i class="fas fa-list"></i>
+        </button>
+        <!-- The Snap toggle used to be a button here that opened a docked
+             panel. It's now its own self-contained floating widget (icon +
+             hover flyout in one), fixed-positioned by its own CSS sticky
+             next to the Layers button rather than living in this cluster —
+             see windows/snap-panel.html / .map-floating-snap-fab. -->
+      </div>
+
+      <!-- Selected-feature action toolbar (OL Overlay target — positioned in JS
+           above the selected block/parcel each time one is clicked). Buttons are
+           UI-only for now; click handling/logic comes in a follow-up pass. -->
+      <div class="parcel-action-toolbar" id="parcelActionToolbar" hidden>
+        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--activity" id="parcelActionLogActivityBtn" title="Log Activity" aria-label="Log Activity">
+          <i class="fas fa-person-digging" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--alert" id="parcelActionLogAlertBtn" title="Log Alert" aria-label="Log Alert">
+          <i class="fas fa-bullhorn" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--info" id="parcelActionInfoBtn" title="Feature Info" aria-label="Feature Info">
+          <i class="fas fa-info" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <!-- The same idea for a DRAWN feature (tree, road, wall — vsl_feature),
+           but a readout rather than actions: those live in the Select window.
+           Rows are filled in by showFeatureInfoToolbar() in js/map-app.js —
+           name and description for every kind, plus length for a line or
+           area for a polygon. -->
+      <div class="feature-info-toolbar" id="featureInfoToolbar" hidden>
+        <div class="feature-info-toolbar__head">
+          <span class="feature-info-toolbar__swatch" id="featureInfoToolbarSwatch" aria-hidden="true"></span>
+          <span class="feature-info-toolbar__name" id="featureInfoToolbarName"></span>
+        </div>
+        <div class="feature-info-toolbar__type" id="featureInfoToolbarType"></div>
+        <p class="feature-info-toolbar__desc" id="featureInfoToolbarDesc" hidden></p>
+        <div class="feature-info-toolbar__measure" id="featureInfoToolbarMeasure" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panels below are fetched at runtime from windows/*.html and appended as
+       direct children of #mapLeftStack (see js/app-boot.js) — parcel-status-panel,
+       sentinel-analytics-panel, search-panel,
+       feature-info-panel, info-help-popover, in that order. -->
+  <div class="map-left-stack" id="mapLeftStack" aria-label="Map tools"></div>
+
+  <!-- surveyDrawer: stub kept only so survey-import.js's `if (!drawer) return null` doesn't abort. All real UI is in the UAM. -->
+  <aside id="surveyDrawer" class="survey-drawer u-hidden-important" aria-hidden="true" hidden></aside>
+
+  <!-- coordExtractDrawer: state-only anchor for data-picking; no visible UI (Extract tab is now in #searchPanel) -->
+  <aside id="coordExtractDrawer" class="coord-extract-drawer" aria-hidden="true" data-picking=""></aside>
+
+  <!-- panelHost: kept for backward compat; draw tools now live in UAM -->
+  <aside class="side-panel u-hidden-important" id="panelHost" aria-label="Draw and measure tools" hidden>
+    <div class="panel active" id="drawingPanel">
+      <header class="draw-tools__head">
+        <div class="draw-tools__head-text">
+          <h3 id="drawPanelTitle" class="draw-tools__title">Measure Tool</h3>
+        </div>
+        <button type="button" class="draw-tools__close" id="drawPanelCloseBtn" aria-label="Close draw panel"><i class="fas fa-times" aria-hidden="true"></i></button>
+      </header>
+
+      <section class="draw-tools__section" aria-labelledby="drawMeasureTitle">
+        <!-- Legacy duplicate of the UAM draw-tab snap toggles below. Renamed with
+             a Legacy suffix so getElementById(...) in map-app.js resolves to the
+             live UAM checkboxes instead of silently binding to this hidden copy
+             (that ID collision meant the visible snap checkboxes never actually
+             did anything — see docs/VSL cleanup notes). -->
+        <div class="u-hidden">
+          <input type="checkbox" id="snapBlocksCbLegacy" checked>
+          <input type="checkbox" id="snapParcelsCbLegacy" checked>
+          <input type="checkbox" id="snapSurveyCbLegacy" checked>
+        </div>
+      </section>
+
+      <section class="draw-tools__section draw-tools__section--divider">
+        <h4 class="draw-tools__subheading">Extract Boundaries</h4>
+        <select id="coordExtractCrsSelect" class="search-panel__input u-mb-10"></select>
+
+        <div class="coord-mode-row coord-export-formats u-flex u-gap-10 u-mb-12">
+          <label class="coord-mode-label u-m-0"><input type="checkbox" id="coordExtractCsv" checked> CSV</label>
+          <label class="coord-mode-label u-m-0"><input type="checkbox" id="coordExtractDxf" checked> DXF</label>
+        </div>
+
+        <button type="button" id="coordExtractPickBtn" class="search-panel__btn-primary">
+          <i class="fas fa-hand-pointer" aria-hidden="true"></i> Select on Map
+        </button>
+
+        <div id="coordExtractActionRow" class="u-flex u-gap-8 u-mt-10" hidden>
+          <button type="button" id="coordExtractFinishBtn" class="search-panel__btn-primary u-flex-2">Export (0)</button>
+          <button type="button" id="coordExtractCancelPickBtn" class="search-panel__btn-secondary u-flex-1">Cancel</button>
+        </div>
+      </section>
+
+      <div class="draw-tools__footer">
+        <button id="stopDrawBtnLegacy" class="btn-secondary draw-tools__full-btn" type="button">Stop active tool</button>
+      </div>
+      <div id="drawToolsFeedbackLegacy" class="draw-tools__feedback" role="status" aria-live="polite"></div>
+    </div>
+  </aside>
+
+
+  <!-- measure-panel fetched at runtime from windows/measure-panel.html (js/app-boot.js). -->
+  <div class="map-right-stack" id="mapRightStack" aria-label="Map right tools"></div>
+
+  <!-- Auto-hiding toast (see toast/toast.js) — same #status element every
+       module's setStatus()/clearStatus() (js/utils.js) already targets. -->
+  <div id="status" class="toast" hidden></div>
+
+  <div id="fallbackLayerSwitcher" class="fallback-switcher" hidden>
+    <h4>LAND LAYERS</h4>
+    <label><input type="checkbox" id="fbBlocks" checked> BLOCKS</label>
+    <label><input type="checkbox" id="fbParcels" checked> PARCELS</label>
+    <hr>
+    <h4>Base Maps</h4>
+    <label><input type="radio" name="fbBasemap" value="Google Satellite"> Google Satellite</label>
+    <label><input type="radio" name="fbBasemap" value="Esri Imagery" checked> Esri Imagery</label>
+    <label><input type="radio" name="fbBasemap" value="No Basemap"> No Basemap</label>
+  </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <!-- GeoTIFF.js for Cloud Optimized GeoTIFF preview -->
+  <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
+  <!-- app-boot.js fetches windows/*.html (search panel, sentinel panels, feature
+       info popup, unified action menu, edit details modal) and
+       appends each into the DOM position it used to occupy statically, then
+       dynamically imports map-app.js so nothing runs before those elements exist. -->
+  <script type="module" src="./js/app-boot.js"></script>
+
+  <!-- windows/survey-panel.html (formerly unified-action-menu.html) is now
+       fetched into #mapLeftStack by js/app-boot.js, same as the other
+       docked panels. -->
+  <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->
+  <button id="surveyPanelBtn" class="u-hidden-important" hidden aria-hidden="true"></button>
+  <button id="drawingPanelBtn" class="u-hidden-important" hidden aria-hidden="true"></button>
+
+
+  <script type="module" src="js/stats-logic.js?v=2.2.0"></script>
+  <script type="module" src="./js/sw-loader.js"></script>
+</body>
+</html>
+

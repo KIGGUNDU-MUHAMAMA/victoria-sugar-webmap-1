@@ -1,0 +1,4 @@
+docs/ai_instructions/
+.env2
+.env
+worker/.wrangler/

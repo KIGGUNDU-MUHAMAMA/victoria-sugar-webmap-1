@@ -1,0 +1,27 @@
+    <!-- Map legend — opened from the Legend button below the Layers control
+         (#mapRightBtnStack). Every row is built in JS by buildLegendList()
+         in js/map-app.js, from the same CULTIVATION_PALETTE /
+         CULTIVATION_STATUS_LABELS / ALERT_SEVERITY_* constants the map
+         styles itself with, so nothing here can drift from what's actually
+         drawn.
+
+         Four groups, matching the printed legend exactly (see
+         buildLegendGroups in js/print-tool.js): Land properties, Plot
+         status, Alerts, Features. The one deliberate difference is scope —
+         the PDF lists only the feature types inside the print area, while
+         this panel lists every type present anywhere on the map. -->
+    <div id="legendPanel" class="legend-panel popWinMain popWin-mobileDock" hidden>
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-list" aria-hidden="true"></i></span>
+          <h2 class="popWinTitle">Legend</h2>
+        </div>
+        <button type="button" class="popWinCloseBtn" id="legendCloseBtn" aria-label="Close legend">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div class="popWinBody">
+        <div id="legendGroups"></div>
+      </div>
+    </div>

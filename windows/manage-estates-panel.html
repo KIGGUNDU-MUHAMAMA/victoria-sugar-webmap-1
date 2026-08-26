@@ -1,0 +1,41 @@
+<!-- Manage Estates — opened from the "Manage" button next to the Import
+     tab's Block/Plot Estate dropdowns (survey-panel.html
+     #surveyBlockEstateManageBtn / #surveyParcelEstateManageBtn). Simple
+     CRUD over vsl_estate (name only — the many optional profile fields on
+     that table aren't editable here, same scope as the old "+" add-estate
+     prompt this replaces).
+
+     Compact table layout (name+code left, paired small action buttons
+     right) instead of Manage Features' full-width bordered-card rows.
+     Narrower than the shared .vsl-modal-card--wide default (see
+     #manageEstatesModal .vsl-modal-card--wide in styles.css) — this list
+     doesn't need that much width. "Add New" lives in the standard
+     .popWinActionBtns footer like every other window's primary action. -->
+<div id="manageEstatesModal" class="vsl-modal-overlay" hidden>
+  <div class="vsl-modal-card vsl-modal-card--wide popWinMain">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-map-location-dot" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Manage Estates</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="manageEstatesCloseBtn" aria-label="Close manage estates">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinBody me-body">
+      <div class="me-list-head">
+        <span>Estate</span>
+        <span>Actions</span>
+      </div>
+      <div id="meList" class="me-list"></div>
+      <p id="meError" class="search-panel__error" role="alert" hidden></p>
+    </div>
+
+    <div class="popWinActionBtns">
+      <button type="button" id="meAddBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
+        <i class="fas fa-plus" aria-hidden="true"></i> Add New
+      </button>
+    </div>
+  </div>
+</div>

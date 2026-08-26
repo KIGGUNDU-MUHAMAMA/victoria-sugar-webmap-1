@@ -1,0 +1,1 @@
+The surveyor or admin should be able to customize the colors of plots/blocks and texts. And also choose the styling of texts, including weather we can make add strokes on the map or not

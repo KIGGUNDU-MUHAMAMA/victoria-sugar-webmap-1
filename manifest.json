@@ -1,0 +1,20 @@
+{
+    "name": "VSL Farms",
+    "short_name": "VSLFarms",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#2196f3",
+    "icons": [
+      {
+        "src": "icons/logo-192.png",
+        "sizes": "192x192",
+        "type": "image/png"
+      },
+      {
+        "src": "icons/logo-192.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  }

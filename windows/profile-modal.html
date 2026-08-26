@@ -1,0 +1,86 @@
+<!-- Account dropdown — opened by clicking the account button in the top
+     controls (was a direct Sign Out button; see initProfileModal()/
+     updateProfileButtonAvatar()/positionProfileDropdown() in js/map-app.js).
+     A small panel anchored under that button (not a full-screen modal) shows
+     who's signed in and two actions: "Manage Account" (opens the edit form
+     below) and "Log Out". -->
+<div id="profileDropdown" class="vsl-profile-dropdown" hidden>
+  <div class="vsl-profile-dropdown__header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <img id="profileDropdownAvatarImg" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:none;flex-shrink:0" alt="Profile photo">
+      <div id="profileDropdownAvatarFallback" class="vsl-profile-avatar-fallback" style="width:36px;height:36px;font-size:14px;flex-shrink:0"></div>
+      <div style="min-width:0">
+        <div id="profileDropdownName" class="vsl-profile-dropdown__name"></div>
+        <div id="profileDropdownEmail" class="vsl-profile-dropdown__email"></div>
+      </div>
+    </div>
+  </div>
+  <button type="button" id="profileDropdownEditBtn" class="vsl-profile-dropdown__item">
+    <i class="fas fa-user-pen" aria-hidden="true"></i> Manage Account
+  </button>
+  <button type="button" id="profileDropdownLogoutBtn" class="vsl-profile-dropdown__item vsl-profile-dropdown__item--danger">
+    <i class="fas fa-right-from-bracket" aria-hidden="true"></i> Log Out
+  </button>
+</div>
+
+<!-- Manage Account form — opened from "Manage Account" above. Direct
+     client-side update (the "profiles self update" RLS policy already
+     allows id = auth.uid()), including an optional new profile photo. -->
+<div id="profileOverlay" class="vsl-modal-overlay" hidden>
+  <section id="profilePanel" class="vsl-modal-card popWinMain" role="region" aria-label="Manage account">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-user-pen" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Manage Account</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="profileCloseBtn" aria-label="Close">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <form id="profileEditForm" novalidate class="popWin-formShell">
+      <div class="popWinBody vsl-modal-form">
+        <div class="vsl-modal-field">
+          <label class="search-panel__label">Profile Photo</label>
+          <div style="display:flex;align-items:center;gap:12px">
+            <img id="profileEditPreview" style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:none;flex-shrink:0">
+            <input id="profileEditPhoto" type="file" accept="image/*" class="search-panel__input">
+          </div>
+        </div>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profileEditName">Full Name</label>
+          <input id="profileEditName" type="text" class="search-panel__input">
+        </div>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profileEditTitle">Title / Position</label>
+          <input id="profileEditTitle" type="text" class="search-panel__input">
+        </div>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profileEditPhone">Phone</label>
+          <input id="profileEditPhone" type="text" class="search-panel__input">
+        </div>
+
+        <div class="vsl-modal-field-divider"></div>
+
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profileEditEmail">Email</label>
+          <input id="profileEditEmail" type="email" class="search-panel__input">
+          <p class="vsl-modal-field-hint">Changing this sends a confirmation link to the new address — it won't take effect until you click it.</p>
+        </div>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profileEditPassword">New Password <span style="font-weight:400">(leave blank to keep current)</span></label>
+          <input id="profileEditPassword" type="password" class="search-panel__input" autocomplete="new-password" placeholder="At least 8 characters">
+        </div>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profileEditPasswordConfirm">Confirm New Password</label>
+          <input id="profileEditPasswordConfirm" type="password" class="search-panel__input" autocomplete="new-password">
+        </div>
+        <p id="profileEditError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+      <div class="popWinActionBtns">
+        <button type="button" id="profileEditCancelBtn" class="futuristic-icon-btn futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="submit" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Save</button>
+      </div>
+    </form>
+  </section>
+</div>

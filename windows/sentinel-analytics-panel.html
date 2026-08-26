@@ -1,0 +1,157 @@
+    <section id="sentinelAnalyticsPanel" class="sentinel-analytics search-panel" hidden role="dialog" aria-modal="true" aria-labelledby="sentinelAnalyticsTitle">
+      <div class="sentinel-analytics__card">
+        <header class="search-panel__head">
+          <div class="search-panel__head-inner">
+            <i class="fas fa-satellite search-panel__head-icon search-panel__head-icon--blue" aria-hidden="true"></i>
+            <div>
+              <h2 id="sentinelAnalyticsTitle" class="search-panel__title">Satellite</h2>
+              <p class="sentinel-analytics__subtitle">Sentinel-2 · CDSE WMS + reports</p>
+            </div>
+          </div>
+          <button type="button" class="search-panel__close" id="sentinelPanelCloseBtn" aria-label="Close satellite panel"><i class="fas fa-times" aria-hidden="true"></i></button>
+        </header>
+        <div id="sentinelAnalyticsShell" class="sentinel-analytics__shell">
+          <div id="sentinelTileSpinner" class="sentinel-analytics__loading" hidden aria-live="polite">
+            <span class="sentinel-analytics__spinner" aria-hidden="true"></span>
+            <span>Loading tiles…</span>
+          </div>
+
+          <div id="vslWmsControlCard" class="vsl-satellite-float vsl-satellite-float--embedded" aria-label="WMS layers">
+            <div class="vsl-satellite-float__head">
+              <h3 class="vsl-satellite-float__title">Layers (WMS)</h3>
+              <span id="vslWmsFloatSpinner" class="vsl-satellite-float__spinner" hidden aria-hidden="true" title="Loading tiles"></span>
+            </div>
+            <p class="vsl-satellite-float__hint vsl-satellite-float__hint--subtle">Time range (UTC). One layer; blend with basemap using opacity.</p>
+            <div class="vsl-satellite-float__date-row">
+              <label class="vsl-satellite-float__lbl" for="vslWmsTimeFrom">From</label>
+              <input type="date" id="vslWmsTimeFrom" class="vsl-satellite-float__input" autocomplete="off">
+            </div>
+            <div class="vsl-satellite-float__date-row">
+              <label class="vsl-satellite-float__lbl" for="vslWmsTimeTo">To</label>
+              <input type="date" id="vslWmsTimeTo" class="vsl-satellite-float__input" autocomplete="off">
+            </div>
+            <div class="vsl-satellite-float__opacity">
+              <div class="vsl-satellite-float__row-between">
+                <span>Layer opacity <span class="vsl-satellite-float__muted">(0–100%)</span></span>
+                <span id="vslWmsOpacityValue" class="vsl-satellite-float__pct">88</span>
+              </div>
+              <label class="visually-hidden" for="vslWmsOpacityRange">WMS layer opacity</label>
+              <input type="range" id="vslWmsOpacityRange" class="vsl-satellite-float__range" min="0" max="100" value="88" step="1">
+            </div>
+            <div class="vsl-satellite-float__groups" role="group" aria-label="Active WMS layer">
+              <p class="vsl-satellite-float__group-title">Satellite</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="TRUE_COLOR" aria-pressed="false">True color</button>
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="FALSE_COLOR" aria-pressed="false">False color</button>
+              </div>
+              <p class="vsl-satellite-float__group-title">Vegetation</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI" aria-pressed="false">NDVI</button>
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDVI_ADVANCED" aria-pressed="false">NDVI adv.</button>
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="NDRE" aria-pressed="false">NDRE</button>
+              </div>
+              <p class="vsl-satellite-float__group-title">Farm decision</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="MOISTURE_STRESS" aria-pressed="false">Moisture stress</button>
+              </div>
+              <p class="vsl-satellite-float__group-title">Terrain</p>
+              <div class="vsl-satellite-float__picks">
+                <button type="button" class="vsl-wms-pick" data-vsl-wms-layer="DEM" aria-pressed="false">DEM</button>
+                <label class="vsl-satellite-float__chk"><input type="checkbox" id="vslWmsContoursHook" disabled> Contours (soon)</label>
+              </div>
+            </div>
+            <div class="vsl-satellite-float__row-actions">
+              <button type="button" class="vsl-wms-pick vsl-wms-pick--off" id="vslWmsOffBtn" title="Turn off WMS" aria-pressed="false">Off</button>
+              <button type="button" class="vsl-satellite-float__btn-ghost" id="vslWmsResetViewBtn">Reset view</button>
+            </div>
+          </div>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelCloudLegend">
+            <h3 id="sentinelCloudLegend" class="sentinel-analytics__section-title">Image quality (cloud)</h3>
+            <div class="sentinel-analytics__row-between">
+              <span>Max mean cloud <span class="sentinel-analytics__muted">(%)</span></span>
+              <span id="sentinelMaxCcValue" class="sentinel-analytics__pct">25</span>
+            </div>
+            <label class="visually-hidden" for="sentinelMaxCcRange">Maximum mean cloud cover percent</label>
+            <input type="range" id="sentinelMaxCcRange" class="sentinel-analytics__range" min="0" max="100" value="25" step="1">
+            <label class="sentinel-analytics__select-label" for="sentinelPrioritySelect">Mosaic priority</label>
+            <select id="sentinelPrioritySelect" class="sentinel-analytics__select" aria-label="Mosaic priority">
+              <option value="leastCC">Least cloudy (recommended)</option>
+              <option value="mostRecent">Newest on top</option>
+              <option value="leastTimeDifference">Least time difference</option>
+            </select>
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelOpacityLegend" hidden>
+            <p id="sentinelOpacityValue" class="visually-hidden">88</p>
+            <input type="range" id="sentinelOpacityRange" class="visually-hidden" min="0" max="100" value="88" aria-hidden="true" tabindex="-1">
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelOverlayLegend">
+            <h3 id="sentinelOverlayLegend" class="sentinel-analytics__section-title">Overlays</h3>
+            <div class="sentinel-analytics__checks">
+              <label class="sentinel-check"><input type="checkbox" id="overlayBlocksCb" checked> Block boundaries</label>
+              <label class="sentinel-check"><input type="checkbox" id="overlayParcelsCb" checked> Parcels (plantation)</label>
+              <label class="sentinel-check"><input type="checkbox" id="overlaySurveyCb" checked> Survey import preview</label>
+            </div>
+          </section>
+
+          <section class="sentinel-analytics__section" aria-labelledby="sentinelLegendTitle">
+            <h3 id="sentinelLegendTitle" class="sentinel-analytics__section-title">Legend</h3>
+            <div id="sentinelLegendBody" class="sentinel-legend"></div>
+          </section>
+
+          <section class="sentinel-analytics__section sentinel-analytics__section--info" aria-label="Layer information">
+            <p id="sentinelInfoLine" class="sentinel-analytics__info">—</p>
+          </section>
+
+          <div class="sentinel-analytics__report-ribbon" id="sentinelReportSectionAnchor" role="region" aria-label="Block report">
+            <i class="fas fa-file-pdf sentinel-analytics__report-ribbon-ico" aria-hidden="true"></i>
+            <div class="sentinel-analytics__report-ribbon-text">
+              <span class="sentinel-analytics__report-ribbon-kicker">Report</span>
+              <span class="sentinel-analytics__report-ribbon-title">Block PDF + NDVI / NDRE / NDMI</span>
+            </div>
+          </div>
+          <section class="sentinel-analytics__section sentinel-analytics__section--report" aria-labelledby="sentinelBlockReportTitle">
+            <h3 id="sentinelBlockReportTitle" class="visually-hidden">Block report</h3>
+            <label class="search-panel__label" for="sentinelReportBlockFilter">Filter / block</label>
+            <div class="sentinel-report__row2">
+              <input type="search" id="sentinelReportBlockFilter" class="search-panel__input u-mb-035r" placeholder="Filter by code, name" autocomplete="off">
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportRefreshBlocks" title="Reload blocks">Refresh list</button>
+            </div>
+            <label class="visually-hidden" for="sentinelReportBlockSelect">Block for report</label>
+            <select id="sentinelReportBlockSelect" class="sentinel-analytics__select" aria-label="Block for report"></select>
+            <div class="sentinel-report__dates">
+              <div>
+                <label class="search-panel__label" for="sentinelReportDateFrom">From</label>
+                <input type="date" id="sentinelReportDateFrom" class="search-panel__input" required>
+              </div>
+              <div>
+                <label class="search-panel__label" for="sentinelReportDateTo">To</label>
+                <input type="date" id="sentinelReportDateTo" class="search-panel__input" required>
+              </div>
+            </div>
+            <div class="farm-report__actions u-my-035r" role="group" aria-label="Date presets">
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportPreset3m">3 mo</button>
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportPreset6m">6 mo</button>
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportPreset12m">12 mo</button>
+            </div>
+            <label class="search-panel__label" for="sentinelReportInterval">Time step (aggregation)</label>
+            <select id="sentinelReportInterval" class="sentinel-analytics__select" aria-label="Statistics interval">
+              <option value="P10D">10 days (more steps)</option>
+              <option value="P16D" selected>16 days (Sentinel-2–friendly)</option>
+              <option value="P1M">1 month (fewer steps)</option>
+            </select>
+            <div class="sentinel-report__actions u-mt-05r u-flex u-flex-wrap u-gap-04r">
+              <button type="button" class="search-panel__btn-secondary" id="sentinelReportLoadStatsBtn">Load stats</button>
+              <button type="button" class="search-panel__btn-primary" id="sentinelReportPdfBtn">Download PDF</button>
+            </div>
+            <p id="sentinelReportKpi" class="farm-report__summary u-mt-05r" role="status">—</p>
+            <p id="sentinelReportPreviewText" class="sentinel-analytics__hint u-mt-025r"></p>
+            <div id="sentinelReportChartWrap" class="sentinel-report__chart-wrap">
+              <canvas id="sentinelReportChart" width="400" height="200" aria-label="NDVI, NDRE, and NDMI chart"></canvas>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>

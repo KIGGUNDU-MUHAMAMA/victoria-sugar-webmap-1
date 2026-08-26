@@ -1,0 +1,31 @@
+hardcoded code
+I think we can create .js files and create a new folder js/html values or js/data
+and create .js files for all, these are some of the hard coded data
+1. Severinity
+      <select id="logAlertSeveritySelect" class="popWinTabs__select" aria-label="Select alert severity">
+        <option value="">-- Select Severity --</option>
+        <option value="information">Information</option>
+        <option value="warning">Warning</option>
+        <option value="critical">Critical</option>
+      </select>
+2. CULTIVATION STATUS
+           <label class="search-panel__label" for="editDetailsStatusSelect">Cultivation Status</label>
+            <select id="editDetailsStatusSelect" class="search-panel__input">
+              <option value="not_in_cane">Not in cane</option>
+              <option value="prepared">Prepared</option>
+              <option value="planted">Planted</option>
+              <option value="standing">Standing</option>
+              <option value="harvested">Harvested</option>
+              <option value="replant_renovation">Replant / renovation</option>
+            </select>
+This shouldn't be hard coded because I am planning to change these values, and the supabase should read new values, I am not sure if I will also need to change values in the database.
+
+3. user role
+          <label for="role">Role</label>
+          <select id="role">
+            <option value="ADMIN">ADMIN</option>
+            <option value="SURVEYOR">SURVEYOR</option>
+            <option value="MANAGMENT">MANAGMENT</option>
+          </select>
+I also found the same hardcoded roles in the sql files 
+And others, Inspect the files and tell me what to modify

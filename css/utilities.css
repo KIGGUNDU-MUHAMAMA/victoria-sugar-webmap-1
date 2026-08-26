@@ -1,0 +1,70 @@
+/* =============================================================
+   Utility classes
+   -------------------------------------------------------------
+   Small, single-purpose classes used to replace one-off inline
+   style="" attributes that used to be scattered across webmap.html
+   and windows/*.html. Each class does exactly one thing so the
+   markup stays readable and every value lives in one place.
+
+   Naming: `u-` prefix + CSS property + value. Pixel values are
+   named by their number (u-mt-8 = margin-top:8px); rem values use
+   an `r` suffix (u-mt-05r = margin-top:0.5rem) so the two scales
+   never collide.
+   ============================================================= */
+
+/* ---- Display / visibility ---- */
+.u-hidden { display: none; }
+/* Some elements sit inside containers that set display:flex/block
+   unconditionally (e.g. .survey-drawer, .side-panel), so the normal
+   [hidden] browser default loses to that author rule. This class
+   matches the !important that used to live inline to guarantee the
+   element stays hidden regardless of its container's own display rule. */
+.u-hidden-important { display: none !important; }
+
+/* ---- Flex layout ---- */
+.u-flex { display: flex; }
+.u-flex-col { display: flex; flex-direction: column; }
+.u-items-center { align-items: center; }
+.u-justify-between { justify-content: space-between; }
+.u-flex-wrap { flex-wrap: wrap; }
+.u-flex-1 { flex: 1; }
+.u-flex-2 { flex: 2; }
+
+/* ---- Gap ---- */
+.u-gap-6 { gap: 6px; }
+.u-gap-8 { gap: 8px; }
+.u-gap-10 { gap: 10px; }
+.u-gap-04r { gap: 0.4rem; }
+
+/* ---- Margin (px scale) ---- */
+.u-m-0 { margin: 0; }
+.u-mt-6 { margin-top: 6px; }
+.u-mt-7 { margin-top: 7px; }
+.u-mt-8 { margin-top: 8px; }
+.u-mt-10 { margin-top: 10px; }
+.u-mt-12 { margin-top: 12px; }
+.u-mb-6 { margin-bottom: 6px; }
+.u-mb-8 { margin-bottom: 8px; }
+.u-mb-10 { margin-bottom: 10px; }
+.u-mb-12 { margin-bottom: 12px; }
+
+/* ---- Margin (rem scale) ---- */
+.u-mt-025r { margin-top: 0.25rem; }
+.u-mt-05r { margin-top: 0.5rem; }
+.u-mt-07r { margin-top: 0.7rem; }
+.u-mt-1r { margin-top: 1rem; }
+.u-mb-035r { margin-bottom: 0.35rem; }
+.u-my-035r { margin: 0.35rem 0; }
+.u-my-12 { margin: 12px 0; }
+
+/* ---- Padding ---- */
+.u-p-0 { padding: 0; }
+
+/* ---- Sizing ---- */
+.u-w-100 { width: 100%; }
+
+/* ---- Form controls ---- */
+.u-checkbox-auto { width: auto; margin: 0; }
+
+/* ---- Text / color ---- */
+.u-text-vsl-primary-strong { color: var(--vsl-primary); font-weight: 700; }

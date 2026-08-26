@@ -1,0 +1,7442 @@
+:root {
+  --bg: #f5f8f1;
+  --panel: #ffffff;
+  --text: #1d2a1d;
+  --muted: #556355;
+  --primary: #3f8f3f;
+  --primary-2: #285f28;
+  --vsl-primary: #3f8f3f;
+  --accent: #8d6a3a;
+  --danger: #b33636;
+  --border: #d7e2d1;
+  /* Map bezel: cool teal (toolbar is warm olive — keep these separate) */
+  --map-bezel-deep: rgba(8, 52, 44, 0.88);
+  --map-bezel-mid: rgba(22, 112, 96, 0.97);
+  --map-bezel-edge: rgba(255, 252, 245, 0.42);
+  /* Draw / side panel sits below fixed project-toolbar (same band as survey drawer) */
+  --draw-side-panel-top: 86px;
+
+  --green-900: #0d2318;
+  --green-800: #1a3d2b;
+  --green-700: #234f38;
+  --green-600: #2e6647;
+  --green-400: #4a9e6e;
+  --green-200: #9fd4b8;
+  --green-50:  #edf7f2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+}
+
+@media (max-width: 900px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .login-brand {
+    padding: 2rem 1.5rem;
+    align-items: center;
+    text-align: center;
+  }
+  .login-brand h1 {
+    font-size: 1.8rem;
+  }
+  .login-panel {
+    align-items: flex-start;
+    padding: 1.5rem 1rem;
+  }
+}
+
+.login-brand {
+  background: linear-gradient(155deg, #2f6b2f, #5e8b2d);
+  color: #fff;
+  padding: 3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.login-brand__logo {
+  max-width: min(100%, 320px);
+  width: auto;
+  max-height: 140px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
+.login-brand h1 {
+  margin: 0;
+  font-size: 2.2rem;
+}
+
+.login-brand p {
+  margin: 0;
+  color: #e5f2dd;
+}
+
+.cane-strip {
+  width: 100%;
+  height: 110px;
+  border-radius: 14px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.2),
+      rgba(255, 255, 255, 0.2) 7px,
+      rgba(255, 255, 255, 0.05) 7px,
+      rgba(255, 255, 255, 0.05) 14px
+    );
+}
+
+.login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.card {
+  width: 100%;
+  max-width: 430px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.4rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+h2 {
+  margin: 0 0 0.8rem;
+}
+
+label {
+  display: block;
+  margin-top: 0.7rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+input,
+select,
+button,
+textarea {
+  width: 100%;
+  margin-top: 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.62rem 0.7rem;
+  font: inherit;
+}
+
+.password-wrapper {
+  position: relative;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.password-wrapper input {
+  margin-top: 0;
+  padding-right: 60px;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 0.85rem;
+  padding: 0.4rem;
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.toggle-password:hover {
+  background: transparent;
+  text-decoration: underline;
+  color: var(--primary-2);
+}
+
+button {
+  cursor: pointer;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+}
+
+button:hover {
+  background: var(--primary-2);
+}
+
+.btn-secondary {
+  background: #eef5ec;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.small {
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.group {
+  border-top: 1px solid var(--border);
+  padding-top: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+/* Auth Tabs */
+.auth-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+
+.auth-tab {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 4px 4px 0 0;
+  padding: 0.6rem 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  transition: all 0.2s;
+}
+
+.auth-tab:hover {
+  background: #f8faf6;
+  color: var(--text);
+}
+
+.auth-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: transparent;
+}
+
+.auth-tab.active:hover {
+  background: transparent;
+}
+
+.auth-panel {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.auth-panel[hidden] {
+  display: none !important;
+}
+
+.auth-help {
+  margin-top: 1.5rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.status {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: #eef5ec;
+  color: var(--text);
+}
+
+.status.error {
+  background: #fdeaea;
+  color: var(--danger);
+}
+
+/* Stacking: bezel is a sibling above #map so inset shadows paint over basemap tiles */
+.map-viewport-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.07),
+    0 22px 56px rgba(6, 26, 22, 0.22);
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  /* Mobile fix: without this, a pinch gesture over the map zooms the whole
+     page (native browser gesture) instead of only the OpenLayers map, which
+     already implements its own pinch-zoom. touch-action: none hands all
+     touch gestures on the map surface to OpenLayers. */
+  touch-action: none;
+}
+
+#map.map-drop-active::after {
+  content: "Drop to import file";
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(47, 107, 47, 0.25);
+  border: 3px dashed #2f6b2f;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1d4a1d;
+  pointer-events: none;
+}
+
+.map-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  border-radius: inherit;
+  /* Inset “mat” over tiles: cool teal stack + fine highlight (not toolbar olive) */
+  box-shadow:
+    inset 0 0 0 1px var(--map-bezel-edge),
+    inset 0 0 0 3px var(--map-bezel-mid),
+    inset 0 0 0 5px var(--map-bezel-deep),
+    inset 0 0 72px rgba(4, 28, 24, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Webmap: full-bleed map; left tools (search, identify, feature card) float in .map-left-stack */
+.webmap-app.webmap-app--sidebar .map-main {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 65px;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  z-index: 0;
+}
+
+.webmap-app .map-left-stack {
+  position: fixed;
+  left: 60px;
+  top: 80px;
+  bottom: 12px;
+  z-index: 1150;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(400px, calc(100vw - 24px));
+  max-height: calc(100vh - 108px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: none;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.webmap-app .map-left-stack > * {
+  pointer-events: auto;
+}
+
+.webmap-app .map-right-stack {
+  position: fixed;
+  right: 70px;
+  top: 96px;
+  bottom: 12px;
+  z-index: 1150;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(400px, calc(100vw - 24px));
+  max-height: calc(100vh - 108px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: none;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.webmap-app .map-right-stack > * {
+  pointer-events: auto;
+}
+
+.webmap-app #parcelSearchDock[hidden] {
+  display: none !important;
+}
+
+.webmap-app .map-viewport-wrap {
+  position: relative !important;
+  inset: auto !important;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  border-radius: 0 14px 14px 0;
+}
+
+.webmap-app .parcel-search-dock__card {
+  box-shadow: 0 2px 14px rgba(12, 40, 28, 0.08);
+}
+
+.webmap-app .parcel-search-popover__actions--icons {
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.webmap-app .parcel-search-popover__btn-icon,
+.webmap-app .parcel-search-popover__btn-go--icon {
+  flex: 0 0 auto !important;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+.webmap-app .parcel-search-popover__btn-go--icon {
+  min-width: 2.75rem;
+}
+
+/* feature-info-panel's card look/scroll now come from .popWinMain/
+   .popWinBody (see the POPUP WINDOW TEMPLATE section near the end of this
+   file); the "feature-info-panel" class stays on the element only as a
+   hook for the mobile-hide rule further down. */
+
+.webmap-app .info-help-popover--sidebar {
+  width: 100%;
+  max-width: none;
+  filter: none;
+}
+
+.webmap-app .info-help-popover--sidebar .info-help-popover__card {
+  box-shadow: 0 2px 12px rgba(12, 40, 28, 0.08);
+}
+
+@media (max-width: 900px) {
+  .webmap-app.webmap-app--sidebar .map-main {
+    top: 86px;
+  }
+
+  .webmap-app .map-left-stack {
+    top: auto;
+    bottom: 16px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 45vh;
+  }
+
+  .webmap-app .map-viewport-wrap {
+    flex: 1;
+    min-height: 0;
+    border-radius: 0 0 14px 14px;
+  }
+
+  /* Modern Bottom Sheet Layout for side panels on mobile */
+  .side-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 55vh;
+    border-radius: 20px 20px 0 0;
+    border-right: none;
+    border-top: 1px solid rgba(78, 112, 61, 0.28);
+    box-shadow: 0 -8px 32px rgba(20, 40, 24, 0.15);
+    z-index: 1250;
+  }
+
+  /* The old independently-floating .parcel-status-panel (position:fixed,
+     its own left/top) is gone — the panel is docked inside .map-left-stack
+     now and inherits that container's mobile bottom-sheet treatment via
+     .popWin-mobileDock instead (see the earlier `.popWin-mobileDock` rule
+     in this same media query, and the POPUP WINDOW TEMPLATE section near
+     the end of this file). */
+}
+
+/* .project-brand and .map-top-controls used to be flex siblings here,
+   with .map-top-controls pinned right via `margin-left: auto`. That broke
+   once only one button (the account button) was left in .map-top-controls
+   — a flex item's width comes from `flex-basis: auto`, which falls back
+   to reading the `width` property, and the app's generic
+   `button { width: 100% }` reset (meant for auth-form buttons) meant this
+   lone button's preferred size was "100% of the row". With several
+   buttons competing for space that got shrunk down to something
+   reasonable; with only one left, there was nothing to shrink against, so
+   it stretched to fill the whole toolbar. Rather than patch flex-grow/
+   flex-basis again, .project-brand now just flows normally and
+   .map-top-controls pins itself to the top-right corner via absolute
+   positioning (see below) — completely independent of how many buttons it
+   holds, so this class of bug can't recur here. */
+.project-toolbar {
+  position: fixed;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  z-index: 1200;
+  width: auto;
+  min-height: 60px;
+  border: 1px solid rgba(78, 112, 61, 0.35);
+  background: linear-gradient(160deg, rgba(47, 107, 47, 0.95), rgba(93, 139, 45, 0.92));
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+.project-brand {
+  color: #f3ffe8;
+  margin-bottom: 0;
+  padding-right: 56px; /* keep clear of the pinned account button */
+}
+
+.project-title-row {
+  display:flex;
+  align-items:center;
+  /* justify-content: center; */
+  gap: 0.55rem;
+  height: 65px;
+}
+
+.project-brand-logo {
+  display: block;
+  height: 60px;
+  width: auto;
+  max-width: 150px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2px 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+.project-title-row h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: 0.5px;
+}
+
+.project-brand p {
+  margin: 0.15rem 0 0;
+  font-size: 0.74rem;
+  color: #e2f3d8;
+}
+
+.map-top-controls {
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  transform: translateY(-50%);
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.control-btn {
+  width: auto; /* overrides the generic button{width:100%} reset — see the .project-toolbar comment above */
+  min-width: 44px;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--text);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 5px 6px 4px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.control-btn:hover {
+  background: #e8f5e2;
+  box-shadow: 0 2px 8px rgba(63, 143, 63, 0.18);
+}
+
+.control-btn.active {
+  background: #d4edcc;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(63, 143, 63, 0.25);
+}
+
+.control-btn .btn-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Account button, avatar-only variant (no "Profile" text label under the
+   photo — see logoutBtn in webmap.html). */
+.control-btn--avatar-only {
+  padding: 4px;
+  min-width: 34px;
+}
+
+/* Account button (top controls) + My Profile popup avatars — photo if the
+   signed-in user's vsl_profiles.avatar_url is set, otherwise a circular
+   initials badge. See updateProfileButtonAvatar()/initProfileModal() in
+   js/map-app.js and windows/profile-modal.html. */
+.vsl-profile-avatar-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+.vsl-profile-avatar-fallback-sm {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary, #3f8f3f);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.vsl-profile-avatar-fallback {
+  border-radius: 50%;
+  background: var(--primary, #3f8f3f);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Account dropdown (windows/profile-modal.html) — small panel anchored under
+   the account button, positioned via JS (positionProfileDropdown() in
+   js/map-app.js) since the button doesn't sit in a positioned ancestor. */
+.vsl-profile-dropdown {
+  position: fixed;
+  z-index: 4000;
+  width: 250px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border, #e5e7eb);
+  overflow: hidden;
+  font-size: 13px;
+}
+.vsl-profile-dropdown__header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.vsl-profile-dropdown__name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text, #111827);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vsl-profile-dropdown__email {
+  font-size: 11.5px;
+  color: var(--muted, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vsl-profile-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text, #111827);
+}
+.vsl-profile-dropdown__item:hover { background: #f3f4f6; }
+.vsl-profile-dropdown__item i { width: 16px; text-align: center; color: var(--muted, #6b7280); }
+.vsl-profile-dropdown__item--danger { color: #b91c1c; }
+.vsl-profile-dropdown__item--danger i { color: #b91c1c; }
+.vsl-profile-dropdown__item--danger:hover { background: #fef2f2; }
+
+/* Manage Account form (windows/profile-modal.html) — visual separator
+   between the vsl_profiles fields and the auth.users (email/password)
+   fields, plus a small helper caption under the email field. */
+.vsl-modal-field-divider {
+  border-top: 1px solid var(--border, #e5e7eb);
+  margin: 4px 0 10px;
+}
+.vsl-modal-field-hint {
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+/* Parcel status panel: the old independently-floating shell (position:fixed
+   card with its own header/title/subtitle/close-button classes) is gone —
+   the panel is docked inside .map-left-stack and uses .popWinMain/
+   .popWinHead/.popWinIcon/.popWinTitle/.popWinCloseBtn instead. Only the
+   two classes still referenced by windows/parcel-status-panel.html
+   (.parcel-status-panel__banner and .parcel-status-panel__error) remain. */
+
+.parcel-status-panel__banner {
+  font-size: 0.8rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 8px;
+  background: #fff8e6;
+  border: 1px solid #f0d78c;
+  color: #6d4c0b;
+  margin-bottom: 0.65rem;
+}
+
+/* Body row: what's selected on the left, an ACTION column of icon buttons
+   on the right. The column is hidden outright for anyone who isn't Admin/
+   Surveyor (renderParcelStatusPreview), so this only ever lays out
+   controls the person is actually allowed to use. */
+.parcel-status-panel__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.parcel-status-panel__actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+.parcel-status-panel__actions[hidden] {
+  display: none !important;
+}
+.parcel-status-panel__actions-title {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.parcel-status-panel__actions-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.parcel-status-layer-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.parcel-status-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.parcel-status-radio input {
+  width: auto;
+  margin: 0;
+}
+
+.parcel-status-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.parcel-status-pick-btn,
+.parcel-status-cancel-pick {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.parcel-status-cancel-pick {
+  margin-top: 0.45rem;
+}
+
+
+.parcel-status-field-label {
+  display: block;
+  margin-top: 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.parcel-status-select {
+  margin-top: 0.25rem;
+}
+
+.parcel-status-details {
+  margin-top: 0.55rem;
+  font-size: 0.85rem;
+}
+
+.parcel-status-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary-2);
+}
+
+.parcel-status-details textarea {
+  resize: vertical;
+  min-height: 2.5rem;
+}
+
+.parcel-status-panel__error {
+  margin: 0.55rem 0 0;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.82rem;
+  border-radius: 8px;
+  background: #fdeaea;
+  color: var(--danger);
+  border: 1px solid #f5c4c4;
+}
+
+
+.parcel-status-legend-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.74rem;
+  color: var(--muted);
+  display: grid;
+  gap: 0.28rem;
+}
+
+.parcel-status-legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.parcel-status-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+/* Cultivation status swatches — keys and colours match
+   CULTIVATION_PALETTE in js/map-app.js. Vacant is intentionally unfilled
+   (just the swatch's own border), matching how it draws on the map. */
+.parcel-status-swatch[data-status="vacant"] {
+  background: transparent;
+}
+
+.parcel-status-swatch[data-status="prepared"] {
+  background: rgba(30, 224, 161, 0.75);
+}
+
+.parcel-status-swatch[data-status="planted"] {
+  background: rgba(45, 124, 51, 0.85);
+}
+
+.parcel-status-swatch[data-status="ratoon"] {
+  background: rgba(12, 61, 12, 0.9);
+}
+
+.parcel-status-swatch[data-status="harvested"] {
+  background: rgba(161, 251, 142, 0.9);
+}
+
+.control-btn.picking-active {
+  animation: parcel-status-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes parcel-status-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(63, 143, 63, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(63, 143, 63, 0.2);
+  }
+}
+
+.side-panel {
+  position: fixed;
+  left: 0;
+  top: var(--draw-side-panel-top);
+  width: min(25vw, 420px);
+  min-width: 260px;
+  height: calc(100vh - var(--draw-side-panel-top));
+  height: calc(100dvh - var(--draw-side-panel-top));
+  max-height: none;
+  overflow: auto;
+  z-index: 1180;
+  display: none;
+  background: rgba(252, 253, 251, 0.98);
+  border-right: 1px solid rgba(78, 112, 61, 0.28);
+  border-top: 1px solid rgba(78, 112, 61, 0.12);
+  border-radius: 0 0 12px 0;
+  box-shadow: 6px 0 28px rgba(20, 40, 24, 0.08);
+}
+
+.side-panel.visible {
+  display: block;
+}
+
+.map-viewport-wrap.map-viewport-wrap--draw-dock {
+  padding-left: min(25vw, 420px);
+}
+
+.panel {
+  display: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0.5rem .5rem .5rem;
+  box-shadow: none;
+  min-height: 100%;
+}
+
+.panel.active {
+  display: block;
+}
+
+.panel h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+
+/* Draw & measure dock (secondary to Survey import) */
+.draw-tools__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.draw-tools__head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.draw-tools__close {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.draw-tools__close:hover {
+  background: #f0f6ec;
+  color: var(--text);
+  border-color: rgba(78, 112, 61, 0.35);
+}
+
+.draw-tools__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.draw-tools__lede {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.draw-tools__section {
+  margin-bottom: 1.15rem;
+}
+
+/* Legacy panelHost "Extract Boundaries" block used a plain divider
+   instead of the standard section-title treatment. */
+.draw-tools__section--divider {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 15px;
+}
+.draw-tools__subheading {
+  font-size: 0.85rem;
+  color: #475569;
+  margin: 0 0 10px 0;
+}
+
+.draw-tools__section-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary-2);
+}
+
+.draw-tools__field {
+  margin-bottom: 0.55rem;
+}
+
+.draw-tools__label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.draw-tools__opt {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.draw-tools__input {
+  width: 100%;
+  margin-top: 0;
+  font-size: 0.88rem;
+}
+
+.draw-tools__hint {
+  margin: 0 0 0.55rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.draw-tools__snap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.5rem 0.55rem;
+  margin-bottom: 0.65rem;
+  border-radius: 10px;
+  background: rgba(232, 245, 226, 0.55);
+  border: 1px solid rgba(78, 112, 61, 0.2);
+}
+
+.draw-tools__snap-legend {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary-2);
+  width: 100%;
+  margin-bottom: 0.15rem;
+}
+
+.draw-tools__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.draw-tools__check input {
+  width: auto;
+  margin: 0;
+}
+
+.draw-tools__btn-row {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.draw-tools__btn-row > * {
+  flex: 1;
+}
+
+.draw-tools__full-btn {
+  width: 100%;
+  margin-top: 0.45rem;
+}
+
+.draw-tools__footer {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.draw-tools__feedback {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  min-height: 2.5rem;
+  white-space: pre-wrap;
+}
+
+.draw-tools__feedback.draw-tools__feedback--error {
+  background: #fff5f5;
+  border-color: rgba(179, 54, 54, 0.35);
+  color: var(--danger);
+}
+
+.inline {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.inline > * {
+  flex: 1;
+}
+
+/* The feature-info popup's shell (.map-popup / --feature / --feature-dock /
+   __inner / __head / __badge / __close) is gone — replaced by the shared
+   .popWinMain/.popWinHead/.popWinIcon/.popWinTitle/.popWinCloseBtn markup
+   in windows/feature-info-panel.html. Its body-content classes
+   (.map-popup__table, .map-popup__grid, .map-popup__empty) are unchanged
+   and still used, further down in this file.
+*/
+
+.map-popup__grid {
+  /* .popWinBody (the panel's outer scroll container) now owns scrolling —
+     this just lays out the table inside it. */
+  padding: 0.55rem 0.65rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.map-popup__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  border: 1px solid #c8d6c4;
+}
+
+.map-popup__table th,
+.map-popup__table td {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #c8d6c4;
+  text-align: left;
+}
+
+.map-popup__table th {
+  color: var(--text);
+  font-weight: 700;
+  width: 42%;
+  vertical-align: top;
+  background-color: #eef5ec;
+}
+
+.map-popup__table td {
+  color: var(--text);
+  font-weight: 500;
+  word-break: break-word;
+  background-color: #ffffff;
+}
+
+.map-popup__empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Feature info panel's "Modify" tab: read-only notice + form wrapper
+   (previously inline styles on the generated markup in map-app.js). */
+.feature-info-readonly-msg {
+  font-size: 0.75rem;
+  color: #856404;
+  background: #fff3cd;
+  padding: 6px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.feature-info-modify-wrap {
+  font-size: 0.85rem;
+  padding-bottom: 8px;
+}
+
+/* Feature Info panel's Estate/Block/Plot filter bar — sits between the
+   header and the scrollable details body. Hidden until the panel actually
+   has something to show a filter for (see setupFeatureInfoFilterBar() in
+   js/map-app.js). Same visual band as the old download bar used to be. */
+.vsl-feature-info-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--green-50, #edf7f2);
+  border-bottom: 1px solid #c8d0ce;
+  flex-shrink: 0;
+}
+.vsl-feature-info-filters[hidden] {
+  display: none !important;
+}
+.vsl-feature-info-filters__select {
+  flex: 1 1 140px;
+  min-width: 110px;
+  border: 1px solid #c8d0ce;
+  border-radius: 6px;
+  padding: 6px 28px 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1f1e;
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  appearance: none;
+  cursor: pointer;
+}
+.vsl-feature-info-filters__select:focus {
+  outline: none;
+  border-color: #4a9e6e;
+  box-shadow: 0 0 0 3px rgba(74, 158, 110, 0.12);
+}
+.vsl-feature-info-filters__select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Footer's "solid button + attached dropdown segment" grouped controls
+   (Log Activity/Alert, Export PDF/CSV) — one outlined pill made of a
+   colored action button (left, square on its right edge) and a white
+   select (right, square on its left edge), joined with no gap so the only
+   rounded corners are the two outer ones, per the reference "Download |
+   MP4 360 ▾" control. The whole pill's outline (and the divider between
+   the two halves) is colored to match the button — a plain variant class
+   (--log / --download) picks which existing palette color that is; no new
+   colors introduced. */
+.vsl-split-btn {
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid transparent;
+}
+.vsl-split-btn--log {
+  border-color: var(--accent, #8d6a3a);
+}
+.vsl-split-btn--download {
+  border-color: var(--green-600, #2e6647);
+}
+.vsl-split-btn__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--green-600, #2e6647);
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.vsl-split-btn__main:hover {
+  background: var(--green-700, #234f38);
+}
+.vsl-split-btn__main:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.vsl-split-btn__main--log {
+  background: var(--accent, #8d6a3a);
+}
+.vsl-split-btn__main--log:hover {
+  background: #6f5329;
+}
+.vsl-split-btn__select {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  border-left: 2px solid var(--green-600, #2e6647);
+  padding: 8px 24px 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  appearance: none;
+  cursor: pointer;
+}
+.vsl-split-btn__select--log {
+  border-left-color: var(--accent, #8d6a3a);
+}
+.vsl-split-btn__select:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(74, 158, 110, 0.35);
+}
+.vsl-split-btn[hidden] {
+  display: none !important;
+}
+
+/* Info toolbar help */
+.info-help-popover {
+  width: min(360px, calc(100vw - 24px));
+  max-width: 360px;
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.18));
+}
+
+.info-help-popover[hidden] {
+  display: none !important;
+}
+
+.info-help-popover__card {
+  background: linear-gradient(165deg, #ffffff 0%, #f7faf5 100%);
+  border: 1px solid rgba(78, 112, 61, 0.28);
+  border-radius: 14px;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.info-help-popover__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.info-help-popover__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.info-help-popover__close {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.info-help-popover__close:hover {
+  background: #fdeaea;
+  color: var(--danger);
+}
+
+.info-help-popover__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.info-help-popover__list li {
+  margin-bottom: 0.35rem;
+}
+
+.info-help-popover__list li:last-child {
+  margin-bottom: 0;
+}
+
+.flags-list {
+  margin-top: 0.6rem;
+  max-height: 220px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 0.4rem;
+}
+
+.flag-item {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #edf3e9;
+  font-size: 0.88rem;
+}
+
+/* .map-status is gone — the #status element now uses .toast instead (see
+   toast/toast.css). .status/.status.error below are unchanged and still
+   used by login.html's inline form status message. */
+
+.layer-switcher {
+  top: 12px;
+  right: 12px;
+  z-index: 1190;
+}
+
+/* Group fold/collapse toggle (▾), shifted 10px closer to the panel's left
+   edge. ol-layerswitcher lays each group row out with fixed, coordinated
+   offsets: the fold button sits at `left: 0`, the checkbox at
+   `left: 1.2em` (groups with children, e.g. LAND LAYERS), and the label's
+   `padding-left` reserves room for both (2.7em for checkbox groups, 1.2em
+   for "base groups" like SENTINEL/DRONE IMAGES/Base Maps, which have no
+   checkbox of their own — see li.layer-switcher-base-group below). Moving
+   only the button without shifting its row's own checkbox/label by the same
+   amount detaches it from them, which is what reads as "misaligned" — so
+   every rule below moves by the same -10px together. */
+.layer-switcher .group button {
+  left: -10px;
+}
+.layer-switcher li.group > input[type="checkbox"] {
+left: 12px;
+  top: 12px;
+}
+.layer-switcher li.group > label {
+  padding-left: calc(2.7em - 10px);
+}
+.layer-switcher li.layer-switcher-base-group > label {
+  padding-left: calc(1.2em - 10px);
+}
+
+/* ol-layerswitcher positions every checkbox/radio with
+   `position: absolute; left: 1.2em;` but never sets `top`/`bottom`, so it
+   falls back to each input's "static position" (roughly where it would've
+   sat in normal flow) — which can drift from the label's text baseline.
+   Pinning `bottom: 0` anchors every checkbox/radio to the bottom of its own
+   <li>, flush with the label text sitting there, instead of floating at
+   whatever position the browser happened to compute. Matches selector
+   exactly (equal specificity) but loads after ol-layerswitcher.css, so it
+   wins on cascade order alone — no extra specificity needed for this one. */
+.layer-switcher-fold ul  input {
+  bottom: 0;
+}
+
+.layer-switcher-base-group > label {
+  position:relative;
+  left:10px
+}
+
+/* The library's root <ul> always carries `margin: 1.6em 0.4em` (see
+   ol-layerswitcher.css), which used to sit above "My Location"/"ANNOTATIONS"
+   and read as normal row spacing. Now that those layers are hidden from the
+   panel (no `title` — see buildLayerTree()/sketchLayer comments in
+   map-app.js) they no longer render a row at all, so that same fixed
+   top margin shows up as a conspicuous empty gap above whatever group is
+   now first (LAND LAYERS). Trim it back down here instead. */
+.layer-switcher .panel > ul {
+  margin-top: 0.4em;
+}
+
+/* Reparented into #mapRightBtnStack (see the LayerSwitcherClass
+   constructor's `target` option in js/map-app.js) so it packs together
+   with Locate Me instead of floating separately in the map's default
+   top-right corner — un-absolute it so it participates in that wrapper's
+   flex column instead of ol-layerswitcher's own default corner placement. */
+#mapRightBtnStack.layer-switcher,
+#mapRightBtnStack .layer-switcher {
+  position: static;
+  top: auto;
+  right: auto;
+  z-index: auto;
+}
+
+.fallback-switcher {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1192;
+  width: 220px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  padding: 0.6rem;
+  font-size: 0.86rem;
+}
+
+.fallback-switcher h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.fallback-switcher label {
+  display: block;
+  margin: 0.3rem 0;
+}
+
+.fallback-switcher hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.4rem 0;
+}
+
+.ol-attribution {
+  font-size: 0.68rem;
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+.ol-attribution:hover {
+  opacity: 1;
+}
+
+.map-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 248, 241, 0.92);
+  transition: opacity 0.4s;
+}
+.map-loader.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.map-loader-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.survey-drawer {
+  position: fixed;
+  top: 86px;
+  left: 0;
+  width: min(380px, 26vw);
+  min-width: 280px;
+  height: calc(100vh - 96px);
+  z-index: 1220;
+  background: rgba(255, 255, 255, 0.97);
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
+  transform: translateX(-102%);
+  transition: transform 0.28s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.survey-drawer.open {
+  transform: translateX(0);
+}
+
+.survey-drawer-inner {
+  padding: 0.85rem 1rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.survey-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.survey-drawer-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.survey-close {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  background: #eef5ec;
+  color: var(--text);
+  font-size: 1.4rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+}
+
+.survey-close:hover {
+  background: #e0ebd8;
+}
+
+.survey-drawer .small code {
+  font-size: 0.78rem;
+  background: #eef5ec;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.coord-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin: 0.55rem 0 0.4rem;
+}
+
+.coord-mode-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.coord-drawer-related {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.extract-related-hint {
+  margin-top: 0.4rem;
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.extract-step-list {
+  margin: 0.65rem 0 0.85rem;
+  padding: 0.55rem 0.65rem 0.55rem 1.85rem;
+  list-style: none;
+  background: #f4f9f1;
+  border-radius: 8px;
+  border: 1px solid #dde8d4;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.extract-step-list li {
+  position: relative;
+  margin: 0.25rem 0;
+  padding-left: 0.15rem;
+}
+
+.extract-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-right: 0.4rem;
+  margin-left: -1.5rem;
+  border-radius: 50%;
+  background: var(--primary, #2d6a3a);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.extract-section {
+  margin-top: 0.65rem;
+}
+
+.extract-section:first-of-type {
+  margin-top: 0.35rem;
+}
+
+.extract-section-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.extract-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1rem 0 0.75rem;
+}
+
+.btn-pick-parcel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.85rem;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(165deg, #2f6b3f 0%, #245a32 100%);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(36, 90, 50, 0.25);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.btn-pick-parcel:hover {
+  background: linear-gradient(165deg, #367a48 0%, #2a6638 100%);
+  box-shadow: 0 3px 12px rgba(36, 90, 50, 0.3);
+}
+
+.btn-pick-parcel:active {
+  transform: translateY(1px);
+}
+
+.btn-pick-parcel--armed {
+  background: linear-gradient(165deg, #c66900 0%, #a85500 100%);
+  box-shadow: 0 2px 10px rgba(200, 105, 0, 0.35);
+  animation: extract-pulse 1.6s ease-in-out infinite;
+}
+
+.btn-pick-parcel--armed:hover {
+  background: linear-gradient(165deg, #d97706 0%, #b45309 100%);
+}
+
+@keyframes extract-pulse {
+  0%,
+  100% {
+    box-shadow: 0 2px 10px rgba(200, 105, 0, 0.35);
+  }
+  50% {
+    box-shadow: 0 2px 14px rgba(200, 105, 0, 0.55);
+  }
+}
+
+.btn-pick-parcel--compact {
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.84rem;
+  box-shadow: 0 1px 6px rgba(36, 90, 50, 0.2);
+}
+
+.extract-cancel-pick {
+  margin-top: 0.45rem;
+  width: 100%;
+}
+
+.extract-hint {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: #fafcf8;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  border-left: 4px solid #2f6b3f;
+}
+
+.extract-hint--warn {
+  color: #b71c1c;
+}
+
+.extract-last-export {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: #eef5ec;
+  border-radius: 8px;
+  border: 1px solid #c5d9bc;
+}
+
+/* .survey-conditional {
+  margin-top: 0.5rem;
+} */
+
+.survey-dropzone {
+  margin-top: 0.45rem;
+  padding: 1rem;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 0.86rem;
+  color: var(--muted);
+  background: #fafcf8;
+}
+
+.survey-dropzone.dragover {
+  border-color: var(--primary);
+  background: #eef8ea;
+  color: var(--text);
+}
+
+.survey-summary {
+  margin-top: 0rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 8px;
+  background: #f0f6ec;
+  font-size: 0.86rem;
+}
+
+/* Preview summary table (survey-import.js renderSummary) — wider label
+   column than .map-popup__table's shared 42% default, since this panel is
+   narrow and the value column only ever holds a short number. */
+.survey-summary .map-popup__table th {
+  width: 70%;
+}
+
+.survey-summary .map-popup__table td {
+  width: 30%;
+}
+
+.survey-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.survey-check input {
+  width: auto;
+  margin-top: 0.2rem;
+}
+
+.survey-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+/* Floating parcel / place search (toolbar) */
+.parcel-search-popover,
+.place-search-popover {
+  width: min(380px, calc(100vw - 24px));
+  max-width: 380px;
+  filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.2));
+}
+
+.place-search-popover[hidden] {
+  display: none !important;
+}
+
+.parcel-search-popover__card {
+  background: linear-gradient(165deg, #ffffff 0%, #f7faf5 100%);
+  border: 1px solid rgba(78, 112, 61, 0.28);
+  border-radius: 14px;
+  padding: 0.95rem 1rem 1rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.parcel-search-popover__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.parcel-search-popover__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.parcel-search-popover__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #3f8f3f, #2d6b2d);
+  color: #fff;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(47, 107, 47, 0.35);
+}
+
+.parcel-search-popover__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.parcel-search-popover__close {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.parcel-search-popover__close:hover {
+  background: #fdeaea;
+  color: var(--danger);
+  border-color: #f5c4c4;
+}
+
+.parcel-search-popover__hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.parcel-search-popover__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.parcel-search-popover__label {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.parcel-search-popover__label:first-of-type {
+  margin-top: 0;
+}
+
+.parcel-search-popover__req,
+.parcel-search-popover__opt {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.parcel-search-popover__req {
+  color: var(--primary-2);
+  font-size: 0.68rem;
+}
+
+.parcel-search-popover__opt {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.parcel-search-popover__input {
+  margin-top: 0.25rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.parcel-search-popover__input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(63, 143, 63, 0.2);
+}
+
+.parcel-search-popover__error {
+  margin: 0.55rem 0 0;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.82rem;
+  border-radius: 8px;
+  background: #fdeaea;
+  color: var(--danger);
+  border: 1px solid #f5c4c4;
+}
+
+.parcel-search-popover__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  align-items: center;
+}
+
+.parcel-search-popover__actions button {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.parcel-search-popover__btn-cancel {
+  flex: 0 1 auto;
+  min-width: 88px;
+}
+
+.parcel-search-popover__btn-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: linear-gradient(180deg, #4a9a4a, var(--primary-2));
+  box-shadow: 0 2px 10px rgba(47, 107, 47, 0.35);
+}
+
+.parcel-search-popover__btn-go:hover {
+  background: linear-gradient(180deg, #3f8f3f, #1f4f1f);
+}
+
+.parcel-search-popover__btn-go:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Toolbar: Coordinates + Place as a paired “field location” control */
+.map-toolbar-cluster {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  margin: 0 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(78, 112, 61, 0.32);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 251, 238, 0.98));
+  box-shadow: 0 2px 12px rgba(47, 107, 47, 0.12);
+}
+
+.map-toolbar-cluster .control-btn {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.map-toolbar-cluster .control-btn:hover {
+  background: rgba(232, 245, 226, 0.95);
+}
+
+.map-toolbar-cluster .control-btn:first-of-type {
+  border-radius: 9px 0 0 9px;
+}
+
+.map-toolbar-cluster .control-btn:last-of-type {
+  border-radius: 0 9px 9px 0;
+}
+
+.map-toolbar-cluster .control-btn + .control-btn {
+  box-shadow: inset 1px 0 0 rgba(78, 112, 61, 0.22);
+}
+
+.map-toolbar-cluster .control-btn.active {
+  background: rgba(212, 237, 204, 0.98);
+}
+
+.control-btn--place i {
+  color: #7a5a12;
+}
+
+.place-search-card {
+  width: 100%;
+  max-height: min(58vh, 420px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #fffef9 0%, #f4faf1 100%);
+  border: 1px solid rgba(78, 112, 61, 0.35);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 0 0 1px rgba(255, 255, 255, 0.45) inset;
+  overflow: hidden;
+}
+
+.place-search-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem 0.55rem;
+  background: linear-gradient(95deg, rgba(238, 245, 236, 0.95), rgba(255, 252, 235, 0.98));
+  border-bottom: 1px solid rgba(78, 112, 61, 0.2);
+}
+
+.place-search-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.place-search-card__subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.place-search-card__close {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.place-search-card__close:hover {
+  background: #fdeaea;
+  color: var(--danger);
+}
+
+.place-search-card__field {
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem 0.35rem;
+  align-items: stretch;
+}
+
+.place-search-input {
+  flex: 1;
+  margin: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  min-width: 0;
+}
+
+.place-search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(63, 143, 63, 0.22);
+}
+
+.place-search-go {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 88px;
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(180deg, #c9a227, #a67c00);
+  color: #fffdf5;
+  box-shadow: 0 2px 10px rgba(166, 124, 0, 0.35);
+}
+
+.place-search-go:hover {
+  filter: brightness(1.05);
+}
+
+.place-search-go:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.place-search-error {
+  margin: 0 0.85rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  background: #fdeaea;
+  color: var(--danger);
+  border: 1px solid #f5c4c4;
+}
+
+.place-search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0.65rem 0.65rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.place-search-results[hidden] {
+  display: none !important;
+}
+
+.place-search-result-btn {
+  width: 100%;
+  text-align: left;
+  margin: 0 0 0.4rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.place-search-result-btn:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 10px rgba(63, 143, 63, 0.15);
+}
+
+.place-search-result-name {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.place-search-result-type {
+  display: inline-block;
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.place-search-attrib {
+  margin: 0;
+  padding: 0.45rem 0.85rem 0.65rem;
+  font-size: 0.65rem;
+  color: var(--muted);
+  border-top: 1px dashed var(--border);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.place-search-attrib a {
+  color: var(--primary-2);
+  font-weight: 600;
+}
+
+@media (max-width: 940px) {
+  :root {
+    --draw-side-panel-top: 152px;
+  }
+
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .map-viewport-wrap.map-viewport-wrap--draw-dock {
+    padding-left: 0;
+  }
+
+  .side-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: unset;
+    height: auto;
+    max-height: 50vh;
+    max-height: 50dvh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+  }
+
+  /* Minimized state when actively measuring on map */
+  .side-panel.side-panel--minimized .draw-tools__section {
+    display: none !important;
+  }
+  .side-panel.side-panel--minimized .draw-tools__head-text {
+    display: none !important;
+  }
+  .side-panel.side-panel--minimized {
+    border-radius: 20px;
+    margin: 10px;
+    width: calc(100% - 20px);
+    bottom: 20px;
+  }
+
+  /* Scoped to `.shown` on purpose: this rule used to apply unconditionally,
+     which meant the panel's box look (border/shadow/rounded corners/280px
+     width) rendered even while COLLAPSED. Since ol-layerswitcher's own
+     collapse toggle only hides the inner .panel's content (display:none),
+     the still-styled OUTER control kept showing as a big bordered/shadowed
+     box on mobile with nothing visibly wrong about it — reading exactly
+     like "the collapse button doesn't work" even though the class (and the
+     actual layer list) toggled correctly. Only apply this box styling while
+     actually open. */
+  .layer-switcher.shown {
+    top: 12px;
+    right: 12px;
+    bottom: auto;
+    left: auto;
+    width: 280px;
+    max-width: calc(100vw - 24px);
+    height: auto;
+    max-height: calc(100vh - 180px);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+
+  .fallback-switcher {
+    top: 12px;
+    width: calc(100vw - 24px);
+  }
+
+  .survey-drawer {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: unset;
+    height: 50vh;
+    height: 50dvh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    transform: translateY(102%);
+  }
+
+  .survey-drawer.open {
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================
+   UNIFIED SEARCH PANEL
+   Lives in .map-left-stack; slides in from the left.
+   ========================================================= */
+
+/* Hide when [hidden] — match existing pattern */
+.search-panel[hidden] {
+  display: none !important;
+}
+
+.search-panel {
+  width: 100%;
+  animation: searchPanelIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes searchPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* .search-panel__card used to provide the card visual (background/border/
+   radius/shadow) — that's now .popWinMain's job (see the POPUP WINDOW
+   TEMPLATE section near the end of this file). search-panel.html keeps the
+   `search-panel__card` class alongside `popWinMain` purely for the mobile
+   bottom-sheet treatment below (drag handle + squared-off corners). */
+
+/* --- Panel header --- */
+.search-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem 0.6rem;
+  background: linear-gradient(95deg, rgba(232, 245, 226, 0.8), rgba(255, 255, 255, 0.5));
+  border-bottom: 1px solid rgba(78, 112, 61, 0.18);
+}
+
+.search-panel__head-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.search-panel__head-icon {
+  color: var(--primary-2);
+  font-size: 1rem;
+}
+/* Sentinel panel's satellite icon uses its own brand blue instead of the
+   shared green primary-2 accent. */
+.search-panel__head-icon--blue {
+  color: #1565c0;
+}
+
+/* Placeholder text shown before a modify/status selection is made — pinned
+   to the top-left of .popWinBody (was centered) with its own padding so it
+   doesn't sit flush against the panel edges. */
+.panel-empty-hint {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: left;
+  margin: 0;
+  padding: 6px 4px;
+}
+
+.search-panel__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.search-panel__close {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.search-panel__close:hover {
+  background: #fdeaea;
+  color: var(--danger);
+}
+
+/* --- Segmented tab pills --- */
+/* .search-panel__tabs (the old tab-bar container) is gone — every window
+   now uses .popWinTabs for that instead; .search-tab itself (the
+   individual pill buttons) is unchanged and still shared. */
+
+.search-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 0.42rem 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.18s, color 0.18s, border-color 0.18s, box-shadow 0.18s;
+  line-height: 1.3;
+}
+
+.search-tab:hover {
+  background: rgba(232, 245, 226, 0.9);
+  color: var(--text);
+}
+
+.search-tab[aria-selected="true"] {
+  background: #fff;
+  color: var(--primary-2);
+  border-color: rgba(78, 112, 61, 0.35);
+  box-shadow: 0 1px 6px rgba(47, 107, 47, 0.12);
+}
+
+/* --- Tab body content --- */
+.search-panel__tab-body {
+  /* No padding here — .popWinBody (the shared scroll container that now
+     wraps these tab-body divs) owns the padding instead. */
+  padding: 0;
+}
+
+.search-panel__tab-body[hidden] {
+  display: none !important;
+}
+
+/* --- Shared form elements inside panel --- */
+.search-panel__label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0.55rem 0 0.2rem;
+}
+
+.search-panel__label:first-child {
+  margin-top: 0;
+}
+
+.search-panel__muted {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.search-panel__input {
+  width: 100%;
+  margin-top: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.58rem 0.65rem;
+  font: inherit;
+  font-size: 0.9rem;
+  background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-panel__input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(63, 143, 63, 0.15);
+}
+
+select.search-panel__input {
+  /* Without this, the browser's own native select arrow renders in
+     addition to the custom SVG chevron below — that's the "double
+     dropdown" arrow bug. appearance: none removes the native one so only
+     our chevron shows. */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  cursor: pointer;
+}
+
+.search-panel__hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.search-panel__error {
+  margin: 0.45rem 0 0;
+  padding: 0.42rem 0.55rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  background: #fdeaea;
+  color: var(--danger);
+  border: 1px solid #f5c4c4;
+  line-height: 1.4;
+}
+
+.search-panel__error[hidden] {
+  display: none !important;
+}
+
+/* --- CTA buttons --- */
+.search-panel__btn-primary {
+  width: 100%;
+  margin: 0;
+  padding: 0.62rem 0.8rem;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: background 0.18s, transform 0.12s, box-shadow 0.18s;
+  box-shadow: 0 2px 8px rgba(47, 107, 47, 0.2);
+}
+
+.search-panel__btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-2), #1b4a1b);
+  box-shadow: 0 4px 14px rgba(47, 107, 47, 0.32);
+}
+
+.search-panel__btn-primary:active {
+  transform: translateY(1px);
+}
+
+/* Armed / picking active state for the Extract tab */
+.search-panel__btn-primary--armed {
+  background: linear-gradient(135deg, #c87a10, #a05c08) !important;
+  box-shadow: 0 0 0 3px rgba(200, 122, 16, 0.3), 0 4px 14px rgba(160, 92, 8, 0.32) !important;
+  animation: armedPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes armedPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(200, 122, 16, 0.3), 0 4px 14px rgba(160, 92, 8, 0.28); }
+  50%       { box-shadow: 0 0 0 6px rgba(200, 122, 16, 0.18), 0 4px 18px rgba(160, 92, 8, 0.38); }
+}
+
+
+.search-panel__btn-secondary {
+  width: 100%;
+  margin: 0;
+  padding: 0.58rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #eef5ec;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: background 0.15s;
+}
+
+.search-panel__btn-secondary:hover {
+  background: #e0ebd8;
+}
+
+/* row of 2 equal buttons */
+.search-panel__row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 0.4rem;
+}
+
+/* --- Place search specifics --- */
+.search-panel__place-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.search-panel__place-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-panel__place-go {
+  width: 2.8rem;
+  min-width: 2.8rem;
+  flex-shrink: 0;
+}
+
+.search-panel__attrib {
+  margin: 0.55rem 0 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.search-panel__attrib a {
+  color: var(--primary-2);
+}
+
+/* Place search results list (shared with old place-search-results style) */
+.place-search-results {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.place-search-results[hidden] {
+  display: none !important;
+}
+
+.place-search-result-btn {
+  width: 100%;
+  margin: 0;
+  padding: 0.52rem 0.7rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(78, 112, 61, 0.1);
+  border-radius: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--text);
+  transition: background 0.12s;
+}
+
+.place-search-result-btn:hover {
+  background: #eef5ec;
+}
+
+.place-search-result-name {
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.place-search-result-type {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+/* ---- Futuristic Search UI Styles ---- */
+.futuristic-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+.futuristic-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+}
+.futuristic-grid-item {
+  display: flex;
+  flex-direction: column;
+}
+.search-panel__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--vsl-primary);
+  margin-bottom: 0.2rem;
+}
+.search-panel__input {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(78, 112, 61, 0.3);
+  border-radius: 8px;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.search-panel__input:focus {
+  border-color: var(--vsl-primary);
+  box-shadow: 0 0 0 3px rgba(78, 112, 61, 0.15), inset 0 2px 4px rgba(0,0,0,0.02);
+  outline: none;
+}
+.futuristic-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.futuristic-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+/* Buttons in this app are routinely hidden/shown via the `hidden` attribute
+   (e.g. Log Activity's Save vs. Record Detail's Edit/Cancel toggle) — the
+   base rule's `display: inline-flex` above has equal CSS specificity to
+   the `[hidden]` UA rule and, being an author rule, would otherwise win
+   and keep "hidden" buttons visible. */
+.futuristic-icon-btn[hidden] {
+  display: none !important;
+}
+/* Disabled state had no visual treatment at all — a disabled Preview/Save
+   or Clear button (survey-panel.html's Import tab, before a file is
+   chosen) looked exactly as clickable as an active one, just silently
+   ate the click. Dim it and kill the hover lift so "inactive" actually
+   reads as inactive. */
+.futuristic-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none !important;
+}
+.futuristic-icon-btn:disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+.futuristic-icon-btn.btn-go,
+.futuristic-icon-btn.btn-add {
+  background: linear-gradient(135deg, var(--vsl-primary) 0%, #2e7d32 100%);
+  color: white;
+}
+.futuristic-icon-btn.btn-go:hover,
+.futuristic-icon-btn.btn-add:hover {
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 6px 16px rgba(46, 125, 50, 0.3);
+}
+.futuristic-icon-btn.btn-clear {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #495057;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+.futuristic-icon-btn.btn-clear:hover {
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+}
+/* Destructive action variant (e.g. Select window's Delete button) — layers
+   on top of .btn-clear's neutral base so it still gets the shared hover
+   lift, just recoloured red instead of gray. Border is a solid red (not
+   the faint 0.35-alpha tint this used to be) so it reads clearly as a
+   danger action even before hovering. Selector is bumped to
+   .futuristic-icon-btn.futuristic-icon-btn--danger (2 classes) because
+   .btn-clear above is also 2 classes — at equal specificity the later
+   rule should win, but .futuristic-icon-btn--danger alone (1 class) was
+   actually *losing* to .btn-clear's color/border, which is why the
+   button was still rendering gray instead of red. */
+.futuristic-icon-btn.futuristic-icon-btn--danger {
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.futuristic-icon-btn.futuristic-icon-btn--danger:hover {
+  background: linear-gradient(135deg, #fdeaea 0%, #fbdcdc 100%);
+  box-shadow: 0 6px 16px rgba(179, 54, 54, 0.22);
+}
+/* Rectangular text-label variant used by modal footer actions (Save / Log
+   Activity / Log Alert) instead of the round icon-only button. Generous
+   min-width + padding so labels like "Log Activity" always fit on one line
+   with breathing room, instead of the button shrinking to the text and
+   the text wrapping/overlapping. */
+.futuristic-icon-btn--modal-pad {
+  padding: 0.7rem 1.75rem;
+  min-width: 168px;
+  border-radius: 9px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  width: auto;
+  height: auto;
+}
+@media (max-width: 480px) {
+  .futuristic-icon-btn--modal-pad {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+}
+.futuristic-place-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.futuristic-place-row input {
+  flex: 1;
+}
+
+/* ---- Mobile responsive ---- */
+
+/* Tablet and below: make panel use full available width */
+@media (max-width: 900px) {
+  .search-panel {
+    width: 100%;
+  }
+}
+
+/* Phone: Bottom-sheet style overlay (max 60% height) */
+@media (max-width: 480px) {
+  .webmap-app .map-left-stack,
+  .webmap-app .map-right-stack {
+    /* Inherits position: fixed from desktop */
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100%;
+    max-height: 60vh;
+    max-height: 60dvh;
+    padding: 0;
+    gap: 0;
+    border-radius: 16px 16px 0 0;
+    overflow: visible;
+    z-index: 1300;
+  }
+
+  /* Shared "docks in the left/right map stack, becomes a bottom sheet on
+     phones" hook — applied alongside .popWinMain on search-panel.html,
+     measure-panel.html and parcel-status-panel.html's root elements. Not
+     used by log-activity-modal, log-alert-modal or feature-info-panel —
+     those are all centered vsl-modal-overlay dialogs
+     instead, which already behave reasonably on phones without this. */
+  .popWin-mobileDock {
+    width: 100%;
+    max-height: 60vh;
+    max-height: 60dvh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .search-panel__card {
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    height: auto;
+  }
+
+  /* Drag handle indicator */
+  .search-panel__card::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: rgba(78, 112, 61, 0.2);
+    border-radius: 4px;
+    margin: 8px auto 8px;
+  }
+
+  /* Tabs: allow text wrap at smallest sizes */
+  .search-tab {
+    font-size: 0.68rem;
+    padding: 0.4rem 0.25rem;
+    gap: 0.2rem;
+  }
+
+  .search-panel__btn-primary,
+  .search-panel__btn-secondary {
+    min-height: 48px; /* bigger tap targets */
+  }
+
+  /* infoHelp still sits in the left stack — hide it on small phones when
+     search is active. (feature-info-panel used to be hidden by this same
+     rule, but it's a body-level modal now, not a map-left-stack child, so
+     it's unaffected and shows normally on phones — see feature-info-panel.html.) */
+  .webmap-app .map-left-stack > .info-help-popover {
+    display: none;
+  }
+
+  /* Toast hides itself on mobile via its own media query in toast/toast.css. */
+}
+
+/* ── Floating button stack (top-left, over the map) ──
+   Generic "invisible wrapper, flex-packed children" shell shared by both
+   floating button clusters (this one and .map-fab-cluster below) — the
+   wrapper itself has no visible background/border, only position + a flex
+   column with a gap. Hiding a child button (button.hidden = true) lets the
+   rest pack together automatically instead of leaving a gap, since nothing
+   inside is individually positioned. */
+.map-btn-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.map-btn-stack--left {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 50;
+}
+
+/* Same [hidden] fix as .floating-btn/.dashboard-btn elsewhere in this file —
+   this class's own `display: flex` would otherwise beat the browser's
+   default [hidden]{display:none} at equal specificity. Covers both
+   #mapLeftBtnStack and #mapRightBtnStack (.map-fab-cluster--right also
+   carries .map-btn-stack) — see enterDraftingMode()/exitDraftingMode() in
+   js/map-app.js, which hide both while a drafting tool is live. */
+.map-btn-stack[hidden] {
+  display: none !important;
+}
+
+/* ── FAB Cluster ── */
+.map-fab-cluster {
+  position: absolute;
+  top: 20px;
+  z-index: 1100;
+  height: 100%;
+}
+
+.map-fab-cluster--left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  left: 20px;
+}
+
+.map-fab-cluster--right {
+  top: 20px;
+  right: 20px;
+}
+
+/* ── Floating button ── 
+.floating-btn
+*/
+.floating-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  color: var(--primary);
+  border: 1.5px solid rgba(63,143,63,0.25);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  margin: 0;
+}
+
+.floating-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(63,143,63,0.28);
+  background: #f4fff4;
+}
+
+.floating-btn:active {
+  transform: scale(0.94);
+}
+
+/* Same [hidden] fix as .dashboard-btn/.futuristic-icon-btn elsewhere in
+   this file — the display: flex above would otherwise beat the browser's
+   default [hidden]{display:none} at equal specificity. */
+.floating-btn[hidden] {
+  display: none !important;
+}
+
+/* Full Screen — "same position style as Locate Me": .floating-btn's base
+   position: fixed; bottom: 20px; right: 20px stays as-is for Locate Me,
+   Full Screen just stacks directly above it using the same fixed-to-
+   viewport convention (40px button + 10px gap = 70px). Both sit outside
+   #mapRightBtnStack's normal flex flow (that flow only actually contains
+   the Layers control + Legend — see .map-floating-legend below). */
+.floating-btn.map-floating-fullscreen {
+  bottom: 70px;
+}
+
+/* Legend — unlike Full Screen/Locate Me, this one DOES want to sit in
+   #mapRightBtnStack's normal flex column, directly under the Layers
+   control ("below the layers button"), so it un-fixes itself back into
+   the flow and relies on `order` (rather than DOM position) to land after
+   the Layers panel — the layer-switcher control is appended to this same
+   wrapper by OpenLayers at runtime (see LayerSwitcherClass in map-app.js),
+   always after whatever static buttons are already here, so ordering by
+   DOM position alone can't be trusted; `order: 1` guarantees it renders
+   after the Layers control's default `order: 0` regardless of timing. */
+.floating-btn.map-floating-legend {
+  position: static;
+  order: 1;
+}
+
+/* Open/toggled state — Legend toggles a persistent panel from
+   this cluster (Locate Me is momentary, Fullscreen just flips fullscreen
+   state); scoping this to .floating-btn.active keeps it available for any
+   future toggle-style button here too. */
+.floating-btn.active {
+  background: #d4edcc;
+  color: var(--primary-2);
+  box-shadow: 0 0 0 2px rgba(63, 143, 63, 0.35);
+}
+
+
+.map-floating-tools {
+  background: linear-gradient(145deg, #2f6b2f, #4a9a4a);
+  color: #fff;
+  border-color: transparent;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 16px rgba(47,107,47,0.45), 0 1px 4px rgba(0,0,0,0.18);
+}
+
+.map-floating-tools:hover {
+  background: linear-gradient(145deg, #265526, #3d8a3d);
+  box-shadow: 0 6px 24px rgba(47,107,47,0.55);
+}
+
+.map-floating-tools.uam-open {
+  background: linear-gradient(145deg, #1e4d1e, #2f6b2f);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* ── Survey panel (windows/survey-panel.html) ──
+   Now built from the shared .popWinMain/.popWinHead/.popWinBodyRow/
+   .popWinTabs--vertical/.popWinBody/.popWinActionBtns shell (see the
+   POPUP WINDOW TEMPLATE section later in this file) instead of its own
+   bespoke fixed-position overlay — that bespoke positioning is what
+   caused the panel to grow from the wrong edge and overlap the toolbar
+   on short viewports. Only the tab content styling (form controls, draw
+   grid, dropzone, etc.) below is still Survey-specific. */
+#unifiedActionMenu .popWinTabs--vertical {
+  width: 104px;
+}
+
+/* Each [data-uam-panel] tab body — .popWinBody (shared) now owns sizing
+   and scrolling for the whole panel, so this is just a plain content
+   column. NOTE: the explicit `display: flex` below is author CSS, which
+   always beats the browser's own default `[hidden] { display: none }`
+   rule regardless of specificity (author > user-agent in the cascade) —
+   so without the !important override just below, every tab would render
+   at once instead of only the active one. */
+.uam-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.uam-tab[hidden] {
+  display: none !important;
+}
+
+/* Footer action-button group — one per tab, swapped by unified-menu.js's
+   switchTab() alongside the tab body above. Nested one level inside the
+   shared .popWinActionBtns row so its buttons still lay out side by side
+   with the same gap every other window's footer uses. */
+.uam-actions-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.uam-actions-group[hidden] {
+  display: none;
+}
+
+/* Form controls inside UAM */
+.uam-select,
+.uam-input,
+.uam-textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.875rem;
+  background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s;
+  margin: 0;
+}
+
+.uam-select:focus,
+.uam-input:focus,
+.uam-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.uam-textarea {
+  resize: none;
+  min-height: 52px;
+}
+
+.uam-field-row {
+  display: flex;
+  gap: 3px;
+}
+/* Same [hidden] fix as .uam-checkbox-row/.futuristic-icon-btn elsewhere in
+   this file — the class rule's `display: flex` above otherwise beats the
+   browser's own `[hidden] { display: none }` rule (e.g. #surveyParcelEstateRow,
+   hidden while "Automatically select" is checked). */
+.uam-field-row[hidden] {
+  display: none !important;
+}
+
+.uam-inline-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.uam-section-heading {
+  margin: 0 0 4px 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* File input */
+.uam-file-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.5rem 0.65rem;
+  border: 1.5px dashed var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--muted);
+  width: 100%;
+  background: #fff;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  margin: 0;
+}
+
+.uam-file-label:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Doubles as the dropzone now (see survey-panel.html) — reacts to
+   drag-over the same way the separate .uam-dropzone box used to before it
+   was folded into this. Kept short (no extra padding beyond the base
+   .uam-file-label rule) so it doesn't dominate the tab. */
+.uam-file-label--drop {
+  min-height: 0;
+  padding: 0.4rem 0.65rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.uam-file-label--drop span {
+  font-size: 0.78rem;
+}
+
+.uam-file-label--drop.dragover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #f4fff4;
+}
+
+.uam-file-input {
+  display: none;
+}
+
+/* Action buttons */
+.uam-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0.5rem 1rem;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  margin: 0;
+  width: auto;
+}
+
+/* Same [hidden] fix as .futuristic-icon-btn/.floating-btn elsewhere in this
+   file: `display: inline-flex` above has equal specificity to the browser's
+   own `[hidden] { display: none }` and, being an author rule, would win —
+   so `btn.hidden = true` silently did nothing. Bit #drawManageFeaturesBtn,
+   which is meant to disappear whenever Block/Plot is the drawn entity
+   (updatePlotBlockVisibility in js/survey-draw.js). */
+.uam-btn[hidden] {
+  display: none !important;
+}
+
+/* The footer only exists to hold that button — when it's hidden the
+   footer's own top padding would otherwise leave a phantom gap. */
+.uam-tab__footer:has(> .uam-btn:only-child[hidden]) {
+  display: none;
+}
+
+.uam-btn--primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.uam-btn--primary:hover {
+  background: var(--primary-2);
+}
+
+.uam-btn--primary:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* "This tool is live" state for a .uam-btn toggle — currently
+   #exportSelectBtn while Export's click/box selection is armed. Green rather
+   than the usual blue --primary so it reads as "active/go" and is instantly
+   distinguishable from an ordinary primary button sitting next to it. */
+.uam-btn--selecting {
+  background: #1b9e5a !important;
+  color: #fff !important;
+  border: 1px solid #157f48 !important;
+  box-shadow: 0 0 0 3px rgba(27, 158, 90, 0.18);
+}
+
+.uam-btn--selecting:hover {
+  background: #157f48 !important;
+}
+
+.uam-btn--ghost {
+  background: #f0f4ee;
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+.uam-btn--ghost:hover {
+  background: #e4ede0;
+  border-color: var(--primary);
+}
+
+/* Destructive actions (e.g. Import tab's Clear, next to Preview) — same
+   ghost shape as .uam-btn--ghost, red instead of neutral so it doesn't
+   read as just another equal-weight option. */
+.uam-btn--danger {
+  background: #fdf2f2;
+  color: var(--danger);
+  border: 1.5px solid #f0c8c8;
+}
+
+.uam-btn--danger:hover {
+  background: #fbdcdc;
+  border-color: var(--danger);
+}
+
+/* Toggled on while a tool (e.g. Edit tab's "Select Feature") is armed and
+   waiting for a map click. */
+.uam-btn--active {
+  background: var(--primary-2);
+  color: #fff;
+}
+
+/* Draw grid */
+.uam-draw-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.uam-draw-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 14px 8px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin: 0;
+  width: auto;
+}
+
+.uam-draw-btn i {
+  font-size: 1.3rem;
+  color: var(--primary);
+}
+
+.uam-draw-btn:hover {
+  border-color: var(--primary);
+  background: #f4fff4;
+  box-shadow: 0 2px 8px rgba(63,143,63,0.15);
+}
+
+/* Selection count badge */
+.uam-sel-count {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary-2);
+  padding: 4px 8px;
+  background: #eef5ec;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+/* Small helper text under a field (e.g. "Accepted formats…",
+   "Default CRS…") — Import tab, after removing the format/CRS dropdowns. */
+.uam-hint {
+  margin: 0px 0 0;
+  font-size: 0.6rem;
+  color: tomato;
+  line-height: 1.35;
+}
+
+/* Preview summary line (survey-import.js renderSummary) — same shape as
+   .uam-hint above, blue instead of tomato so it doesn't read as a warning. */
+.uam-hint--blue {
+  color: #2563eb;
+}
+
+/* Boxed variant — rounded bluish card instead of plain text, for a short
+   bulleted instruction list (e.g. Edit tab's "how to" hint, shown only
+   while an editing session is active). Combine with .uam-hint--blue:
+   <ul class="uam-hint uam-hint--blue uam-hint--box">. */
+.uam-hint--box {
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem 0.55rem 1.4rem;
+  font-size: 0.72rem;
+}
+
+.uam-hint--box li {
+  margin: 2px 0;
+}
+
+/* ── Block assignment review (Survey > Import > "Automatically Choose
+   Block") ───────────────────────────────────────────────────────────────
+   #surveyAssignPanel in windows/survey-panel.html, populated by
+   renderAssignmentRows() in js/survey-import.js. Sits between the preview
+   summary and the footer buttons, listing every previewed plot with the
+   block it resolved into so the user can verify/override before saving.
+
+   Stacked cards, not a table: this panel is a narrow docked column, so an
+   ID + two dropdowns only fit stacked vertically. */
+.survey-assign {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.survey-assign[hidden] {
+  display: none !important;
+}
+
+/* Sticky header strip — "187 matched · 13 unmatched" plus the collapse
+   chevron, so the counts stay visible while the list scrolls. */
+.survey-assign__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(63, 143, 63, 0.08);
+  border-bottom: 1px solid var(--border);
+}
+.survey-assign__count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.survey-assign__toggle {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+.survey-assign__toggle:hover {
+  background: rgba(63, 143, 63, 0.15);
+  color: var(--text);
+}
+
+/* Capped height so a 200-plot import can't push the footer buttons off the
+   panel — the list scrolls inside this box instead. */
+.survey-assign__scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.survey-assign__scroll[hidden] {
+  display: none !important;
+}
+
+.survey-assign__group + .survey-assign__group {
+  margin-top: 10px;
+}
+.survey-assign__group[hidden] {
+  display: none !important;
+}
+
+.survey-assign__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--primary);
+}
+.survey-assign__group--warn .survey-assign__title {
+  color: var(--danger);
+}
+.survey-assign__note {
+  margin: 0 0 6px;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: var(--danger);
+}
+
+.survey-assign__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* One plot. Left accent bar is the at-a-glance matched/unmatched tell. */
+.sa-row {
+  padding: 5px 6px 6px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.sa-row--unmatched {
+  border-left-color: var(--danger);
+  background: rgba(179, 54, 54, 0.05);
+}
+/* Turns green the moment the user picks a block for an unmatched plot —
+   immediate confirmation it's no longer going to be discarded. */
+.sa-row--resolved {
+  border-left-color: var(--primary);
+  background: rgba(63, 143, 63, 0.06);
+}
+
+.sa-row__id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text);
+}
+/* Zooms the map to this plot — verification is the whole point of the
+   table, and the ID is the obvious thing to click. */
+.sa-row__zoom {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.65rem;
+}
+.sa-row__zoom:hover {
+  background: rgba(63, 143, 63, 0.15);
+  color: var(--primary);
+}
+
+.sa-row__selects {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* Same shrunken metrics for both dropdowns — .uam-select is sized for the
+   panel's main fields, which is too tall to repeat 200 times. */
+.sa-row__selects select {
+  width: 100%;
+  padding: 3px 5px;
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+.sa-row__selects select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+/* Nothing chosen yet on an unmatched plot — this row is headed for the
+   discard list, so flag the empty select rather than letting it look like
+   any other. */
+.sa-row__selects select.is-empty {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* "+" button next to an estate <select> (create new estate). Square,
+   matches the select's height, sits flush next to it in a .uam-field-row. */
+.uam-icon-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--primary-2);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  align-self: stretch;
+}
+
+.uam-icon-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #f4fff4;
+}
+
+/* Draw tab's entity-type shape preview (js/survey-draw.js) — same box as
+   .uam-icon-btn above, but purely decorative: no hover state, no pointer
+   cursor. */
+.uam-icon-preview {
+  cursor: default;
+  transition: none;
+}
+.uam-icon-preview:hover {
+  border-color: var(--border);
+  color: var(--primary-2);
+  background: #fff;
+}
+/* #drawFeaturePreview holds a .fts swatch (the same one the Manage
+   Features list draws), which brings its own sizing — the box just needs
+   to stop clipping it and to centre it. */
+.uam-icon-preview .fts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.uam-icon-preview .fts--point {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.uam-icon-preview .fts--point img {
+  width: 12px;
+  height: 12px;
+}
+
+/* Pins a tab's secondary action to the bottom of the tab body, below
+   whatever content the tab has, rather than letting it float directly
+   under the last field. `margin-top: auto` only bites once .popWinBody has
+   spare height, which is exactly when it matters. */
+.uam-tab__footer {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+/* Point preview — an actual small filled circle (matches the blue dot
+   used for the live sketch/point markers on the map) rather than a
+   Font Awesome pin glyph. */
+.uam-icon-preview__dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #0d47a1;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+/* Small spacing/layout utilities used inline in survey-panel.html so the
+   markup doesn't need one-off classes per element. */
+.u-gap-8 { gap: 8px; }
+.u-mb-6 { margin-bottom: 6px; }
+.u-mt-6 { margin-top: 6px; }
+.u-w-100 { width: 100%; }
+.u-flex-1 { flex: 1; }
+.u-hidden { display: none !important; }
+
+/* "Automatic" checkbox row above the estate/block filter in the Draw tab —
+   also used by the Import tab's "Automatically select" row. Checkbox +
+   label pushed to the row's right edge (justify-content: flex-end). */
+.uam-checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+/* Same [hidden] fix as .futuristic-icon-btn/.popWinActionBtns elsewhere in
+   this file — the class rule's `display: flex` above has equal-or-higher
+   specificity than the browser's own `[hidden] { display: none }` rule, so
+   without this, setting the hidden attribute (e.g. #surveyAutoSelectRow)
+   silently did nothing. */
+.uam-checkbox-row[hidden] {
+  display: none !important;
+}
+#surveyLayerSelect{
+  margin-bottom:4px;
+}
+#surveyAutoSelectRow{
+  margin-top:0px
+}
+/* The app-wide input/select/button reset (near the top of this file) sets
+   width:100% on every <input> — same same-specificity gap as .mf-row__edit
+   and others elsewhere in this file. Without an explicit width here, the
+   checkbox's native square stays small but its *layout box* claims the
+   row's full width, shoving the label out to the far edge and wrapping it
+   (exactly the look this rule fixes). */
+.uam-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex: 0 0 auto;
+  margin-top: 0px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* Survey no longer needs its own mobile drill-down rules here — docked in
+   .map-left-stack now, it gets the same .popWin-mobileDock bottom-sheet
+   treatment as every other panel there (Modify/Select, Search, …) for
+   free. Only these two unrelated FAB-cluster tweaks still live in this
+   breakpoint. */
+@media (max-width: 640px) {
+  .map-fab-cluster--left {
+    left: 12px;
+  }
+  .map-fab-cluster--right {
+    right: 12px;
+  }
+}
+
+/* ═══ Sentinel-2 — in .map-left-stack (WMS + reports; basemap via layer switcher) ═══ */
+.sentinel-analytics[hidden] {
+  display: none !important;
+}
+
+/* One scroll: .sentinel-analytics__shell scrolls. */
+.webmap-app .map-left-stack > .sentinel-analytics {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sentinel-analytics {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.82rem;
+  color: var(--text, #1a2e1a);
+  margin-bottom: 0.5rem;
+  z-index: 5;
+  animation: searchPanelIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  min-height: 0;
+}
+
+.sentinel-analytics__card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: linear-gradient(170deg, #ffffff 0%, #f5faf2 100%);
+  border: 1px solid rgba(78, 112, 61, 0.28);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(12, 40, 28, 0.13);
+  overflow: hidden;
+}
+
+.sentinel-analytics__subtitle {
+  margin: 0.1rem 0 0;
+  font-size: 0.65rem;
+  color: var(--muted, #5c6b5a);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sentinel-analytics__muted {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.85em;
+}
+
+.sentinel-analytics__shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.45rem 0.7rem 0.75rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sentinel-analytics__report-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.35rem 0.25rem 0.2rem;
+  padding: 0.45rem 0.5rem 0.5rem;
+  border-radius: 10px;
+  background: linear-gradient(95deg, rgba(46, 90, 46, 0.14), rgba(21, 101, 192, 0.08));
+  border: 1px solid rgba(46, 90, 46, 0.35);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.sentinel-analytics__report-ribbon-ico {
+  font-size: 1.2rem;
+  color: #8b2323;
+  flex-shrink: 0;
+}
+
+.sentinel-analytics__report-ribbon-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.sentinel-analytics__report-ribbon-kicker {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #2d5a2d;
+  text-transform: uppercase;
+}
+
+.sentinel-analytics__report-ribbon-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text, #1a2e1a);
+  line-height: 1.2;
+}
+
+.sentinel-analytics__section--report {
+  padding-top: 0.3rem;
+  border-top: 2px solid rgba(46, 90, 46, 0.35);
+}
+
+.sentinel-analytics__endpoint-hint {
+  font-size: 0.62rem !important;
+  line-height: 1.35;
+  color: #1565c0;
+  background: rgba(21, 101, 192, 0.06);
+  border-radius: 6px;
+  padding: 0.35rem 0.4rem;
+  border: 1px dashed rgba(21, 101, 192, 0.35);
+  word-break: break-all;
+}
+
+.sentinel-report__row2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.sentinel-report__row2 .search-panel__input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  margin-bottom: 0;
+}
+
+.sentinel-report__dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem 0.6rem;
+  margin: 0.4rem 0 0.15rem;
+}
+
+.sentinel-report__chart-wrap {
+  display: none;
+  margin-top: 0.4rem;
+  height: 200px;
+  position: relative;
+}
+
+.sentinel-report__chart-wrap canvas {
+  max-width: 100%;
+  height: 200px !important;
+}
+
+.sentinel-analytics__loading {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.4rem 0.55rem;
+  font-size: 0.75rem;
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.sentinel-analytics__spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgba(21, 101, 192, 0.25);
+  border-top-color: #1565c0;
+  border-radius: 50%;
+  animation: sentinel-spin 0.7s linear infinite;
+}
+
+@keyframes sentinel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sentinel-analytics__section {
+  padding: 0.55rem 0;
+  border-bottom: 1px dashed rgba(78, 112, 61, 0.18);
+}
+
+.sentinel-analytics__section:last-child {
+  border-bottom: none;
+}
+
+.sentinel-analytics__section--info {
+  padding-top: 0.35rem;
+  border-bottom: none;
+}
+
+.sentinel-analytics__section-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #5c6b5a);
+}
+
+.sentinel-analytics__section-title--inline {
+  margin-bottom: 0;
+}
+
+.sentinel-analytics__hint {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted, #5c6b5a);
+}
+
+.sentinel-analytics__radio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.5rem;
+}
+
+.sentinel-analytics__radio-grid--compact {
+  grid-template-columns: 1fr 1fr;
+}
+
+.sentinel-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.sentinel-radio input {
+  accent-color: #2d6b2d;
+}
+
+.sentinel-mode-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.sentinel-mode-btn {
+  flex: 1 1 30%;
+  min-width: 5.5rem;
+  padding: 0.4rem 0.35rem;
+  border-radius: 10px;
+  border: 1px solid rgba(78, 112, 61, 0.35);
+  background: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #2e4a2e;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.sentinel-mode-btn:hover {
+  background: #eef5ec;
+  border-color: #4e7c3e;
+}
+
+.sentinel-mode-btn--active {
+  background: linear-gradient(145deg, #e8f5e9, #c8e6c9);
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 1px rgba(46, 125, 50, 0.25);
+}
+
+.sentinel-analytics__row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.sentinel-analytics__pct {
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #2d6b2d;
+}
+
+.sentinel-analytics__range {
+  width: 100%;
+  accent-color: #2d6b2d;
+  margin: 0.2rem 0 0;
+}
+
+.sentinel-analytics__date-readout {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+}
+
+.sentinel-analytics__select-label {
+  display: block;
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.sentinel-analytics__select {
+  width: 100%;
+  padding: 0.4rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #c8d4c0);
+  font: inherit;
+  background: #fff;
+}
+
+.sentinel-analytics__play-row {
+  margin-top: 0.45rem;
+  display: flex;
+  justify-content: center;
+}
+
+.sentinel-analytics__play {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid #1565c0;
+  background: #fff;
+  color: #0d47a1;
+  font-weight: 600;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sentinel-analytics__play:hover {
+  background: #e3f2fd;
+}
+
+.sentinel-analytics__play[aria-pressed="true"] {
+  background: #0d47a1;
+  color: #fff;
+  border-color: #0d47a1;
+}
+
+.sentinel-analytics__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.sentinel-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.sentinel-check input {
+  margin-top: 0.1rem;
+  accent-color: #2d6b2d;
+}
+
+.sentinel-legend {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.sentinel-legend__placeholder {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.sentinel-legend__row {
+  margin: 0.25rem 0 0.15rem;
+}
+
+.sentinel-legend__scale--ndvi {
+  display: block;
+  height: 0.6rem;
+  width: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #8b0000, #ffff99, #006400);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.sentinel-legend__ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.64rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+.sentinel-legend__note {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sentinel-legend__note strong {
+  color: var(--text);
+}
+
+.sentinel-analytics__info {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #37474f;
+  padding: 0.4rem 0.45rem;
+  border-radius: 8px;
+  background: rgba(227, 242, 233, 0.55);
+  border: 1px solid rgba(46, 125, 50, 0.15);
+}
+
+@media (max-width: 900px) {
+  .webmap-app .map-left-stack > .sentinel-analytics {
+    max-height: 100%;
+  }
+}
+
+/* Farm report panel (left stack, same shell as search) */
+.farm-report__subtitle {
+  margin: 0.1rem 0 0;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.farm-report__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.farm-report__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.farm-report__list {
+  max-height: min(38vh, 320px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafcf8;
+  padding: 0.35rem 0.2rem;
+}
+
+.farm-report__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.35rem 0.4rem;
+  margin: 0 0.1rem 0.15rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  transition: background 0.12s;
+}
+
+.farm-report__row:hover {
+  background: rgba(46, 125, 50, 0.08);
+}
+
+.farm-report__cb {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+
+.farm-report__row-txt {
+  flex: 1;
+  min-width: 0;
+}
+
+.farm-report__muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.farm-report__summary {
+  margin: 0.15rem 0 0.25rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: rgba(227, 242, 233, 0.45);
+  border: 1px solid rgba(46, 125, 50, 0.2);
+  border-radius: 8px;
+  padding: 0.4rem 0.5rem;
+}
+
+.farm-report__empty,
+.farm-report__error {
+  margin: 0.5rem 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.farm-report__error {
+  color: var(--danger);
+}
+
+/* ——— Copernicus WMS: was floating; default still fixed for backwards compat ——— */
+.vsl-satellite-float {
+  position: fixed;
+  top: 5.5rem;
+  right: 0.75rem;
+  z-index: 1155;
+  width: min(20.5rem, 92vw);
+  max-height: min(86vh, 40rem);
+  overflow: auto;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1a2e1a);
+  border: 1px solid rgba(46, 125, 50, 0.22);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  padding: 0.65rem 0.7rem 0.75rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Embedded in #sentinelAnalyticsPanel: flow in panel, no second floating surface */
+.vsl-satellite-float--embedded {
+  position: static;
+  right: auto;
+  top: auto;
+  z-index: auto;
+  width: 100%;
+  max-height: none;
+  box-shadow: none;
+  margin: 0 0 0.25rem;
+  padding: 0.5rem 0.15rem 0.55rem;
+  border: none;
+  border-bottom: 1px dashed rgba(78, 112, 61, 0.2);
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.webmap-app--dark .vsl-satellite-float--embedded,
+.webmap-app[data-theme="dark"] .vsl-satellite-float--embedded {
+  background: transparent;
+  border-color: rgba(120, 180, 120, 0.2);
+}
+
+.webmap-app--dark .vsl-satellite-float,
+.webmap-app[data-theme="dark"] .vsl-satellite-float {
+  background: #1c241c;
+  border-color: rgba(120, 180, 120, 0.25);
+  color: #e8f0e8;
+}
+
+.vsl-satellite-float__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(46, 125, 50, 0.12);
+}
+
+.vsl-satellite-float__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--primary, #1b5e20);
+}
+
+.vsl-satellite-float__spinner {
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid rgba(27, 94, 32, 0.25);
+  border-top-color: #1b5e20;
+  border-radius: 50%;
+  animation: vsl-wms-spin 0.7s linear infinite;
+}
+
+@keyframes vsl-wms-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vsl-satellite-float__hint {
+  margin: 0 0 0.45rem;
+  font-size: 0.68rem;
+  color: var(--muted, #5d6a5d);
+  line-height: 1.35;
+}
+
+.vsl-satellite-float__hint--subtle {
+  font-size: 0.65rem;
+}
+
+.vsl-satellite-float__date-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+
+.vsl-satellite-float__lbl {
+  width: 2.1rem;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--muted, #5d6a5d);
+}
+
+.vsl-satellite-float__input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--border, #c8d6c6);
+  border-radius: 6px;
+  background: var(--input-bg, #fff);
+  color: inherit;
+}
+
+.vsl-satellite-float__opacity {
+  margin: 0.45rem 0 0.5rem;
+  padding: 0.4rem 0 0.35rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.vsl-satellite-float__row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.2rem;
+}
+
+.vsl-satellite-float__muted {
+  color: var(--muted, #7a8a7a);
+  font-weight: 400;
+  font-size: 0.65rem;
+}
+
+.vsl-satellite-float__pct {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--primary, #1b5e20);
+}
+
+.vsl-satellite-float__range {
+  width: 100%;
+  accent-color: #2e7d32;
+}
+
+.vsl-satellite-float__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.vsl-satellite-float__group-title {
+  margin: 0.15rem 0 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #4a5d4a);
+}
+
+.vsl-satellite-float__picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.vsl-wms-pick {
+  border: 1px solid rgba(46, 125, 50, 0.35);
+  background: rgba(255, 255, 255, 0.92);
+  color: #1a3a1a;
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.3rem 0.45rem;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+
+.webmap-app--dark .vsl-wms-pick,
+.webmap-app[data-theme="dark"] .vsl-wms-pick {
+  background: #243024;
+  color: #e0eee0;
+  border-color: rgba(120, 180, 120, 0.35);
+}
+
+.vsl-wms-pick:hover {
+  border-color: #2e7d32;
+  background: rgba(46, 125, 50, 0.08);
+}
+
+.vsl-wms-pick--active,
+.vsl-wms-pick[aria-pressed="true"] {
+  border-color: #1b5e20;
+  background: linear-gradient(180deg, rgba(232, 245, 233, 0.95) 0%, rgba(200, 230, 201, 0.55) 100%);
+  box-shadow: 0 0 0 1px rgba(27, 94, 32, 0.2);
+  font-weight: 600;
+}
+
+.vsl-wms-pick--off {
+  color: #6d4c41;
+  border-color: rgba(120, 80, 60, 0.35);
+}
+
+.vsl-satellite-float__row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.vsl-satellite-float__btn-ghost {
+  border: none;
+  background: transparent;
+  color: var(--primary, #1b5e20);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  padding: 0.2rem 0.15rem;
+}
+
+.vsl-satellite-float__chk {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  font-size: 0.65rem;
+  color: var(--muted, #7a8a7a);
+  margin-top: 0.1rem;
+}
+
+.sentinel-legend__row--ndvi-interpret {
+  margin: 0.25rem 0 0.15rem;
+}
+
+.sentinel-legend__swatch {
+  display: block;
+  width: 100%;
+  height: 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+@media (max-width: 600px) {
+  .vsl-satellite-float {
+    right: 0.35rem;
+    top: 4.2rem;
+    width: min(19rem, 94vw);
+  }
+}
+
+/* Mobile Toolbar Adjustments — .map-top-controls only ever holds the
+   account button now (Search/Survey/Measure/Modify/Select/Full Screen all
+   moved into the map-btn-stacks), so it no longer needs its own
+   flex-column/space-between stacking rules here; it stays pinned to the
+   top-right corner via the absolute positioning set at the base rule
+   above, at every screen size. */
+@media (max-width: 900px) {
+  .project-toolbar {
+    padding: 4px 6px;
+  }
+  .map-top-controls {
+    right: 6px;
+  }
+  /* Toolbar is now just the brand block (logo/title + subtitle) plus the
+     absolutely-positioned account button — no second full-width button
+     row anymore — so it's noticeably shorter than it used to be. These
+     were 125px/135px (sized for the old two-row toolbar); that mismatch
+     was leaving a large empty gap between the toolbar and the map. */
+  .webmap-app.webmap-app--sidebar .map-main {
+    top: 75px;
+  }
+  .webmap-app .map-left-stack {
+    top: 110px;
+  }
+}
+
+/* The old .measure-panel card look (background/border/radius/shadow/
+   padding) is now .popWinMain's job — see the POPUP WINDOW TEMPLATE
+   section near the end of this file. */
+
+/* Inline SENTINEL date row + colour-scale legend, injected directly into
+   the layer-switcher panel below the SENTINEL group's layer list (see
+   js/sentinel-analytics.js) — replaces the old gear-icon-opens-a-popup
+   flow (windows/sentinel-minimal-control.html, deleted). */
+.vsl-sentinel-date-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.3em 0 0.3em 1.2em;
+}
+
+/* `.vsl-sentinel-date-row` sets its own `display: flex` above (an author
+   rule), which beats the browser's default `[hidden] { display: none }`
+   UA-stylesheet rule at equal specificity — author rules always win
+   regardless of order, so setting the `hidden` attribute alone did nothing.
+   (This is the same class of bug fixed earlier for .dashboard-btn/
+   .floating-btn/.control-btn.) The legend row below never hit this because
+   it has no `display` of its own directly on the <li> — only its child
+   .vsl-sentinel-legend-bar does — so [hidden] worked for it unopposed. */
+.vsl-sentinel-date-row[hidden] {
+  display: none !important;
+}
+
+.vsl-sentinel-date-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78em;
+  padding: 2px 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background-color: #f8fafc;
+  color: #334155;
+}
+
+/* ol-layerswitcher's own `.layer-switcher li input { position: absolute;
+   height: 1em; width: 1em; }` is meant for the checkbox/radio inputs on
+   layer rows, but it matches ANY <input> inside ANY <li> in the panel —
+   it doesn't check `type`. Since it never sets those properties on
+   `.vsl-sentinel-date-input` above, there's nothing to lose a specificity
+   fight over — the library's absolute-positioned 1em box just applies
+   unopposed, which is what was squashing the date field down into what
+   looked like a blank checkbox. This selector needs 2 classes to
+   out-specify the library's 1-class-2-element rule, so it actually wins
+   and lets the input lay out (and size) normally again. */
+.layer-switcher .vsl-sentinel-date-row input.vsl-sentinel-date-input {
+  position: static;
+  width: auto;
+  height: auto;
+}
+
+.vsl-sentinel-date-spinner {
+  color: #1565c0;
+  font-size: 0.8em;
+  flex-shrink: 0;
+}
+
+/* Low(red) → High(green) colour-scale legend — only meaningful for the
+   NDVI/Soil Moisture layers (not Colour Image, which is a true-colour photo,
+   not a value scale), so js/sentinel-analytics.js only shows this row while
+   one of those two is the active layer. */
+.vsl-sentinel-legend-row {
+  padding: 0.3em 0.6em 0.5em 1.2em;
+}
+
+.vsl-sentinel-legend-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.vsl-sentinel-legend-bar span {
+  flex: 1;
+}
+
+.vsl-sentinel-legend-bar span:nth-child(1) { background: #d32f2f; }
+.vsl-sentinel-legend-bar span:nth-child(2) { background: #f57c00; }
+.vsl-sentinel-legend-bar span:nth-child(3) { background: #fbc02d; }
+.vsl-sentinel-legend-bar span:nth-child(4) { background: #8bc34a; }
+.vsl-sentinel-legend-bar span:nth-child(5) { background: #43a047; }
+.vsl-sentinel-legend-bar span:nth-child(6) { background: #1b5e20; }
+
+.vsl-sentinel-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-size: 0.72em;
+  font-weight: 600;
+  color: #64748b;
+}
+
+
+.parcel-status-count-badge {
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+/* Estate → Block → Parcel cascade search */
+.search-cascade {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.search-cascade__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-cascade select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Futuristic Smart Measure Styling --- */
+.pulsing-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+  animation: pulsingGlow 2s infinite;
+}
+
+@keyframes pulsingGlow {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.measure-dashboard {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.measure-card {
+  background: var(--vsl-surface, #ffffff);
+  border: 1px solid var(--vsl-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.measure-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  border-color: var(--primary, #1b5e20);
+}
+
+.measure-card-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.measure-card-icon {
+  font-size: 1rem;
+  color: var(--primary, #1b5e20);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(27, 94, 32, 0.06);
+  border-radius: 8px;
+}
+
+.measure-card-lbl {
+  font-size: 0.65rem;
+  color: var(--muted, #64748b);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.measure-card-val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: var(--text, #1e293b);
+}
+
+/* measure-panel's header now uses the shared .popWinHead/.popWinIcon/
+   .popWinTitle classes from the POPUP WINDOW TEMPLATE section instead of
+   its own smc-header* classes. */
+
+/* ── Measure panel: start-walk prompt + pill start button ── */
+.measure-start-walk {
+  display: none;
+  text-align: center;
+  padding: 20px 0;
+}
+.btn-primary--pill-lg {
+  padding: 10px 20px;
+  font-size: 1rem;
+  border-radius: 30px;
+}
+
+/* ── Measure panel: action button row (Clear / Mark / Finish / Undo) ── */
+.measure-action-btn {
+  flex: 1;
+  padding: 8px;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.measure-action-btn--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.measure-action-btn--success {
+  border-color: #28a745;
+  color: #28a745;
+}
+.measure-action-btn--hidden {
+  display: none;
+}
+.measure-feedback-text {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--primary-2);
+  text-align: center;
+}
+
+/* ── EDIT DETAILS MODAL STYLING ── */
+.vsl-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 40, 28, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+.vsl-modal-overlay[hidden] {
+  display: none !important;
+}
+
+/* Record Detail is a drill-down that can be opened from within another
+   already-open modal (Alerts List, or the Feature Info panel's repeating
+   groups) — every .vsl-modal-overlay shares the same z-index (2000) above,
+   and for equal z-index, later DOM order wins. record-detail-modal.html is
+   fetched before alerts-list-modal.html (see WINDOW_FRAGMENTS in
+   js/app-boot.js), so without this it was rendering BEHIND the Alerts
+   List modal instead of on top of it. */
+#recordDetailOverlay {
+  z-index: 2100;
+}
+/* Background/border/radius/shadow now come from .popWinMain (applied
+   alongside this class on each modal's card) — .vsl-modal-card only
+   controls sizing/entrance animation on top of that. */
+.vsl-modal-card {
+  width: 90%;
+  max-width: 440px;
+  animation: modalScaleIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.vsl-modal-field {
+  display: flex;
+  flex-direction: column;
+}
+/* .popWinBody (applied alongside this on the modal's form) owns the
+   padding/scroll now, so this only sets the field-stacking layout. */
+.vsl-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.vsl-modal-field input:disabled,
+.vsl-modal-field input[readonly] {
+  background: rgba(0, 0, 0, 0.05);
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modalScaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* 
+.menu-toggle { 
+  position: fixed; 
+  top: 12px; 
+  left: 12px;
+  background: var(--green-700); 
+  border: none; 
+  font-size: 14px; 
+  font-weight: 700;
+  cursor: pointer; 
+  color: #fff; 
+  height: 32px; 
+  padding: 0 12px;
+  border-radius: 30px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.menu-toggle:hover { background: var(--green-600); } */
+
+
+.dashboard-btn {
+  display: flex;
+   align-items: center;
+   justify-content: center;
+
+  background: var(--green-600);
+  color: white;
+  border-radius: 5px; border: white 1px solid;
+  font-weight: 700; padding: 0.35rem 0.5rem;
+  transition: transform 0.2s, border-radius 0.2s;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-size: 20px;
+
+}
+/* Same fix as .futuristic-icon-btn[hidden] elsewhere in this file — an
+   author rule (display: flex above) beats the browser's default
+   [hidden]{display:none} at equal specificity, so without this, setting
+   .hidden on a .dashboard-btn (e.g. the test stack buttons hiding
+   themselves on click) does nothing visually. */
+.dashboard-btn[hidden] {
+  display: none !important;
+}
+
+/* Active/open state for the tool buttons relocated from the old top
+   toolbar into #mapLeftBtnStack (Search, Survey, Measure, Modify, Select)
+   — js/map-app.js toggles a plain `.active` class on these by ID, same as
+   it always did when they lived in .map-top-controls as .control-btn
+   (which had its own `.active` look); .dashboard-btn never needed one
+   before since Dashboard/Feature Info don't get toggled. Scoped to
+   #mapLeftBtnStack so Dashboard/Feature Info's own look is untouched. */
+#mapLeftBtnStack .dashboard-btn.active {
+  background: var(--green-800, #1b5e20);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55) inset, 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* =============================================================
+   POPUP WINDOW TEMPLATE
+   -------------------------------------------------------------
+   Shared shell for every popup/panel window (search-panel, measure-panel,
+   parcel-status-panel, feature-info-panel — and any window built after
+   them). See windows/pop-window-template.html for the
+   reference markup this styles.
+
+   Classes: .popWinMain (root — hidden by default, provides the card look),
+   .popWinHead (icon + title + close), .popWinIcon, .popWinTitle,
+   .popWinCloseBtn, .popWinTabs (optional switch-tab bar, add [hidden] if a
+   window has none), .popWinBody (the ONLY scrollable region), and
+   .popWinActionBtns (optional footer buttons, add [hidden] if a window has
+   none).
+
+   Every color here is a var(--...) token from the :root block at the top
+   of this file — retheming the app means changing those variables, not
+   this section.
+   ============================================================= */
+
+/* "Computer window" chrome: a crisp outer frame, a slightly heavier shadow
+   that reads as a floating panel rather than a flat card, and clear
+   horizontal dividers between the header / tabs / body / footer bands —
+   the same visual grammar as a native OS dialog (title bar, content area,
+   button row), rather than one undifferentiated block. */
+.popWinMain {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 14px;
+  box-shadow:
+    0 16px 40px rgba(12, 40, 28, 0.22),
+    0 2px 8px rgba(12, 40, 28, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+  overflow: hidden;
+  max-height: 100%;
+  min-height: 0;
+}
+.popWinMain[hidden] {
+  display: none !important;
+}
+
+/* Head and action-button bar share one background by design. */
+.popWinHead,
+.popWinActionBtns {
+  background: var(--primary-2);
+  flex-shrink: 0;
+}
+
+.popWinHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+.popWinHead__inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.popWinIcon {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--primary-2);
+  font-size: 15px;
+}
+
+.popWinTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--panel);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popWinCloseBtn {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--panel);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s;
+}
+.popWinCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Toolbar-style tab-switcher band — mirrors the dashboard's .tab-bar/.tab-btn
+   look (filled pill on the active tab, underline in the accent colour)
+   so windows in the webmap and the dashboard read as the same design
+   language. */
+.popWinTabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  background: var(--panel);
+  border-bottom: 2px solid var(--border);
+  position: relative;
+}
+.popWinTabs[hidden] {
+  display: none;
+}
+/* .search-tab pills default to muted-on-light styling elsewhere — restyle
+   them here to match the dashboard's .tab-btn look, without touching the
+   shared base .search-tab rule other (unconverted) windows still rely on. */
+.popWinTabs .search-tab {
+  flex: 0 1 auto;
+  padding: 0.55rem 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+.popWinTabs .search-tab:hover {
+  background: none;
+  color: var(--text);
+  box-shadow: none;
+}
+.popWinTabs .search-tab[aria-selected="true"] {
+  background: var(--primary-2);
+  color: #fff;
+  border-color: var(--primary-2);
+  border-bottom-color: #D46112;
+  box-shadow: none;
+}
+
+/* Vertical, left-docked tab variant — used by the Modify and Select
+   windows (their Plot/Block/Feature tabs), instead of the default
+   horizontal pill row below the header. Requires the window's markup to
+   wrap .popWinTabs and .popWinBody in a .popWinBodyRow flex container (see
+   parcel-status-panel.html) so the tab column and the body content sit
+   side by side rather than stacked top-to-bottom. */
+.popWinBodyRow {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative; /* anchors .uam-body-loading below, regardless of .popWinBody's own scroll */
+}
+
+/* Busy overlay covering a pop window's body while an async action (e.g.
+   Survey Edit tab's Save) is in flight — see survey-panel.html's
+   #surveyBusyOverlay and window.vslSurveyBusy in survey-edit.js. */
+.uam-body-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+.uam-body-loading[hidden] {
+  display: none;
+}
+#editSaveBtn i{
+  padding: 5px;
+}
+.uam-body-loading__spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.uam-body-loading__text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.popWinTabs--vertical {
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 2px;
+  width: 84px;
+  /* Light sage tint (not plain white) so the tab column visually reads as
+     its own rail against the white .popWinBody next to it, instead of the
+     two blending into one flat area. */
+  background: #eef4ea;
+  border-bottom: none;
+  border-right: 2px solid var(--border);
+  padding: 0.4rem 0.3rem;
+  overflow-y: auto;
+}
+.popWinTabs--vertical .search-tab {
+  flex: 0 0 auto;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.3rem;
+  border-radius: 6px;
+  border-bottom: none;
+  margin-bottom: 0;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.15;
+}
+.popWinTabs--vertical .search-tab[aria-selected="true"] {
+  border-bottom-color: transparent;
+}
+.popWinBodyRow > .popWinBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Modify window's Plot/Blocks tabs dropped their icons, so the column no
+   longer needs the full 84px reserved for icon+label stacking — narrowing
+   it here (scoped to this panel only, Select's icon tabs keep 84px) hands
+   the freed-up width back to .popWinBody. */
+#parcelStatusPanel .popWinTabs--vertical {
+  width: 120px;
+}
+
+/* Legend window — smaller than Modify/Search. .map-right-stack's
+   `align-items: stretch` would otherwise force it to the same width as
+   every other docked window, so it opts out with its own align-self.
+
+   flex-end (not flex-start) so it hugs the RIGHT edge of the stack, right
+   under the Layers/Legend buttons, instead of floating ~160px away at the
+   left end of the 400px column. */
+.legend-panel {
+  align-self: flex-end;
+  width: 240px;
+  max-height: 480px;
+}
+/* Snap toggle — a small self-contained floating widget, NOT a docked
+   .map-right-stack window (see windows/snap-panel.html's own comment for
+   why it's mounted on body instead). Fixed to the viewport, sitting sticky
+   just to the left of the OL layer-switcher button in #mapRightBtnStack:
+   that cluster is `right: 20px` wide with 40px buttons, so `right: 70px`
+   here (20 + 40 + 10px gap) lands this flush against its left edge.
+
+   Shown/hidden purely via [hidden], in step with whatever editing-capable
+   tool is live (Measure pick mode, Draw/Edit session) — see
+   showSnapFab()/hideSnapFab() in js/map-app.js. No collapse/expand of its
+   own any more: it's just this one box, present for exactly as long as
+   drafting mode is (a close button that only hid the box while the tool
+   stayed live had nothing to close it back TO, so it was removed). */
+.map-floating-snap-fab {
+  position: fixed;
+  top: 90px;
+  right: 10px;
+  z-index: 1100;
+  width: 120px;
+  height: 90px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1.5px solid rgba(63, 143, 63, 0.25);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+/* Same [hidden] fix as .floating-btn elsewhere — this rule's own
+   `display: flex` would otherwise beat the browser's default
+   [hidden]{display:none} at equal specificity. Controlled by
+   showSnapFab()/hideSnapFab() in js/map-app.js — present only while an
+   editing-capable tool (Measure pick mode, Draw/Edit session) is live. */
+.map-floating-snap-fab[hidden] {
+  display: none !important;
+}
+
+/* Toggle + "Snap" label, side by side (not stacked). */
+.map-floating-snap-fab__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.map-floating-snap-fab__label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink, #222);
+  white-space: nowrap;
+}
+
+/* Undo — delegates to whichever drafting tool is live (window.
+   vslDraftingUndo, set by enterDraftingMode()). Full box width, secondary/
+   outline styling so it doesn't compete visually with the Snap toggle. */
+.map-floating-snap-fab__undo {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #f5f5f5;
+  color: var(--ink, #222);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.map-floating-snap-fab__undo:hover {
+  background: #ebebeb;
+}
+
+.map-floating-snap-fab__undo:active {
+  transform: scale(0.97);
+}
+
+/* The toggle switch itself — a plain <button role="switch">, not a
+   checkbox, per spec. Track + sliding thumb, same green the rest of the
+   app's "on" states use. State lives in the aria-checked attribute
+   (js/map-app.js reads/writes it directly), with .snap-toggle--on mirroring
+   it purely for the visual — see setSnapMasterOn() in js/map-app.js. */
+.snap-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  background: #ccc;
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+  transition: background 0.15s ease;
+}
+
+.snap-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: left 0.15s ease;
+}
+
+.snap-toggle--on {
+  background: var(--primary, #3f8f3f);
+}
+
+.snap-toggle--on .snap-toggle__thumb {
+  left: 20px;
+}
+
+/* Fill opacity slider in the Feature Type editor's Polygon fieldset — the
+   range and its "18%" readout on one line, the readout given a fixed width
+   so the slider doesn't jitter as the number goes 0% -> 100%. */
+.fte-opacity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fte-opacity__range {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--primary, #3f8f3f);
+  cursor: pointer;
+}
+
+.fte-opacity__out {
+  flex: 0 0 auto;
+  width: 44px;
+  text-align: right;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.legend-panel__section + .legend-panel__section {
+  margin-top: 0.9rem;
+}
+.legend-panel__heading {
+  margin: 0 0 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.legend-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.legend-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+/* Every legend symbol occupies the same 18px slot, so labels line up down
+   the column whether the row shows a square, a rule or an icon. */
+.legend-panel__sym {
+  width: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Polygon square — hollow (estate/block/plot/vacant) or filled (status,
+   alerts, polygon features), solid or dashed edge. Border width is 2px so
+   a dashed edge actually reads as dashed at this size. */
+.legend-panel__swatch {
+  width: 18px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+}
+
+/* Line feature — a short rule in the type's own colour/line style. */
+.legend-panel__sym--line {
+  height: 16px;
+  border-top: 2px solid currentColor;
+  border-radius: 0;
+}
+
+/* Point feature — its actual Font Awesome glyph, tinted to the type's
+   colour (the same icon the map marker uses). */
+.legend-panel__sym--icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+/* =============================================================
+   PRINT MODE — in-place overlay UI (js/print-tool.js)
+   -------------------------------------------------------------
+   Replaces the old docked "Print Map" side panel. Entering print mode
+   toggles .vsl-print-mode on .map-viewport-wrap, which (a) hides every
+   floating button stack so the map reads clean/uncluttered, and (b) is
+   the positioning root for every piece below — title card, bottom
+   toolbar, setup popup, selection rectangle. All z-indexed above the map
+   (5) but below the toolbar/setup popup (20/21) so the selection rect's
+   drag handle never fights the buttons that control it.
+   ============================================================= */
+
+.map-viewport-wrap.vsl-print-mode .map-btn-stack {
+  display: none !important;
+}
+
+/* While the crosshair "select print area" button is armed — cursor swaps
+   to a crosshair over the whole map so it's clear the next drag defines
+   the print area. */
+.map-viewport-wrap.vsl-print-selecting,
+.map-viewport-wrap.vsl-print-selecting #map {
+  cursor: crosshair !important;
+}
+
+/* ── Bottom stack — one wrapper holding the "Add title" button / title
+   card AND the toolbar, pinned bottom-center and stacked vertically, so
+   the whole print UI reads as a single unit instead of the title floating
+   separately at the top. The wrapper is click-through; only its children
+   take pointer events, so the transparent gap between the card and the
+   toolbar can't swallow a drag meant for the map. Children below are
+   therefore laid out in normal flow — no absolute positioning of their
+   own. ── */
+.vsl-print-bottom-stack {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 28px);
+  pointer-events: none;
+}
+.vsl-print-bottom-stack > * {
+  pointer-events: auto;
+}
+
+/* ── "Add title" button + editable title card — Google Earth's
+   map-title flow but restyled to match this app (frosted card like .toast,
+   not a flat white box), and sitting directly above the toolbar. ── */
+.vsl-print-addtitle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.vsl-print-addtitle-btn:hover {
+  background: #fff;
+}
+.vsl-print-addtitle-btn[hidden] {
+  display: none !important;
+}
+
+.vsl-print-title-card {
+  width: min(360px, 100%);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  padding: 0.6rem 0.75rem;
+}
+.vsl-print-title-card[hidden] {
+  display: none !important;
+}
+.vsl-print-title-card__title {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.vsl-print-title-card__title::placeholder {
+  color: #9aa39a;
+  font-weight: 700;
+}
+.vsl-print-title-card__title:focus {
+  outline: none;
+}
+
+/* ── Resting state — the card is no longer being edited (focus left it, see
+   leaveTitleEditing in js/print-tool.js). It shrinks to a compact caption:
+   tighter padding, smaller type, softer background. Clicking it goes back
+   to editing. The card only survives in this state if a title was actually
+   typed — if it's empty it folds back into the "Add title" button. ── */
+.vsl-print-title-card--resting {
+  width: auto;
+  max-width: min(360px, 100%);
+  padding: 0.35rem 0.7rem;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+}
+.vsl-print-title-card--resting .vsl-print-title-card__title {
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* ── Bottom-center toolbar — same frosted/pill language as .toast (see
+   toast/toast.css), just holding icon buttons instead of text, and sitting
+   a bit clear of the actual bottom edge rather than flush against it. ── */
+.vsl-print-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.vsl-print-toolbar[hidden] {
+  display: none !important;
+}
+.vsl-print-toolbar__btn {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  font-size: 1.05rem;
+  cursor: pointer;
+}
+#vslPrintSelectAreaBtn{
+  border-radius: 9px 0px 0px 9px;
+}
+.vsl-print-toolbar__btn:hover {
+  background: #eef4ea;
+  color: var(--primary);
+}
+.vsl-print-toolbar__btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.vsl-print-toolbar__btn--primary {
+  background: var(--primary);
+  color:#fff;
+  border-color: var(--primary);
+}
+.vsl-print-toolbar__btn--primary:hover {
+  background: var(--primary-2);
+  color: tomato;
+}
+.vsl-print-toolbar__btn--danger:hover {
+  background: #fdeaea;
+  color: var(--danger);
+  border-color: rgba(179, 54, 54, 0.35);
+}
+.vsl-print-toolbar__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Select-area split button — the main icon plus a narrow caret that
+   opens the "Lock Aspect Ratio" popup above it. ── */
+.vsl-print-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0px;
+}
+.vsl-print-split__caret {
+  width: 20px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 0px 9px 9px 0px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.vsl-print-split__caret:hover {
+  background: #eef4ea;
+  color: var(--primary);
+}
+.vsl-print-split__caret.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.vsl-print-lock-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 24;
+  padding: 0.5rem 0.7rem;
+  background: #fff;
+  border: 1px solid rgba(47, 107, 47, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+.vsl-print-lock-pop[hidden] {
+  display: none !important;
+}
+.vsl-print-lock-pop__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.vsl-print-lock-pop__row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.vsl-print-toolbar__sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: px 2px;
+}
+
+/* ── Setup popup — floats just above the toolbar. ── */
+/* ── Print setup — a small standalone window centred over the map, with
+   its own header and close button (it used to be a bare popover tucked
+   above the toolbar). Closes on its X, on Cancel/exit, or on any click
+   outside it — see openSetupPopup/closeSetupPopup in js/print-tool.js. ── */
+.vsl-print-setup {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  width: 430px;
+  max-width: calc(100% - 28px);
+  background: #fff;
+  border: 1px solid rgba(47, 107, 47, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.26);
+  overflow: hidden;
+}
+.vsl-print-setup[hidden] {
+  display: none !important;
+}
+.vsl-print-setup__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  background: #eef4ea;
+  border-bottom: 1px solid rgba(47, 107, 47, 0.16);
+}
+.vsl-print-setup__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.vsl-print-setup__close {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.vsl-print-setup__close:hover {
+  background: #fdeaea;
+  color: var(--danger);
+  border-color: rgba(179, 54, 54, 0.3);
+}
+.vsl-print-setup__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem 0.8rem;
+}
+
+/* ── Tabbed settings — vertical tab rail on the left, one pane at a time
+   on the right, same shape as the Survey window's .popWinTabs--vertical.
+   The window is a fixed height so switching tabs doesn't resize it. ── */
+.vsl-print-settings {
+  display: flex;
+  align-items: stretch;
+  height: 268px;
+}
+.vsl-print-settings__tabs {
+  flex: 0 0 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.4rem;
+  background: #f4f7f2;
+  border-right: 1px solid rgba(47, 107, 47, 0.14);
+  overflow-y: auto;
+}
+.vsl-print-settings__tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.vsl-print-settings__tab i {
+  width: 13px;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+}
+.vsl-print-settings__tab:hover {
+  background: #e7efe3;
+  color: var(--text);
+}
+.vsl-print-settings__tab.active {
+  background: #fff;
+  border-color: rgba(47, 107, 47, 0.22);
+  color: var(--primary);
+}
+.vsl-print-settings__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0.7rem 0.8rem 0.8rem;
+}
+.vsl-print-settings__pane {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.vsl-print-settings__pane.active {
+  display: flex;
+}
+
+/* Features tab — one row per feature TYPE in use, with its own colour. */
+.vsl-print-features {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.vsl-print-features__swatch {
+  width: 16px;
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: 0.82rem;
+}
+.vsl-print-setup__heading {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin: 0;
+}
+.vsl-print-setup__row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.vsl-print-setup__row input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+/* A row holding a label + control (e.g. Text size) rather than a checkbox
+   — pushes the control to the right edge. */
+.vsl-print-setup__row--select {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.vsl-print-setup__row--select select {
+  width: 74px;
+  margin: 0;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+/* A dependent option, indented under the row it belongs to. */
+.vsl-print-setup__row--sub {
+  padding-left: 1.15rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.vsl-print-setup__row.is-disabled,
+.vsl-print-setup__row input:disabled,
+.vsl-print-setup__row input:disabled + span {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vsl-print-setup__note {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--muted);
+}
+.vsl-print-setup__note[hidden] {
+  display: none !important;
+}
+
+/* ── Selection rectangle — dashed border + a resize handle, and the
+   "clear inside / dimmed outside" effect via one plain box-shadow: a
+   huge spread on an element with no background of its own paints
+   everywhere OUTSIDE its box, and .map-viewport-wrap's own
+   `overflow: hidden` (see the .webmap-app .map-viewport-wrap rule above)
+   naturally clips that spread to the map area — no clip-path/SVG mask
+   needed. ── */
+.vsl-print-selection {
+  position: absolute;
+  z-index: 15;
+  border: 2px dashed #fff;
+  box-shadow: 0 0 0 9999px rgba(15, 26, 20, 0.55), 0 2px 10px rgba(0, 0, 0, 0.25);
+  cursor: move;
+}
+.vsl-print-selection[hidden] {
+  display: none !important;
+}
+/* One bottom-right grip. With the aspect lock ON it snaps the box to
+   whichever page ratio the drag is heading for — pull wide for landscape,
+   tall for portrait — exactly like drawing a fresh box. With the lock OFF
+   it's a plain free resize. Green while the lock is holding it. */
+.vsl-print-selection__handle {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--primary);
+  cursor: nwse-resize;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.vsl-print-selection__handle--locked {
+  border-color: #2e7d32;
+}
+.vsl-print-selection__hint {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(15, 26, 20, 0.75);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Full-map "please wait" cover shown while generatePdf() temporarily
+   re-renders the live map at a higher pixel density (Resolution: High/
+   Print quality) — hides that brief resize/restore entirely instead of
+   letting the user see the map flash to a different zoom for a moment. */
+.vsl-print-capturing-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+.vsl-print-capturing-overlay[hidden] {
+  display: none !important;
+}
+.vsl-print-capturing-overlay__spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.vsl-print-capturing-overlay__text {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Way out of a slow basemap capture — waiting on remote tiles can hang for
+   a long time, and before this the only escape was reloading the page
+   (which also discarded the selection). See cancelPrintRun in
+   js/print-tool.js; Escape does the same thing.
+
+   `width: auto` is load-bearing: the app-wide
+   `input, select, button, textarea { width: 100% }` reset near the top of
+   this file (meant for auth-form fields) beats the overlay's
+   `align-items: center`, so without it this button stretched the entire
+   width of the map viewport while staying text-height — the same reset
+   .toggle-password and several others already have to opt out of.
+   min-width keeps "Cancel" and the longer "Cancelling…" caption the same
+   size, so the button doesn't jump when it's pressed. */
+.vsl-print-capturing-overlay__cancel {
+  width: auto;
+  min-width: 132px;
+  min-height: 40px;
+  align-self: center;
+  margin-top: 0.35rem;
+  padding: 0 22px;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.18));
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.vsl-print-capturing-overlay__cancel:hover:not(:disabled) {
+  background: #b3261e;
+  border-color: #b3261e;
+  color: #fff;
+}
+
+.vsl-print-capturing-overlay__cancel:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.popWinBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.85rem;
+}
+
+/* Footer button row — centered (was flex-end, which crowded buttons off to
+   one side) with a divider separating it from the body, echoing a native
+   dialog's button strip. Buttons themselves are sized in
+   .futuristic-icon-btn--modal-pad below so their label text always fits. */
+.popWinActionBtns {
+  display: flex;
+  gap: 10px;
+  padding: 6px 16px;
+  justify-content: center;
+  border-top: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+.popWinActionBtns[hidden] {
+  display: none;
+}
+
+/* Survey window — fixed height instead of the content-driven flex sizing
+   every other .popWinMain window uses. Its four tabs (Import/Draw/Edit/
+   Export) vary a lot in content length, so letting the whole window grow
+   and shrink as you switch tabs was jarring; a fixed box plus .popWinBody's
+   own overflow-y:auto (set above) scrolls whatever doesn't fit instead. */
+.survey-panel.popWinMain {
+  height: 420px;
+  max-height: 420px;
+  flex: 0 0 420px;
+}
+
+/* Container padding alone isn't enough to match the dashboard's footer
+   height — a flex row's rendered height is padding + tallest child, and
+   .futuristic-icon-btn (44px circle) / .futuristic-icon-btn--modal-pad
+   (0.7rem 1.75rem) are both taller than the dashboard's .btn (padding
+   8px 16px, font-size 13px). Re-size both variants here, scoped to
+   .popWinActionBtns only, so every webmap window's footer computes to the
+   same height as the dashboard's regardless of which button variant it
+   uses. This intentionally overrides the round icon-only shape in favor of
+   the dashboard's compact rectangular button, per "copy the dashboard's
+   window style." Specificity (2 classes) beats both source rules, no
+   !important needed. */
+.popWinActionBtns .futuristic-icon-btn {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.popWinActionBtns .futuristic-icon-btn:hover {
+  transform: none;
+}
+/* The rule above (rightly) blocks the round button's lift/scale for this
+   rectangular footer variant, and the base rule further up always sets
+   box-shadow: none — between the two, hovering a footer button (Preview/
+   Save/Clear/Cancel/Add New/…) had *no* visual feedback at all. Same fix
+   #parcelStatusModifyBtn already used below: a colour shift via filter,
+   since transform/box-shadow are off the table here. */
+.popWinActionBtns .futuristic-icon-btn:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* Select window's Modify button reacts on hover with a colour shift only
+   (no lift/scale, per request) — darkens its green gradient a shade via
+   filter instead of the translateY/scale the other footer buttons use
+   (and are blocked from using by the blanket "no transform" rule above). */
+#parcelStatusModifyBtn:hover {
+  filter: brightness(0.9);
+}
+
+/* For windows whose body is a <form> that must stay a descendant of the
+   footer's submit button (so form.querySelector("[type=submit]") still
+   finds it) — makes the <form> itself a flex column filling the space
+   between popWinHead and popWinActionBtns, so a .popWinBody +
+   .popWinActionBtns pair nested inside it still scroll/stick correctly. */
+.popWin-formShell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* =============================================================
+   Selected-feature action toolbar — small floating pill that
+   appears above a block/parcel on the map once it's selected.
+   Positioned via an ol.Overlay (see map-app.js); this file only
+   owns the look. Buttons are UI-only right now (logic follow-up).
+   ============================================================= */
+.parcel-action-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+}
+.parcel-action-toolbar[hidden] {
+  display: none !important;
+}
+
+/* Toolbar floats above the plot's label (see showParcelActionToolbar) —
+   this tail points back down at it. */
+.parcel-action-toolbar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.08);
+  z-index: -1;
+}
+
+/* ── Drawn-feature readout (#featureInfoToolbar) ──
+   Tapping a tree/road/wall on the map pops this over it: what's recorded
+   about that feature, rather than the plot toolbar's action buttons. Same
+   floating-card look and downward tail, sized as a small card instead of a
+   pill. See showFeatureInfoToolbar in js/map-app.js. */
+.feature-info-toolbar {
+  position: relative;
+  max-width: 240px;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+}
+.feature-info-toolbar[hidden] {
+  display: none !important;
+}
+.feature-info-toolbar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.08);
+  z-index: -1;
+}
+
+.feature-info-toolbar__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* Tinted to the feature type's own colour, so the card is recognisably
+   about the thing that was tapped. */
+.feature-info-toolbar__swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--primary);
+}
+.feature-info-toolbar__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feature-info-toolbar__type {
+  margin-top: 1px;
+  padding-left: 17px; /* aligns under the name, clear of the swatch */
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.feature-info-toolbar__type[hidden],
+.feature-info-toolbar__desc[hidden],
+.feature-info-toolbar__measure[hidden] {
+  display: none !important;
+}
+.feature-info-toolbar__desc {
+  margin: 5px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--text);
+  /* Long descriptions are clamped rather than allowed to grow into a wall
+     of text floating over the map. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.feature-info-toolbar__measure {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vsl-primary, #2e7d32);
+}
+
+.parcel-action-toolbar__btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.parcel-action-toolbar__btn:hover {
+  transform: scale(1.08);
+  filter: brightness(1.08);
+}
+
+.parcel-action-toolbar__btn:active {
+  transform: scale(0.94);
+}
+
+.parcel-action-toolbar__btn--activity {
+  background: linear-gradient(145deg, #3f8f3f, #2e6647);
+}
+
+.parcel-action-toolbar__btn--alert {
+  background: linear-gradient(145deg, #f9a825, #c77800);
+}
+
+.parcel-action-toolbar__btn--info {
+  background: linear-gradient(145deg, #1976d2, #0d47a1);
+}
+
+/* =============================================================
+   Log Activity / Log Alert modals — the .popWinTabs bar (normally
+   tab buttons) instead holds a single select for activity name /
+   alert severity. Shares .vsl-modal-overlay/.vsl-modal-card/
+   .popWinMain/.popWinBody with the app's other modal windows.
+   ============================================================= */
+.popWinTabs__select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 0.85rem;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.2rem;
+}
+.popWinTabs__select:focus {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--primary-2);
+}
+.popWinTabs__select option {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.vsl-modal-card--wide {
+  max-width: 640px;
+}
+
+/* Manage Features used the shared 640px width by default — far wider than
+   its actual content (a short name + a couple of small badges per row)
+   needs, which is the "so messy"/"width too wide" complaint. Scoped
+   narrower, same pattern as #featureInfoPanel/#logActivityModal below. */
+.mf-modal.vsl-modal-card--wide {
+  max-width: 420px;
+}
+
+/* feature-info-panel's grouped/collapsible content can run much taller than
+   the other vsl-modal-overlay dialogs — .popWinMain's own `max-height: 100%`
+   doesn't resolve to anything useful here since .vsl-modal-overlay centers
+   its child at auto height (align-items: center) rather than stretching it,
+   so this needs an explicit cap. Once capped, .popWinBody's own
+   overflow-y: auto (see the POPUP WINDOW TEMPLATE section) takes over for
+   internal scrolling — the header/close button stay put. */
+#featureInfoPanel.popWinMain {
+  max-height: min(82vh, 82dvh, 720px);
+}
+
+/* Narrower than the shared .vsl-modal-card--wide default (640px) — the
+   panel doesn't need that much width now that it docks to the left edge
+   instead of centering, and the wide default made it feel oversized.
+   Same scoped-override pattern #logActivityModal uses on this same shared
+   class, further down this file. */
+#featureInfoPanel.vsl-modal-card--wide {
+  width: 400px;
+  max-width: 400px;
+}
+
+/* Feature Info panel — desktop-only exception to every other
+   vsl-modal-overlay dialog: it docks to the left edge and doesn't dim/blur
+   the map behind it (so the person can still see/refer to the map while
+   it's open), instead of the usual centered + blurred-backdrop treatment.
+   Phones (<=480px, see that media block below) keep the original
+   centered/blurred/short modal as-is. The overlay itself is
+   pointer-events:none so clicks reach the map outside the panel; the panel
+   re-enables pointer events for itself.
+
+   It now floats as a rounded 400px card inset 10px from the viewport edges
+   rather than a full-bleed edge-to-edge column: at 400px a square-cornered
+   full-height slab reads as part of the browser chrome rather than as a
+   panel over the map, and the inset keeps the map visible all the way
+   around it. Height is capped by the 10px inset top and bottom instead of
+   being pinned to 100dvh. */
+@media (min-width: 901px) {
+  #featureInfoOverlay {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    justify-content: flex-start;
+    align-items: stretch;
+    padding: 0;
+    pointer-events: none;
+  }
+  #featureInfoOverlay #featureInfoPanel {
+    pointer-events: auto;
+  }
+  #featureInfoPanel.popWinMain {
+    max-height: none;
+    height: calc(100vh - 20px);   /* fallback for browsers without dvh */
+    height: calc(100dvh - 20px);
+    margin: 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  }
+}
+
+/* Record detail drill-down — same "cap height, let the body scroll"
+   treatment as the info panel above, just a shorter cap since a single
+   record's field list is much shorter than the whole grouped info panel. */
+#recordDetailPanel.popWinMain {
+  max-height: min(75vh, 75dvh, 560px);
+}
+
+/* First-column cells in the info panel's repeating groups (Alerts, Activity
+   History, Harvest History, Media, Comments) that open the record-detail
+   drill-down — styled as an obvious link rather than default table text. */
+.vsl-record-link {
+  color: var(--vsl-primary, #2e7d32);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(46, 125, 50, 0.35);
+  text-underline-offset: 2px;
+}
+.vsl-record-link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Alerts table's Severity cell, filled with color only while the alert is
+   still unresolved (open/investigating) — resolved alerts stay plain text. */
+.vsl-severity-chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+}
+
+/* Alerts List modal's Actions column — "Resolve" button on unresolved rows
+   (ADMIN/SURVEYOR only). See buildAlertsListTableHtml()/openResolveAlertModal()
+   in js/map-app.js. */
+.vsl-resolve-alert-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--primary-2, #234f38);
+  background: var(--panel, #fff);
+  color: var(--primary-2, #234f38);
+  font-weight: 700;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.vsl-resolve-alert-btn:hover {
+  background: var(--primary-2, #234f38);
+  color: #fff;
+}
+
+@media (max-width: 480px) {
+  #featureInfoPanel.popWinMain,
+  #recordDetailPanel.popWinMain {
+    max-height: min(88vh, 88dvh);
+    width: 100%;
+    max-width: 100%;
+    margin: 0 12px;
+  }
+}
+
+/* Vertical, dashboard-style field layout for the Log Activity / Log Alert
+   modals — label above a full-width, rounded input, with breathing room
+   between fields (mirrors the dashboard's own .form-group/.form-input look
+   and the webmap's .search-panel__label/.search-panel__input pattern).
+   The underlying markup is still a <table> of
+   <tr><th><label></th><td><input></td></tr> rows built by
+   buildPropFieldRow() in map-app.js — nothing there changes, only the
+   display mode flips from table to block so each row reads as a stacked
+   form field instead of a cramped two-column table. */
+.vsl-prop-table {
+  display: block;
+  width: 100%;
+  border: none;
+  border-collapse: separate;
+  background: none;
+  margin-bottom: 1.1rem;
+}
+.vsl-prop-table[hidden] {
+  display: none !important;
+}
+.vsl-prop-table:last-child {
+  margin-bottom: 0;
+}
+.vsl-prop-table tbody {
+  display: block;
+}
+.vsl-prop-table tr {
+  display: block;
+  margin-bottom: 0.85rem;
+}
+.vsl-prop-table tr:last-child {
+  margin-bottom: 0;
+}
+.vsl-prop-table th {
+  display: block;
+  width: auto;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.vsl-prop-table th label {
+  display: block;
+}
+.vsl-prop-table td {
+  display: block;
+  border: none;
+  background: none;
+  padding: 0;
+  /* Anchors .vsl-field-warning (see below), which sits absolutely
+     positioned right on the input's top border. */
+  position: relative;
+}
+.vsl-prop-table input,
+.vsl-prop-table select,
+.vsl-prop-table textarea {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 2.5em;
+  padding: 0.58rem 0.65rem;
+  /* Same border colour as the Log Activity modal's fields (dashboard's
+     #c8d0ce/#4a9e6e) — layout/spacing here stays as-is, only the colours
+     were asked to match. */
+  border: 1px solid #c8d0ce;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  background: #fff;
+  color: var(--text);
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+/* Locked/auto-filled fields (e.g. Area covered at 100% progress) — read
+   clearly as non-editable rather than looking like a normal empty/typeable
+   box. */
+.vsl-prop-table input:disabled,
+.vsl-prop-table select:disabled,
+.vsl-prop-table textarea:disabled {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.vsl-prop-table input:focus,
+.vsl-prop-table select:focus,
+.vsl-prop-table textarea:focus {
+  outline: none;
+  border-color: #4a9e6e;
+  box-shadow: 0 0 0 3px rgba(74, 158, 110, 0.12);
+}
+.vsl-prop-table select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23556355' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  cursor: pointer;
+}
+.vsl-prop-table textarea {
+  resize: vertical;
+  min-height: 4.5em;
+}
+
+/* Soft, non-blocking field warning (e.g. Area covered out of range on
+   blur) — a notched-outline label sitting exactly ON the input's top
+   border line (like a Material-style outlined field legend), with the
+   input pushed down by the same amount to make room for it. Amber, not
+   red, since this never blocks saving. The 14px used for both the label's
+   `top` and the input's `margin-top` must stay equal — that's what lines
+   the label's vertical centre up with the input's (shifted-down) top edge. */
+.vsl-field-warning {
+  position: absolute;
+  top: 14px;
+  left: 10px;
+  transform: translateY(-50%);
+  z-index: 1;
+  background: #fff;
+  padding: 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #d97706;
+  white-space: nowrap;
+}
+.vsl-field-warning[hidden] {
+  display: none !important;
+}
+.vsl-prop-table input.vsl-field-warn {
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+  margin-top: 14px;
+}
+
+/* Log Activity only (Log Alert keeps the stacked single-column layout
+   above) — approved mockup: label LEFT / input RIGHT for every field except
+   Comments and Challenges (label above, full width), each row divided by a
+   bottom border so it's unambiguous where one field ends and the next
+   begins, grouped under two static section headings ("General Details" /
+   "Other Details" — see .vsl-section-label below and
+   #logActivityPropsSection in windows/log-activity-modal.html). Colours
+   are the dashboard's own (dashboard/style.css .form-label / .form-input —
+   hardcoded here rather than via var() since those tokens only exist in
+   the dashboard's stylesheet, not this one). Scoped to #logActivityModal
+   so .vsl-prop-table's shared rules above still apply as-is everywhere
+   else (Log Alert). popWinHead/popWinActionBtns colours are untouched —
+   only the field area between them is restyled. */
+#logActivityModal .vsl-modal-card--wide {
+  max-width: 460px;
+}
+#logActivityModal .vsl-prop-table {
+  margin-bottom: 0;
+}
+#logActivityModal .vsl-prop-table tr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 5px 2px;
+  margin-bottom: 0;
+  border-bottom: 1px solid #e4e9e2;
+}
+#logActivityModal .vsl-prop-table tr:last-child {
+  border-bottom: none;
+}
+#logActivityModal .vsl-prop-table tr[hidden] {
+  display: none !important;
+}
+#logActivityModal .vsl-prop-table th {
+  flex: 0 0 42%;
+  max-width: 42%;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374140;
+}
+#logActivityModal .vsl-prop-table td {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Comments / Challenges — the label-above, full-width exception. */
+#logActivityModal .vsl-prop-table tr:has(textarea) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+#logActivityModal .vsl-prop-table tr:has(textarea) th {
+  flex: none;
+  max-width: none;
+}
+#logActivityModal .vsl-prop-table input,
+#logActivityModal .vsl-prop-table select,
+#logActivityModal .vsl-prop-table textarea {
+  min-height: 0;
+  padding: 8px 12px;
+  border: 1px solid #c8d0ce;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1c1f1e;
+}
+#logActivityModal .vsl-prop-table input:focus,
+#logActivityModal .vsl-prop-table select:focus,
+#logActivityModal .vsl-prop-table textarea:focus {
+  border-color: #4a9e6e;
+  box-shadow: 0 0 0 3px rgba(74, 158, 110, 0.12);
+}
+#logActivityModal .vsl-prop-table select {
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23374140' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* Section headings — "General Details" / "Other Details" (see
+   windows/log-activity-modal.html). Small green pill labels, same green
+   used elsewhere for this modal's accents. */
+.vsl-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #285f28;
+  background: var(--green-50, #edf7f2);
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 0 0 4px;
+}
+.vsl-section-label--second {
+  margin-top: 18px;
+}
+
+/* Activity Type / Severity pickers (the .popWinTabs bar at the top of
+   Log Activity and Log Alert) — styled as their own light-filled dropdown
+   button, using the same border/radius/focus colours as the fields below,
+   so every control in these windows reads as one consistent set. Scoped to
+   these two modal IDs so the Search window's own .popWinTabs (tab pills,
+   not a select) is untouched. */
+#logActivityModal .popWinTabs,
+#logAlertModal .popWinTabs {
+  background: var(--green-50, #edf7f2);
+  border-bottom: 1px solid #c8d0ce;
+  padding: 10px 16px;
+}
+#logActivityModal .popWinTabs__select,
+#logAlertModal .popWinTabs__select {
+  background-color: #ffffff;
+  background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23285f28' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-position: right 14px center;
+  border: 2px solid #285f28;
+  border-radius: 8px;
+  padding: 10px 40px 10px 14px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #1c1f1e;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+#logActivityModal .popWinTabs__select:focus,
+#logAlertModal .popWinTabs__select:focus {
+  outline: none;
+  border-color: #285f28;
+  box-shadow: 0 0 0 3px rgba(40, 95, 40, 0.2);
+}
+
+/* =============================================================
+   Feature info panel — grouped, collapsible read-only sections.
+   Native <details>/<summary> for built-in keyboard/AT support;
+   the chevron rotates between > (closed) and v (open).
+   ============================================================= */
+.info-group {
+  border: 1px solid #c8d6c4;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  background: #fff;
+}
+.info-group:last-child {
+  margin-bottom: 0;
+}
+.info-group__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  background: #eef5ec;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--primary-2);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.info-group__summary::-webkit-details-marker {
+  display: none;
+}
+.info-group__chevron {
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-right: 2px solid var(--primary-2);
+  border-bottom: 2px solid var(--primary-2);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  margin-right: 0.1rem;
+}
+.info-group[open] > .info-group__summary .info-group__chevron {
+  transform: rotate(45deg);
+}
+.info-group__title {
+  flex: 1 1 auto;
+}
+.info-group__body {
+  padding: 0.6rem 0.7rem 0.7rem;
+}
+.info-group__body .map-popup__table {
+  margin-bottom: 0.5rem;
+}
+.info-group__body .map-popup__table:last-child {
+  margin-bottom: 0;
+}
+
+/* ── MANAGE FEATURES MODAL (windows/manage-features-panel.html) ── */
+.mf-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mf-list-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 8px 4px;
+}
+
+/* ── Feature type table (#mfList) ──
+   One row per feature type of the currently-open kind tab, laid out as a
+   4-column grid: icon swatch, type (name + code), label toggles, actions.
+   Replaces the older collapsible Point/Line/Polygon <details> sections —
+   the kind is now a tab (.popWinTabs above the body), so the list only ever
+   shows one kind at a time and can afford real columns. The grid template
+   is shared with .mf-thead so headers and cells stay aligned. */
+.mf-thead,
+.mf-trow {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.mf-thead {
+  padding: 2px 8px 6px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* Right-align the two trailing header cells over their (right-aligned)
+   columns — the first two sit over left-aligned content. */
+.mf-thead > span:nth-child(3),
+.mf-thead > span:nth-child(4) {
+  text-align: right;
+}
+
+.mf-trow {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+.mf-trow:last-child {
+  border-bottom: none;
+}
+
+/* Holds the .fts swatch (see below) — the icon for a point, the actual
+   strokes for a line, fill+outline for a polygon. */
+.mf-trow__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Feature type swatch ──
+   Built by featureTypeSwatchHtml() in js/feature-type-editor.js and used in
+   three places (the feature list, the editor's live preview, and anywhere
+   else a type needs showing), so a type looks the same everywhere. */
+.fts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+/* Point: the icon SVG on a chip filled with the type's color. The SVGs in
+   /icons are black single-path glyphs, so they're inverted to white with a
+   filter rather than shipping a light copy of every file. */
+.fts--point {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+.fts--point img {
+  width: 14px;
+  height: 14px;
+  filter: brightness(0) invert(1);
+}
+
+/* "No line" types have nothing to draw — show a dash rather than an empty
+   cell so the row doesn't look broken. */
+.fts--empty {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.mf-trow__type {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mf-trow__name {
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* vsl_feature_type.code (plus an "N drawn" hint when the type is in use),
+   as the second line of the Type cell. Tabular figures so the codes line
+   up down the column. */
+.mf-trow__code {
+  font-size: 0.66rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.mf-trow__badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: #f0f4ee;
+  border-radius: 5px;
+  padding: 1px 5px;
+  margin-left: 6px;
+}
+
+.mf-trow__labels {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* A label readout (Name/Area/Dist) — deliberately NOT a control: no hover
+   state, no pointer, nothing to click. It reports which of this type's
+   display_params are switched on (green = on, grey = off); changing them
+   happens in the Feature Type editor window. */
+.mf-label-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  user-select: none;
+}
+.mf-label-tag--on {
+  background: #eaf5ea;
+  border-color: var(--vsl-primary, #2e7d32);
+  color: var(--vsl-primary, #2e7d32);
+}
+
+.mf-trow__actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+/* The app-wide `input,select,button,textarea { width:100% }` / `button {
+   background:var(--primary) }` reset (styles.css top, meant for auth-form
+   buttons) isn't overridden wholesale — CSS applies each *property* from
+   whichever rule wins that property, not whole rules at a time. Without
+   pinning width/radius/margin here, each icon button stretches to 100% and
+   blows the row's grid apart. */
+.mf-trow__btn {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  margin-top: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mf-trow__btn:hover {
+  color: var(--primary);
+  background: #eef4ea;
+}
+/* Delete reads red at rest, not only on hover — it's the one destructive
+   action in the row and shouldn't look identical to Edit until touched. */
+.mf-trow__btn--danger {
+  color: var(--danger);
+}
+.mf-trow__btn--danger:hover {
+  color: var(--danger);
+  background: #fdeaea;
+}
+
+/* ── FEATURE TYPE EDITOR (windows/feature-type-editor.html) ──
+   Its own window rather than a form under the feature list: point, line and
+   polygon each need a different set of controls, and the inline version had
+   to show all three. Reuses the .mf-label / .mf-row-2 / .mf-checkbox-row
+   form primitives further down this file. */
+.fte-modal {
+  width: min(460px, 94vw);
+}
+
+.fte-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Icon field — current icon next to the button that opens the library. */
+.fte-icon-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.fte-icon-preview {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f9f5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fte-icon-preview img {
+  width: 18px;
+  height: 18px;
+}
+
+.fte-icon-btn {
+  width: auto;
+  margin-top: 0;
+  flex: 1 1 auto;
+}
+
+/* Live "this is how it will draw" swatch — same markup as the list's. */
+.fte-preview {
+  margin-top: 4px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: #f7f9f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+}
+
+/* Framed groups (Labels, Label direction). The app-wide form reset doesn't
+   touch fieldset/legend, so these only need their own look. */
+.fte-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 6px 10px 8px;
+  margin: 0;
+}
+.fte-fieldset[hidden] {
+  display: none;
+}
+.fte-legend {
+  padding: 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Icon library, inside the stacked picker overlay. The container scrolls;
+   each group inside it is a <details> with its own grid, so "Other" can
+   start collapsed without any JS state (see renderIconGrid). */
+.fte-icon-grid {
+  margin-top: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.fte-icon-group {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+.fte-icon-group:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.fte-icon-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none; /* kill the default <summary> triangle */
+  user-select: none;
+}
+.fte-icon-group__head::-webkit-details-marker {
+  display: none;
+}
+/* Own disclosure arrow, since the native one is suppressed above. */
+.fte-icon-group__head::before {
+  content: "\25B8"; /* right-pointing triangle */
+  font-size: 0.8rem;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.fte-icon-group[open] > .fte-icon-group__head::before {
+  transform: rotate(90deg);
+}
+
+.fte-icon-group__count {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: #f0f4ee;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.fte-icon-group__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.fte-icon-grid__btn {
+  width: 100%;
+  height: 46px;
+  margin-top: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fte-icon-grid__btn img {
+  width: 20px;
+  height: 20px;
+}
+.fte-icon-grid__btn:hover {
+  border-color: var(--primary);
+  background: #eef4ea;
+}
+.fte-icon-grid__btn--active {
+  border-color: var(--vsl-primary, #2e7d32);
+  background: #eaf5ea;
+  box-shadow: inset 0 0 0 1px var(--vsl-primary, #2e7d32);
+}
+
+/* A modal opened from another modal (the icon picker sits on top of the
+   feature editor, which itself sits on top of the Manage Features list).
+   Every .vsl-modal-overlay shares z-index 2000 and relies on DOM order,
+   which happens to be correct here — this makes it explicit instead, in the
+   same 2000/2100 scheme #recordDetailOverlay already uses. */
+.vsl-modal-overlay--stacked {
+  z-index: 2200;
+}
+
+/* ── MANAGE ESTATES MODAL (windows/manage-estates-panel.html) ──
+   Now lives in the Survey window's own Estates tab (windows/survey-panel.
+   html #uamTabEstates) instead of a separate modal — compact table look,
+   name+block-count on the left, small paired action buttons on the right,
+   one thin divider per row instead of a full box. */
+
+.me-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.me-list-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.me-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.me-list-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 10px 4px;
+}
+
+.me-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.me-row:last-child {
+  border-bottom: none;
+}
+
+.me-row__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.me-row__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me-block_count {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.me-row__actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* Shared app-wide row-action button (edit/delete) — this is the pair the
+   user picked as the canonical style from Survey > Estates. `.me-row__btn`
+   is kept as an alias (rather than touching manage-estates.js) so any
+   other row-action list (Manage Features, etc.) can just use
+   `.vsl-icon-action-btn` directly instead of duplicating this block.
+   Explicit width/height here for the same reason .mf-row__edit needed
+   them — the app-wide `button { width:100% }` reset otherwise wins that
+   property regardless of this rule's higher specificity. */
+.vsl-icon-action-btn,
+.me-row__btn {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.vsl-icon-action-btn:hover,
+.me-row__btn:hover {
+  background: #eef4ea;
+  color: var(--primary);
+}
+.vsl-icon-action-btn--danger,
+.me-row__btn--danger {
+  color: var(--danger);
+  border-color: rgba(179, 54, 54, 0.35);
+}
+.vsl-icon-action-btn--danger:hover,
+.me-row__btn--danger:hover {
+  background: #fdeaea;
+  color: var(--danger);
+}
+
+/* Same [hidden] fix this file needs everywhere a class rule sets its own
+   `display` (.uam-hint/.uam-checkbox-row/.futuristic-icon-btn/…) — without
+   it, the Feature Type editor's kind-dependent field groups would stay
+   visible when their [hidden] attribute is set. */
+.mf-param-group[hidden],
+.mf-row-2[hidden],
+#ftedPoint[hidden],
+#ftedLine[hidden],
+#ftedPolygon[hidden] {
+  display: none !important;
+}
+
+/* Two fields side by side (name+code, icon size+rotation, line type+style)
+   — same row-of-inputs shape .mf-label already gives a single field, just
+   paired. */
+.mf-row-2 {
+  display: flex;
+  gap: 0.6rem;
+}
+.mf-row-2 > .mf-label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Read-only code field (#mfCodeInput) — the database assigns it, so it's
+   shown greyed and non-editable rather than left out entirely. Not
+   `disabled`, which would drop it out of the tab order *and* look like a
+   temporarily-unavailable control instead of a permanent display value. */
+.mf-code-input[readonly] {
+  background: #f4f6f2;
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.mf-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.mf-color-input {
+  width: 100%;
+  height: 34px;
+  padding: 2px;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* NOTE: the old inline icon picker (.mf-icon-preview / .mf-icon-grid) is
+   gone — icons are now chosen in the stacked picker overlay of the Feature
+   Type editor, styled as .fte-icon-* above, and read from icons/icons.json
+   instead of a hardcoded class list. */
+
+.mf-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.mf-checkbox-row[hidden] {
+  display: none !important;
+}
+
+/* Same width/height pin as .uam-checkbox-row's checkbox. The app-wide
+   `input { width:100% }` reset otherwise stretches the control's layout box
+   across the whole row — the little square/circle still draws at its native
+   size, but centred in that stretched box, which is what pushed the Label
+   direction radios into the middle of the row with their text hard right.
+   Radios need it just as much as checkboxes do. */
+.mf-checkbox-row input[type="checkbox"],
+.mf-checkbox-row input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+/* ── Drone tab (windows/survey-panel.html #uamTabDrone) ───────────────── */
+
+/* Chosen-file list: one row per .pmtiles. While uploading, each row grows a
+   progress bar and the whole list gets a "n of m" header. */
+.drone-queue {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drone-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Same construction as .uam-body-loading__spinner, reusing the existing
+   `spin` keyframes, just sized for a text row. */
+.drone-spinner {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.drone-queue-row {
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.drone-queue-row.is-done {
+  background: rgba(22, 163, 74, 0.07);
+  border-color: rgba(22, 163, 74, 0.22);
+}
+.drone-queue-row--bad {
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.22);
+}
+
+.drone-queue-row__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.drone-queue-row__head strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drone-queue-row__meta {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 1px;
+}
+.drone-queue-row__pct {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;   /* stops the width jittering 9%->10% */
+  color: var(--primary);
+}
+.drone-queue-row__ok {
+  color: #16a34a;
+}
+
+.drone-queue-row__bar {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.1);
+  overflow: hidden;
+}
+.drone-queue-row__fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--primary);
+  /* Chunks land every 8 MB, so without this the bar would jump in steps. */
+  transition: width 0.35s ease;
+}
+.drone-queue-row__fill.is-done {
+  background: #16a34a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drone-spinner { animation: none; }
+  .drone-queue-row__fill { transition: none; }
+}
+
+/* Sites already in the selected survey. */
+.drone-site-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.drone-site-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.04);
+}
+.drone-site-row__name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+.drone-site-row__size {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+/* Matches the Import tab's dropzone feedback. */
+.uam-file-label.is-dragover {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+

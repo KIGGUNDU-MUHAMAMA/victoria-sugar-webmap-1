@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Victoria Sugar Admin — Victoria Sugar Webmap</title>
+<link rel="icon" type="image/jpeg" href="../assets/victoria-sugar-logo.jpg"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+<link rel="stylesheet" href="style.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<!-- ═══ LOADING OVERLAY (shown while live Supabase data loads) ═══ -->
+<div class="data-loading-overlay" id="data-loading-overlay">
+  <div class="data-loading-box">
+    <div class="data-loading-spinner"></div>
+    <div class="data-loading-text">Loading live estate data…</div>
+    <div class="data-loading-sub">Connecting to Victoria Sugar Webmap</div>
+  </div>
+</div>
+
+<!-- ═══ SIDEBAR — fixed & always expanded on desktop; collapses to an icon rail on mobile ═══ -->
+<aside class="sidebar" id="sidebar">
+
+  <div class="sidebar-brand">
+    <img class="brand-icon" src="../assets/victoria-sugar-logo.jpg" alt="Victoria Sugar"/>
+    <div class="brand-text">
+      <div class="brand-name">Victoria Sugar</div>
+      <div class="brand-sub">Admin Console</div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">OVERVIEW</div>
+    <a href="#" class="nav-item" title="Dashboard" onclick="openPanel('dashboard',this)">
+      <span class="nav-icon">◈</span><span class="nav-label"> Dashboard</span>
+    </a>
+    <a href="#" class="nav-item" title="Estate Analytics" onclick="openPanel('analytics',this)">
+      <span class="nav-icon">◉</span><span class="nav-label"> Estate Analytics</span>
+    </a>
+
+    <div class="nav-section-label">MANAGEMENT</div>
+    <a href="#" class="nav-item" title="Land" onclick="openPanel('estates',this)">
+      <span class="nav-icon">▦</span><span class="nav-label"> Land</span>
+    </a>
+    <a href="#" class="nav-item" title="Harvests" onclick="openPanel('production',this)">
+      <span class="nav-icon">◐</span><span class="nav-label"> Harvests</span>
+    </a>
+    <a href="#" class="nav-item" title="Seasons" onclick="openPanel('seasons',this)">
+      <span class="nav-icon">❖</span><span class="nav-label"> Seasons</span>
+    </a>
+    <a href="#" class="nav-item" title="Activities" onclick="openPanel('activities',this)">
+      <span class="nav-icon"><i class="fas fa-person-digging" aria-hidden="true"></i></span><span class="nav-label"> Activities</span>
+    </a>
+    <a href="#" class="nav-item" title="Costs" onclick="openPanel('costs',this)">
+      <span class="nav-icon">◍</span><span class="nav-label"> Costs</span>
+    </a>
+    <a href="#" class="nav-item" title="Documents &amp; Media" onclick="openPanel('documents',this)">
+      <span class="nav-icon">▤</span><span class="nav-label"> Documents &amp; Media</span>
+    </a>
+    <a href="#" class="nav-item" title="Users" onclick="openPanel('users',this)">
+      <span class="nav-icon">◎</span><span class="nav-label"> Users</span>
+    </a>
+
+    <div class="nav-section-label">COMMUNICATIONS</div>
+    <a href="#" class="nav-item" title="Reports" onclick="openPanel('notifications',this)">
+      <span class="nav-icon">◌</span><span class="nav-label"> Reports</span>
+    </a>
+    <a href="#" class="nav-item" title="Messages" onclick="openPanel('messages',this)">
+      <span class="nav-icon">✉</span><span class="nav-label"> Messages</span>
+    </a>
+    <a href="#" class="nav-item" title="Alerts" onclick="openPanel('alerts',this)">
+      <span class="nav-icon"><i class="fas fa-bullhorn" aria-hidden="true"></i></span><span class="nav-label"> Alerts</span>
+    </a>
+
+    <div class="nav-section-label">SYSTEM</div>
+    <a href="#" class="nav-item" title="Settings" onclick="openPanel('settings',this)">
+      <span class="nav-icon">◧</span><span class="nav-label"> Settings</span>
+    </a>
+  </nav>
+</aside>
+
+
+<!-- ═══ MAIN CONTENT — the dashboard itself is the page, nothing to close ═══ -->
+<div class="panel" id="panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Dashboard</div>
+    <div class="topbar-row">
+      <div class="topbar-season">Season: <strong>2024-B</strong></div>
+      <div class="topbar-alert-badge" onclick="openPanel('alerts',null)">
+        <span><i class="fas fa-bullhorn" aria-hidden="true"></i></span><span class="badge-count" id="topbar-alert-count">0</span>
+      </div>
+      <div class="topbar-avatar" id="topbar-avatar" title="Account">AM</div>
+    </div>
+  </div>
+  <div class="panel-body" id="panel-body">
+    <!-- page content injected here -->
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="qrcode.js"></script>
+<script src="supabase-client.js?v=5"></script>
+<script src="app.js?v=5"></script>
+</body>
+</html>

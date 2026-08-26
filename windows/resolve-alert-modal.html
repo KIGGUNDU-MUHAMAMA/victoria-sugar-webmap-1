@@ -1,0 +1,33 @@
+<!-- Resolve Alert modal — opened from the "Resolve" action next to an
+     unresolved row in the Alerts List modal (windows/alerts-list-modal.html),
+     see openResolveAlertModal()/setupResolveAlertModal() in js/map-app.js.
+     ADMIN/SURVEYOR only (same RLS as "flags resolve admin_surveyor").
+     Captures a short resolution note, then sets vsl_alerts.status = 'resolved'
+     — the alert is never deleted by this flow. -->
+<div id="resolveAlertOverlay" class="vsl-modal-overlay" hidden>
+  <div class="vsl-modal-card popWinMain">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-check" aria-hidden="true"></i></span>
+        <h2 id="resolveAlertTitle" class="popWinTitle">Resolve Alert</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="resolveAlertCloseBtn" aria-label="Close resolve alert">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <form id="resolveAlertForm" novalidate class="popWin-formShell">
+      <div class="popWinBody vsl-modal-form">
+        <p id="resolveAlertSummary" class="feature-info-readonly-msg"></p>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="resolveAlertNote">Resolution note</label>
+          <textarea id="resolveAlertNote" rows="4" class="search-panel__input" placeholder="What was done to resolve this alert?"></textarea>
+        </div>
+        <p id="resolveAlertError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+      <div class="popWinActionBtns">
+        <button type="submit" id="resolveAlertSaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Mark Resolved</button>
+      </div>
+    </form>
+  </div>
+</div>

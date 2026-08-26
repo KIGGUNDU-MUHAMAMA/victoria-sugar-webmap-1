@@ -1,0 +1,79 @@
+    <div id="parcelStatusPanel" class="parcel-status-panel popWinMain popWin-mobileDock" hidden>
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-arrow-pointer" aria-hidden="true"></i></span>
+          <h2 id="parcelStatusTitle" class="popWinTitle">Select</h2>
+        </div>
+        <button type="button" class="popWinCloseBtn" id="parcelStatusCloseBtn" aria-label="Close select panel">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <!-- Tabs moved from a horizontal row below popWinHead to a vertical,
+           left-docked column (see .popWinTabs--vertical / .popWinBodyRow in
+           styles.css). -->
+      <div class="popWinBodyRow">
+        <div class="popWinTabs popWinTabs--vertical" role="tablist" aria-label="Select layer target">
+          <button type="button" class="search-tab" id="modifyTabParcels" role="tab" aria-selected="true" data-tab="parcels">
+            Plot
+          </button>
+          <button type="button" class="search-tab" id="modifyTabBlocks" role="tab" aria-selected="false" tabindex="-1" data-tab="blocks">
+            Blocks
+          </button>
+          <button type="button" class="search-tab" id="modifyTabFeature" role="tab" aria-selected="false" tabindex="-1" data-tab="feature">
+            Feature
+          </button>
+        </div>
+
+        <div class="popWinBody">
+          <div id="parcelStatusReadOnlyBanner" class="parcel-status-panel__banner" hidden>
+            Sign in as <strong>Admin</strong> or <strong>Surveyor</strong> to save status changes.
+          </div>
+
+          <!-- Selection summary on the left, row actions on the right —
+               the same "ACTION" column shape the Survey window's Estates
+               tab uses, reusing .vsl-icon-action-btn so Modify/Delete look
+               identical everywhere. The whole column is hidden for anyone
+               who isn't Admin/Surveyor (see syncParcelStatusPermissions). -->
+          <div class="parcel-status-panel__row">
+            <div id="parcelStatusSelectionLabel" class="panel-empty-hint">Select on map</div>
+
+            <div id="parcelStatusActionCol" class="parcel-status-panel__actions" hidden>
+              <span class="parcel-status-panel__actions-title">ACTION</span>
+              <div class="parcel-status-panel__actions-btns">
+                <button type="button" id="parcelStatusModifyBtn" class="vsl-icon-action-btn" title="Modify" aria-label="Modify">
+                  <i class="fas fa-pen" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="parcelStatusDeleteBtn" class="vsl-icon-action-btn vsl-icon-action-btn--danger" title="Delete" aria-label="Delete">
+                  <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p id="parcelStatusFormError" class="parcel-status-panel__error" role="alert" hidden></p>
+        </div>
+
+        <!-- Busy overlay while Delete is in flight — same generic
+             .popWinBody-covering pattern as the Survey window's Edit tab
+             (see #surveyBusyOverlay/window.vslSurveyBusy in survey-panel.html/
+             survey-edit.js). Toggled by setParcelStatusBusy() in map-app.js. -->
+        <div id="parcelStatusBusyOverlay" class="uam-body-loading" hidden>
+          <div class="uam-body-loading__spinner"></div>
+          <span id="parcelStatusBusyOverlayText" class="uam-body-loading__text">Deleting…</span>
+        </div>
+      </div>
+
+      <!-- Footer is the LOGGING actions now — Modify/Delete moved into the
+           body's ACTION column above. Same .futuristic-icon-btn(--modal-pad)
+           family as every other .popWinActionBtns footer in the app
+           (search-panel, log-activity-modal, etc.).
+
+           Hidden entirely on the Feature tab: a tree or a road has no
+           cultivation activity or agronomic alert to log against it, so
+           only Modify/Delete apply there. -->
+      <div id="parcelStatusActionsRow" class="popWinActionBtns" hidden>
+        <button type="button" id="parcelStatusLogActivityBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad"><i class="fas fa-person-digging" aria-hidden="true"></i> Activity</button>
+        <button type="button" id="parcelStatusLogAlertBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad"><i class="fas fa-bullhorn" aria-hidden="true"></i> Alert</button>
+      </div>
+    </div>

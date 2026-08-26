@@ -1,0 +1,60 @@
+<!-- Manage Features — opened from the pencil ("edit") button next to the
+     Draw tab's Feature dropdown (survey-panel.html #drawManageFeaturesBtn).
+     The list of vsl_feature_type, one tab per geometry kind (Point/Lines/
+     Polygon — same pill row as the Search window's tabs), each showing only
+     that kind's types, fetched when the tab is opened.
+
+     Columns: Icon (a swatch of how the type actually renders — the icon for
+     a point, its strokes for a line, fill+outline for a polygon, same as the
+     legend), Type (name + numeric code), Labels (read-only: which on-map
+     labels are switched on), Actions (edit/delete).
+
+     Editing happens in its own window (windows/feature-type-editor.html) —
+     this one is purely the list. Add Feature lives in the footer next to
+     Close's old slot. -->
+<div id="manageFeaturesModal" class="vsl-modal-overlay" hidden>
+  <div class="vsl-modal-card vsl-modal-card--wide mf-modal popWinMain">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Manage Features</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="manageFeaturesCloseBtn" aria-label="Close manage features">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinTabs" id="mfTabs" role="tablist" aria-label="Feature geometry kind">
+      <button type="button" class="search-tab" id="mfTabPoint" role="tab" aria-selected="true" aria-controls="mfListWrap" data-kind="point">
+        <i class="fas fa-location-dot" aria-hidden="true"></i> Point
+      </button>
+      <button type="button" class="search-tab" id="mfTabLine" role="tab" aria-selected="false" aria-controls="mfListWrap" data-kind="line">
+        <i class="fas fa-slash" aria-hidden="true"></i> Lines
+      </button>
+      <button type="button" class="search-tab" id="mfTabPolygon" role="tab" aria-selected="false" aria-controls="mfListWrap" data-kind="polygon">
+        <i class="fas fa-draw-polygon" aria-hidden="true"></i> Polygon
+      </button>
+    </div>
+
+    <div class="popWinBody mf-body">
+      <div id="mfListWrap" role="tabpanel">
+        <!-- Column headers, kept outside #mfList so they don't re-render on
+             every refresh. Grid template is shared with .mf-trow. -->
+        <div class="mf-thead" aria-hidden="true">
+          <span>Icon</span>
+          <span>Type</span>
+          <span>Labels</span>
+          <span>Actions</span>
+        </div>
+        <div id="mfList"></div>
+        <p id="mfListError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+    </div>
+
+    <div class="popWinActionBtns">
+      <button type="button" id="mfAddBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
+        <i class="fas fa-plus" aria-hidden="true"></i> Add Feature
+      </button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,32 @@
+name = "vsl-tiles"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# The bucket is reached through this binding. Cloudflare grants this Worker
+# access to that bucket internally, so there is no access key anywhere in
+# this project — nothing to commit by accident, nothing to rotate.
+#
+# ⚠ bucket_name must match the bucket EXACTLY as it appears in the R2
+#   dashboard. R2 names allow lowercase letters, numbers and hyphens only,
+#   so an underscore here will fail to deploy.
+[[r2_buckets]]
+binding = "TILES"
+bucket_name = "vsl-tiles"
+
+[vars]
+# Both of these are public values. The Supabase publishable key is designed
+# to be shipped in browsers — row level security is what protects the data,
+# not the secrecy of this key. The service_role key is NOT used by this
+# Worker and must never be added here.
+SUPABASE_URL = "https://knhgliyghacvkeeptsfl.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_W2kx87RbvH0Qd1HkPPXlIg_6GAy0HAV"
+
+# Origins allowed to call this Worker from a browser. The first entry is
+# used as the fallback when a request arrives from somewhere unlisted.
+ALLOWED_ORIGINS = "https://victoriasugar.ug,https://admin.victoriasugar.ug,http://localhost:5500,http://127.0.0.1:5500,https://farms.victoriasugarltd.xyz/webmap,https://farms.victoriasugarltd.xyz/*"
+
+# Serve the Worker from the tiles subdomain. Comment this block out to test
+# on the *.workers.dev URL first.
+[[routes]]
+pattern = "tiles.victoriasugar.ug"
+custom_domain = true

@@ -478,7 +478,7 @@ export function initFeatureTypeEditor({ cfg, supabase, setStatus, statusEl }) {
     const usesSpacing = currentKind() === "line" && lineStyleSelect.value !== "single";
     spacingInput.disabled = !usesSpacing;
     spacingInput.title = usesSpacing
-      ? "Ground distance between the parallel lines"
+      ? "Ground distance between the line edges (for double lines) or from the centerline (Triple lines)"
       : "Only used by double and triple lines";
   }
 

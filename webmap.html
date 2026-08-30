@@ -63,45 +63,65 @@
       <div id="map"></div>
       <div class="map-frame" aria-hidden="true"></div>
       
-      <!-- Left floating button stack — this outer div is just an invisible,
-           absolutely-positioned anchor (no background/border of its own);
-           the buttons inside are laid out with plain flex + gap instead of
-           each having its own fixed position. That means new buttons can be
-           added/removed/hidden here freely (button.hidden = true) and the
-           rest of the stack packs up to fill the gap automatically — no
-           per-button CSS to update. See .map-btn-stack in styles.css. -->
+      <!-- Left tool stack. Still an absolutely-positioned flex column, and
+           still safe to add/remove/hide buttons in (button.hidden = true
+           and the rest packs up automatically) — but each button is now a
+           labelled ROW: a fixed-size icon tile plus its name.
+
+           Every button keeps its original id, class and title attribute, so
+           all the existing js/map-app.js wiring (getElementById + click
+           handlers, and the `.active` class it toggles on open) works
+           untouched. The label is a plain <span> inside the button, which
+           means it inherits the button's own hover/active state for free
+           rather than needing its own rules — see .dashboard-btn__label.
+
+           Collapsed (the default on phones) hides only the labels; the icon
+           column stays exactly where it is today, so every tool is still one
+           tap away. See setupToolStackCollapse() in js/map-app.js. -->
       <div class="map-btn-stack map-btn-stack--left" id="mapLeftBtnStack">
+        <div class="map-btn-stack__head">
+          <span class="map-btn-stack__title">Tools</span>
+          <!-- aria-expanded is the real state here; the CSS reads the
+               .is-collapsed class on the stack itself. -->
+          <button type="button" class="map-btn-stack__toggle" id="mapToolStackToggle"
+                  aria-expanded="true" aria-controls="mapLeftBtnStack" title="Collapse tools">
+            <!-- Points LEFT while expanded ("fold away to the left") and is
+                 swapped to the right-facing caret when collapsed — see
+                 apply() in setupToolStackCollapse(), js/map-app.js. -->
+            <i class="fas fa-square-caret-left" aria-hidden="true"></i>
+          </button>
+        </div>
+
         <button type="button" class="dashboard-btn" title="Dashboard" onclick="window.location.href='dashboard/'">
-          <i class="fas fa-bars"></i>
+          <i class="fas fa-bars"></i><span class="dashboard-btn__label">Dashboard</span>
         </button>
         <!-- Opens the Feature Info panel directly (js/map-app.js
              openFeatureInfoPanelManual), with an empty Estate/Block/Plot
              filter bar so the person can browse to any estate/block/plot
              without clicking it on the map first. -->
         <button type="button" class="dashboard-btn" id="mapFeatureInfoBtn" title="Feature Info">
-          <i class="fas fa-circle-info"></i>
+          <i class="fas fa-circle-info"></i><span class="dashboard-btn__label">Information</span>
         </button>
-        <!-- Formerly in .map-top-controls (top toolbar) — moved here,
-             icon-only, same IDs so all existing js/map-app.js wiring
-             (getElementById + click handlers) keeps working unchanged. -->
+        <!-- Formerly in .map-top-controls (top toolbar) — moved here, same
+             IDs so all existing js/map-app.js wiring keeps working. -->
         <button type="button" class="dashboard-btn" id="searchPanelBtn" title="Search — coordinates, block/parcel, or place" aria-expanded="false" aria-controls="searchPanel">
-          <i class="fas fa-magnifying-glass"></i>
+          <i class="fas fa-magnifying-glass"></i><span class="dashboard-btn__label">Search</span>
         </button>
         <button type="button" class="dashboard-btn" id="toolsTopBtn" title="Survey">
-          <i class="fas fa-drafting-compass"></i>
+          <i class="fas fa-drafting-compass"></i><span class="dashboard-btn__label">Survey</span>
         </button>
         <button type="button" class="dashboard-btn" id="measureTopBtn" title="Measure Tools">
-          <i class="fas fa-ruler-combined"></i>
+          <i class="fas fa-ruler-combined"></i><span class="dashboard-btn__label">Measure</span>
         </button>
         <button type="button" class="dashboard-btn" id="parcelStatusBtn" title="Select">
-          <i class="fas fa-arrow-pointer"></i>
+          <i class="fas fa-arrow-pointer"></i><span class="dashboard-btn__label">Select</span>
         </button>
         <!-- Print/PDF Plot — was a placeholder tab inside the Survey window;
              moved out here (js/print-tool.js) since it's really its own
              map tool (pan/zoom to frame, then export), not part of the
              import/draw/edit workflow the Survey window otherwise covers. -->
         <button type="button" class="dashboard-btn" id="printTopBtn" title="Print Map">
-          <i class="fas fa-print"></i>
+          <i class="fas fa-print"></i><span class="dashboard-btn__label">Print</span>
         </button>
       </div>
 
@@ -242,6 +262,13 @@
 
     </div>
   </div>
+  <!-- windows/survey-panel.html (formerly unified-action-menu.html) is now
+        fetched into #mapLeftStack by js/app-boot.js, same as the other
+        docked panels. -->
+  <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->
+  <button id="surveyPanelBtn" class="u-hidden-important" hidden aria-hidden="true"></button>
+  <button id="drawingPanelBtn" class="u-hidden-important" hidden aria-hidden="true"></button>
+
 
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -254,15 +281,7 @@
        info popup, unified action menu, edit details modal) and
        appends each into the DOM position it used to occupy statically, then
        dynamically imports map-app.js so nothing runs before those elements exist. -->
-  <script type="module" src="./js/app-boot.js"></script>
-
-  <!-- windows/survey-panel.html (formerly unified-action-menu.html) is now
-       fetched into #mapLeftStack by js/app-boot.js, same as the other
-       docked panels. -->
-  <!-- Hidden legacy IDs kept for backward-compat with survey-import.js and map-app.js -->
-  <button id="surveyPanelBtn" class="u-hidden-important" hidden aria-hidden="true"></button>
-  <button id="drawingPanelBtn" class="u-hidden-important" hidden aria-hidden="true"></button>
-
+  <script type="module" src="./js/app-boot.js"></script>       
 
   <script type="module" src="js/stats-logic.js?v=2.2.0"></script>
   <script type="module" src="./js/sw-loader.js"></script>

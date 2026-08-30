@@ -5165,6 +5165,144 @@ function openLegendPanel() {
   btn?.setAttribute("aria-expanded", "true");
 }
 
+// ---------------------------------------------------------------------------
+// Left tool stack — collapse/expand
+//
+// Collapsing hides the labels only; the icon rail stays put, so every tool
+// is still one click away. Phones start collapsed (a 7-row labelled panel
+// eats most of a small screen), desktops start expanded.
+//
+// The person's own choice wins over the width-based default once they make
+// one, and is remembered across visits. Resizing the window afterwards
+// doesn't fight them — the breakpoint only ever decides the FIRST state.
+// ---------------------------------------------------------------------------
+/** Remembered SEPARATELY per breakpoint.
+ *
+ *  With one shared key, expanding the stack once on a desktop wrote
+ *  "expanded" for every device, so the same account then opened expanded on
+ *  a phone — the mobile default never got a chance to apply. Two keys means
+ *  "collapsed on mobile, expanded on desktop" stays true no matter what was
+ *  toggled on the other one, while an explicit choice on this device is
+ *  still remembered. */
+const TOOL_STACK_COLLAPSE_KEY_MOBILE = "vsl.toolStack.collapsed.mobile";
+const TOOL_STACK_COLLAPSE_KEY_DESKTOP = "vsl.toolStack.collapsed.desktop";
+/** Matches the phone-width media queries used elsewhere in styles.css. */
+const TOOL_STACK_MOBILE_MAX_PX = 900;
+/** Left gap kept when the stack is hidden entirely (drafting mode) — the
+ *  same 8px the phone layout already uses for the docked column. */
+const TOOL_STACK_HIDDEN_LEFT_PX = 8;
+
+function setupToolStackCollapse() {
+  const stack = document.getElementById("mapLeftBtnStack");
+  const toggle = document.getElementById("mapToolStackToggle");
+  if (!stack || !toggle) return;
+
+  const isMobile = () => window.innerWidth <= TOOL_STACK_MOBILE_MAX_PX;
+  const storageKey = () =>
+    isMobile() ? TOOL_STACK_COLLAPSE_KEY_MOBILE : TOOL_STACK_COLLAPSE_KEY_DESKTOP;
+
+  // localStorage can throw outright in a locked-down/private context, so
+  // every access is guarded — a failure here just means "no memory", never
+  // a broken toolbar.
+  const readSaved = () => {
+    try { return window.localStorage?.getItem(storageKey()); } catch { return null; }
+  };
+  const writeSaved = (v) => {
+    try { window.localStorage?.setItem(storageKey(), v ? "1" : "0"); } catch { /* not available */ }
+  };
+
+  /** Pushes the docked-window column clear of the stack.
+   *
+   *  .map-left-stack (Search, Survey, Measure, Select, …) is a fixed-position
+   *  sibling that opens to the right of this stack, so it can't discover the
+   *  stack's width in CSS alone. Measuring is better than hardcoding two
+   *  numbers: it stays correct if a label is renamed, a button is added, or
+   *  the font renders wider than expected. */
+  function syncDockOffset() {
+    // Read after layout has settled, or a just-collapsed stack still
+    // measures at its expanded width.
+    requestAnimationFrame(() => {
+      // Drafting mode (Measure's pick tool, Survey's Draw/Edit tabs) hides
+      // the stack outright via enterDraftingMode(). A hidden stack measures
+      // 0 wide, and reserving room for something that isn't on screen is
+      // exactly the gap that used to sit to the left of the Measure window.
+      const width = stack.hasAttribute("hidden") ? 0 : stack.getBoundingClientRect().width;
+      const left = width
+        // 16px is .map-btn-stack--left's own `left`, plus 12px of breathing room.
+        ? Math.round(width + 16 + 12)
+        : TOOL_STACK_HIDDEN_LEFT_PX;
+      document.body.style.setProperty("--vsl-tool-stack-left", `${left}px`);
+      map?.updateSize();
+    });
+  }
+
+  // enterDraftingMode()/exitDraftingMode() set and clear the stack's
+  // `hidden` attribute directly, and they're called from several modules
+  // (map-app, survey-draw, survey-edit). Watching the attribute means the
+  // offset follows automatically from all of them, rather than each having
+  // to remember to call back in here.
+  new MutationObserver(syncDockOffset).observe(stack, {
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+
+  function apply(collapsed) {
+    stack.classList.toggle("is-collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.title = collapsed ? "Expand tools" : "Collapse tools";
+    toggle.setAttribute("aria-label", toggle.title);
+    // The caret points the way the panel will MOVE: left to fold it away,
+    // right to bring it back out.
+    const icon = toggle.querySelector("i");
+    if (icon) {
+      icon.classList.toggle("fa-square-caret-right", collapsed);
+      icon.classList.toggle("fa-square-caret-left", !collapsed);
+    }
+    syncDockOffset();
+  }
+
+  const saved = readSaved();
+  apply(saved === null ? isMobile() : saved === "1");
+
+  syncPanelToggleState();
+
+  toggle.addEventListener("click", () => {
+    const next = !stack.classList.contains("is-collapsed");
+    apply(next);
+    writeSaved(next);
+  });
+}
+
+/**
+ * Mirrors a panel's visibility onto its tool-stack button, so every tool
+ * shows the same "this window is open" state.
+ *
+ * Search, Select and Print already maintain `.active` themselves, and
+ * Survey maintains `.uam-open` (which the stylesheet treats identically).
+ * Measure and Feature Info maintained nothing — and both are toggled from
+ * several places by assigning `.hidden` directly, so rather than editing
+ * every one of those call sites (and hoping the next one remembers), this
+ * watches the panels themselves. Any future code that shows or hides them,
+ * by any route, keeps the button honest for free.
+ */
+function syncPanelToggleState() {
+  const pairs = [
+    ["measurePanel", "measureTopBtn"],
+    ["featureInfoOverlay", "mapFeatureInfoBtn"]
+  ];
+  for (const [panelId, btnId] of pairs) {
+    const panel = document.getElementById(panelId);
+    const btn = document.getElementById(btnId);
+    if (!panel || !btn) continue;
+    const sync = () => btn.classList.toggle("active", !panel.hidden);
+    sync();
+    new MutationObserver(sync).observe(panel, {
+      attributes: true,
+      attributeFilter: ["hidden"]
+    });
+  }
+}
+
 function setupLegendPanel() {
   const btn = document.getElementById("legendBtn");
   const closeBtn = document.getElementById("legendCloseBtn");
@@ -7235,6 +7373,7 @@ async function initMap() {
   setupInfoPopup();
   setupParcelActionToolbar();
   setupLegendPanel();
+  setupToolStackCollapse();
   setupSnapPanel();
   setupLogActivityModal();
   setupLogAlertModal();

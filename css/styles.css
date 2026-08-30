@@ -359,7 +359,14 @@ button:hover {
 
 .webmap-app .map-left-stack {
   position: fixed;
-  left: 60px;
+  /* Docked windows open to the RIGHT of the tool stack, so their offset has
+     to track how wide that stack currently is — it used to be a fixed ~46px
+     column of icons, but expanded it now carries labels and is far wider.
+     setupToolStackCollapse() in js/map-app.js measures the stack and writes
+     --vsl-tool-stack-left on <body>; the 60px fallback is the old value, so
+     if that script never runs nothing moves. The phone media query further
+     down overrides this outright (the panels become a bottom sheet there). */
+  left: var(--vsl-tool-stack-left, 60px);
   top: 80px;
   bottom: 12px;
   z-index: 1150;
@@ -3005,11 +3012,86 @@ select.search-panel__input {
   align-items: center;
   gap: 5px;
 }
+/* The left stack is a real panel now (labelled rows under a "Tools"
+   header), not a bare column of floating icons — so unlike the right-hand
+   cluster it gets a card background of its own. `align-items: stretch`
+   overrides .map-btn-stack's `center` so every row is the same width and
+   the labels line up; width is intrinsic (fit-content) so collapsing to
+   the icon rail shrinks the card rather than leaving a wide empty box. */
 .map-btn-stack--left {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
+  top: 5px;
+  left: 5px;
   z-index: 50;
+  align-items: stretch;
+  width: fit-content;
+  padding: 8px;
+  gap: 4px;
+  border-radius: 12px;
+  background: rgba(244, 247, 252,0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── "Tools" header + collapse toggle ── */
+.map-btn-stack__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  margin-bottom: 2px;
+}
+
+.map-btn-stack__title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* `width: auto` opts out of the app-wide
+   `input, select, button, textarea { width: 100% }` reset at the top of
+   this file — the same opt-out .toggle-password and the print overlay's
+   Cancel button need. */
+.map-btn-stack__toggle {
+  width: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.map-btn-stack__toggle:hover {
+  background: var(--green-600, #2f6b2f);
+  border-color: var(--green-600, #2f6b2f);
+  color: #fff;
+}
+
+/* Collapsed: the header's title goes, leaving just the toggle, which
+   centres itself over the icon rail. The caret itself is swapped between
+   fa-square-caret-left and -right in JS rather than being mirrored with a
+   transform, so the glyph is always the real Font Awesome one. */
+#mapLeftBtnStack.is-collapsed .map-btn-stack__title {
+  display: none;
+}
+
+#mapLeftBtnStack.is-collapsed .map-btn-stack__head {
+  justify-content: center;
 }
 
 /* Same [hidden] fix as .floating-btn/.dashboard-btn elsewhere in this file —
@@ -4946,9 +5028,116 @@ select.search-panel__input {
    (which had its own `.active` look); .dashboard-btn never needed one
    before since Dashboard/Feature Info don't get toggled. Scoped to
    #mapLeftBtnStack so Dashboard/Feature Info's own look is untouched. */
-#mapLeftBtnStack .dashboard-btn.active {
+/* ─────────────────────────────────────────────────────────────
+   LEFT TOOL STACK — labelled rows
+   -------------------------------------------------------------
+   Each button in #mapLeftBtnStack is now "icon tile + label" rather than a
+   bare icon. The row itself is transparent; only the icon tile carries the
+   green. That way hover and open-state can tint BOTH parts together
+   (the label is a child of the button, so it just inherits), which is what
+   makes the whole row read as one control instead of a coloured square
+   sitting next to unrelated text.
+   ───────────────────────────────────────────────────────────── */
+#mapLeftBtnStack .dashboard-btn {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 3px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--text);
+  text-transform: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+/* The green square. Fixed size so every row's label starts at the same x,
+   and so the collapsed rail is a predictable width. */
+#mapLeftBtnStack .dashboard-btn > i {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--green-600, #2f6b2f);
+  color: #fff;
+  font-size: 18px;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.dashboard-btn__label {
+  white-space: nowrap;
+  padding-right: 8px;
+}
+
+/* ── 1. Hover: the row tints, the tile darkens and lifts slightly ── */
+#mapLeftBtnStack .dashboard-btn:hover {
+  background: rgba(47, 107, 47, 0.12);
+  border-color: rgba(47, 107, 47, 0.25);
+  color: var(--green-800, #1b5e20);
+}
+
+#mapLeftBtnStack .dashboard-btn:hover > i {
   background: var(--green-800, #1b5e20);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55) inset, 0 2px 8px rgba(0, 0, 0, 0.25);
+  transform: scale(1.06);
+}
+
+/* Keyboard parity — the row has to show focus too, not just hover. */
+#mapLeftBtnStack .dashboard-btn:focus-visible {
+  outline: 2px solid var(--green-800, #1b5e20);
+  outline-offset: 1px;
+}
+
+/* ── 2. Open/active: a persistent state, distinct from hover ──
+   Two class names, one state. Search/Select/Print already get `.active`
+   from js/map-app.js and js/print-tool.js, while Survey gets `.uam-open`
+   from js/unified-menu.js — matching both here means Survey lights up
+   without touching that module's own open/close bookkeeping. Measure and
+   Information had no state at all; syncPanelToggleState() in js/map-app.js
+   now mirrors their panels' visibility onto `.active`.
+
+   The label is a child of the button, so it inherits the colour for free;
+   the inset left bar marks which tool owns the open panel. */
+#mapLeftBtnStack .dashboard-btn.active,
+#mapLeftBtnStack .dashboard-btn.uam-open {
+  background: rgba(47, 107, 47, 0.18);
+  border-color: var(--green-600, #2f6b2f);
+  color: var(--green-800, #1b5e20);
+  box-shadow: inset 3px 0 0 var(--green-800, #1b5e20);
+}
+
+#mapLeftBtnStack .dashboard-btn.active > i,
+#mapLeftBtnStack .dashboard-btn.uam-open > i {
+  background: var(--green-800, #1b5e20);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6) inset;
+}
+
+/* ── 3. Collapsed: labels out, icon rail stays ──
+   `display: none` rather than width:0 so the labels take no space at all
+   and the panel shrink-wraps to the tiles. The title attribute already on
+   every button becomes the only affordance for what a tool is, which is
+   why each one still carries a real one. */
+#mapLeftBtnStack.is-collapsed .dashboard-btn__label {
+  display: none;
+}
+
+#mapLeftBtnStack.is-collapsed .dashboard-btn {
+  justify-content: center;
+}
+
+/* The inset bar has nowhere to sit on a 36px tile, so open-state falls back
+   to a ring around the tile itself when collapsed. */
+#mapLeftBtnStack.is-collapsed .dashboard-btn.active,
+#mapLeftBtnStack.is-collapsed .dashboard-btn.uam-open {
+  box-shadow: none;
+}
+
+#mapLeftBtnStack.is-collapsed .dashboard-btn.active > i,
+#mapLeftBtnStack.is-collapsed .dashboard-btn.uam-open > i {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.75) inset, 0 0 0 2px var(--green-800, #1b5e20);
 }
 
 /* =============================================================
@@ -6019,9 +6208,9 @@ select.search-panel__input {
    and shrink as you switch tabs was jarring; a fixed box plus .popWinBody's
    own overflow-y:auto (set above) scrolls whatever doesn't fit instead. */
 .survey-panel.popWinMain {
-  height: 420px;
-  max-height: 420px;
-  flex: 0 0 420px;
+  height: 500px;
+  max-height: 500px;
+  flex: 0 0 450px;
 }
 
 /* Container padding alone isn't enough to match the dashboard's footer
@@ -6271,7 +6460,7 @@ select.search-panel__input {
 }
 
 .vsl-modal-card--wide {
-  max-width: 640px;
+  max-width: 440px;
 }
 
 /* Manage Features used the shared 640px width by default — far wider than

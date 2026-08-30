@@ -1134,6 +1134,9 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   window.addEventListener("vsl-estates-changed", () => refreshDrawEstateOptions());
 
   manageBtn?.addEventListener("click", () => {
+    // Feature-type management is the Survey window's own Features tab now
+    // (windows/survey-panel.html #uamTabFeatures), not a separate modal —
+    // openManageFeaturesPanel() switches to it via window.openUamTab.
     window.openManageFeaturesPanel?.();
   });
 

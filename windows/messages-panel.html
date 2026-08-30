@@ -1,0 +1,61 @@
+<!-- Messages — opened from the envelope FAB in the map's bottom-LEFT corner
+     (webmap.html #messagesBtn), mirroring Locate Me's bottom-right position.
+
+     UI ONLY for now: there is no send/receive logic behind any of this yet.
+     The thread renders its empty state, and the composer is inert — see
+     setupMessagesPanel() in js/map-app.js, which wires open/close and the
+     textarea's auto-grow and nothing else.
+
+     Shape: a floating card anchored above its own button rather than a
+     docked .map-left-stack window, since a chat is a persistent side
+     conversation you keep open while working the map, not a tool panel that
+     competes with Search/Survey/Measure for that column. -->
+<div id="messagesPanel" class="messages-panel" hidden aria-labelledby="messagesPanelTitle">
+  <header class="messages-panel__head">
+    <div class="messages-panel__head-inner">
+      <span class="messages-panel__icon"><i class="fas fa-comment-dots" aria-hidden="true"></i></span>
+      <div class="messages-panel__heading">
+        <h2 class="messages-panel__title" id="messagesPanelTitle">Messages</h2>
+        <!-- Placeholder subtitle: becomes the thread/recipient name once
+             there is real messaging behind this. -->
+        <span class="messages-panel__subtitle" id="messagesPanelSubtitle">Team chat</span>
+      </div>
+    </div>
+    <button type="button" class="messages-panel__close" id="messagesCloseBtn" aria-label="Close messages">
+      <i class="fas fa-times" aria-hidden="true"></i>
+    </button>
+  </header>
+
+  <!-- The scrolling thread. Empty state lives inside it (rather than as a
+       sibling) so it centres in the available space and is simply replaced
+       by message bubbles once there are any. -->
+  <div class="messages-panel__thread" id="messagesThread" role="log" aria-live="polite">
+    <div class="messages-panel__empty" id="messagesEmpty">
+      <span class="messages-panel__empty-icon"><i class="fas fa-comments" aria-hidden="true"></i></span>
+      <p class="messages-panel__empty-title">No messages</p>
+      <p class="messages-panel__empty-hint">Messages you send and receive will appear here.</p>
+    </div>
+  </div>
+
+  <!-- Composer — the pill from the reference: emoji button, a divider, the
+       growing text field, an attach button, then a round send button.
+       A <textarea> rather than an <input> so a long message wraps and the
+       box grows with it (capped in CSS, then it scrolls). -->
+  <div class="messages-panel__composer">
+    <button type="button" class="messages-composer__icon-btn" id="messagesEmojiBtn"
+            title="Emoji" aria-label="Insert emoji">
+      <i class="far fa-face-smile" aria-hidden="true"></i>
+    </button>
+    <span class="messages-composer__divider" aria-hidden="true"></span>
+    <textarea id="messagesInput" class="messages-composer__input" rows="1"
+              placeholder="Type a message…" aria-label="Message"></textarea>
+    <button type="button" class="messages-composer__icon-btn" id="messagesAttachBtn"
+            title="Attach a file" aria-label="Attach a file">
+      <i class="fas fa-paperclip" aria-hidden="true"></i>
+    </button>
+    <button type="button" class="messages-composer__send" id="messagesSendBtn"
+            title="Send" aria-label="Send message" disabled>
+      <i class="fas fa-paper-plane" aria-hidden="true"></i>
+    </button>
+  </div>
+</div>

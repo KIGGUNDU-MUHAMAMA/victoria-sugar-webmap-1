@@ -301,8 +301,16 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
   const existingEl = document.getElementById("droneExisting");
   const uploadBtn = document.getElementById("droneUploadBtn");
   const clearBtn = document.getElementById("droneClearBtn");
+  // Add / Manage sub-tabs and the two bodies + two footer sets they swap.
+  const modeTabs = document.getElementById("droneModeTabs");
+  const deleteGroupBtn = document.getElementById("droneDeleteGroupBtn");
+  const modePanels = document.querySelectorAll("[data-drone-panel]");
+  const modeActionSets = document.querySelectorAll("[data-drone-actions]");
 
   if (!groupSelect || !fileInput) return null;
+
+  /** "add" (choose files, upload) or "manage" (prune what's already there). */
+  let mode = "add";
 
   const api = createApi({ cfg, supabase });
   let groups = [];
@@ -317,7 +325,7 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
 
   function setBusy(state) {
     busy = state;
-    [groupSelect, addGroupBtn, fileInput, uploadBtn, clearBtn].forEach((el) => {
+    [groupSelect, addGroupBtn, fileInput, uploadBtn, clearBtn, deleteGroupBtn].forEach((el) => {
       if (el) el.disabled = state;
     });
     if (!state) syncButtons();
@@ -328,13 +336,40 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
     const ready = queued.length > 0 && !!groupSelect.value;
     if (uploadBtn) uploadBtn.disabled = !ready;
     if (clearBtn) clearBtn.disabled = queued.length === 0;
+    // Manage's only action needs a group selected to act on.
+    if (deleteGroupBtn) deleteGroupBtn.disabled = !groupSelect.value;
   }
+
+  /** Shows one mode's body and footer buttons, hiding the other's. */
+  function syncDroneMode() {
+    modeTabs?.querySelectorAll("[data-drone-mode]").forEach((btn) => {
+      btn.setAttribute("aria-selected", String(btn.dataset.droneMode === mode));
+    });
+    modePanels.forEach((el) => {
+      el.hidden = el.dataset.dronePanel !== mode;
+    });
+    modeActionSets.forEach((el) => {
+      el.hidden = el.dataset.droneActions !== mode;
+    });
+    syncButtons();
+  }
+
+  modeTabs?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-drone-mode]");
+    if (!btn || btn.dataset.droneMode === mode) return;
+    mode = btn.dataset.droneMode;
+    syncDroneMode();
+  });
+
+  deleteGroupBtn?.addEventListener("click", () => {
+    if (groupSelect.value) onDeleteGroup(groupSelect.value);
+  });
 
   // ── Survey list ──────────────────────────────────────────────────────
 
   function renderGroupOptions() {
     const previous = groupSelect.value;
-    groupSelect.innerHTML = '<option value="">Survey…</option>';
+    groupSelect.innerHTML = '<option value="">— Select group —</option>';
     for (const group of groups) {
       const option = document.createElement("option");
       option.value = group.folder;
@@ -358,11 +393,11 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
     if (!existingEl) return;
 
     if (!group) {
-      existingEl.innerHTML = "";
+      existingEl.innerHTML = '<p class="uam-hint">Select a group to see what it holds.</p>';
       return;
     }
     if (!group.layers.length) {
-      existingEl.innerHTML = '<p class="uam-hint">No sites in this survey yet.</p>';
+      existingEl.innerHTML = '<p class="uam-hint">No tiles in this group yet.</p>';
       return;
     }
     existingEl.innerHTML = `
@@ -374,18 +409,15 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
           <div class="drone-site-row">
             <span class="drone-site-row__name">${escapeHtml(layer.site_name)}</span>
             <span class="drone-site-row__size">${formatBytes(layer.size_bytes)}</span>
-            <button type="button" class="uam-icon-btn" data-drone-delete="${escapeHtml(layer.key)}"
+            <button type="button" class="uam-icon-btn uam-icon-btn--danger"
+                    data-drone-delete="${escapeHtml(layer.key)}"
                     title="Delete ${escapeHtml(layer.site_name)}">
               <i class="fas fa-trash" aria-hidden="true"></i>
             </button>
           </div>`
           )
           .join("")}
-      </div>
-      <button type="button" class="uam-btn uam-btn--ghost u-w-100 u-mt-6"
-              data-drone-delete-group="${escapeHtml(group.folder)}">
-        <i class="fas fa-trash" aria-hidden="true"></i> Delete whole survey
-      </button>`;
+      </div>`;
   }
 
   async function refreshGroups({ rebuildMap = true } = {}) {
@@ -727,9 +759,9 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
     const group = groups.find((g) => g.folder === folder);
     const count = group?.layers.length || 0;
     const ok = await confirmDanger({
-      title: "Delete this survey?",
+      title: "Delete this group?",
       message: `${folder} and its ${count} site(s) will be removed from the bucket. This cannot be undone.`,
-      confirmLabel: "Delete survey",
+      confirmLabel: "Delete group",
       icon: "fa-trash"
     });
     if (!ok) return;
@@ -739,7 +771,7 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
       await api.deleteGroup(folder);
       await supabase.from("vsl_tile_groups").delete().eq("folder", folder);
       groupSelect.value = "";
-      say(`Survey ${folder} deleted.`);
+      say(`Group ${folder} deleted.`);
       await refreshGroups();
     } catch (error) {
       showError(error.message);
@@ -892,13 +924,16 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
     });
   }
 
+  // Only per-file deletes are delegated from the list now — deleting the
+  // whole group moved to the Manage footer button (#droneDeleteGroupBtn),
+  // so the [data-drone-delete-group] branch that used to live here is gone
+  // along with the in-body button it listened for.
   existingEl?.addEventListener("click", (event) => {
     const archiveBtn = event.target.closest("[data-drone-delete]");
     if (archiveBtn) return onDeleteArchive(archiveBtn.getAttribute("data-drone-delete"));
-    const groupBtn = event.target.closest("[data-drone-delete-group]");
-    if (groupBtn) return onDeleteGroup(groupBtn.getAttribute("data-drone-delete-group"));
   });
 
+  syncDroneMode();
   refreshGroups();
 
   return { refresh: refreshGroups, rebuildLayers };

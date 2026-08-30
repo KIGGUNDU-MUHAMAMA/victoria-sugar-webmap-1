@@ -35,15 +35,27 @@
         <button type="button" class="search-tab" data-uam-tab="drone" role="tab" aria-selected="false" tabindex="-1">
           <i class="fas fa-helicopter" aria-hidden="true"></i> Drone
         </button>
-        <hr color="white">
+        <!-- Divides the DRAWING tools above (Import/Draw/Edit/Drone — things
+             you do to the map) from the MANAGEMENT tabs below (Features/
+             Estates/Export — things you do to the catalogue).
+
+             A bare <hr> collapsed to a dot here: .popWinTabs--vertical is a
+             flex column, and an <hr> is a replaced-ish element with no
+             intrinsic width, so it shrank to nothing rather than spanning
+             the rail. A styled <div role="separator"> stretches properly —
+             see .popWinTabs__sep in styles.css. -->
+        <div class="popWinTabs__sep" role="separator" aria-orientation="horizontal"></div>
         <button type="button" class="search-tab" data-uam-tab="features" role="tab" aria-selected="false" tabindex="-1">
-          <i class="fas ..." aria-hidden="true"></i> Features
+          <i class="fas fa-shapes" aria-hidden="true"></i> Features
         </button>
         <button type="button" class="search-tab" data-uam-tab="estates" role="tab" aria-selected="false" tabindex="-1">
           <i class="fas fa-map-location-dot" aria-hidden="true"></i> Estates
         </button>
         <button type="button" class="search-tab" data-uam-tab="export" role="tab" aria-selected="false" tabindex="-1">
           <i class="fas fa-file-export" aria-hidden="true"></i> Export
+        </button>
+        <button type="button" class="search-tab" data-uam-tab="resources" role="tab" aria-selected="false" tabindex="-1">
+          <i class="fas fa-circle-down" aria-hidden="true"></i> Resources
         </button>
       </div>
 
@@ -304,6 +316,46 @@
              add/rename/delete behaviour, but now lives directly in this
              tab's body like every other tab instead of a separate popup.
              js/manage-estates.js still owns all the logic. -->
+        <!-- ── FEATURES TAB ──
+             Was windows/manage-features-panel.html, a separate modal opened
+             from the Draw tab's "Manage Features" button. Inlined here the
+             same way Estates was (see the note in js/app-boot.js), so
+             managing the feature-type catalogue is a tab like everything
+             else instead of a window stacked on top of a window.
+
+             Every id below is unchanged, so js/manage-features.js binds to
+             it exactly as before — only its open()/close() had to change,
+             from showing an overlay to switching to this tab.
+
+             Editing a single type still opens its own window
+             (windows/feature-type-editor.html); this is only the list. -->
+        <div class="uam-tab mf-body" id="uamTabFeatures" data-uam-panel="features" hidden>
+          <div class="popWinTabs mf-kind-tabs" id="mfTabs" role="tablist" aria-label="Feature geometry kind">
+            <button type="button" class="search-tab" id="mfTabPoint" role="tab" aria-selected="true" aria-controls="mfListWrap" data-kind="point">
+              <i class="fas fa-location-dot" aria-hidden="true"></i> Point
+            </button>
+            <button type="button" class="search-tab" id="mfTabLine" role="tab" aria-selected="false" aria-controls="mfListWrap" data-kind="line">
+              <i class="fas fa-slash" aria-hidden="true"></i> Lines
+            </button>
+            <button type="button" class="search-tab" id="mfTabPolygon" role="tab" aria-selected="false" aria-controls="mfListWrap" data-kind="polygon">
+              <i class="fas fa-draw-polygon" aria-hidden="true"></i> Polygon
+            </button>
+          </div>
+
+          <div id="mfListWrap" role="tabpanel">
+            <!-- Column headers, kept outside #mfList so they don't re-render
+                 on every refresh. Grid template is shared with .mf-trow. -->
+            <div class="mf-thead" aria-hidden="true">
+              <span>Icon</span>
+              <span>Type</span>
+              <span>Labels</span>
+              <span>Actions</span>
+            </div>
+            <div id="mfList"></div>
+            <p id="mfListError" class="search-panel__error" role="alert" hidden></p>
+          </div>
+        </div>
+
         <div class="uam-tab me-body" id="uamTabEstates" data-uam-panel="estates" hidden>
           <div class="me-list-head">
             <span>Estate</span>
@@ -342,38 +394,102 @@
                Estate row: a select with a small icon button beside it. -->
           <div class="uam-field-row u-gap-8">
             <select id="droneGroupSelect" class="uam-select">
-              <option value="">Survey…</option>
+              <option value="">— Select group —</option>
             </select>
             <button type="button" id="droneGroupAddBtn" class="uam-icon-btn"
-                    title="New survey" aria-label="New survey">
+                    title="New group" aria-label="New group">
               <i class="fas fa-plus" aria-hidden="true"></i>
             </button>
           </div>
           <p id="droneGroupDesc" class="uam-hint" hidden></p>
 
-          <!-- Doubles as the dropzone, exactly like #surveyFileLabel above.
-               Multiple, because a survey normally covers several sites and
-               they are uploaded together in one go. -->
-          <div class="uam-field-row">
-            <label id="droneFileLabel" class="uam-file-label uam-file-label--drop">
-              <i class="fas fa-cloud-upload-alt"></i>
-              <input id="droneFileInput" type="file" accept=".pmtiles" multiple
-                     class="uam-file-input">
-              <span id="droneFileName">Choose .pmtiles files or drop them here…</span>
-            </label>
+          <!-- Add vs Manage. Uploading files and pruning what's already in a
+               group are different jobs with different (and destructive vs
+               non-destructive) footer buttons, so they get their own modes
+               rather than sharing one long scrolling column where Upload and
+               Delete group sit side by side. syncDroneMode() in
+               js/drone-tiles.js swaps both the bodies and the footer. -->
+          <div class="popWinTabs drone-mode-tabs" id="droneModeTabs" role="tablist"
+               aria-label="Drone tile action">
+            <button type="button" class="search-tab" id="droneModeAdd" role="tab"
+                    aria-selected="true" data-drone-mode="add">
+              <i class="fas fa-cloud-arrow-up" aria-hidden="true"></i> Add
+            </button>
+            <button type="button" class="search-tab" id="droneModeManage" role="tab"
+                    aria-selected="false" data-drone-mode="manage">
+              <i class="fas fa-folder-open" aria-hidden="true"></i> Manage
+            </button>
           </div>
 
-          <p class="uam-hint">* One .pmtiles per site — several sites can share one survey.<br>
-            * Produced by the Raster Image Tiler (Formats → PMTiles).
-          </p>
+          <!-- ADD: choose files, see the queue, upload. -->
+          <div id="droneModePanelAdd" data-drone-panel="add">
+            <!-- Doubles as the dropzone, exactly like #surveyFileLabel above.
+                 Multiple, because a group normally covers several estates and
+                 they are uploaded together in one go. -->
+            <div class="uam-field-row">
+              <label id="droneFileLabel" class="uam-file-label uam-file-label--drop">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <input id="droneFileInput" type="file" accept=".pmtiles" multiple
+                       class="uam-file-input">
+                <span id="droneFileName">Choose .pmtiles files or drop them here…</span>
+              </label>
+            </div>
 
-          <!-- Filled by renderQueue(): one row per chosen file with its zoom
-               range and, during upload, its progress. -->
-          <div id="droneQueue" class="drone-queue" hidden></div>
+            <ul class="uam-hint uam-hint--bullets">
+              <li>Each estate should have one .pmtile file</li>
+              <li>Tiles for all estates should be uploaded to one group</li>
+              <li>Tiles are produced by the Raster Image Tiler — check the Resources tab</li>
+            </ul>
+
+            <!-- Filled by renderQueue(): one row per chosen file with its zoom
+                 range and, during upload, its progress. -->
+            <div id="droneQueue" class="drone-queue" hidden></div>
+          </div>
+
+          <!-- MANAGE: what's already in the selected group, each removable. -->
+          <div id="droneModePanelManage" data-drone-panel="manage" hidden>
+            <div id="droneExisting"></div>
+          </div>
+
           <p id="droneError" class="uam-hint uam-hint--blue" hidden></p>
+        </div>
 
-          <!-- Sites already in the selected survey, each deletable. -->
-          <div id="droneExisting"></div>
+        <!-- ── RESOURCES TAB ──
+             The off-map things a surveyor needs to get work INTO this app:
+             the import template that the Import tab's CSV parser expects,
+             and the desktop tiler that produces the .pmtiles the Drone tab
+             accepts. Static links, no JS.
+
+             The CSV uses `download` so it saves rather than opening as text
+             in a tab; the GitHub release is a normal outbound link, so it
+             opens in a new tab with rel="noopener" (without it, the opened
+             page can reach back through window.opener). -->
+        <div class="uam-tab" id="uamTabResources" data-uam-panel="resources" hidden>
+          <div class="res-group">
+            <p class="res-group__title">Templates</p>
+            <a class="res-item" href="./docs/csv%20file%20import%20template.csv"
+               download="csv file import template.csv">
+              <span class="res-item__icon"><i class="fas fa-file-csv" aria-hidden="true"></i></span>
+              <span class="res-item__text">
+                <span class="res-item__name">CSV import template</span>
+                <span class="res-item__desc">Column layout the Import tab expects for blocks and plots.</span>
+              </span>
+              <span class="res-item__action"><i class="fas fa-download" aria-hidden="true"></i></span>
+            </a>
+          </div>
+
+          <div class="res-group">
+            <p class="res-group__title">Tools</p>
+            <a class="res-item" href="https://github.com/IsmailSebz/imagetiler/releases"
+               target="_blank" rel="noopener noreferrer">
+              <span class="res-item__icon"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
+              <span class="res-item__text">
+                <span class="res-item__name">Raster Image Tiler</span>
+                <span class="res-item__desc">Turns an orthomosaic into the .pmtiles the Drone tab uploads. Opens GitHub releases.</span>
+              </span>
+              <span class="res-item__action"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></span>
+            </a>
+          </div>
         </div>
 
       </div><!-- .popWinBody -->
@@ -425,18 +541,34 @@
           <i class="fas fa-floppy-disk" aria-hidden="true"></i>Save
         </button>
       </div>
+      <div class="uam-actions-group" data-uam-actions="features" hidden>
+        <button type="button" id="mfAddBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
+          <i class="fas fa-plus" aria-hidden="true"></i> Add Feature
+        </button>
+      </div>
       <div class="uam-actions-group" data-uam-actions="estates" hidden>
         <button type="button" id="meAddBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">
           <i class="fas fa-plus" aria-hidden="true"></i> Add New
         </button>
       </div>
+      <!-- Two sets, swapped by the Add/Manage sub-tabs above rather than by
+           switchTab() — see syncDroneMode() in js/drone-tiles.js. Deleting a
+           whole group is destructive enough that it should never be one slip
+           away from Upload. -->
       <div class="uam-actions-group" data-uam-actions="drone" hidden>
-        <button type="button" id="droneUploadBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
-          <i class="fas fa-cloud-arrow-up" aria-hidden="true"></i> Upload
-        </button>
-        <button type="button" id="droneClearBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger" disabled>
-          <i class="fas fa-eraser" aria-hidden="true"></i> Clear
-        </button>
+        <span data-drone-actions="add">
+          <button type="button" id="droneUploadBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+            <i class="fas fa-cloud-arrow-up" aria-hidden="true"></i> Upload
+          </button>
+          <button type="button" id="droneClearBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger" disabled>
+            <i class="fas fa-eraser" aria-hidden="true"></i> Clear
+          </button>
+        </span>
+        <span data-drone-actions="manage" hidden>
+          <button type="button" id="droneDeleteGroupBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad futuristic-icon-btn--danger" disabled>
+            <i class="fas fa-trash" aria-hidden="true"></i> Delete group
+          </button>
+        </span>
       </div>
       <div class="uam-actions-group" data-uam-actions="export" hidden>
         <button type="button" id="exportCancelBtn" class="futuristic-icon-btn btn-clear futuristic-icon-btn--modal-pad">Cancel</button>

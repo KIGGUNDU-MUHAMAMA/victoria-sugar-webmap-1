@@ -125,6 +125,19 @@
         </button>
       </div>
 
+      <!-- Messages — same floating-circle treatment as Locate Me, pinned to
+           the map's bottom-LEFT instead of bottom-right (see
+           .map-floating-messages in styles.css). Deliberately NOT inside
+           #mapLeftBtnStack: that stack is the tool menu at the top-left and
+           gets hidden wholesale in print/drafting mode, whereas a
+           conversation should stay reachable. Opens
+           windows/messages-panel.html — setupMessagesPanel() in
+           js/map-app.js. -->
+      <button type="button" class="floating-btn map-floating-messages" id="messagesBtn"
+              title="Messages" aria-label="Messages" aria-expanded="false" aria-controls="messagesPanel">
+        <i class="fas fa-comment-dots"></i>
+      </button>
+
       <!-- LOCATE ME BUTTON, FULL SCREEN, LAYERS (reparented via JS target
            option) and LEGEND — visual order is controlled entirely by CSS
            `order` on #mapRightBtnStack children (see styles.css), not by

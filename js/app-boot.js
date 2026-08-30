@@ -65,17 +65,27 @@ const WINDOW_FRAGMENTS = [
   { parent: "body", url: "./windows/resolve-alert-modal.html" },
   // Opened by clicking the account button in the top controls (was a direct Sign Out button).
   { parent: "body", url: "./windows/profile-modal.html" },
-  // Opened from the pencil button next to the Survey window's Draw tab
-  // Feature dropdown (js/survey-draw.js / js/manage-features.js).
-  { parent: "body", url: "./windows/manage-features-panel.html" },
-  // Per-type settings window opened from the list above (and its stacked
-  // icon-library picker) — see js/feature-type-editor.js.
+  // NOTE: windows/manage-features-panel.html is no longer loaded — the
+  // feature-type list moved out of its own modal and into the Survey
+  // window's Features tab (windows/survey-panel.html #uamTabFeatures,
+  // driven by the same js/manage-features.js against the same element ids).
+  // Same treatment manage-estates-panel.html got below: the old fragment
+  // file is left in place unreferenced rather than deleted.
+  //
+  // Per-type settings window, opened from a row in that tab (and its
+  // stacked icon-library picker) — see js/feature-type-editor.js. This one
+  // IS still a real modal, since it stacks on top of the list.
   { parent: "body", url: "./windows/feature-type-editor.html" },
   // NOTE: windows/manage-estates-panel.html is no longer loaded — estate
   // management moved from a separate modal into the Survey window's own
   // Estates tab (see windows/survey-panel.html #uamTabEstates and
   // js/manage-estates.js). The old fragment file is left in place
   // unreferenced rather than deleted.
+
+  // Messages — a floating chat card anchored above its own bottom-left FAB
+  // (#messagesBtn). Body-level rather than in a map stack so it isn't
+  // swept away with the tool stacks in print/drafting mode.
+  { parent: "body", url: "./windows/messages-panel.html" },
 
   // Shared confirm/prompt popup shell (see popups/popup.js showPopup()) —
   // one instance reused by every small dialog across the app.

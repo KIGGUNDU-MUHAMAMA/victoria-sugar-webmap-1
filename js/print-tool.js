@@ -310,6 +310,18 @@ export function initPrintTool({
     return layout;
   }
 
+  /** Whether the printed page will carry a Comments box.
+   *
+   *  The setting reserves an EMPTY box; a comment that was actually typed
+   *  forces one regardless, so a note can't silently vanish because the box
+   *  is switched off. Shared by targetAspectRatio() and generatePdf()
+   *  because the box takes real space in the layout — if the on-screen
+   *  aspect lock and the PDF disagreed about it, a locked selection would
+   *  letterbox inside its own frame. */
+  function willShowComments() {
+    return !!settings.details.comments || !!(commentInput?.value || "").trim();
+  }
+
   /** Width:height the selection must hold to fill the printed map frame
    *  exactly, for the orientation the user is aiming at. */
   function targetAspectRatio(orientation) {
@@ -317,7 +329,7 @@ export function initPrintTool({
       legend: settings.details.legend,
       northArrow: settings.details.northArrow,
       qr: settings.details.qr,
-      summary: settings.details.comments,
+      summary: willShowComments(),
       stamp: settings.details.date || settings.details.source || settings.details.printedBy
     });
     return l.mapAreaW / l.mapAreaH;
@@ -478,20 +490,29 @@ export function initPrintTool({
   const titleCard = document.createElement("div");
   titleCard.className = "vsl-print-title-card";
   titleCard.hidden = true;
+  // Two fields: the map's title, and a free-text comment printed into the
+  // PDF's reserved COMMENTS box (see drawCommentsCell in generatePdf). The
+  // comment is a <textarea> because it's a note rather than a caption — it
+  // wraps, and the printed box is several lines tall.
   titleCard.innerHTML = `
     <input type="text" class="vsl-print-title-card__title" placeholder="Untitled Map" maxlength="90">
+    <textarea class="vsl-print-title-card__comment" rows="2" maxlength="400"
+              placeholder="Add a comment"></textarea>
   `;
   const titleInput = titleCard.querySelector(".vsl-print-title-card__title");
+  const commentInput = titleCard.querySelector(".vsl-print-title-card__comment");
 
-  /** The card has two states. Editing: full size, input focusable and its
-   *  placeholder visible. Resting (after it loses focus): the --resting
-   *  class shrinks it to a compact caption. The value itself is never
-   *  touched — generatePdf still reads titleInput exactly as before. */
+  /** The card has two states. Editing: full size, both fields focusable and
+   *  the comment box visible. Resting (after focus leaves the whole card):
+   *  the --resting class shrinks it to a compact caption and hides the
+   *  comment entirely, so print mode stays uncluttered. Neither value is
+   *  ever touched — generatePdf reads them both exactly as typed. */
   function setTitleEditing(editing) {
     titleCard.classList.toggle("vsl-print-title-card--resting", !editing);
-    // Read-only at rest, so the caret can't land in it without going
-    // through the click handler that restores editing.
+    // Read-only at rest, so the caret can't land in either field without
+    // going through the click handler that restores editing.
     titleInput.readOnly = !editing;
+    commentInput.readOnly = !editing;
   }
 
   function enterTitleEditing() {
@@ -502,15 +523,31 @@ export function initPrintTool({
   }
 
   function leaveTitleEditing() {
-    // Nothing typed — fold the card back into the button so print mode
-    // looks as clean as it did before the user opened it.
-    if (!titleInput.value.trim()) {
+    // Nothing typed in EITHER field — fold the card back into the button so
+    // print mode looks as clean as it did before the user opened it. A
+    // comment on its own is still worth keeping: it prints even when the
+    // map is untitled.
+    if (!titleInput.value.trim() && !commentInput.value.trim()) {
       titleCard.hidden = true;
       addTitleBtn.hidden = false;
       return;
     }
     setTitleEditing(false);
   }
+
+  // A comment forces the Comments box on (willShowComments), and that box
+  // takes real space — so the first character typed, and the last one
+  // deleted, change the page's map frame and therefore the aspect ratio a
+  // locked selection has to hold. Only the empty <-> non-empty transition
+  // matters, so the reflow is gated on that rather than fired per keystroke.
+  let commentWasEmpty = true;
+  commentInput.addEventListener("input", () => {
+    const isEmpty = !commentInput.value.trim();
+    if (isEmpty === commentWasEmpty) return;
+    commentWasEmpty = isEmpty;
+    // No-op unless the lock is on and a selection exists.
+    reflowLockedSelection();
+  });
 
   addTitleBtn.addEventListener("click", enterTitleEditing);
 
@@ -519,11 +556,20 @@ export function initPrintTool({
     if (titleCard.classList.contains("vsl-print-title-card--resting")) enterTitleEditing();
   });
 
-  titleCard.addEventListener("focusout", leaveTitleEditing);
+  // focusout fires when moving BETWEEN the two fields as well as when
+  // leaving the card, so relatedTarget decides which happened — without
+  // this, tabbing from the title into the comment would collapse the card
+  // out from under the cursor. relatedTarget is null when focus leaves the
+  // document entirely (window blur), which counts as leaving.
+  titleCard.addEventListener("focusout", (e) => {
+    if (e.relatedTarget && titleCard.contains(e.relatedTarget)) return;
+    leaveTitleEditing();
+  });
 
-  // Escape or Enter finishes editing.
+  // Escape always finishes editing. Enter does too, but only from the
+  // single-line title — in the comment box it has to insert a newline.
   titleCard.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" || e.key === "Enter") {
+    if (e.key === "Escape" || (e.key === "Enter" && e.target === titleInput)) {
       e.preventDefault();
       e.target.blur();
     }
@@ -3201,7 +3247,7 @@ export function initPrintTool({
       const showNorthArrow = !!settings.details.northArrow;
       const showQr = !!qrDataUrl;
       const showCounts = !!settings.details.counts;
-      const showSummary = !!settings.details.comments; // the reserved Comments box
+      const showSummary = willShowComments(); // see that function's note
       const showStamp = !!(
         settings.details.date || settings.details.source ||
         (settings.details.printedBy && currentUserName())
@@ -3215,6 +3261,8 @@ export function initPrintTool({
       const mapAreaW = L.mapAreaW;
       const mapAreaH = L.mapAreaH;
       const title = (titleInput.value || "").trim();
+      // Printed into the COMMENTS box below — see drawCommentsCell.
+      const comment = (commentInput.value || "").trim();
 
       // Letterbox into the map frame without distorting. With the aspect
       // lock on this is a no-op (the ratios match); with it off, this is
@@ -3534,10 +3582,19 @@ export function initPrintTool({
         doc.addImage(qrDataUrl, "PNG", x + pad, y + pad, size - pad * 2, size - pad * 2);
       };
 
-      /** Reserved "Comments" box — the counts it used to hold moved into
-       *  the legend itself (a count column per row), which puts each
-       *  number next to the symbol it belongs to. The box is kept as
-       *  deliberate blank space for a written note. */
+      /** "Comments" box — the counts it used to hold moved into the legend
+       *  itself (a count column per row), which puts each number next to
+       *  the symbol it belongs to.
+       *
+       *  It now prints whatever was typed into the title card's comment
+       *  field (windows-less UI built in this file; see commentInput).
+       *  Left blank — as deliberate space for a handwritten note — when
+       *  nothing was typed, which is what it always was.
+       *
+       *  jsPDF's splitTextToSize does the wrapping at the box's real width;
+       *  lines past the box's height are dropped rather than spilling over
+       *  the border, with the last surviving line ellipsised so it's
+       *  obvious the note was cut rather than finished. */
       const drawCommentsCell = (x, y, w, h) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
@@ -3547,6 +3604,38 @@ export function initPrintTool({
         doc.setFontSize(8);
         doc.setTextColor(30, 42, 30);
         doc.text("COMMENTS", x + 8, y + 13);
+
+        if (!comment) return;
+
+        const padX = 8;
+        const fontSize = 7.5;
+        const lineH = fontSize * 1.25;
+        const textTop = y + 13 + 9;             // under the heading
+        const avail = h - (textTop - y) - 6;    // minus a bottom margin
+        const maxLines = Math.floor(avail / lineH);
+        if (maxLines < 1) return;               // box too short for any text
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(fontSize);
+        doc.setTextColor(55, 65, 55);
+
+        // Honour the person's own line breaks, then wrap each paragraph.
+        let lines = [];
+        for (const para of String(comment).split(/\r?\n/)) {
+          lines = lines.concat(
+            para.trim() ? doc.splitTextToSize(para, w - padX * 2) : [""]
+          );
+        }
+
+        if (lines.length > maxLines) {
+          lines = lines.slice(0, maxLines);
+          const last = lines[maxLines - 1];
+          lines[maxLines - 1] = last.length > 1 ? `${last.slice(0, -1).trimEnd()}…` : "…";
+        }
+
+        lines.forEach((line, i) => {
+          doc.text(line, x + padX, textTop + i * lineH);
+        });
       };
 
       if (L.landscape) {

@@ -5303,6 +5303,58 @@ function syncPanelToggleState() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Messages panel (windows/messages-panel.html)
+//
+// UI ONLY at this stage — nothing here sends, receives or stores a message.
+// What IS wired: open/close, Escape to close, the composer's auto-grow, and
+// enabling Send only once something has been typed. The thread renders its
+// empty state and is otherwise untouched.
+// ---------------------------------------------------------------------------
+function setupMessagesPanel() {
+  const panel = document.getElementById("messagesPanel");
+  const btn = document.getElementById("messagesBtn");
+  const closeBtn = document.getElementById("messagesCloseBtn");
+  const input = document.getElementById("messagesInput");
+  const sendBtn = document.getElementById("messagesSendBtn");
+  if (!panel || !btn) return;
+
+  function setOpen(open) {
+    panel.hidden = !open;
+    btn.classList.toggle("active", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) input?.focus();
+  }
+
+  btn.addEventListener("click", () => setOpen(panel.hidden));
+  closeBtn?.addEventListener("click", () => setOpen(false));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !panel.hidden) setOpen(false);
+  });
+
+  // Auto-grow: reset to `auto` first so the box can SHRINK again when text
+  // is deleted — scrollHeight only ever reports the content height for the
+  // current box, so measuring without the reset would ratchet upwards.
+  // The CSS max-height then takes over and it scrolls.
+  function autoGrow() {
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${input.scrollHeight}px`;
+  }
+
+  input?.addEventListener("input", () => {
+    autoGrow();
+    if (sendBtn) sendBtn.disabled = !input.value.trim();
+  });
+
+  // Enter sends, Shift+Enter makes a new line — the chat convention. No-op
+  // beyond preventing the newline until there's sending logic to call.
+  input?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) e.preventDefault();
+  });
+}
+
 function setupLegendPanel() {
   const btn = document.getElementById("legendBtn");
   const closeBtn = document.getElementById("legendCloseBtn");
@@ -7373,6 +7425,7 @@ async function initMap() {
   setupInfoPopup();
   setupParcelActionToolbar();
   setupLegendPanel();
+  setupMessagesPanel();
   setupToolStackCollapse();
   setupSnapPanel();
   setupLogActivityModal();

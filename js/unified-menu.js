@@ -18,6 +18,22 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
   if (!fabBtn || !overlay) return;
 
+  // Docked windows are stretched to .map-left-stack's width (it's a flex
+  // column with align-items: stretch), so making the Survey window wider
+  // means widening that CONTAINER — a width, or a flex-basis, on the panel
+  // itself has no effect on its horizontal size at all (a flex-basis there
+  // is its HEIGHT). Only this module knows which tab is showing, so it owns
+  // the class. Declared up here with the other refs because syncPanelWidth
+  // is called from openMenu/closeMenu below.
+  const dockColumn = overlay.closest(".map-left-stack");
+
+  /** Tabs whose content genuinely needs more than the container's 400px. */
+  const WIDE_TABS = new Set(["features","drone"]);
+
+  function syncPanelWidth(tabId) {
+    dockColumn?.classList.toggle("map-left-stack--wide", WIDE_TABS.has(tabId));
+  }
+
   // ── Open / Close ──────────────────────────────────────────────
   function openMenu() {
     // Close other panels at DOM level to prevent overlap
@@ -42,6 +58,9 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
     overlay.hidden = false;
     overlay.setAttribute("aria-hidden", "false");
+    // Restore the width for whichever tab is still selected from last time
+    // (closeMenu clears it so the other windows aren't affected).
+    syncPanelWidth(overlay.dataset.activeTab || null);
     fabBtn.classList.add("uam-open");
     fabBtn.setAttribute("aria-expanded", "true");
     // Ensure first tab is shown if none active
@@ -67,6 +86,9 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     // Export's click/box selection listens on the map itself, so it would
     // otherwise keep swallowing map clicks after this window is gone.
     if (typeof window.vslStopExportSelection === "function") window.vslStopExportSelection();
+    // Search, Measure and Select share this container — leaving it wide
+    // would silently resize whichever of them opens next.
+    syncPanelWidth(null);
     overlay.hidden = true;
     overlay.setAttribute("aria-hidden", "true");
     fabBtn.classList.remove("uam-open");
@@ -100,6 +122,11 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     if (current === "export" && typeof window.vslStopExportSelection === "function") {
       window.vslStopExportSelection();
     }
+    // Published on the window itself so anything else can read which tab is
+    // showing. Set before the panels swap so a resize and the content change
+    // land in the same frame.
+    overlay.dataset.activeTab = tabId;
+    syncPanelWidth(tabId);
     navBtns.forEach(btn => {
       const active = btn.dataset.uamTab === tabId;
       btn.setAttribute("aria-selected", active ? "true" : "false");

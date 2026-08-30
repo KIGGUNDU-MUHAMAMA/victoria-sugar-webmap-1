@@ -48,14 +48,19 @@ function escapeHtml(s) {
 }
 
 export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
-  const overlay = document.getElementById("manageFeaturesModal");
-  const closeBtn = document.getElementById("manageFeaturesCloseBtn");
+  // The list now lives in the Survey window's Features tab
+  // (windows/survey-panel.html #uamTabFeatures) rather than in its own
+  // overlay, so there's no overlay or close button to bind — the tab's own
+  // window owns both. Everything below binds to the same ids as before.
+  const listWrap = document.getElementById("mfListWrap");
   const tabsEl = document.getElementById("mfTabs");
   const listEl = document.getElementById("mfList");
   const listError = document.getElementById("mfListError");
   const addBtn = document.getElementById("mfAddBtn");
 
-  if (!overlay || !listEl) return null;
+  // The tab's markup is a Survey-window fragment, so bail out cleanly if
+  // that fragment failed to load rather than throwing on every helper below.
+  if (!listWrap || !listEl) return null;
 
   // Only the active tab's kind is held here — switching tabs refetches.
   let activeKind = "point";
@@ -269,17 +274,26 @@ export function initManageFeatures({ cfg, supabase, setStatus, statusEl }) {
     }
   });
 
+  /** Opens the Survey window on the Features tab and refreshes the list.
+   *  window.openUamTab is unified-menu.js's hook — it opens the window if
+   *  it's closed and switches tabs either way. Kept as the module's public
+   *  entry point so callers don't need to know where the list now lives. */
   async function open() {
-    overlay.hidden = false;
+    window.openUamTab?.("features");
     await refreshList();
   }
+
+  /** No-op kept for API compatibility — closing is the Survey window's job
+   *  now, and callers that used to close this overlay want the window
+   *  closed, not the tab hidden underneath it. */
   function close() {
-    overlay.hidden = true;
+    window.closeMenu?.();
   }
 
-  closeBtn?.addEventListener("click", close);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) close();
+  // Re-fetch whenever the person lands on the tab, so a type added or
+  // deleted elsewhere (or by another user) shows up without reopening.
+  document.querySelector('[data-uam-tab="features"]')?.addEventListener("click", () => {
+    refreshList();
   });
 
   window.openManageFeaturesPanel = open;

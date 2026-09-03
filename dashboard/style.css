@@ -408,7 +408,81 @@ input.form-input:focus, select.form-input:focus {
   max-height: 90vh;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  transition: width .15s;
 }
+/* Opt-in wider variant (see showModal({wide:true}) in app.js) — for forms
+   with fields that want room to sit side by side. */
+.modal-box.modal-wide { width: 720px; }
+
+/* ── Reports fixed toggle table (Add/Edit Subscriber modal) ──
+   Always exactly 4 rows, one per report type — no add/remove, so no
+   duplication is possible by construction. Each row: on/off toggle,
+   a multi-select Estate dropdown (checkboxes, "All Estates" mutually
+   exclusive with individual picks), and Frequency checkboxes. Toggling a
+   row off never clears its estate/frequency choices — it just greys the
+   row out and disables its controls, since the row itself still persists
+   in the database with enabled = false (see decisions in app.js). */
+.reports-toggle-table { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: visible; }
+/* Header row: styling lives on ".rtt-head > span" only, kept completely
+   separate from the data-row column classes below (rtcol-*), which are
+   layout-only (width/flex) and carry no font/color of their own — sharing
+   a class between the header label and the data cell was what previously
+   made "REPORT TYPE" render in the bold black row style instead of the
+   small green header style. */
+.rtt-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 14px; background: var(--green-50);
+}
+.rtt-head > span { font-size: 10px; font-weight: 700; letter-spacing: .6px; color: var(--green-700); }
+.report-toggle-row {
+  display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+  border-top: 1px solid var(--gray-100);
+  transition: opacity .15s, background-color .15s;
+}
+/* Dim everything except the toggle itself when a row is off — the toggle
+   must always stay at full visibility/contrast so it's obvious how to
+   switch the row back on. */
+.report-toggle-row.is-disabled { background: var(--gray-50); }
+.report-toggle-row.is-disabled .rtcol-type,
+.report-toggle-row.is-disabled .rtcol-estate,
+.report-toggle-row.is-disabled .rtcol-freq { opacity: .5; }
+.rtcol-toggle { width: 40px;  flex-shrink: 0; }
+.rtcol-type   { width: 130px; flex-shrink: 0; }
+.rtcol-estate { width: 155px; flex-shrink: 0; position: relative; }
+.rtcol-freq   { flex: 1 1 200px; min-width: 200px; display: flex; flex-wrap: wrap; gap: 6px; }
+.rtr-type-text { font-weight: 700; font-size: 13px; color: var(--gray-900); }
+
+/* Frequency pills — click to select/deselect, same look as other pill
+   controls in the app (e.g. Name/Dist), not checkboxes. */
+.freq-pill {
+  border: 1px solid var(--gray-300); background: #fff; color: var(--gray-700);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+}
+.freq-pill:hover:not(:disabled) { border-color: var(--green-400); }
+.freq-pill.is-selected { background: var(--green-50); border-color: var(--green-600); color: var(--green-700); }
+.freq-pill:disabled { cursor: default; opacity: .7; }
+
+/* Multi-select Estate dropdown, built from a native <details>/<summary> so
+   it needs no open/close JS of its own. */
+.estate-multiselect { position: relative; }
+.estate-multiselect-summary {
+  list-style: none; cursor: pointer; font-size: 12px; padding: 6px 10px;
+  border: 1px solid var(--gray-300); border-radius: 6px; background: #fff;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.estate-multiselect-summary::-webkit-details-marker { display: none; }
+.estate-multiselect-summary::after { content: '\25be'; font-size: 10px; color: var(--gray-500); flex-shrink: 0; }
+.estate-multiselect[open] > .estate-multiselect-summary { border-color: var(--green-600); }
+.estate-multiselect-panel {
+  position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; min-width: 190px;
+  max-height: 220px; overflow-y: auto; background: #fff; border: 1px solid var(--gray-300);
+  border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.14); padding: 6px;
+}
+.estate-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; padding: 5px 6px; border-radius: 5px; cursor: pointer; }
+.estate-opt:hover { background: var(--green-50); }
+.report-toggle-row.is-disabled .estate-multiselect-summary { pointer-events: none; cursor: default; }
 
 /* Header + footer bands (shared "computer window" chrome) */
 .popWinHead, .popWinActionBtns { background: var(--green-800); flex-shrink: 0; }
@@ -564,18 +638,24 @@ input.form-input:focus, select.form-input:focus {
 .settings-label { font-size: 13px; color: var(--gray-700); }
 .settings-desc  { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
 
-.toggle-switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+.toggle-switch {
+  display: inline-block; position: relative;
+  width: 40px; height: 22px; flex-shrink: 0;
+}
 .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .toggle-slider {
-  position: absolute; inset: 0; background: var(--gray-300);
-  border-radius: 22px; cursor: pointer; transition: background .2s;
+  position: absolute; inset: 0; background: var(--green-50);
+  border: 1.5px solid var(--green-600);
+  border-radius: 22px; cursor: pointer; transition: background .2s, border-color .2s;
+  box-sizing: border-box;
 }
 .toggle-slider::before {
   content: ''; position: absolute;
   width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; top: 3px; left: 3px; transition: transform .2s;
+  background: #fff; top: 2px; left: 2px; transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.35);
 }
-.toggle-switch input:checked + .toggle-slider { background: var(--green-400); }
+.toggle-switch input:checked + .toggle-slider { background: var(--green-800); border-color: var(--green-800); }
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
 
 /* ═══════════════════════════════════════

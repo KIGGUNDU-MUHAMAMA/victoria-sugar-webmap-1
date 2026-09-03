@@ -3585,9 +3585,16 @@ function renderUsers(el) {
 function renderNotifications(el) {
   let subscribers = [...DATA.emailSubscribers];
 
+  function estatesLabel(estates) {
+    if (!estates || !estates.length || estates.includes('All Estates')) return 'All Estates';
+    return estates.join(', ');
+  }
+
   function renderSubList() {
     if (!subscribers.length) return '<div style="padding:20px;text-align:center;color:var(--gray-500)">No subscribers yet.</div>';
-    return subscribers.map(s=>`
+    return subscribers.map(s=>{
+      const active = (s.reports || []).filter(r => r.enabled);
+      return `
       <div class="email-row" id="sub-${s.id}">
         <div class="user-avatar" style="font-size:10px;flex-shrink:0">
           ${s.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
@@ -3596,22 +3603,148 @@ function renderNotifications(el) {
           <div style="font-weight:600;font-size:13px">${s.name}</div>
           <div style="font-size:11px;color:var(--gray-500)">${s.email}</div>
         </div>
-        <div style="font-size:11px;min-width:80px">${pill(s.frequency,s.frequency==='Weekly'?'blue':s.frequency==='Monthly'?'green':'amber')}</div>
-        <div style="font-size:11px;color:var(--gray-500);min-width:100px">${s.estate||'All Estates'}</div>
-        <div style="font-size:11px;color:var(--gray-500);min-width:140px">${(s.reportTypes && s.reportTypes.length) ? s.reportTypes.join(', ') : 'Summary Report'}</div>
+        <div style="font-size:11px;color:var(--gray-500);min-width:220px">
+          ${active.length
+            ? active.map(r => `<div style="margin-bottom:2px"><strong style="color:var(--gray-700)">${r.reportType}</strong> @ ${estatesLabel(r.estates)} — ${r.frequencies.join(', ')}</div>`).join('')
+            : '<span style="color:var(--red-500)">All reports off</span>'}
+        </div>
         <div style="font-size:11px;color:var(--gray-500);min-width:90px">Sent: ${s.lastSent}</div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="icon-btn" onclick="showEditSubscriberModal('${s.id}')" title="Edit">\u270e</button>
           <button class="icon-btn primary" onclick="sendEmailNow('${s.id}','${s.email}')" title="Send Now">\ud83d\udce4</button>
           <button class="icon-btn danger" onclick="removeSubscriber('${s.id}')" title="Remove">\ud83d\uddd1</button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   const REPORT_TYPES = ['Land Status Reports','Activity Reports','Harvests Reports','Summary Report'];
+  const REPORT_FREQUENCIES = ['Daily','Weekly','Monthly'];
+  // Sensible starting frequency per report type \u2014 pre-filled so a brand
+  // new subscriber's rows already make sense without an admin having to
+  // think about each one, but every box stays fully editable afterwards.
+  const REPORT_TYPE_DEFAULT_FREQUENCIES = {
+    'Land Status Reports': ['Weekly'],
+    'Activity Reports':    ['Daily'],
+    'Harvests Reports':    ['Weekly'],
+    'Summary Report':      ['Monthly'],
+  };
 
-  function subscriberFormFields(prefix, s) {
-    const selectedTypes = (s?.reportTypes && s.reportTypes.length) ? s.reportTypes : (s ? [] : ['Summary Report']);
+  // \u2500\u2500 DRAFT STATE for the Add/Edit Subscriber modal \u2500\u2500
+  // Fixed 4-row toggle table: always exactly one entry per REPORT_TYPES, in
+  // order, so duplicate report-type rows are impossible by construction
+  // (there is no add/remove any more). Toggling a row off ("enabled: false")
+  // never clears its estates/frequencies \u2014 those are preserved so
+  // re-enabling later restores them, and the row is always written to the
+  // DB either way (see addSubscriber/submitEditSubscriber below).
+  let draftReports    = [];   // [{ reportType, enabled, estates: [], frequencies: [] }]
+  let draftName       = '';
+  let draftEmail      = '';
+  let draftEditingId  = null; // recipient id when editing, null when adding
+
+  function defaultDraftReports() {
+    return REPORT_TYPES.map(t => ({
+      reportType: t,
+      enabled: true,
+      estates: ['All Estates'],
+      frequencies: [...(REPORT_TYPE_DEFAULT_FREQUENCIES[t] || [])],
+    }));
+  }
+
+  function refreshReportsTable(prefix) {
+    const tableEl = document.getElementById(`${prefix}-reports-table`);
+    if (tableEl) tableEl.innerHTML = reportsTableHTML(prefix);
+  }
+
+  function reportsTableHTML(prefix) {
+    const rows = draftReports.map((r, idx) => {
+      const disabled = !r.enabled;
+      const estateOptions = [
+        `<label class="estate-opt"><input type="checkbox" value="All Estates" ${r.estates.includes('All Estates')?'checked':''} ${disabled?'disabled':''} onchange="onEstateOptionToggle('${prefix}',${idx},'All Estates',this.checked)"> All Estates</label>`,
+        ...DATA.estates.map(e => `<label class="estate-opt"><input type="checkbox" value="${e.name}" ${r.estates.includes(e.name)?'checked':''} ${disabled?'disabled':''} onchange="onEstateOptionToggle('${prefix}',${idx},'${e.name}',this.checked)"> ${e.name}</label>`),
+      ].join('');
+      // Frequency is a row of pill buttons (click to toggle selected), not
+      // checkboxes — matches the Name/Dist pill style used elsewhere.
+      const freqPills = REPORT_FREQUENCIES.map(f => `
+        <button type="button" class="freq-pill${r.frequencies.includes(f)?' is-selected':''}" ${disabled?'disabled':''} onclick="onFrequencyPillClick('${prefix}',${idx},'${f}',this)">${f}</button>`).join('');
+      return `
+      <div class="report-toggle-row${disabled ? ' is-disabled' : ''}">
+        <div class="rtcol-toggle">
+          <label class="toggle-switch">
+            <input type="checkbox" ${r.enabled?'checked':''} onchange="onReportEnabledToggle('${prefix}',${idx},this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="rtcol-type"><span class="rtr-type-text">${r.reportType}</span></div>
+        <div class="rtcol-estate">
+          <details class="estate-multiselect">
+            <summary id="${prefix}-est-summary-${idx}" class="estate-multiselect-summary">${estatesLabel(r.estates)}</summary>
+            <div class="estate-multiselect-panel" id="${prefix}-est-panel-${idx}">${estateOptions}</div>
+          </details>
+        </div>
+        <div class="rtcol-freq">${freqPills}</div>
+      </div>`;
+    }).join('');
+    return `
+    <div class="reports-toggle-table">
+      <div class="rtt-head">
+        <span class="rtcol-toggle"></span>
+        <span class="rtcol-type">REPORT TYPE</span>
+        <span class="rtcol-estate">ESTATE(S)</span>
+        <span class="rtcol-freq">FREQUENCY</span>
+      </div>
+      ${rows}
+    </div>`;
+  }
+
+  // Close any open Estate dropdown when clicking outside it (a native
+  // <details> element doesn't do this on its own). Bound once per page load.
+  if (!window.__estateMultiselectCloserBound) {
+    window.__estateMultiselectCloserBound = true;
+    document.addEventListener('click', e => {
+      document.querySelectorAll('details.estate-multiselect[open]').forEach(d => {
+        if (!d.contains(e.target)) d.removeAttribute('open');
+      });
+    });
+  }
+
+  window.onReportEnabledToggle = function(prefix, idx, checked) {
+    // Flipping the toggle only edits this row's enabled flag \u2014 the
+    // estate/frequency choices already on the row are left exactly as they
+    // are, not cleared, so switching back on restores them.
+    draftReports[idx].enabled = checked;
+    refreshReportsTable(prefix);
+  };
+
+  window.onFrequencyPillClick = function(prefix, idx, freq, btnEl) {
+    const r = draftReports[idx];
+    const wasSelected = r.frequencies.includes(freq);
+    r.frequencies = wasSelected ? r.frequencies.filter(f => f !== freq) : [...r.frequencies, freq];
+    // Toggle the button's own look in place rather than re-rendering the
+    // whole table — keeps any open Estate dropdown on another row open.
+    if (btnEl) btnEl.classList.toggle('is-selected', !wasSelected);
+  };
+
+  window.onEstateOptionToggle = function(prefix, idx, value, checked) {
+    const r = draftReports[idx];
+    if (value === 'All Estates') {
+      r.estates = checked ? ['All Estates'] : [];
+    } else if (checked) {
+      r.estates = [...r.estates.filter(e => e !== 'All Estates'), value];
+    } else {
+      r.estates = r.estates.filter(e => e !== value);
+    }
+    if (!r.estates.length) r.estates = ['All Estates']; // never allow an empty selection
+    // Update just the summary label + the checkboxes already in the open
+    // panel, in place \u2014 a full table re-render would close the dropdown
+    // after every single click, which defeats picking several estates at once.
+    const summaryEl = document.getElementById(`${prefix}-est-summary-${idx}`);
+    if (summaryEl) summaryEl.textContent = estatesLabel(r.estates);
+    const panel = document.getElementById(`${prefix}-est-panel-${idx}`);
+    if (panel) panel.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = r.estates.includes(cb.value); });
+  };
+
+  function subscriberFormFields(prefix) {
     return `
       <div class="form-group" style="margin-bottom:12px">
         <label class="form-label">Select Existing User (optional)</label>
@@ -3622,32 +3755,14 @@ function renderNotifications(el) {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Full Name</label>
-          <input class="form-input" id="${prefix}-name" placeholder="Recipient name" value="${s?.name||''}"></div>
+          <input class="form-input" id="${prefix}-name" placeholder="Recipient name" value="${draftName||''}"></div>
         <div class="form-group"><label class="form-label">Email Address</label>
-          <input class="form-input" id="${prefix}-email" type="email" placeholder="email@example.com" value="${s?.email||''}"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Frequency</label>
-          <select class="form-input" id="${prefix}-freq">
-            ${['Daily','Weekly','Monthly'].map(f=>`<option ${s?.frequency===f?'selected':''}>${f}</option>`).join('')}
-          </select></div>
-        <div class="form-group"><label class="form-label">Estate</label>
-          <select class="form-input" id="${prefix}-estate">
-            <option value="All Estates" ${!s||s.estate==='All Estates'?'selected':''}>All Estates</option>
-            ${DATA.estates.map(e=>`<option ${s?.estate===e.name?'selected':''}>${e.name}</option>`).join('')}
-          </select></div>
+          <input class="form-input" id="${prefix}-email" type="email" placeholder="email@example.com" value="${draftEmail||''}"></div>
       </div>
       <div class="form-group" style="margin-bottom:12px">
-        <label class="form-label">Report Types <span style="font-weight:400;color:var(--gray-500)">(select one or more)</span></label>
-        <div id="${prefix}-types" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">
-          ${REPORT_TYPES.map((t,i)=>`
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer">
-              <input type="checkbox" value="${t}" ${selectedTypes.includes(t)?'checked':''}> ${t}
-            </label>`).join('')}
-        </div></div>`;
-  }
-  function readSelectedReportTypes(prefix) {
-    return Array.from(document.querySelectorAll(`#${prefix}-types input[type="checkbox"]:checked`)).map(cb => cb.value);
+        <label class="form-label">Reports</label>
+        <div id="${prefix}-reports-table">${reportsTableHTML(prefix)}</div>
+      </div>`;
   }
 
   window.onSubscriberUserPick = function(prefix) {
@@ -3658,42 +3773,72 @@ function renderNotifications(el) {
     document.getElementById(`${prefix}-email`).value = opt.dataset.email || '';
   };
 
+  // Renders the Add/Edit Subscriber modal from current draft state.
+  function renderSubscriberModal(prefix) {
+    if (prefix === 'nsub') {
+      showModal(`
+        <div class="modal-title">Add Subscriber</div>
+        ${subscriberFormFields('nsub')}
+        <div class="modal-actions">
+          <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="addSubscriber()">Save Subscriber</button>
+        </div>`, { wide: true });
+    } else {
+      showModal(`
+        <div class="modal-title">Edit Subscriber \u2014 ${draftName}</div>
+        ${subscriberFormFields('esub')}
+        <div class="modal-actions">
+          <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="submitEditSubscriber('${draftEditingId}')">Save Changes</button>
+        </div>`, { wide: true });
+    }
+  }
+
   window.showAddSubscriberModal = function() {
-    showModal(`
-      <div class="modal-title">Add Subscriber</div>
-      ${subscriberFormFields('nsub', null)}
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="addSubscriber()">Save Subscriber</button>
-      </div>`);
+    // New subscribers start with every report type ON and set to All
+    // Estates, per the fixed-table default.
+    draftReports = defaultDraftReports();
+    draftName = '';
+    draftEmail = '';
+    draftEditingId = null;
+    renderSubscriberModal('nsub');
   };
 
   window.showEditSubscriberModal = function(id) {
     const s = subscribers.find(x => x.id === id);
     if (!s) return;
-    showModal(`
-      <div class="modal-title">Edit Subscriber \u2014 ${s.name}</div>
-      ${subscriberFormFields('esub', s)}
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitEditSubscriber('${s.id}')">Save Changes</button>
-      </div>`);
+    // The reshape in supabase-client.js already guarantees one row per
+    // report type, but fall back to sensible defaults defensively in case
+    // a row is ever missing.
+    draftReports = REPORT_TYPES.map(t => {
+      const existing = (s.reports || []).find(r => r.reportType === t);
+      return existing
+        ? { reportType: t, enabled: existing.enabled, estates: [...existing.estates], frequencies: [...existing.frequencies] }
+        : { reportType: t, enabled: false, estates: ['All Estates'], frequencies: [...(REPORT_TYPE_DEFAULT_FREQUENCIES[t] || [])] };
+    });
+    draftName = s.name;
+    draftEmail = s.email;
+    draftEditingId = id;
+    renderSubscriberModal('esub');
   };
 
   window.submitEditSubscriber = async function(id) {
-    const name        = document.getElementById('esub-name').value.trim();
-    const email       = document.getElementById('esub-email').value.trim();
-    const freq        = document.getElementById('esub-freq').value;
-    const estate      = document.getElementById('esub-estate').value;
-    const reportTypes = readSelectedReportTypes('esub');
+    const name  = document.getElementById('esub-name').value.trim();
+    const email = document.getElementById('esub-email').value.trim();
     if (!name || !email) { showToast('Please fill in name and email','red'); return; }
-    if (!reportTypes.length) { showToast('Select at least one report type','red'); return; }
     try {
       const client = getSbClient();
-      const { error } = await client.from('vsl_report_recipients').update({
-        name, email, freq, estate: estate || 'All Estates', report_types: reportTypes,
-      }).eq('id', id);
+      const { error } = await client.from('vsl_report_recipients').update({ name, email }).eq('id', id);
       if (error) throw error;
+      // Reconcile subscriptions by replacing the full set \u2014 this is a small
+      // per-recipient child table, so a diff-free delete+reinsert is simpler
+      // and safer than matching rows up one by one.
+      const { error: delErr } = await client.from('vsl_report_subscriptions').delete().eq('recipient_id', id);
+      if (delErr) throw delErr;
+      const { error: subErr } = await client.from('vsl_report_subscriptions').insert(
+        draftReports.map(r => ({ recipient_id: id, report_type: r.reportType, enabled: r.enabled, estates: r.estates, frequencies: r.frequencies }))
+      );
+      if (subErr) throw subErr;
       closeModal();
       showToast('Subscriber updated');
       await retryLiveDataLoad();
@@ -3795,9 +3940,7 @@ function renderNotifications(el) {
     <div style="display:flex;padding:8px 12px;background:var(--gray-50);border-radius:var(--radius-sm);font-size:10px;font-weight:700;color:var(--gray-500);gap:10px;letter-spacing:.6px;margin-bottom:4px;flex-wrap:wrap">
       <span style="width:32px"></span>
       <span style="flex:1">RECIPIENT</span>
-      <span style="min-width:80px">FREQUENCY</span>
-      <span style="min-width:100px">ESTATE</span>
-      <span style="min-width:110px">REPORT TYPE</span>
+      <span style="min-width:220px">REPORTS (TYPE @ ESTATE(S) — FREQUENCY)</span>
       <span style="min-width:90px">LAST SENT</span>
       <span style="min-width:130px">ACTIONS</span>
     </div>
@@ -3812,24 +3955,19 @@ function renderNotifications(el) {
   </div>`;
 
   window.addSubscriber = async function() {
-    const name        = document.getElementById('nsub-name').value.trim();
-    const email       = document.getElementById('nsub-email').value.trim();
-    const freq        = document.getElementById('nsub-freq').value;
-    const estate      = document.getElementById('nsub-estate').value;
-    const reportTypes = readSelectedReportTypes('nsub');
+    const name  = document.getElementById('nsub-name').value.trim();
+    const email = document.getElementById('nsub-email').value.trim();
     if (!name || !email) { showToast('Please fill in name and email','red'); return; }
     if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Invalid email address','red'); return; }
-    if (!reportTypes.length) { showToast('Select at least one report type','red'); return; }
     try {
       const client = getSbClient();
-      const { error } = await client.from('vsl_report_recipients').insert([{
-        email,
-        name,
-        freq, // 'Daily' | 'Weekly' | 'Monthly' — matches the vsl_report_recipients.freq enum's Title Case labels
-        estate: estate || 'All Estates',
-        report_types: reportTypes,
-      }]);
+      const { data, error } = await client.from('vsl_report_recipients').insert([{ email, name }]).select();
       if (error) throw error;
+      const recipientId = data[0].id;
+      const { error: subErr } = await client.from('vsl_report_subscriptions').insert(
+        draftReports.map(r => ({ recipient_id: recipientId, report_type: r.reportType, enabled: r.enabled, estates: r.estates, frequencies: r.frequencies }))
+      );
+      if (subErr) throw subErr;
       closeModal();
       showToast(`${email} added to report list`);
       await retryLiveDataLoad();
@@ -4272,9 +4410,17 @@ function guessModalIcon(title) {
 // element (moved into the header) and a trailing `<div class="modal-actions">…`
 // element (moved into the footer band, with any "Cancel" button stripped —
 // closing now happens via the header ✕, the backdrop, or Escape only).
-function showModal(html) {
+function showModal(html, opts) {
   const overlay = document.getElementById('modalOverlay');
   if (!overlay) { console.error('dashboard/windows/modal-shell.html did not load'); return; }
+
+  // Every modal shares one box (#modalBox), so without this a wide modal
+  // would leave the box wide for whatever opens next. Toggling (not just
+  // adding) the class each call keeps them independent — pass {wide:true}
+  // for a modal that needs the extra width (e.g. Add/Edit Report, which
+  // sits two fields side by side); everything else stays the normal size.
+  const box = document.getElementById('modalBox');
+  if (box) box.classList.toggle('modal-wide', !!(opts && opts.wide));
 
   const body = document.getElementById('modalBody');
   body.innerHTML = html;
@@ -4307,7 +4453,10 @@ function closeModal() {
   if (resolveOverlay) resolveOverlay.hidden = true;
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  closeModal();
+});
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 //  CHART INITIALISATION

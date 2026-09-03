@@ -427,6 +427,11 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
       showError("");
     } catch (error) {
       groups = [];
+      // Logged as well as shown: showError() writes into #droneError, which
+      // is only on screen when the Survey window is open on the Drone tab.
+      // The symptom people actually notice is the DRONE IMAGES group sitting
+      // empty in the Layers panel, and nothing explained that until now.
+      console.error("[Victoria Drone] GET /api/groups failed:", error);
       showError(`Could not reach the tile server: ${error.message}`);
     }
     renderGroupOptions();
@@ -787,7 +792,13 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
     droneGroup.getLayers().clear();
 
     const usable = groups.filter((group) => group.layers.length);
-    if (!usable.length) return;
+    if (!usable.length) {
+      // Distinguishes "the server told us there is nothing" from "we never
+      // reached the server" (logged above) and from "archives failed to
+      // open" (warned per-key below) — all three leave the group empty.
+      console.info("[Victoria Drone] No surveys with imagery returned; DRONE IMAGES will be empty.");
+      return;
+    }
 
     // Newest first in the array; ol-layerswitcher renders children in reverse,
     // so this puts the most recent survey at the top of the panel.

@@ -15,6 +15,7 @@ import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
 import { initExportTools } from "./export-tools.js";
 import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
 import { initPrintTool } from "./print-tool.js";
+import { attachMediaToRecords, mediaFileError } from "./media-store.js";
 import { confirmDanger, promptFields } from "../popups/popup.js";
 
 const supabase = createSupabaseClient();
@@ -4492,6 +4493,9 @@ function openLogActivityModal(feature, layerType) {
   const titleEl = document.getElementById("logActivityTitle");
   if (!modal || !feature || !layerType) return;
 
+  // A queue left over from a form the person opened and walked away from
+  // would otherwise attach itself to whatever they log next.
+  logActivityMedia.reset();
   logActivityState.feature = feature;
   logActivityState.layerType = layerType;
 
@@ -4513,6 +4517,109 @@ function openLogActivityModal(feature, layerType) {
 function closeLogActivityModal() {
   const modal = document.getElementById("logActivityModal");
   if (modal) modal.hidden = true;
+}
+
+// ---------------------------------------------------------------------------
+// Photo/video picker shared by the Log Activity and Log Alert modals
+//
+// Files are held HERE, in memory, and only uploaded once the record they
+// belong to has actually been written — see the note in the modal markup.
+// Each modal gets its own instance so one form's queue can't leak into the
+// other's when both have been opened in a session.
+// ---------------------------------------------------------------------------
+function createMediaPicker({ inputId, listId }) {
+  /** Chosen but not yet uploaded. Cleared on reset(). */
+  let files = [];
+
+  function render() {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    list.innerHTML = files
+      .map(
+        (file, index) => `
+        <li class="vsl-media-attach__item">
+          <i class="fas ${String(file.type || "").startsWith("video/") ? "fa-film" : "fa-image"}" aria-hidden="true"></i>
+          <span class="vsl-media-attach__name">${escapeHtml(file.name || "attachment")}</span>
+          <span class="vsl-media-attach__size">${(file.size / 1048576).toFixed(1)}MB</span>
+          <button type="button" class="vsl-media-attach__remove" data-media-remove="${index}"
+                  title="Remove" aria-label="Remove ${escapeHtml(file.name || "attachment")}">
+            <i class="fas fa-times" aria-hidden="true"></i>
+          </button>
+        </li>`
+      )
+      .join("");
+  }
+
+  function add(fileList) {
+    const rejected = [];
+    for (const file of Array.from(fileList || [])) {
+      const problem = mediaFileError(file);
+      if (problem) { rejected.push(problem); continue; }
+      // Same file picked twice (easy to do across two trips to the picker)
+      // would otherwise upload and attach twice.
+      const duplicate = files.some(
+        (f) => f.name === file.name && f.size === file.size && f.lastModified === file.lastModified
+      );
+      if (!duplicate) files.push(file);
+    }
+    render();
+    return rejected;
+  }
+
+  function bind(onRejected) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    input?.addEventListener("change", () => {
+      const rejected = add(input.files);
+      // Reset the input so choosing the SAME file again still fires change.
+      input.value = "";
+      if (rejected.length) onRejected?.(rejected.join(" "));
+    });
+    list?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-media-remove]");
+      if (!btn) return;
+      files.splice(Number(btn.dataset.mediaRemove), 1);
+      render();
+    });
+  }
+
+  return {
+    bind,
+    reset() { files = []; render(); },
+    get files() { return files.slice(); },
+    get count() { return files.length; }
+  };
+}
+
+const logActivityMedia = createMediaPicker({
+  inputId: "logActivityMediaInput",
+  listId: "logActivityMediaList"
+});
+const logAlertMedia = createMediaPicker({
+  inputId: "logAlertMediaInput",
+  listId: "logAlertMediaList"
+});
+
+/**
+ * Uploads a modal's queued files and links them to the rows just written.
+ *
+ * Deliberately never throws: the activity or alert is already saved by the
+ * time this runs, so a failed attachment is reported as a warning rather
+ * than being allowed to look like the whole log entry failed.
+ */
+async function attachQueuedMedia(picker, entityType, recordIds) {
+  if (!picker.count || !recordIds?.length) return "";
+  try {
+    const { failures } = await attachMediaToRecords(supabase, picker.files, {
+      entityType,
+      recordIds,
+      capturedBy: currentUser?.id || null
+    });
+    return failures.length ? ` Some attachments failed: ${failures.join(" ")}` : "";
+  } catch (error) {
+    console.error("[Victoria Media] attach failed:", error);
+    return ` Attachments failed: ${error.message}`;
+  }
 }
 
 async function saveLogActivityForm(event) {
@@ -4616,8 +4723,18 @@ async function saveLogActivityForm(event) {
         : properties;
       return { ...basePayload, activity_properties: rowProperties, parcel_id: parcelId };
     });
-    const { error } = await supabase.from("vsl_activities").insert(rows);
+    // .select("id") so the freshly written rows can be linked to any queued
+    // photos — one activity row per plot, and the evidence belongs to all
+    // of them (see attachMediaToRecords in js/media-store.js).
+    const { data: insertedActivities, error } = await supabase
+      .from("vsl_activities").insert(rows).select("id");
     if (error) throw error;
+
+    const mediaNote = await attachQueuedMedia(
+      logActivityMedia,
+      "activity",
+      (insertedActivities || []).map((r) => r.id)
+    );
 
     // Land-linked write-back — keeps the plot record (and, for Harvesting,
     // the harvest history) in sync with what was just logged. The activity
@@ -4631,13 +4748,17 @@ async function saveLogActivityForm(event) {
       }
     } catch (writeBackErr) {
       console.error("[Victoria] Activity logged, but plot write-back failed:", writeBackErr);
-      setStatus(statusEl, `Logged "${activityName}", but updating the plot record failed: ${writeBackErr.message}`, true);
+      setStatus(statusEl, `Logged "${activityName}", but updating the plot record failed: ${writeBackErr.message}${mediaNote}`, true);
       closeLogActivityModal();
       loadLayersFromDb();
       return;
     }
 
-    setStatus(statusEl, `Logged "${activityName}" on ${rows.length} plot${rows.length === 1 ? "" : "s"}.`);
+    setStatus(
+      statusEl,
+      `Logged "${activityName}" on ${rows.length} plot${rows.length === 1 ? "" : "s"}.${mediaNote}`,
+      !!mediaNote
+    );
     closeLogActivityModal();
     if (activityName === "Planting" || activityName === "Harvesting") {
       loadLayersFromDb(); // ratoon number/cultivation status changed — refresh map labels & badges
@@ -4664,6 +4785,11 @@ function setupLogActivityModal() {
   select?.addEventListener("change", () => renderLogActivityFields(select.value));
   closeBtn?.addEventListener("click", () => closeLogActivityModal());
   form?.addEventListener("submit", (e) => saveLogActivityForm(e));
+
+  logActivityMedia.bind((message) => {
+    const errorEl = document.getElementById("logActivityError");
+    if (errorEl) { errorEl.textContent = message; errorEl.hidden = false; }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4708,6 +4834,7 @@ function openLogAlertModal(feature, layerType) {
   const titleEl = document.getElementById("logAlertTitle");
   if (!modal || !feature || !layerType) return;
 
+  logAlertMedia.reset();       // same reason as the activity modal
   logAlertState.feature = feature;
   logAlertState.layerType = layerType;
 
@@ -4770,10 +4897,21 @@ async function saveLogAlertForm(event) {
     };
 
     const rows = parcelIds.map((parcelId) => ({ ...basePayload, target_id: String(parcelId) }));
-    const { error } = await supabase.from("vsl_alerts").insert(rows);
+    const { data: insertedAlerts, error } = await supabase
+      .from("vsl_alerts").insert(rows).select("id");
     if (error) throw error;
 
-    setStatus(statusEl, `Logged ${severity} alert on ${rows.length} plot${rows.length === 1 ? "" : "s"}.`);
+    const mediaNote = await attachQueuedMedia(
+      logAlertMedia,
+      "alert",
+      (insertedAlerts || []).map((r) => r.id)
+    );
+
+    setStatus(
+      statusEl,
+      `Logged ${severity} alert on ${rows.length} plot${rows.length === 1 ? "" : "s"}.${mediaNote}`,
+      !!mediaNote
+    );
     closeLogAlertModal();
     refreshParcelAlertBadges();
   } catch (err) {
@@ -4798,6 +4936,11 @@ function setupLogAlertModal() {
   select?.addEventListener("change", () => renderLogAlertFields(select.value));
   closeBtn?.addEventListener("click", () => closeLogAlertModal());
   form?.addEventListener("submit", (e) => saveLogAlertForm(e));
+
+  logAlertMedia.bind((message) => {
+    const errorEl = document.getElementById("logAlertError");
+    if (errorEl) { errorEl.textContent = message; errorEl.hidden = false; }
+  });
 }
 
 function closeInfoPopup() {

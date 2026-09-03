@@ -1,0 +1,36 @@
+name = "vsl-farms-media"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# Field photos and videos attached to logged activities and alerts.
+#
+# Deliberately a SEPARATE worker and bucket from the drone imagery
+# (workers/tiles → vsl-tiles). They are different kinds of data with
+# different rules: an orthomosaic is published by a surveyor and read as
+# map tiles, while a field photo is captured by whoever is standing in the
+# plot. Keeping them apart means a change to one can never take the other
+# down, and the two authorisation models never get mixed up in one file.
+#
+# ⚠ bucket_name must match the bucket EXACTLY as it appears in the R2
+#   dashboard. R2 names allow lowercase letters, numbers and hyphens only.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "vsl-farms-media"
+
+[vars]
+# Both are public values. The Supabase publishable key is designed to be
+# shipped in browsers — row level security is what protects the data, not
+# the secrecy of this key. The service_role key is NOT used by this Worker
+# and must never be added here.
+SUPABASE_URL = "https://knhgliyghacvkeeptsfl.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_W2kx87RbvH0Qd1HkPPXlIg_6GAy0HAV"
+
+# Origins allowed to call this Worker from a browser. The first entry is
+# used as the fallback when a request arrives from somewhere unlisted.
+ALLOWED_ORIGINS = "https://victoriasugar.ug,https://admin.victoriasugar.ug,http://localhost:5500,http://127.0.0.1:5500,https://farms.victoriasugarltd.xyz/webmap,https://farms.victoriasugarltd.xyz/*"
+
+# The custom domain already attached to this bucket's worker. Comment this
+# block out to test on the *.workers.dev URL first.
+[[routes]]
+pattern = "farmsmedia.victoriasugar.ug"
+custom_domain = true

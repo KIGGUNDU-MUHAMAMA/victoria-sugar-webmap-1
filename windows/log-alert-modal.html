@@ -36,6 +36,27 @@
           <table class="map-popup__table vsl-prop-table">
             <tbody id="logAlertFields"></tbody>
           </table>
+
+          <!-- Photos/videos — a COMMON field, not part of any one activity's
+               own properties: evidence applies to every kind of work, so it
+               sits outside #logActivityPropsFields (which is driven by the
+               selected activity's catalogue definition).
+
+               Files are held in memory until the record saves. They upload
+               afterwards, keyed to the row id(s) the insert returns — see
+               attachMediaToRecords in js/media-store.js. Uploading first
+               would strand objects in the bucket whenever a save failed. -->
+          <div class="vsl-section-label vsl-section-label--second">Photos</div>
+          <div class="vsl-media-attach">
+            <label class="vsl-media-attach__pick">
+              <i class="fas fa-camera" aria-hidden="true"></i>
+              <span>Attach photos or video</span>
+              <input type="file" id="logAlertMediaInput" class="vsl-media-attach__input"
+                     accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.webm,image/*,video/*" multiple>
+            </label>
+            <ul class="vsl-media-attach__list" id="logAlertMediaList"></ul>
+            <p class="vsl-media-attach__hint">Up to 25MB each. Only people signed in to this app can view them.</p>
+          </div>
         </div>
 
         <p id="logAlertError" class="search-panel__error" role="alert" hidden></p>

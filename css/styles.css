@@ -8230,3 +8230,131 @@ select.search-panel__input {
 .res-item:hover .res-item__action {
   color: var(--primary, #3f8f3f);
 }
+
+/* =============================================================
+   MEDIA ATTACHMENTS — Log Activity / Log Alert
+   -------------------------------------------------------------
+   A common field on both modals (see the note in the markup: evidence
+   applies to every kind of work, so it sits outside the per-activity
+   property table). Files queue here and upload only after the record is
+   written — js/media-store.js.
+   ============================================================= */
+.vsl-media-attach {
+  margin-top: 0.4rem;
+}
+
+/* The whole tile is the label, so clicking anywhere on it opens the picker
+   — the <input> itself is visually hidden rather than display:none, which
+   would take it out of the accessibility tree with it. */
+.vsl-media-attach__pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0.7rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: #f8faf8;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.vsl-media-attach__pick:hover {
+  border-color: var(--primary, #3f8f3f);
+  background: #f2f8f1;
+  color: var(--primary-2, #2f6b2f);
+}
+
+.vsl-media-attach__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.vsl-media-attach__list {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+}
+
+.vsl-media-attach__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.78rem;
+}
+
+.vsl-media-attach__item + .vsl-media-attach__item {
+  margin-top: 5px;
+}
+
+.vsl-media-attach__item > i {
+  flex: 0 0 auto;
+  color: var(--primary, #3f8f3f);
+}
+
+/* min-width: 0 is what lets the ellipsis actually engage inside a flex row —
+   without it the name refuses to shrink and pushes the size and remove
+   button off the end. */
+.vsl-media-attach__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.vsl-media-attach__size {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* `width: auto` opts out of the app-wide
+   `input, select, button, textarea { width: 100% }` reset near the top of
+   this file — the same opt-out .toggle-password and the print overlay's
+   Cancel button need. */
+.vsl-media-attach__remove {
+  width: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #b3261e;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.vsl-media-attach__remove:hover {
+  background: #b3261e;
+  color: #fff;
+}
+
+.vsl-media-attach__hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}

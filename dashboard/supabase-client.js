@@ -153,7 +153,7 @@ async function loadLiveData() {
   const client = getSbClient();
 
   const [
-    estRes, blkRes, parRes, profRes, recRes, blkHarvestRes, parHarvestRes,
+    estRes, blkRes, parRes, profRes, recRes, recSubRes, blkHarvestRes, parHarvestRes,
     actRes, actCostRes, alertRes, docRes, mediaRes, blkStatsRes, parStatsRes,
     seasonRes, soilTestRes, harvestHistoryRes,
     actTypeRes, actTypePropRes, actCommonFieldRes, reportScheduleRes,
@@ -163,6 +163,10 @@ async function loadLiveData() {
     client.from('vsl_parcels').select('*'),
     client.from('vsl_profiles').select('*'),
     client.from('vsl_report_recipients').select('*'),
+    // Per-recipient report subscriptions — each (report type, estate) pair
+    // carries its own frequencies; frequency is no longer a single
+    // recipient-wide setting (see vsl_report_recipients above).
+    client.from('vsl_report_subscriptions').select('*'),
     client.from('v_block_last_harvest').select('block_id, harvest_tonnes, last_harvest_date'),
     client.from('v_parcel_last_harvest').select('parcel_id, harvest_tonnes, last_harvest_date'),
     client.from('vsl_activities').select('*').order('activity_date', { ascending: false }).limit(200),
@@ -191,6 +195,7 @@ async function loadLiveData() {
   if (parRes.error) console.error('Supabase parcels fetch error:', parRes.error);
   if (profRes.error) console.error('Supabase profiles fetch error:', profRes.error);
   if (recRes.error) console.error('Supabase report_recipients fetch error:', recRes.error);
+  if (recSubRes.error) console.error('Supabase report_subscriptions fetch error:', recSubRes.error);
   if (blkHarvestRes.error) console.error('Supabase block harvest fetch error:', blkHarvestRes.error);
   if (parHarvestRes.error) console.error('Supabase parcel harvest fetch error:', parHarvestRes.error);
   if (actRes.error) console.error('Supabase activities fetch error:', actRes.error);
@@ -241,6 +246,7 @@ async function loadLiveData() {
   const rawParcels = parRes.data || [];
   const rawProfiles = profRes.data || [];
   const rawRecipients = recRes.data || [];
+  const rawReportSubscriptions = recSubRes.data || [];
   const rawActivities = actRes.data || [];
   const rawActivityCosts = actCostRes.data || [];
   const rawAlerts = alertRes.data || [];
@@ -533,22 +539,39 @@ async function loadLiveData() {
   });
 
   // ── EMAIL SUBSCRIBERS (report recipients) reshaped ──
-  // reportTypes is an array now (subscriber can pick more than one of Land
-  // Status / Activity / Harvests / Summary Reports via checkboxes) — falls
-  // back to the old single report_type column for any pre-migration row
-  // that somehow still has an empty report_types array.
-  const emailSubscribers = rawRecipients.map(r => ({
-    id: r.id,
-    email: r.email,
-    name: r.name || r.email.split('@')[0],
-    frequency: r.freq ? titleCase(r.freq) : 'Weekly',
-    estate: r.estate || 'All Estates',
-    reportTypes: (r.report_types && r.report_types.length) ? r.report_types : (r.report_type ? [r.report_type] : ['Summary Report']),
-    lastSent: r.last_sent ? new Date(r.last_sent).toLocaleDateString() : '—',
-    status: 'active',
-    createdBy: r.created_by,
-    createdAt: r.created_at,
-  }));
+  // Every recipient always has exactly 4 subscription rows, one per fixed
+  // report type (see REPORT_TYPES in app.js). Each row has its own
+  // `enabled` flag (toggling a report off never deletes the row — it just
+  // means that report type won't be sent, per the fixed toggle-table
+  // design) plus its own `estates` (multi-select array, e.g. ['All
+  // Estates'] or ['Kaaya','Kaleile']) and `frequencies`.
+  const subscriptionsByRecipient = new Map();
+  rawReportSubscriptions.forEach(s => {
+    if (!subscriptionsByRecipient.has(s.recipient_id)) subscriptionsByRecipient.set(s.recipient_id, []);
+    subscriptionsByRecipient.get(s.recipient_id).push({
+      id: s.id,
+      reportType: s.report_type,
+      enabled: s.enabled !== false,
+      estates: (s.estates && s.estates.length) ? s.estates : ['All Estates'],
+      frequencies: s.frequencies || [],
+    });
+  });
+  const REPORT_TYPE_ORDER = ['Land Status Reports', 'Activity Reports', 'Harvests Reports', 'Summary Report'];
+  const emailSubscribers = rawRecipients.map(r => {
+    const reports = (subscriptionsByRecipient.get(r.id) || [])
+      .slice()
+      .sort((a, b) => REPORT_TYPE_ORDER.indexOf(a.reportType) - REPORT_TYPE_ORDER.indexOf(b.reportType));
+    return {
+      id: r.id,
+      email: r.email,
+      name: r.name || r.email.split('@')[0],
+      reports,
+      lastSent: r.last_sent ? new Date(r.last_sent).toLocaleDateString() : '—',
+      status: 'active',
+      createdBy: r.created_by,
+      createdAt: r.created_at,
+    };
+  });
 
   // ── ACTIVITIES reshaped ──
   const blockById = new Map(rawBlocks.map(b => [b.id, b]));

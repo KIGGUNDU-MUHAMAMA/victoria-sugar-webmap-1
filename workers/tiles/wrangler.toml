@@ -13,6 +13,9 @@ compatibility_date = "2026-08-01"
 binding = "TILES"
 bucket_name = "vsl-tiles"
 
+# Field photos/videos are NOT bound here — they live in vsl-farms-media
+# behind their own worker (workers/media). See that worker's wrangler.toml.
+
 [vars]
 # Both of these are public values. The Supabase publishable key is designed
 # to be shipped in browsers — row level security is what protects the data,

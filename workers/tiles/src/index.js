@@ -21,21 +21,24 @@
  * Bucket layout:
  *     orthos/<folder>/group.json      marker + description for one survey
  *     orthos/<folder>/<Site>.pmtiles  one sealed archive per site
+ *
+ * Identity, CORS and object streaming live in ../../shared/auth.js, shared
+ * with the field-media worker so there is exactly one copy of the token
+ * check in this repository.
+ *
+ * Field photos and videos are NOT handled here. They are a different bucket
+ * (vsl-farms-media) behind a different worker (workers/media) on its own
+ * domain, because they are a different kind of thing with different rules:
+ * imagery is written by ADMIN/SURVEYOR only, a field photo by anyone
+ * signed in.
  */
+import { requireUser, requireRole, cors, json, plain, serveObject } from "../../shared/auth.js";
 
 const PREFIX = "orthos/";
 const MARKER = "group.json";
 
-// How long a verified token is trusted before we re-check it with Supabase.
-// Tile reads are chatty, and re-validating every range request would put a
-// round trip in front of every few kilobytes of imagery.
-const TOKEN_TTL_MS = 5 * 60 * 1000;
 
 const WRITE_ROLES = new Set(["ADMIN", "SURVEYOR"]);
-
-// Verified tokens, kept per isolate. Cleared whenever the isolate recycles,
-// which is the failure mode we want: forget too often, never too rarely.
-const tokenCache = new Map();
 
 export default {
   async fetch(request, env, ctx) {
@@ -66,20 +69,22 @@ async function route(request, env, ctx) {
   // GET /tiles/orthos/<folder>/<Site>.pmtiles  (Range honoured)
   if (path.startsWith("/tiles/")) {
     if (method !== "GET" && method !== "HEAD") return plain("Method not allowed", 405);
-    const identity = await authenticate(request, env, ctx);
-    if (!identity) return plain("Sign in required", 401);
-    return serveObject(decodeURIComponent(path.slice("/tiles/".length)), request, env);
+    const gate = await requireUser(request, env);
+    if (gate.error) return gate.error;
+    return serveObject(decodeURIComponent(path.slice("/tiles/".length)), request, env.TILES, PREFIX);
   }
 
   // ── Listing what exists ────────────────────────────────────────────────
   if (path === "/api/groups" && method === "GET") {
-    const identity = await authenticate(request, env, ctx);
-    if (!identity) return plain("Sign in required", 401);
+    const gate = await requireUser(request, env);
+    if (gate.error) return gate.error;
     return json(await listGroups(env), 200);
   }
 
   // Everything below changes the bucket, so it needs a writer.
-  const writer = await requireWriter(request, env, ctx);
+  const writer = await requireRole(
+    request, env, WRITE_ROLES, "Your account cannot change drone imagery"
+  );
   if (writer.error) return writer.error;
 
   // POST /api/groups            { folder, title, description }
@@ -252,95 +257,7 @@ async function listGroups(env) {
   return { groups: list };
 }
 
-async function serveObject(key, request, env) {
-  if (!key.startsWith(PREFIX)) return plain("Not found", 404);
 
-  const range = request.headers.get("Range");
-  const object = await env.TILES.get(key, range ? { range: request.headers } : undefined);
-  if (!object) return plain("Not found", 404);
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("etag", object.httpEtag);
-  headers.set("Accept-Ranges", "bytes");
-  // Archives are immutable once published, but a site can be replaced under
-  // the same name, so this is a short cache rather than a permanent one.
-  headers.set("Cache-Control", "private, max-age=300");
-
-  if (object.range && typeof object.range.offset === "number") {
-    const start = object.range.offset;
-    const end = start + object.range.length - 1;
-    headers.set("Content-Range", `bytes ${start}-${end}/${object.size}`);
-    return new Response(request.method === "HEAD" ? null : object.body, { status: 206, headers });
-  }
-  return new Response(request.method === "HEAD" ? null : object.body, { status: 200, headers });
-}
-
-// ----------------------------------------------------------------------
-// Who is calling
-// ----------------------------------------------------------------------
-
-/**
- * Verify the caller's Supabase access token and read their role.
- *
- * Supabase is asked directly rather than the JWT being verified locally.
- * That costs a round trip on a cache miss, but it needs no signing secret
- * and works the same whether the project issues symmetric or asymmetric
- * tokens. Results are cached for TOKEN_TTL_MS.
- */
-async function authenticate(request, env, ctx) {
-  const header = request.headers.get("Authorization") || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!token) return null;
-
-  const cached = tokenCache.get(token);
-  if (cached && cached.expires > Date.now()) return cached.identity;
-
-  const base = env.SUPABASE_URL;
-  const apikey = env.SUPABASE_ANON_KEY;
-  if (!base || !apikey) throw new Error("Worker is missing SUPABASE_URL / SUPABASE_ANON_KEY");
-
-  const auth = { apikey, Authorization: `Bearer ${token}` };
-
-  const userResponse = await fetch(`${base}/auth/v1/user`, { headers: auth });
-  if (!userResponse.ok) {
-    tokenCache.set(token, { identity: null, expires: Date.now() + 30_000 });
-    return null;
-  }
-  const user = await userResponse.json();
-
-  // Role lives in vsl_profiles. Read with the caller's own token, so this
-  // stays inside their row-level security rather than bypassing it.
-  let role = null;
-  const profileResponse = await fetch(
-    `${base}/rest/v1/vsl_profiles?id=eq.${encodeURIComponent(user.id)}&select=role`,
-    { headers: auth }
-  );
-  if (profileResponse.ok) {
-    const rows = await profileResponse.json();
-    role = rows && rows[0] ? rows[0].role : null;
-  }
-
-  const identity = { userId: user.id, email: user.email || "", role };
-  tokenCache.set(token, { identity, expires: Date.now() + TOKEN_TTL_MS });
-
-  // Keep the cache from growing without bound in a long-lived isolate.
-  if (tokenCache.size > 500) {
-    for (const [key, value] of tokenCache) {
-      if (value.expires <= Date.now()) tokenCache.delete(key);
-    }
-  }
-  return identity;
-}
-
-async function requireWriter(request, env, ctx) {
-  const identity = await authenticate(request, env, ctx);
-  if (!identity) return { error: plain("Sign in required", 401) };
-  if (!WRITE_ROLES.has(identity.role)) {
-    return { error: plain("Your account cannot change drone imagery", 403) };
-  }
-  return { identity };
-}
 
 // ----------------------------------------------------------------------
 // Helpers
@@ -371,28 +288,3 @@ async function readJson(request) {
   }
 }
 
-function cors(origin, env) {
-  const allowed = String(env.ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const allow = allowed.includes(origin) ? origin : allowed[0] || "";
-  return {
-    "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "GET,HEAD,PUT,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization,Content-Type,Range",
-    "Access-Control-Expose-Headers": "Content-Range,Content-Length,ETag,Accept-Ranges",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
-  };
-}
-
-function json(body, status = 200, origin, env) {
-  const headers = { "Content-Type": "application/json" };
-  if (origin !== undefined) Object.assign(headers, cors(origin, env));
-  return new Response(JSON.stringify(body), { status, headers });
-}
-
-function plain(message, status) {
-  return new Response(message, { status, headers: { "Content-Type": "text/plain" } });
-}

@@ -11,6 +11,14 @@ const fallbackCfg = {
    * bucket binding and checks the caller's Supabase token on every request.
    */
   TILES_API_BASE: "https://tiles.victoriasugar.ug",
+  /**
+   * Field media Worker (see workers/media/). Serves photos and videos out
+   * of the vsl-farms-media R2 bucket and accepts uploads. A different
+   * worker, bucket and domain from the tiles above — see that worker's
+   * header for why. Not a credential: the Worker holds the bucket binding
+   * and checks the caller's Supabase token on every request.
+   */
+  MEDIA_API_BASE: "https://farmsmedia.victoriasugar.ug",
   // false = webmap requires sign-in (recommended so RLS applies and layers load reliably).
   // Override with ALLOW_GUEST_PREVIEW: true in config/app-config.js for public demo only.
   ALLOW_GUEST_PREVIEW: false,

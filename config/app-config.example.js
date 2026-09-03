@@ -22,6 +22,10 @@ window.VSL_CONFIG = {
   // bucket and accepts uploads. No credential here — the Worker holds the
   // bucket binding and checks the caller's Supabase token.
   TILES_API_BASE: "https://tiles.victoriasugar.ug",
+  // Field media Worker (workers/media) — photos/videos on activities and
+  // alerts, in the vsl-farms-media bucket. A different worker and bucket
+  // from the tiles above; see workers/README.md for why.
+  MEDIA_API_BASE: "https://farmsmedia.victoriasugar.ug",
   // Optional: must match Edge Function secret if you set SURVEY_IMPORT_SECRET in Supabase.
   // SURVEY_IMPORT_SECRET: "your-shared-secret",
   // SURVEY_FUNCTION_NAME: "quick-api",

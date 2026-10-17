@@ -165,15 +165,30 @@
            above the selected block/parcel each time one is clicked). Buttons are
            UI-only for now; click handling/logic comes in a follow-up pass. -->
       <div class="parcel-action-toolbar" id="parcelActionToolbar" hidden>
-        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--activity" id="parcelActionLogActivityBtn" title="Log Activity" aria-label="Log Activity">
-          <i class="fas fa-person-digging" aria-hidden="true"></i>
+        <!-- Live summary of whatever is selected: status, ratoon, the most
+             recent activity and any open alerts. This is where the ratoon
+             and alert lines went after they were taken off the map labels —
+             a printed map outlives both, but this popup is always read
+             live. Rows are built by renderParcelActionInfo() in
+             js/map-app.js, entirely from properties the feature already
+             carries (vsl_get_features_bbox returns them), so opening it
+             costs no round trip. -->
+        <div class="parcel-action-toolbar__summary" id="parcelActionSummary"></div>
+
+        <!-- Replaces the old round "i" button. Everything this popup leaves
+             out lives behind it, in the full Feature Info panel. -->
+        <button type="button" class="parcel-action-toolbar__more" id="parcelActionMoreBtn">
+          More info
         </button>
-        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--alert" id="parcelActionLogAlertBtn" title="Log Alert" aria-label="Log Alert">
-          <i class="fas fa-bullhorn" aria-hidden="true"></i>
-        </button>
-        <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--info" id="parcelActionInfoBtn" title="Feature Info" aria-label="Feature Info">
-          <i class="fas fa-info" aria-hidden="true"></i>
-        </button>
+
+        <div class="parcel-action-toolbar__actions">
+          <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--activity" id="parcelActionLogActivityBtn" title="Log Activity" aria-label="Log Activity">
+            <i class="fas fa-person-digging" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--alert" id="parcelActionLogAlertBtn" title="Log Alert" aria-label="Log Alert">
+            <i class="fas fa-bullhorn" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
 
       <!-- The same idea for a DRAWN feature (tree, road, wall — vsl_feature),

@@ -1,5 +1,10 @@
 import { createSupabaseClient, getConfig } from "./supabase-client.js";
-import { clearStatus, parseNum, setStatus, vincentyDistanceMeters, computeUtmCartesianAreaAcres } from "./utils.js";
+import {
+  clearStatus, parseNum, setStatus, vincentyDistanceMeters, computeUtmCartesianAreaAcres,
+  // Every zoom-dependent show/hide on the map reads from this one ladder —
+  // see the big comment on MAP_ZOOM in utils.js for the order and why.
+  MAP_ZOOM, zoomFromResolution, layerMinZoom
+} from "./utils.js";
 import { initSurveyImport } from "./survey-import.js";
 import { initSurveyDraw } from "./survey-draw.js";
 import { initManageFeatures } from "./manage-features.js";
@@ -171,10 +176,11 @@ function cultivationKeyFromFeature(feature) {
   return s && CULTIVATION_PALETTE[s] ? s : "vacant";
 }
 
-/** Parcel label zoom staging: name-only until zoomed in past PARCEL_FULL_DETAIL_RES,
- *  then full "name\narea\nR:n" label (+ an "Alerts(n)" line, see below). */
-const PARCEL_FULL_DETAIL_RES = 12;
-const PARCEL_NAME_ONLY_RES = 20;
+/* Parcel label staging used to live here as two resolution constants
+   (PARCEL_FULL_DETAIL_RES / PARCEL_NAME_ONLY_RES). Both are gone: every
+   zoom-dependent reveal on the map is now one ordered ladder, MAP_ZOOM in
+   utils.js, so blocks, plots, labels, features and edge distances can't
+   drift into a nonsensical order relative to each other. */
 
 /** Multiplier (x font size) used for both the name/area/ratoon block's own
  *  line spacing AND the Alerts(n) line's offset below it — kept as one
@@ -199,70 +205,14 @@ const ALERT_SEVERITY_FILL = {
   information: "rgba(25, 118, 210, 0.36)"
 };
 
-/** Vertical pixel offset (screen convention: positive = down) from the
- *  label anchor point (labelIp) to the center of the Alerts(n) line, given
- *  how many lines the name/area/ratoon block above it has. The block is
- *  vertically CENTERED on that anchor (not top-aligned to it), so this has
- *  to clear half the block's height plus half this line's own height, not a
- *  full lineCount worth of line-heights (that overshoots by ~half a line).
- *  Shared by both the actual render (parcels layer style function) and the
- *  click hit-test (isClickOnAlertsLine) so they can never drift apart. */
-function computeAlertChipOffsetY(lineCount, fontPx) {
-  const lineHeightPx = fontPx * LABEL_LINE_HEIGHT;
-  const gapPx = 2;
-  return ((lineCount + 1) / 2) * lineHeightPx + gapPx;
-}
+/* Gone with the on-map "Alerts(n)" label line: computeAlertChipOffsetY(),
+   getMeasureTextCtx() and isClickOnAlertsLine(). That line used to be
+   clickable — hit-tested by mirroring the style function's own placement
+   maths — and opened the Alerts List modal for the plot.
 
-/** Offscreen 2D context reused for text-measurement (hit-test sizing only —
- *  the Alerts(n) line is plain text on the map, not a drawn chip) and never
- *  attached to the page. */
-let _measureTextCtx = null;
-function getMeasureTextCtx() {
-  if (!_measureTextCtx) {
-    _measureTextCtx = document.createElement("canvas").getContext("2d");
-  }
-  return _measureTextCtx;
-}
-
-/** Hit-tests a map click (pixel space) against the rendered Alerts(n) text
- *  line for a given feature — used so clicking directly on it opens the
- *  Alerts List modal. Mirrors the exact placement math the parcels layer's
- *  style function uses (computeAlertChipOffsetY) so the clickable area
- *  always matches what's actually drawn, using measureText for an estimated
- *  width since there's no drawn chip to measure directly. Depends on the
- *  page-level `map` (ol.Map instance, defined further down this file) —
- *  fine since this is only ever called from click handlers wired up after
- *  the map exists. */
-function isClickOnAlertsLine(feature, pixel) {
-  const alertSeverity = feature.get("_alert_severity");
-  const alertCount = feature.get("_alert_count");
-  if (!alertSeverity || !alertCount) return false;
-
-  const ip = getFeatureInteriorPoint(feature.getGeometry());
-  if (!ip) return false;
-  const anchorPx = map.getPixelFromCoordinate(ip.getCoordinates());
-  if (!anchorPx) return false;
-
-  const ratoonVal = feature.get("ratoon_number");
-  const hasRatoon = ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
-  const lineCount = 2 + (hasRatoon ? 1 : 0); // name+area assumed present, matching the render
-  const fontPx = 11; // non-highlighted size — a plain click target isn't necessarily "hi"
-  const offsetY = computeAlertChipOffsetY(lineCount, fontPx);
-
-  const text = `Alerts(${alertCount})`;
-  const ctx = getMeasureTextCtx();
-  ctx.font = `800 ${fontPx}px Inter, sans-serif`;
-  const textWidth = ctx.measureText(text).width;
-  const chip = { width: textWidth + 12, height: fontPx + 8 }; // rough box around the text, plus hit-test padding
-
-  const cx = anchorPx[0];
-  const cy = anchorPx[1] + offsetY;
-  const hitPadPx = 6; // a little extra forgiveness beyond the chip's own edges
-  const halfW = chip.width / 2 + hitPadPx;
-  const halfH = chip.height / 2 + hitPadPx;
-  const [px, py] = pixel;
-  return px >= cx - halfW && px <= cx + halfW && py >= cy - halfH && py <= cy + halfH;
-}
+   Nothing is lost: the plot popup now carries an Alerts row that opens the
+   same modal (renderParcelActionInfo), and it is a real DOM button rather
+   than a rectangle guessed from measureText. */
 
 /** Interior anchor point for label/text-line placement — handles Polygon and MultiPolygon. */
 function getFeatureInteriorPoint(geometry) {
@@ -1307,12 +1257,13 @@ function initProfileModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Alerts List modal (windows/alerts-list-modal.html) — opened by clicking a
-// plot's "Alerts(n)" text line directly on the map (see isClickOnAlertsLine
-// in the map click handler). Shows just that one plot's alerts (same
-// Name/Status/Severity table as the info panel's Alerts group, via
-// buildAlertsListTableHtml), with Name still linking into the same
-// record-detail drill-down used everywhere else.
+// Alerts List modal (windows/alerts-list-modal.html) — opened from the
+// Alerts row of the plot popup (renderParcelActionInfo). It used to be
+// reached by clicking an "Alerts(n)" text line drawn on the map itself;
+// that line was removed from the plot label, so the popup is the way in now.
+// Shows just that one plot's alerts (same Name/Status/Severity table as the
+// info panel's Alerts group, via buildAlertsListTableHtml), with Name still
+// linking into the same record-detail drill-down used everywhere else.
 // ---------------------------------------------------------------------------
 let alertsListRecords = [];
 let alertsListCurrentParcel = null; // { id, label } — so resolving an alert can refresh this same list
@@ -2729,25 +2680,35 @@ const blocksLayer = new ol.layer.Vector({
   visible: true,
   declutter: true,
   zIndex: LAYER_Z.BLOCKS,
+  // Hidden below MAP_ZOOM.BLOCK. This also takes the layer out of
+  // hit-testing at those zooms, which is what we want — you shouldn't be
+  // able to click a block you can't see.
+  minZoom: layerMinZoom(MAP_ZOOM.BLOCK),
   source: blocksSource,
   style: (feature, resolution) => {
     const bid = feature.getId();
     const isSearchHi = searchHighlight.blockId != null && bid != null && String(bid) === String(searchHighlight.blockId);
     const isStatusHi = parcelStatusState.selectedLayerType === "BLOCKS" && parcelStatusState.selectedFeatures.some(f => String(f.getId()) === String(bid));
     const hi = isSearchHi || isStatusHi;
-      
+    const zoom = zoomFromResolution(map?.getView?.(), resolution);
+
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
-    let strokeColor = "#d32f2f"; 
-    let strokeWidth = resolution > 25 && !hi ? 1.5 : (hi ? 5 : 3); 
+    let strokeColor = "#d32f2f";
+    // Thinner outline until the block's own name appears — before that a
+    // block is context rather than the subject, and a heavy outline at that
+    // zoom just crowds the estate boundaries.
+    let strokeWidth = zoom < MAP_ZOOM.BLOCK_LABEL && !hi ? 1.5 : (hi ? 5 : 3);
     let textColor = "#d32f2f";
-    
+
     if (status && CULTIVATION_PALETTE[status] && status !== "vacant") {
       fillColor = CULTIVATION_PALETTE[status].fill;
     }
 
     let textStyle = null;
-    if (hi || resolution <= 25) {
+    // A highlighted block keeps its name at any zoom — if something has been
+    // searched for or selected, naming it is the entire point.
+    if (hi || zoom >= MAP_ZOOM.BLOCK_LABEL) {
       const name = String(feature.get("block_name") ?? "").trim() || "—";
       textStyle = new ol.style.Text({
         text: name,
@@ -2771,17 +2732,20 @@ const parcelsLayer = new ol.layer.Vector({
   visible: true,
   declutter: true,
   zIndex: LAYER_Z.PLOTS,
+  // Hidden below MAP_ZOOM.PLOT — blocks carry the map until then.
+  minZoom: layerMinZoom(MAP_ZOOM.PLOT),
   source: parcelsSource,
   style: (feature, resolution) => {
     const pid = feature.getId();
     const isSearchHi = searchHighlight.parcelId != null && pid != null && String(pid) === String(searchHighlight.parcelId);
     const isStatusHi = parcelStatusState.selectedLayerType === "PARCELS" && parcelStatusState.selectedFeatures.some(f => String(f.getId()) === String(pid));
     const hi = isSearchHi || isStatusHi;
-      
+    const zoom = zoomFromResolution(map?.getView?.(), resolution);
+
     const status = feature.get("cultivation_status");
     let fillColor = "rgba(255, 255, 255, 0.05)";
-    let strokeColor = "#2e7d32"; 
-    let strokeWidth = resolution > 12 && !hi ? 1 : (hi ? 4 : 2);
+    let strokeColor = "#2e7d32";
+    let strokeWidth = zoom < MAP_ZOOM.PLOT_LABEL && !hi ? 1 : (hi ? 4 : 2);
     let textColor = "#2e7d32";
 
     if (status && CULTIVATION_PALETTE[status] && status !== "vacant") {
@@ -2808,12 +2772,15 @@ const parcelsLayer = new ol.layer.Vector({
       })
     }));
 
-    // Two-stage label reveal while zooming in:
-    //  - PARCEL_NAME_ONLY_RES..PARCEL_FULL_DETAIL_RES: name only (compact).
-    //  - <= PARCEL_FULL_DETAIL_RES (or highlighted): full "name\narea\nR:n"
-    //    label, plus a 4th "Alerts(n)" line (its own Style/color) when the
-    //    plot has an unresolved alert — see below. No more circle badges at
-    //    all now; both ratoon and alerts are plain stacked text lines.
+    // NAME AND AREA ONLY — deliberately nothing else.
+    //
+    // This label used to also stack a "R:n" ratoon line and an "Alerts(n)"
+    // line beneath it. Both were removed: they are states of the moment, and
+    // a map gets printed and pinned to a wall. A ratoon number and an open
+    // alert are both wrong within a season, while the plot's name and area
+    // stay true for as long as the paper lasts. Both now live in the popup
+    // you get by clicking the plot (renderParcelActionInfo), which is always
+    // read live.
     const pLabel = feature.get("parcel_name") || feature.get("parcel_code");
     const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
 
@@ -2824,59 +2791,24 @@ const parcelsLayer = new ol.layer.Vector({
     const labelIp = getFeatureInteriorPoint(feature.getGeometry());
 
     let textStyle = null;
-    let alertLineStyle = null;
-    if (hi || resolution <= PARCEL_FULL_DETAIL_RES) {
+    // A highlighted plot keeps its label at any zoom, same as a block.
+    if (hi || zoom >= MAP_ZOOM.PLOT_LABEL) {
       const expArea = feature.get("expected_area_acres");
       const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
-      const ratoonVal = feature.get("ratoon_number");
-      const hasRatoon = ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "";
-      const ratoonLine = hasRatoon ? `R:${ratoonVal}` : null;
-      let text = area ? `${label}\n${area}` : label;
-      let lineCount = area ? 2 : 1;
-      if (ratoonLine) { text += `\n${ratoonLine}`; lineCount += 1; }
+      const text = area ? `${label}\n${area}` : label;
 
       const fontPx = hi ? 12 : 11;
-      const lineHeightPx = fontPx * LABEL_LINE_HEIGHT;
       textStyle = new ol.style.Text({
         text,
         font: `${hi ? "700" : "600"} ${fontPx}px Inter, sans-serif`,
         fill: new ol.style.Fill({ color: hi ? "#f57f17" : textColor }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: hi ? 4 : 3 }),
         overflow: true,
-        // Explicit, so the offset math below (which assumes this exact
-        // multiplier) can't drift out of sync with whatever line spacing
-        // the canvas/OL would otherwise pick as its own default.
+        // Explicit rather than leaving it to whatever the canvas/OL would
+        // pick, so estimateParcelLabelHalfHeightPx (which assumes this exact
+        // multiplier when positioning the popup above the label) can't drift
+        // out of sync with what's actually drawn.
         lineHeight: LABEL_LINE_HEIGHT
-      });
-
-      // Alerts line — its own Text/Style (not appended into the string
-      // above) so it can be colored by severity independently of the
-      // name/area/ratoon block, which is always one solid color. Stacked
-      // directly beneath that block using the same shared offset math the
-      // click hit-test uses (isClickOnAlertsLine) so the two can never
-      // disagree about where it is. Plain text, not a drawn chip/badge —
-      // that was tried and then deliberately reverted.
-      const alertSeverity = feature.get("_alert_severity");
-      const alertCount = feature.get("_alert_count");
-      if (alertSeverity && alertCount) {
-        const alertColor = ALERT_SEVERITY_COLORS[alertSeverity] || ALERT_SEVERITY_COLORS.information;
-        const offsetY = computeAlertChipOffsetY(lineCount, fontPx);
-        alertLineStyle = new ol.style.Text({
-          text: `Alerts(${alertCount})`,
-          font: `800 ${fontPx}px Inter, sans-serif`,
-          fill: new ol.style.Fill({ color: alertColor }),
-          stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
-          overflow: true,
-          offsetY
-        });
-      }
-    } else if (resolution <= PARCEL_NAME_ONLY_RES) {
-      textStyle = new ol.style.Text({
-        text: label,
-        font: "700 11px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: textColor }),
-        stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
-        overflow: true
       });
     }
 
@@ -2896,14 +2828,8 @@ const parcelsLayer = new ol.layer.Vector({
         text: textStyle
       }));
     }
-    if (alertLineStyle) {
-      styles.push(new ol.style.Style({
-        geometry: labelIp || undefined,
-        text: alertLineStyle
-      }));
-    }
 
-    if (hi || resolution <= 4) {
+    if (hi || zoom >= MAP_ZOOM.PLOT_DISTANCE) {
       const geometry = feature.getGeometry();
       if (geometry && geometry.getType() === "Polygon") {
         const ring = geometry.getLinearRing(0);
@@ -4962,23 +4888,88 @@ function closeInfoPopup() {
  *  the line-count logic in the parcels layer's style function; assumes the
  *  non-highlighted 11px font since a plain single-click selection (the only
  *  time this toolbar shows) isn't necessarily in the "hi" highlighted state. */
-function estimateParcelLabelHalfHeightPx(feature) {
+function estimateParcelLabelHalfHeightPx() {
   const fontPx = 11;
   const lineHeightPx = fontPx * LABEL_LINE_HEIGHT;
-  let lines = 2; // name + area — a safe default/upper bound even if area is blank
-  const ratoonVal = feature.get("ratoon_number");
-  if (ratoonVal !== null && ratoonVal !== undefined && ratoonVal !== "") lines += 1;
-  const alertSeverity = feature.get("_alert_severity");
-  const alertCount = feature.get("_alert_count");
-  if (alertSeverity && alertCount) lines += 1;
+  // Always exactly two lines now: name + area. The ratoon and alert lines
+  // this used to account for are no longer drawn on the map at all, so the
+  // per-feature inspection they needed is gone with them. Two is also a safe
+  // upper bound when the area happens to be blank.
+  const lines = 2;
   return (lines * lineHeightPx) / 2;
 }
 
 /**
- * Floating 3-button action toolbar (log activity / log alert / info) that
- * appears above whichever block/parcel is currently selected. Positioned via
- * an ol.Overlay bound to #parcelActionToolbar (see setupParcelActionToolbar).
- * Buttons are UI-only for now — click handling is a follow-up.
+ * Builds the popup's summary rows for the selected block or plot.
+ *
+ * Everything here comes off properties the feature is already carrying —
+ * vsl_get_features_bbox returns cultivation_status, ratoon_number and
+ * current_activity_name with the geometry, and refreshParcelAlertBadges()
+ * stamps on _alert_severity/_alert_count. So the popup opens instantly, with
+ * no fetch and no loading state to design around.
+ *
+ * Ratoon and alerts live here now rather than on the map label: both change
+ * within a season, and a map gets printed. This is read live, so it's the
+ * right home for them.
+ */
+function renderParcelActionInfo(feature, layerType) {
+  const el = document.getElementById("parcelActionSummary");
+  if (!el || !feature) return;
+
+  const rows = [];
+  const addRow = (label, value, opts = {}) => {
+    if (value === null || value === undefined || value === "") return;
+    const color = opts.color ? ` style="color:${opts.color}"` : "";
+    const valueHtml = opts.button
+      ? `<button type="button" class="parcel-action-toolbar__alerts"${color} ${opts.button}>${escapeHtml(String(value))}</button>`
+      : `<span class="parcel-action-toolbar__val"${color}>${escapeHtml(String(value))}</span>`;
+    rows.push(
+      `<div class="parcel-action-toolbar__row">` +
+      `<span class="parcel-action-toolbar__key">${escapeHtml(label)}</span>${valueHtml}</div>`
+    );
+  };
+
+  const statusKey = cultivationKeyFromFeature(feature);
+  addRow("Status", CULTIVATION_STATUS_LABELS[statusKey] || statusKey, {
+    color: CULTIVATION_PALETTE[statusKey]?.text
+  });
+
+  if (layerType === "PARCELS") {
+    // Ratoon 0 is meaningful ("planted, not yet ratooned"), so this tests for
+    // absence rather than falsiness.
+    const ratoon = feature.get("ratoon_number");
+    if (ratoon !== null && ratoon !== undefined && ratoon !== "") {
+      addRow("Ratoon", `R${ratoon}`);
+    }
+    addRow("Activity", feature.get("current_activity_name"));
+  } else {
+    const plots = feature.get("total_plots");
+    if (plots !== null && plots !== undefined && plots !== "") {
+      addRow("Plots", plots);
+    }
+  }
+
+  // Alerts last, and as a real button when there are any — it opens the same
+  // Alerts List modal the on-map "Alerts(n)" text line used to.
+  const alertCount = Number(feature.get("_alert_count")) || 0;
+  const alertSeverity = feature.get("_alert_severity");
+  if (alertCount > 0) {
+    addRow("Alerts", `${alertCount} open`, {
+      color: ALERT_SEVERITY_COLORS[alertSeverity] || ALERT_SEVERITY_COLORS.information,
+      button: 'data-open-alerts="1"'
+    });
+  } else {
+    addRow("Alerts", "None");
+  }
+
+  el.innerHTML = rows.join("");
+}
+
+/**
+ * Floating action popup for whichever block/parcel is selected: a short live
+ * summary, a "More info" link into the full Feature Info panel, and the two
+ * logging actions. Positioned via an ol.Overlay bound to
+ * #parcelActionToolbar (see setupParcelActionToolbar).
  */
 function showParcelActionToolbar(feature) {
   const el = document.getElementById("parcelActionToolbar");
@@ -4997,7 +4988,11 @@ function showParcelActionToolbar(feature) {
   // "above the label" means clearing half its height (not sitting right on
   // top of the anchor, which covers the name/area text) plus a small gap.
   const gapPx = 10;
-  parcelActionOverlay.setOffset([0, -(estimateParcelLabelHalfHeightPx(feature) + gapPx)]);
+  parcelActionOverlay.setOffset([0, -(estimateParcelLabelHalfHeightPx() + gapPx)]);
+
+  // Filled before it's shown, so the card is never briefly visible with the
+  // previous selection's details still in it.
+  renderParcelActionInfo(feature, selectedLayerType);
 
   el.hidden = false;
   parcelActionOverlay.setPosition(anchor);
@@ -5120,9 +5115,22 @@ function setupParcelActionToolbar() {
     ev.stopPropagation();
     if (selectedFeature && selectedLayerType) openLogAlertModal(selectedFeature, selectedLayerType);
   });
-  document.getElementById("parcelActionInfoBtn")?.addEventListener("click", (ev) => {
+  // Replaces the old round "i" button — same destination, now a plain link
+  // under the summary.
+  document.getElementById("parcelActionMoreBtn")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     if (selectedFeature && selectedLayerType) openFeatureInfoPanel(selectedFeature, selectedLayerType);
+  });
+
+  // The Alerts row is a button only when there are open alerts, and the rows
+  // are re-rendered on every selection — so this is delegated from the
+  // container rather than bound to an element that keeps being replaced.
+  document.getElementById("parcelActionSummary")?.addEventListener("click", (ev) => {
+    if (!ev.target.closest("[data-open-alerts]")) return;
+    ev.stopPropagation();
+    if (selectedFeature && selectedLayerType === "PARCELS") {
+      openAlertsListModal(selectedFeature.getId(), selectedFeature.get("parcel_name"));
+    }
   });
 }
 
@@ -5594,12 +5602,9 @@ function setupInfoPopup() {
         selectedLayerType = isBlocks ? "BLOCKS" : "PARCELS";
         showParcelActionToolbar(feature);
 
-        // Clicking directly on the Alerts(n) line opens the Alerts List
-        // modal for this plot, on top of the normal select-and-show-toolbar
-        // behavior above (blocks don't render this line, so parcels only).
-        if (isParcels && isClickOnAlertsLine(feature, evt.pixel)) {
-          openAlertsListModal(feature.getId(), feature.get("parcel_name"));
-        }
+        // The Alerts List modal used to open by clicking the on-map
+        // "Alerts(n)" text line. That line is gone (see the parcels style
+        // function); the popup's own Alerts row opens it instead.
         return true;
       },
       { layerFilter: (layer) => layer === blocksLayer || layer === parcelsLayer, hitTolerance: 20 }

@@ -121,14 +121,26 @@ export async function requireRole(request, env, roles, message = "Your account c
  * rather than echoing whatever arrived — echoing would make the allowlist
  * decorative.
  */
+// Any port on the dev machine. Live Server picks whatever is free (5500,
+// 5501, 5502…), so pinning one port means CORS breaks every time it moves.
+// This is not a security hole: the token check is what guards the data, and
+// a page on someone else's localhost still needs a valid Supabase session.
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 export function cors(origin, env) {
   const allowed = String(env.ALLOWED_ORIGINS || "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  const allow = allowed.includes(origin) ? origin : allowed[0] || "";
+
+  // Echo the caller's origin when it is allowed, and send nothing when it is
+  // not. Returning some *other* allowed origin produces the baffling "header
+  // has a value 'https://…' that is not equal to the supplied origin" error
+  // instead of simply saying this origin is not on the list.
+  const permitted = allowed.includes(origin) || LOCAL_ORIGIN.test(origin);
+  const allow = permitted ? origin : "";
   return {
-    "Access-Control-Allow-Origin": allow,
+    ...(allow ? { "Access-Control-Allow-Origin": allow } : {}),
     "Access-Control-Allow-Methods": "GET,HEAD,PUT,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Authorization,Content-Type,Range",
     "Access-Control-Expose-Headers": "Content-Range,Content-Length,ETag,Accept-Ranges",

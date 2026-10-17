@@ -92,6 +92,25 @@ body {
 .brand-name  { font-size: 15px; font-weight: 700; color: #fff; }
 .brand-sub   { font-size: 9px; color: var(--green-200); letter-spacing: 1.2px; text-transform: uppercase; }
 
+/* "Open Webmap" link — sits on its own row below the brand name/logo.
+   Same translucent-on-green treatment as the modal header buttons, with the
+   app's orange accent on hover, so it reads as part of the sidebar. */
+.sidebar-brand { flex-wrap: wrap; row-gap: 12px; }
+.brand-webmap-btn {
+  flex: 1 0 100%;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 7px 10px; margin-right: 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,.22);
+  background: rgba(255,255,255,.08);
+  color: #fff; text-decoration: none;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.brand-webmap-btn:hover { background: #D46112; border-color: #D46112; }
+.brand-webmap-btn:focus-visible { outline: 2px solid var(--amber-300); outline-offset: 2px; }
+.brand-webmap-btn i { font-size: 13px; }
+
 /* Nav */
 .sidebar-nav {
   flex: 1; padding: 10px 0; overflow-y: auto; overflow-x: hidden;
@@ -278,6 +297,7 @@ table { min-width: 500px; }
 .btn-danger  { background: var(--red-500); color: #fff; }
 .btn-danger:hover { opacity: .85; }
 .btn-sm   { padding: 5px 11px; font-size: 12px; }
+.btn:disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .btn-icon { padding: 6px 9px; }
 
 /* ═══════════════════════════════════════
@@ -658,6 +678,47 @@ input.form-input:focus, select.form-input:focus {
 .toggle-switch input:checked + .toggle-slider { background: var(--green-800); border-color: var(--green-800); }
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
 
+/* ── Fixed Estate / Block / Plot summary (Log Activity opened from a plot) ── */
+.locked-scope {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: var(--gray-100); border: 1px solid var(--gray-100);
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+.locked-scope__item { background: var(--gray-50); padding: 8px 12px; min-width: 0; }
+.locked-scope__label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; color: var(--green-700);
+}
+.locked-scope__value {
+  display: block; font-size: 13px; font-weight: 600; color: var(--gray-900);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Info / warning notes inside modals ── */
+.modal-note {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  font-size: 12px; line-height: 1.5; margin-bottom: 14px;
+}
+.modal-note i { margin-top: 2px; flex-shrink: 0; }
+.modal-note.info   { background: var(--green-50); color: var(--green-700); border: 1px solid var(--green-200); }
+.modal-note.danger { background: var(--red-100);  color: var(--red-500);   border: 1px solid rgba(192,57,43,.3); }
+
+/* ── Cascade delete: what will be removed ── */
+.delete-impact {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 8px;
+  margin-bottom: 14px;
+}
+.delete-impact__item {
+  border: 1px solid var(--gray-100); border-radius: var(--radius-sm);
+  background: var(--gray-50); padding: 8px 10px; text-align: center;
+}
+.delete-impact__num   { font-size: 20px; font-weight: 800; color: var(--red-500); line-height: 1.2; }
+.delete-impact__label { font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--gray-500); }
+
+/* ── Invite status pill on the Users table ── */
+.invite-pending { font-size: 10px; font-weight: 700; color: var(--amber-600); background: var(--amber-100); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+
 /* ═══════════════════════════════════════
    RESPONSIVE
 ═══════════════════════════════════════ */
@@ -677,6 +738,9 @@ input.form-input:focus, select.form-input:focus {
   .sidebar .nav-label,
   .sidebar .nav-section-label { display: none; }
   .sidebar .sidebar-brand { justify-content: center; padding: 12px 0; }
+  .sidebar .brand-webmap-label { display: none; }
+  .sidebar .brand-webmap-btn { flex: 0 0 auto; width: 36px; height: 34px; padding: 0; margin: 0; }
+  .sidebar .brand-webmap-btn i { font-size: 16px; }
   .sidebar .nav-item { justify-content: center; padding: 13px 0; }
 
   /* Icons were small (15px) and dim (.85 opacity) — fine next to a label,
@@ -714,6 +778,7 @@ input.form-input:focus, select.form-input:focus {
 
 /* 480px */
 @media (max-width: 480px) {
+  .locked-scope { grid-template-columns: 1fr; }
   .stat-value { font-size: 19px; }
   .panel-body { padding: 10px; }
   .card { padding: 14px; }

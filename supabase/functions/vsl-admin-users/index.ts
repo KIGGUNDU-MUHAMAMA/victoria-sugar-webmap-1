@@ -7,7 +7,12 @@
  *
  * Actions (POST body: { action, ...payload }):
  *  - "list"       -> returns all vsl_profiles rows (admin directory view)
- *  - "create"     -> creates a real Supabase Auth user + vsl_profiles row with a chosen role
+ *  - "invite"     -> emails the person an invitation link (no password is ever set or seen
+ *                    by the admin); they choose their own password on set-password.html.
+ *                    Also fills in their vsl_profiles row (role, name, phone, ...).
+ *                    "create" is kept as an alias of "invite" for older clients.
+ *  - "resend_invite" -> re-sends the invitation; if the person already set a password,
+ *                    sends a "choose a new password" link to the same page instead
  *  - "update"     -> updates role/full_name/phone/title/estate_id/is_active on an existing user
  *  - "deactivate" -> bans sign-in (auth) and sets is_active=false, without deleting the account
  *  - "reactivate" -> lifts the ban and sets is_active=true
@@ -23,6 +28,17 @@ const corsHeaders: Record<string, string> = {
 };
 
 const VALID_ROLES = ["ADMIN", "SURVEYOR", "MANAGMENT"];
+
+// Only accept an http(s) URL pointing at set-password.html. Supabase also
+// checks it against the project's Auth -> URL Configuration -> Redirect URLs.
+function safeRedirect(value: unknown): string | null {
+  if (!value) return null;
+  try {
+    const u = new URL(String(value));
+    if ((u.protocol === "https:" || u.protocol === "http:") && u.pathname.endsWith("/set-password.html")) return u.href;
+  } catch { /* ignore */ }
+  return null;
+}
 
 function ok(payload: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify({ success: true, ...payload }), {
@@ -82,22 +98,26 @@ Deno.serve(async (req: Request) => {
       return ok({ users: data });
     }
 
-    if (action === "create") {
+    if (action === "invite" || action === "create") {
       const email = String(body.email || "").trim().toLowerCase();
-      const password = String(body.password || "");
       const role = String(body.role || "");
       if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) return fail(400, "Valid email is required.");
-      if (!password || password.length < 8) return fail(400, "Password must be at least 8 characters.");
       if (!VALID_ROLES.includes(role)) return fail(400, `Role must be one of: ${VALID_ROLES.join(", ")}`);
+      const redirectTo = safeRedirect(body.redirect_to);
 
-      const { data: created, error: createErr } = await admin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { role },
+      // Sends the invitation email. The account exists but has no password
+      // until the person opens the link and chooses one.
+      const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+        data: { role, full_name: body.full_name ? String(body.full_name) : undefined },
+        ...(redirectTo ? { redirectTo } : {}),
       });
-      if (createErr) throw createErr;
-      const newId = created.user!.id;
+      if (inviteErr) {
+        if (/already been registered|already exists/i.test(inviteErr.message)) {
+          return fail(409, "A user with this email already exists.");
+        }
+        throw inviteErr;
+      }
+      const newId = invited.user!.id;
 
       // vsl_handle_new_auth_user trigger already inserted a bare vsl_profiles row; fill in the rest.
       const { error: updErr } = await admin
@@ -113,7 +133,21 @@ Deno.serve(async (req: Request) => {
         .eq("id", newId);
       if (updErr) throw updErr;
 
-      return ok({ id: newId });
+      return ok({ id: newId, invited: true });
+    }
+
+    if (action === "resend_invite") {
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email) return fail(400, "email is required.");
+      const redirectTo = safeRedirect(body.redirect_to);
+      // Not yet accepted -> a fresh invitation. Already accepted -> the invite
+      // call refuses, so send a password link to the same page instead.
+      const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, redirectTo ? { redirectTo } : {});
+      if (!inviteErr) return ok({ sent: "invite" });
+      if (!/already been registered|already exists/i.test(inviteErr.message)) throw inviteErr;
+      const { error: resetErr } = await admin.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : {});
+      if (resetErr) throw resetErr;
+      return ok({ sent: "reset" });
     }
 
     if (action === "update") {
@@ -168,7 +202,8 @@ Deno.serve(async (req: Request) => {
     if (action === "reset_password") {
       const email = String(body.email || "").trim().toLowerCase();
       if (!email) return fail(400, "email is required.");
-      const { error } = await admin.auth.resetPasswordForEmail(email);
+      const redirectTo = safeRedirect(body.redirect_to);
+      const { error } = await admin.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : {});
       if (error) throw error;
       return ok({});
     }

@@ -158,3 +158,109 @@ export function computeUtmCartesianAreaAcres(lonLats) {
   }
   return (Math.abs(area) / 2) * 0.000247105381;
 }
+
+// ===========================================================================
+// MAP ZOOM LADDER — what appears at which zoom
+// ---------------------------------------------------------------------------
+// One place to tune every zoom-dependent show/hide on the map. Values are
+// OpenLayers view zoom levels, and each entry is the zoom at which that
+// thing STARTS being drawn; below it, it isn't drawn at all.
+//
+// The order of the values below IS the intended reveal order as you zoom in,
+// and assertZoomLadder() at the bottom of this block enforces that — so a
+// careless edit that puts plot labels before the plots themselves fails
+// loudly at load rather than looking subtly wrong on the map.
+//
+//      zoomed OUT                                        zoomed IN
+//      │                                                         │
+//      ├─ ESTATE ─────────────────────────────── always visible
+//      ├─ BLOCK ──────────────── 11    block outlines
+//      ├─ BLOCK_LABEL ───────── 12.5   block names
+//      ├─ PLOT ──────────────── 13     plot outlines + status fills
+//      ├─ PLOT_LABEL ────────── 13.5   plot name + area
+//      ├─ FEATURE ───────────── 14.5   trees, roads, walls …
+//      ├─ FEATURE_LABEL ─────── 14.5   …and their names
+//      └─ PLOT_DISTANCE ─────── 16.5   per-edge metre labels
+//
+// Rough scale reference (EPSG:3857, near the equator): z11 ≈ 76 m/px,
+// z13 ≈ 19 m/px, z15 ≈ 4.8 m/px, z17 ≈ 1.2 m/px.
+// ===========================================================================
+export const MAP_ZOOM = Object.freeze({
+  /** Estates are the coarsest thing on the map and the only orientation cue
+   *  when zoomed right out, so they are never hidden. */
+  ESTATE: 0,
+  ESTATE_LABEL: 0,
+
+  BLOCK: 11,
+  BLOCK_LABEL: 12.5,
+
+  PLOT: 13,
+  PLOT_LABEL: 13.5,
+
+  /** Features and their labels appear together: a tree icon with no name is
+   *  not much use, and they declutter against each other anyway. */
+  FEATURE: 14.5,
+  FEATURE_LABEL: 14.5,
+
+  /** Per-edge distances are survey detail — they only make sense once a
+   *  single plot fills a good part of the screen, and at any lower zoom they
+   *  turn the map into a wall of numbers. */
+  PLOT_DISTANCE: 16.5
+});
+
+/** Resolution (m/px) at zoom 0 for EPSG:3857 — the fallback below, for the
+ *  rare moment a style function runs before the view can be consulted. */
+const WEB_MERCATOR_ZOOM0_RESOLUTION = 156543.03392804097;
+
+/**
+ * View zoom for a resolution, as handed to an OpenLayers style function.
+ *
+ * Style functions receive a resolution, but thresholds are far easier to
+ * reason about (and for anyone to retune) as zoom levels — hence this.
+ * Prefers the view's own conversion, which respects a custom resolution set
+ * or projection, and falls back to the standard Web Mercator formula.
+ */
+export function zoomFromResolution(view, resolution) {
+  if (!Number.isFinite(resolution) || resolution <= 0) return 0;
+  const z = view?.getZoomForResolution?.(resolution);
+  if (Number.isFinite(z)) return z;
+  return Math.log2(WEB_MERCATOR_ZOOM0_RESOLUTION / resolution);
+}
+
+/**
+ * OpenLayers treats `minZoom` on a layer as EXCLUSIVE — the layer shows when
+ * view zoom is strictly greater. Thresholds here are meant inclusively ("at
+ * z13 the plots are on"), so this nudges the value just below.
+ */
+export function layerMinZoom(threshold) {
+  return threshold - 1e-6;
+}
+
+/** Fails loudly if the ladder is ever edited out of order. Called once at
+ *  module load, so a bad edit surfaces immediately instead of as a map that
+ *  draws labels for shapes it isn't drawing. */
+function assertZoomLadder() {
+  const order = [
+    ["ESTATE", MAP_ZOOM.ESTATE],
+    ["ESTATE_LABEL", MAP_ZOOM.ESTATE_LABEL],
+    ["BLOCK", MAP_ZOOM.BLOCK],
+    ["BLOCK_LABEL", MAP_ZOOM.BLOCK_LABEL],
+    ["PLOT", MAP_ZOOM.PLOT],
+    ["PLOT_LABEL", MAP_ZOOM.PLOT_LABEL],
+    ["FEATURE", MAP_ZOOM.FEATURE],
+    ["FEATURE_LABEL", MAP_ZOOM.FEATURE_LABEL],
+    ["PLOT_DISTANCE", MAP_ZOOM.PLOT_DISTANCE]
+  ];
+  for (let i = 1; i < order.length; i++) {
+    if (order[i][1] < order[i - 1][1]) {
+      console.error(
+        `[Victoria map] MAP_ZOOM is out of order: ${order[i][0]} (${order[i][1]}) ` +
+        `appears before ${order[i - 1][0]} (${order[i - 1][1]}). ` +
+        "A label would be drawn at a zoom where its own layer is hidden."
+      );
+      return false;
+    }
+  }
+  return true;
+}
+assertZoomLadder();

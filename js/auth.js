@@ -62,8 +62,11 @@ async function handleForgotPassword() {
     setStatus(statusEl, "Enter an email first.", true);
     return;
   }
+  // Lands on set-password.html, where the person actually chooses the new
+  // password (this used to send them back to login.html, which just signed
+  // them in without ever asking for a new password).
   const { error } = await supabase.auth.resetPasswordForEmail(target, {
-    redirectTo: `${window.location.origin}/login.html`
+    redirectTo: new URL("./set-password.html", window.location.href).href
   });
   if (error) {
     setStatus(statusEl, error.message, true);
@@ -76,6 +79,13 @@ signInBtn.addEventListener("click", handleSignIn);
 forgotBtn.addEventListener("click", handleForgotPassword);
 
 async function init() {
+  // Coming back from set-password.html — prefill the email.
+  const prefill = new URLSearchParams(window.location.search).get("email");
+  if (prefill) {
+    email.value = prefill;
+    password.focus();
+    setStatus(statusEl, "Password saved. Sign in with your new password.");
+  }
   const { data } = await supabase.auth.getSession();
   if (data.session) {
     window.location.href = "./webmap.html";

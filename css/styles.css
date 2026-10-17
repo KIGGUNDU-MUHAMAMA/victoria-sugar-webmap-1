@@ -6427,14 +6427,22 @@ select.search-panel__input {
    Positioned via an ol.Overlay (see map-app.js); this file only
    owns the look. Buttons are UI-only right now (logic follow-up).
    ============================================================= */
+/* Was a pill of three round buttons; now a small card — a live summary of
+   the selection (status, ratoon, activity, alerts), a "More info" link, then
+   the two logging actions. Rounded rather than fully pill-shaped, since it
+   is a panel now rather than a row of buttons. */
 .parcel-action-toolbar {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  width: max-content;
+  min-width: 164px;
+  max-width: 230px;
   background: #ffffff;
-  border-radius: 999px;
-  padding: 6px;
+  border-radius: 14px;
+  padding: 10px 11px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.12);
   pointer-events: auto;
 }
@@ -6543,16 +6551,102 @@ select.search-panel__input {
   color: var(--vsl-primary, #2e7d32);
 }
 
+/* ── Summary rows ── */
+.parcel-action-toolbar__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.parcel-action-toolbar__key {
+  flex: 0 0 auto;
+  color: var(--muted, #6b7280);
+  font-weight: 600;
+}
+
+/* min-width: 0 is what lets a long activity name ellipsise instead of
+   forcing the card wider than its max-width. */
+.parcel-action-toolbar__val {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-weight: 700;
+  color: var(--text, #1f2933);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The Alerts value, when there are any — a real button, since it opens the
+   Alerts List modal. `width: auto` opts out of the app-wide
+   `input, select, button, textarea { width: 100% }` reset near the top of
+   this file, the same opt-out .toggle-password and the print overlay's
+   Cancel button need. */
+.parcel-action-toolbar__alerts {
+  width: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 800;
+  text-align: right;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.parcel-action-toolbar__alerts:hover {
+  filter: brightness(0.85);
+}
+
+/* ── "More info" — replaces the old round info button ── */
+.parcel-action-toolbar__more {
+  width: auto;
+  align-self: flex-start;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #1976d2;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.parcel-action-toolbar__more:hover {
+  color: #0d47a1;
+}
+
+/* ── Action buttons ── */
+.parcel-action-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Square with rounded corners rather than circles, and smaller than before —
+   they are a footer to the summary now, not the whole control. */
 .parcel-action-toolbar__btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   cursor: pointer;
   padding: 0;
   margin: 0;
@@ -6577,9 +6671,9 @@ select.search-panel__input {
   background: linear-gradient(145deg, #f9a825, #c77800);
 }
 
-.parcel-action-toolbar__btn--info {
-  background: linear-gradient(145deg, #1976d2, #0d47a1);
-}
+/* .parcel-action-toolbar__btn--info is gone — the round blue "i" button was
+   replaced by the .parcel-action-toolbar__more text link above, which opens
+   the same Feature Info panel. */
 
 /* =============================================================
    Log Activity / Log Alert modals — the .popWinTabs bar (normally

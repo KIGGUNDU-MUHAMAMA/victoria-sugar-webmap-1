@@ -25,6 +25,9 @@
 
 import { promptFields, confirmDanger } from "../popups/popup.js";
 import { featureTypeSwatchHtml, fillOpacityOf } from "./feature-type-editor.js";
+// Drawn features sit at a fixed rung of the map's shared zoom ladder — see
+// the MAP_ZOOM comment in utils.js for the full reveal order.
+import { MAP_ZOOM, layerMinZoom } from "./utils.js";
 
 // ── On-map line label tuning ────────────────────────────────────────────
 // These three are the knobs for how a road's name repeats along it. They
@@ -257,7 +260,11 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   const featuresLayer = new ol.layer.Vector({
     source: featuresSource,
     style: (feature, resolution) => styleForFeature(feature, resolution),
-    zIndex: 910
+    zIndex: 910,
+    // Features are the finest-grained thing on the map after plots, so they
+    // only come on once a plot is comfortably readable — below that, a
+    // scattering of tree and borehole icons is noise over the block layout.
+    minZoom: layerMinZoom(MAP_ZOOM.FEATURE)
   });
 
   // Labels live on their own layer over the SAME source, purely so they can
@@ -280,7 +287,10 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     source: featuresSource,
     style: (feature) => labelStyleForFeature(feature),
     declutter: true,
-    zIndex: 911
+    zIndex: 911,
+    // Same rung as the geometry it labels: a name floating where its icon
+    // isn't drawn would be worse than no name at all.
+    minZoom: layerMinZoom(MAP_ZOOM.FEATURE_LABEL)
   });
 
   /** Both feature layers read the same source and the same feature

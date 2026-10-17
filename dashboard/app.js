@@ -717,6 +717,7 @@ function renderEstatesPage(el) {
               <td>${p.expectedHarvest||'—'}</td>
               <td onclick="event.stopPropagation()">
                 <div style="display:flex;gap:4px;align-items:center">
+                  <button class="icon-btn primary" onclick="logActivityForPlot('${p.id}')" title="Log Activity" aria-label="Log Activity"><i class="fas fa-person-digging" aria-hidden="true"></i></button>
                   <button class="icon-btn" onclick="showEditPlotModal('${p.id}')" title="Edit">✎</button>
                   <button class="icon-btn danger" onclick="confirmDeletePlot('${p.id}')" title="Delete">🗑</button>
                 </div>
@@ -773,6 +774,7 @@ function renderEstatesPage(el) {
       <button class="btn btn-outline btn-sm btn-back-accent" onclick="clearPlotDetail()">${backLabel}</button>
       <div style="font-size:13px;color:var(--gray-500)">Full Plot Record — <strong>${p.parcelName || p.id}</strong></div>
       <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="logActivityForPlot('${p.id}')"><i class="fas fa-person-digging" aria-hidden="true"></i> Log Activity</button>
         <button class="btn btn-outline btn-sm" onclick="showEditPlotModal('${p.id}')">✏ Edit Plot</button>
         <button class="btn btn-danger btn-sm" onclick="confirmDeletePlot('${p.id}')">🗑 Delete Plot</button>
       </div>
@@ -798,6 +800,36 @@ function renderEstatesPage(el) {
                 <td style="font-weight:600;color:var(--gray-700);font-size:12px">${attr}</td>
                 <td style="color:var(--gray-900);font-size:13px">${val}</td>
               </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${plotActivityHistoryHTML(p)}`;
+  }
+
+  // Activities logged against this plot, newest first.
+  function plotActivityHistoryHTML(p) {
+    const rows = DATA.activities
+      .filter(a => a._parcelId === p._uuid)
+      .sort((a,b) => (new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0)));
+    return `
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <div class="card-title">Activity History (${rows.length})</div>
+        <button class="btn btn-outline btn-sm" onclick="logActivityForPlot('${p.id}')">+ Log Activity</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Activity</th><th>Logged By</th><th>Team</th><th>Completion</th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(a => `
+              <tr>
+                <td>${a.date || '—'}</td>
+                <td><strong>${a.name}</strong></td>
+                <td>${a.createdByName || '—'}</td>
+                <td>${a.teamSize ?? '—'}</td>
+                <td>${a.completionValue != null ? a.completionValue + '%' : '—'}</td>
+              </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--gray-500);padding:20px">No activities logged for this plot yet</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1059,6 +1091,12 @@ function renderEstatesPage(el) {
 
   rebindHelpers();
 
+  // Log Activity for one plot — opens the shared Add Activity window with the
+  // Estate/Block/Plot fixed to that plot, then refreshes this view in place.
+  window.logActivityForPlot = function(plotId) {
+    showAddActivityModal({ plotId, onSaved: renderTabContent });
+  };
+
   window.switchEBPTab = function(tab, btn) {
     activeTab = tab;
     viewingPlotId = null;
@@ -1160,17 +1198,101 @@ function renderEstatesPage(el) {
     }
   };
 
-  window.confirmDeleteEstate = function(id, name) {
-    const e = DATA.estates.find(x=>x.id===id);
+  // ── CASCADE DELETE (Estate → Blocks → Plots) ──
+  // The database enforces the hierarchy (sql/021_vsl_strict_land_hierarchy.sql):
+  // deleting an estate deletes its blocks, deleting a block deletes its plots,
+  // and everything recorded against them goes too, in one atomic delete.
+  // These helpers only work out what will be removed so the window can show it.
+  function deleteImpactFor(level, rec) {
+    let blocks = [], plots = [];
+    if (level === 'estate') {
+      blocks = DATA.blocks.filter(b => b.estate === rec.name);
+      const blockUuids = new Set(blocks.map(b => b._uuid));
+      plots = DATA.plots.filter(p => blockUuids.has(p._blockUuid));
+    } else {
+      plots = DATA.plots.filter(p => p._blockUuid === rec._uuid);
+    }
+    const blockUuids = new Set(blocks.map(b => b._uuid));
+    if (level === 'block') blockUuids.add(rec._uuid);
+    const plotUuids = new Set(plots.map(p => p._uuid));
+    const activities = DATA.activities.filter(a =>
+      plotUuids.has(a._parcelId) || blockUuids.has(a._blockId) ||
+      (level === 'estate' && a._estateId != null && String(a._estateId) === String(rec._id)));
+    const seasons = (DATA.seasons || []).filter(x => plotUuids.has(x.parcelId));
+    const alerts  = (DATA.alerts  || []).filter(x => x.targetId && plotUuids.has(x.targetId));
+    return { blocks: blocks.length, plots: plots.length, activities: activities.length, seasons: seasons.length, alerts: alerts.length };
+  }
+
+  function deleteImpactHTML(level, impact) {
+    const items = [];
+    if (level === 'estate') items.push(['Blocks', impact.blocks]);
+    items.push(['Plots', impact.plots], ['Activities', impact.activities], ['Seasons', impact.seasons], ['Alerts', impact.alerts]);
+    return `<div class="delete-impact">${items.map(([label, n]) => `
+      <div class="delete-impact__item"><div class="delete-impact__num">${n}</div><div class="delete-impact__label">${label}</div></div>`).join('')}
+    </div>`;
+  }
+
+  function escapeAttr(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
+
+  // Shared confirm window. Because this removes a whole branch of the land
+  // hierarchy, the user types the record's name to unlock the Delete button
+  // whenever anything sits underneath it.
+  function showCascadeDeleteModal({ level, label, impact, onConfirm }) {
+    const levelWord = level === 'estate' ? 'Estate' : 'Block';
+    const hasChildren = impact.blocks + impact.plots + impact.activities + impact.seasons + impact.alerts > 0;
+    const childText = level === 'estate'
+      ? 'every block in this estate, every plot in those blocks, and all records logged against them'
+      : 'every plot in this block and all records logged against them';
     showModal(`
-      <div class="modal-title">Delete Estate</div>
-      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">
-        Are you sure you want to delete <strong>${name}</strong>? Blocks and plots referencing this estate name will remain but lose their estate link. This action cannot be undone.
+      <div class="modal-title">Delete ${levelWord}</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:12px">
+        You are about to permanently delete <strong>${label}</strong>${hasChildren ? `, together with ${childText}` : ''}.
       </p>
+      ${hasChildren ? deleteImpactHTML(level, impact) : ''}
+      <div class="modal-note danger"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        <span>No block or plot can exist without its parent, so nothing underneath is kept. This cannot be undone.</span></div>
+      ${hasChildren ? `
+      <div class="form-group" style="margin-bottom:4px">
+        <label class="form-label" for="cd-confirm">Type <strong>${label}</strong> to confirm</label>
+        <input class="form-input" id="cd-confirm" autocomplete="off" data-expected="${escapeAttr(label)}">
+      </div>` : ''}
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="submitDeleteEstate('${e?._id}')">Yes, Delete</button>
+        <button class="btn btn-danger" id="cd-submit" ${hasChildren ? 'disabled' : ''}>Delete ${levelWord}${hasChildren ? ' and Everything In It' : ''}</button>
       </div>`);
+    const input = document.getElementById('cd-confirm');
+    const btn = document.getElementById('cd-submit');
+    if (input) {
+      const sync = () => {
+        btn.disabled = input.value.trim().toLowerCase() !== input.dataset.expected.trim().toLowerCase();
+      };
+      input.addEventListener('input', sync);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter' && !btn.disabled) btn.click(); });
+      setTimeout(() => input.focus(), 0);
+    }
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+      await onConfirm();
+    });
+  }
+
+  // Foreign key (23503) = the database still has the old "no action" rules,
+  // i.e. sql/021_vsl_strict_land_hierarchy.sql hasn't been run yet.
+  function cascadeDeleteErrorText(err) {
+    if (err && err.code === '23503') return 'records underneath are blocking the delete — run the database update sql/021_vsl_strict_land_hierarchy.sql';
+    return err && err.message ? err.message : 'unknown error';
+  }
+
+  window.confirmDeleteEstate = function(id, name) {
+    const e = DATA.estates.find(x=>x.id===id);
+    if (!e) return;
+    showCascadeDeleteModal({
+      level: 'estate',
+      label: e.name || name,
+      impact: deleteImpactFor('estate', e),
+      onConfirm: () => submitDeleteEstate(e._id),
+    });
   };
 
   window.submitDeleteEstate = async function(estateDbId) {
@@ -1179,12 +1301,14 @@ function renderEstatesPage(el) {
       const { error } = await client.from('vsl_estate').delete().eq('id', estateDbId);
       if (error) throw error;
       closeModal();
-      showToast('Estate deleted', 'red');
+      showToast('Estate and everything in it deleted', 'red');
+      viewingEstateId = null; viewingBlockId = null; viewingPlotId = null; selectedBlock = null; selectedEstate = '';
       await retryLiveDataLoad();
       renderTabContent();
     } catch (err) {
       console.error(err);
-      showToast('Failed to delete estate: ' + err.message, 'red');
+      closeModal();
+      showToast('Failed to delete estate: ' + cascadeDeleteErrorText(err), 'red');
     }
   };
 
@@ -1296,8 +1420,8 @@ function renderEstatesPage(el) {
       <div class="modal-title">Add New Block</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Block Code</label><input class="form-input" id="ab-code" placeholder="e.g. BLOCK21"></div>
-        <div class="form-group"><label class="form-label">Estate</label>
-          <select class="form-input" id="ab-estate">${DATA.estates.map(e=>`<option value="${e._id}">${e.name}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Estate *</label>
+          <select class="form-input" id="ab-estate"><option value="">— Select estate —</option>${DATA.estates.map(e=>`<option value="${e._id}">${e.name}</option>`).join('')}</select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Expected Area (acres)</label><input class="form-input" id="ab-area" type="number" placeholder="0.00"></div>
@@ -1316,6 +1440,7 @@ function renderEstatesPage(el) {
     const area = document.getElementById('ab-area').value;
     const status = document.getElementById('ab-status').value;
     if (!code) { showToast('Block code is required','red'); return; }
+    if (!estateId) { showToast('Every block must belong to an estate — pick one','red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_blocks').insert([{
@@ -1379,15 +1504,13 @@ function renderEstatesPage(el) {
 
   window.confirmDeleteBlock = function(id) {
     const b = DATA.blocks.find(x=>x.id===id);
-    showModal(`
-      <div class="modal-title">Delete Block</div>
-      <p style="font-size:14px;color:var(--gray-700);margin-bottom:20px">
-        Delete <strong>${b?.name || id}</strong>? Plots referencing this block will lose their block link. This cannot be undone.
-      </p>
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="submitDeleteBlock('${b?._uuid}')">Yes, Delete</button>
-      </div>`);
+    if (!b) return;
+    showCascadeDeleteModal({
+      level: 'block',
+      label: b.name || b.id,
+      impact: deleteImpactFor('block', b),
+      onConfirm: () => submitDeleteBlock(b._uuid),
+    });
   };
 
   window.submitDeleteBlock = async function(blockDbId) {
@@ -1396,12 +1519,18 @@ function renderEstatesPage(el) {
       const { error } = await client.from('vsl_blocks').delete().eq('id', blockDbId);
       if (error) throw error;
       closeModal();
-      showToast('Block deleted', 'red');
+      showToast('Block and its plots deleted', 'red');
+      const wasViewing = DATA.blocks.find(x => x._uuid === blockDbId);
+      if (wasViewing && (viewingBlockId === wasViewing.id || selectedBlock === wasViewing.id)) {
+        viewingBlockId = null; selectedBlock = null;
+      }
+      viewingPlotId = null;
       await retryLiveDataLoad();
       renderTabContent();
     } catch (err) {
       console.error(err);
-      showToast('Failed to delete block: ' + err.message, 'red');
+      closeModal();
+      showToast('Failed to delete block: ' + cascadeDeleteErrorText(err), 'red');
     }
   };
 
@@ -1411,8 +1540,8 @@ function renderEstatesPage(el) {
       <div class="modal-title">Add New Plot</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Plot Code</label><input class="form-input" id="ap-code" placeholder="e.g. P-25"></div>
-        <div class="form-group"><label class="form-label">Block</label>
-          <select class="form-input" id="ap-block">${DATA.blocks.map(b=>`<option value="${b._uuid}">${b.name || b.id} (${b.estate})</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Block *</label>
+          <select class="form-input" id="ap-block"><option value="">— Select block —</option>${DATA.blocks.map(b=>`<option value="${b._uuid}">${b.name || b.id} (${b.estate})</option>`).join('')}</select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Expected Area (acres)</label><input class="form-input" id="ap-area" type="number" placeholder="0.00"></div>
@@ -1432,6 +1561,7 @@ function renderEstatesPage(el) {
     const ratoon = document.getElementById('ap-ratoon').value;
     const planted = document.getElementById('ap-planted').value;
     if (!code) { showToast('Plot code is required','red'); return; }
+    if (!blockId) { showToast('Every plot must belong to a block — pick one','red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_parcels').insert([{
@@ -2508,6 +2638,15 @@ function renderActivities(el) {
       </div>`);
   };
 
+}
+
+// ══════════════════════════════════════
+//  SHARED ACTIVITY MODALS
+//  Used by the Activities page AND the Land → Plots "Log Activity" row
+//  action, so these live at top level (they used to be defined inside
+//  renderActivities() and only existed after that page had been opened).
+// ══════════════════════════════════════
+
   // Estate → Block → Plot cascade, same pattern as the Log Harvest modal.
   // This used to be Block-only — with no Estate field at all, the only way
   // to scope an activity to an estate (with no specific block) was to leave
@@ -2639,17 +2778,41 @@ function renderActivities(el) {
     return props;
   }
 
-  window.showAddActivityModal = function() {
+  // Called after a successful save from the Add Activity modal. The Activities
+  // page re-renders itself; other callers (e.g. Land → Plots) pass their own.
+  let activityOnSaved = null;
+
+  // Read-only "where" summary shown instead of the Estate/Block/Plot pickers
+  // when the modal is opened from a specific plot — the scope is fixed there.
+  function lockedScopeHTML(prefix, plot) {
+    return `
+      <div class="locked-scope" style="margin-bottom:12px">
+        <div class="locked-scope__item"><span class="locked-scope__label">Estate</span><span class="locked-scope__value">${plot.estate || '—'}</span></div>
+        <div class="locked-scope__item"><span class="locked-scope__label">Block</span><span class="locked-scope__value">${plot.blockName || plot.block || '—'}</span></div>
+        <div class="locked-scope__item"><span class="locked-scope__label">Plot</span><span class="locked-scope__value">${plot.parcelName || plot.id}</span></div>
+        <input type="hidden" id="${prefix}-estate" value="${plot.estate || ''}">
+        <input type="hidden" id="${prefix}-block" value="${plot._blockUuid || ''}">
+        <input type="hidden" id="${prefix}-parcel" value="${plot._uuid || ''}">
+      </div>`;
+  }
+
+  // opts (all optional): { plotId, onSaved }
+  //   plotId  — plot's display id (DATA.plots[].id); locks the scope to that plot
+  //   onSaved — callback run after a successful save instead of re-rendering Activities
+  window.showAddActivityModal = function(opts) {
+    opts = opts || {};
+    const plot = opts.plotId ? DATA.plots.find(x => x.id === opts.plotId) : null;
+    activityOnSaved = typeof opts.onSaved === 'function' ? opts.onSaved : null;
     const firstType = ACTIVITY_TYPES()[0];
     showModal(`
-      <div class="modal-title">Log New Activity</div>
+      <div class="modal-title">Log Activity${plot ? ' — ' + (plot.parcelName || plot.id) : ''}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Activity Type</label>
           <select class="form-input" id="aa-name" onchange="onActivityTypeChange('aa')">${ACTIVITY_TYPES().map(t=>`<option>${t}</option>`).join('')}</select></div>
         <div class="form-group"><label class="form-label">Date</label>
           <input class="form-input" id="aa-date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
       </div>
-      ${scopePickerHTML('aa','','','')}
+      ${plot ? lockedScopeHTML('aa', plot) : scopePickerHTML('aa','','','')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="aa-team" type="number" min="0"></div>
         ${completionFieldHTML('aa', null, null)}
@@ -2699,7 +2862,9 @@ function renderActivities(el) {
       closeModal();
       showToast('Activity logged');
       await retryLiveDataLoad();
-      renderTabIfCurrent('activities');
+      const after = activityOnSaved;
+      activityOnSaved = null;
+      if (after) after(); else renderTabIfCurrent('activities');
     } catch (err) {
       console.error(err);
       showToast('Failed to log activity: ' + err.message, 'red');
@@ -2792,7 +2957,6 @@ function renderActivities(el) {
       showToast('Failed to delete activity: ' + err.message, 'red');
     }
   };
-}
 
 // Re-render a page only if it's still the one currently on screen (avoids clobbering
 // the user's view if they navigated away while an async save was in flight).
@@ -3263,6 +3427,12 @@ function renderMessages(el) {
 const ROLE_LABEL_MAP = { ADMIN: 'Admin', SURVEYOR: 'Surveyor', MANAGMENT: 'Management' };
 const ROLE_COLOR_MAP = { Admin: 'red', Surveyor: 'blue', Management: 'green' };
 
+// Where invitation / reset emails send people: <app root>/set-password.html
+// (the dashboard lives in /dashboard/, so go one level up).
+function setPasswordUrl() {
+  return new URL('../set-password.html', window.location.href).href;
+}
+
 // Call the vsl-admin-users Edge Function with the current admin's session token.
 async function callAdminUsersFn(action, payload) {
   const client = getSbClient();
@@ -3324,8 +3494,9 @@ function renderUsers(el) {
               <td style="font-size:12px;color:var(--gray-500)">${u.title || '—'}</td>
               <td>${u.estate}</td>
               <td>${pill(u.status==='active'?'Active':'Inactive',u.status==='active'?'green':'gray')}</td>
-              <td style="font-size:12px;color:var(--gray-500)">${u.lastLogin}</td>
+              <td style="font-size:12px;color:var(--gray-500)">${u.lastLogin === '—' ? '<span class="invite-pending">Not signed in yet</span>' : u.lastLogin}</td>
               <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px;flex-wrap:wrap">
+                ${u.lastLogin === '—' ? `<button class="icon-btn" onclick="confirmResendInvite('${u.id}')" title="Resend Invitation" aria-label="Resend Invitation"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>` : ''}
                 <button class="icon-btn" onclick="showEditUserModal('${u.id}')" title="Edit">✎</button>
                 ${u.status==='active'
                   ? `<button class="icon-btn" onclick="toggleUserActive('${u.id}',false)" title="Deactivate">⏸</button>`
@@ -3377,9 +3548,8 @@ function renderUsers(el) {
   window.showAddUserModal = function() {
     showModal(`
       <div class="modal-title">Add New User</div>
-      <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px">
-        Creates a real sign-in account and profile. Only admins can do this.
-      </p>
+      <div class="modal-note info"><i class="fas fa-envelope" aria-hidden="true"></i>
+        <span>We'll email this person an invitation link. They open it, choose their own password and their account is ready — this also confirms the email address is real. You never see or set their password.</span></div>
       <div class="form-group" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
         <img id="au-photo-preview" style="width:56px;height:56px;border-radius:50%;object-fit:cover;display:none;flex-shrink:0">
         <div style="flex:1"><label class="form-label">Profile Photo <span style="font-weight:400;color:var(--gray-500)">(optional)</span></label>
@@ -3390,21 +3560,20 @@ function renderUsers(el) {
         <div class="form-group"><label class="form-label">Email *</label><input class="form-input" id="au-email" type="email" placeholder="user@example.com" required></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Temporary Password *</label><input class="form-input" id="au-password" type="text" placeholder="At least 8 characters" required></div>
         <div class="form-group"><label class="form-label">Role *</label>
           <select class="form-input" id="au-role">${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Phone *</label><input class="form-input" id="au-phone" placeholder="07XXXXXXXX" required></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Title / Position <span style="font-weight:400;color:var(--gray-500)">(display only)</span></label>
           <input class="form-input" id="au-title" placeholder="e.g. Field Officer, Agronomist"></div>
-        <div class="form-group"><label class="form-label">Phone *</label><input class="form-input" id="au-phone" placeholder="07XXXXXXXX" required></div>
+        <div class="form-group"><label class="form-label">Home Estate</label>
+          <select class="form-input" id="au-estate">${estateOptions('')}</select></div>
       </div>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Home Estate</label>
-        <select class="form-input" id="au-estate">${estateOptions('')}</select></div>
       <p style="font-size:11px;color:var(--gray-500);margin-bottom:12px">* Required</p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitAddUser()">Create User</button>
+        <button class="btn btn-primary" id="au-submit" onclick="submitAddUser()"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send Invitation</button>
       </div>`);
     wireAvatarPreview('au-photo', 'au-photo-preview');
   };
@@ -3412,30 +3581,70 @@ function renderUsers(el) {
   window.submitAddUser = async function() {
     const full_name = document.getElementById('au-name').value.trim();
     const email = document.getElementById('au-email').value.trim();
-    const password = document.getElementById('au-password').value;
     const role = document.getElementById('au-role').value;
     const title = document.getElementById('au-title').value.trim();
     const phone = document.getElementById('au-phone').value.trim();
     const estate_id = document.getElementById('au-estate').value || null;
     const photoFile = document.getElementById('au-photo').files[0] || null;
-    // Full Name, Email, Temporary Password, Role, and Phone are all required —
-    // this used to only check email format and password length, silently
-    // accepting a blank name or phone.
+    // Full Name, Email, Role, and Phone are all required. There is no password
+    // here on purpose — the invited user sets their own from the email link.
     if (!full_name) { showToast('Full Name is required','red'); return; }
     if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Please enter a valid email','red'); return; }
-    if (!password || password.length < 8) { showToast('Password must be at least 8 characters','red'); return; }
     if (!role) { showToast('Role is required','red'); return; }
     if (!phone) { showToast('Phone is required','red'); return; }
+    const btn = document.getElementById('au-submit');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     try {
       const avatar_url = photoFile ? await uploadAvatarFile(photoFile) : null;
-      await callAdminUsersFn('create', { email, password, role, full_name, phone, title, estate_id, avatar_url });
-      closeModal();
-      showToast('User created successfully');
+      await callAdminUsersFn('invite', { email, role, full_name, phone, title, estate_id, avatar_url, redirect_to: setPasswordUrl() });
       await retryLiveDataLoad();
       renderTabIfCurrent('users');
+      showInviteSentModal(full_name, email);
     } catch (err) {
       console.error(err);
-      showToast('Failed to add user: ' + err.message, 'red');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send Invitation'; }
+      showToast('Failed to invite user: ' + err.message, 'red');
+    }
+  };
+
+  // Confirmation window after an invite goes out.
+  function showInviteSentModal(name, email) {
+    showModal(`
+      <div class="modal-title">Invitation Sent</div>
+      <div style="text-align:center;padding:6px 0 4px">
+        <div style="width:54px;height:54px;border-radius:50%;background:var(--green-50);color:var(--green-700);display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 12px"><i class="fas fa-envelope-circle-check" aria-hidden="true"></i></div>
+        <p style="font-size:14px;color:var(--gray-700);margin-bottom:6px"><strong>${name}</strong> has been invited.</p>
+        <p style="font-size:13px;color:var(--gray-500)">An email with a secure link was sent to <strong>${email}</strong>. Their account becomes usable once they open it and choose a password.</p>
+      </div>
+      <div class="modal-actions"><button class="btn btn-primary" onclick="closeModal()">Done</button></div>`);
+  }
+
+  // Resend the invitation (or, for someone who already set a password, a
+  // "choose a new password" link) — both land on set-password.html.
+  window.confirmResendInvite = function(id) {
+    const u = DATA.users.find(x => x.id === id); if (!u) return;
+    showModal(`
+      <div class="modal-title">Resend Invitation</div>
+      <p style="font-size:14px;color:var(--gray-700);margin-bottom:12px">Send <strong>${u.name}</strong> a new link to set their password?</p>
+      <div class="modal-note info"><i class="fas fa-circle-info" aria-hidden="true"></i>
+        <span>It goes to <strong>${u.email}</strong>. Any earlier link stops working.</span></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="ri-submit" onclick="submitResendInvite('${u.id}')"><i class="fas fa-paper-plane" aria-hidden="true"></i> Resend Link</button>
+      </div>`);
+  };
+  window.submitResendInvite = async function(id) {
+    const u = DATA.users.find(x => x.id === id); if (!u) return;
+    const btn = document.getElementById('ri-submit');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    try {
+      await callAdminUsersFn('resend_invite', { email: u.email, redirect_to: setPasswordUrl() });
+      closeModal();
+      showToast('Link sent to ' + u.email);
+    } catch (err) {
+      console.error(err);
+      closeModal();
+      showToast('Failed to resend: ' + err.message, 'red');
     }
   };
 
@@ -3544,6 +3753,7 @@ function renderUsers(el) {
       <button class="btn btn-outline btn-sm btn-back-accent" onclick="clearUserDetail()">← Back to Users</button>
       <div style="font-size:13px;color:var(--gray-500)">Full User Profile — <strong>${u.name}</strong></div>
       <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="confirmResendInvite('${u.id}')"><i class="fas fa-paper-plane" aria-hidden="true"></i> ${u.lastLogin === '—' ? 'Resend Invitation' : 'Send Password Link'}</button>
         <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">✏ Edit User</button>
         ${u.status==='active'
           ? `<button class="btn btn-outline btn-sm" onclick="toggleUserActive('${u.id}',false)">⏸ Deactivate</button>`

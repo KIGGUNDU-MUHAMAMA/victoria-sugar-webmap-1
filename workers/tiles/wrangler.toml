@@ -24,9 +24,15 @@ bucket_name = "vsl-tiles"
 SUPABASE_URL = "https://knhgliyghacvkeeptsfl.supabase.co"
 SUPABASE_ANON_KEY = "sb_publishable_W2kx87RbvH0Qd1HkPPXlIg_6GAy0HAV"
 
-# Origins allowed to call this Worker from a browser. The first entry is
-# used as the fallback when a request arrives from somewhere unlisted.
-ALLOWED_ORIGINS = "https://victoriasugar.ug,https://admin.victoriasugar.ug,http://localhost:5500,http://127.0.0.1:5500,https://farms.victoriasugarltd.xyz/webmap,https://farms.victoriasugarltd.xyz/*"
+# Origins allowed to call this Worker from a browser.
+#
+# An Origin is scheme://host[:port] and NOTHING else — no path, no wildcard.
+# "https://farms.victoriasugarltd.xyz/webmap" and ".../*" were both listed
+# here and neither could ever match, so that domain was silently refused.
+#
+# localhost and 127.0.0.1 are matched on any port by the worker itself (see
+# LOCAL_ORIGIN in workers/shared/auth.js), so dev ports do not belong here.
+ALLOWED_ORIGINS = "https://victoriasugar.ug,https://admin.victoriasugar.ug,https://farms.victoriasugarltd.xyz"
 
 # Serve the Worker from the tiles subdomain. Comment this block out to test
 # on the *.workers.dev URL first.

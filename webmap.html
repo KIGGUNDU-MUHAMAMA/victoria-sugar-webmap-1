@@ -92,7 +92,10 @@
           </button>
         </div>
 
-        <button type="button" class="dashboard-btn" title="Dashboard" onclick="window.location.href='dashboard/'">
+        <!-- Every button in this stack is shown or hidden by role — see
+             TOOL_ROLES / TOOL_BUTTON_IDS in js/role-store.js, which is the
+             single table of who-sees-what. Dashboard is ADMIN only. -->
+        <button type="button" class="dashboard-btn" id="mapDashboardBtn" title="Dashboard" onclick="window.location.href='dashboard/'">
           <i class="fas fa-bars"></i><span class="dashboard-btn__label">Dashboard</span>
         </button>
         <!-- Opens the Feature Info panel directly (js/map-app.js
@@ -122,6 +125,14 @@
              import/draw/edit workflow the Survey window otherwise covers. -->
         <button type="button" class="dashboard-btn" id="printTopBtn" title="Print Map">
           <i class="fas fa-print"></i><span class="dashboard-btn__label">Print</span>
+        </button>
+        <!-- Open to every role. The map's other route to logging needs you to
+             find and click the plot first, which is fine on a desktop in the
+             office but not for someone recording work they've just finished.
+             This opens a small Estate → Block → Plot picker instead
+             (windows/log-activity-picker.html). -->
+        <button type="button" class="dashboard-btn" id="mapLogActivityBtn" title="Log Activity">
+          <i class="fas fa-person-digging"></i><span class="dashboard-btn__label">Log Activity</span>
         </button>
       </div>
 

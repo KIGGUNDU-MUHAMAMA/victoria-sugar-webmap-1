@@ -1,0 +1,56 @@
+    <!-- Log Activity picker — opened from #mapLogActivityBtn in the left tool
+         stack, which every role can see.
+
+         The map's other route to logging an activity is: find the plot, click
+         it, press the button in the popup. That works at a desk with the plot
+         already on screen, but not for someone who has just finished a job
+         and knows only which block they were in. This picks the target by
+         name instead, then hands straight over to the existing Log Activity
+         form (openLogActivityModal) — so there is exactly one activity form
+         in the app, reached two ways.
+
+         Plot is optional on purpose. Leaving it on "All plots" logs against
+         the whole block, which the form already supports (it writes one row
+         per plot and warns that it is doing so). Estate alone is not enough:
+         there is no such thing as an estate-wide activity record.
+
+         See setupLogActivityPicker() in js/map-app.js. -->
+    <div id="logActivityPickerPanel" class="popWinMain popWin-mobileDock log-activity-picker" hidden>
+      <header class="popWinHead">
+        <div class="popWinHead__inner">
+          <span class="popWinIcon"><i class="fas fa-person-digging" aria-hidden="true"></i></span>
+          <h2 class="popWinTitle">Log Activity</h2>
+        </div>
+        <button type="button" class="popWinCloseBtn" id="logActivityPickerCloseBtn" aria-label="Close">
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div class="popWinBody">
+        <p class="uam-hint">Choose where the work happened.</p>
+
+        <label class="log-picker__label" for="logPickerEstate">Estate</label>
+        <select id="logPickerEstate" class="uam-select">
+          <option value="">— Select estate —</option>
+        </select>
+
+        <label class="log-picker__label" for="logPickerBlock">Block</label>
+        <select id="logPickerBlock" class="uam-select" disabled>
+          <option value="">— Select estate first —</option>
+        </select>
+
+        <label class="log-picker__label" for="logPickerPlot">Plot</label>
+        <select id="logPickerPlot" class="uam-select" disabled>
+          <option value="">— Select block first —</option>
+        </select>
+
+        <p id="logActivityPickerError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+
+      <div class="popWinActionBtns">
+        <button type="button" id="logActivityPickerContinueBtn"
+                class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+          <i class="fas fa-arrow-right" aria-hidden="true"></i> Continue
+        </button>
+      </div>
+    </div>

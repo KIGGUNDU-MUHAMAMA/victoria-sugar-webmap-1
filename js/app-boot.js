@@ -34,6 +34,9 @@ const WINDOW_FRAGMENTS = [
   // unreferenced rather than deleted.
   { parent: "mapLeftStack", url: "./windows/sentinel-analytics-panel.html" },
   { parent: "mapLeftStack", url: "./windows/search-panel.html" },
+  // Log Activity picker — #mapLogActivityBtn sits in the same button stack
+  // as the panels above, so it docks in the same column.
+  { parent: "mapLeftStack", url: "./windows/log-activity-picker.html" },
   { parent: "mapLeftStack", url: "./windows/info-help-popover.html" },
 
   // Right-hand tool stack.

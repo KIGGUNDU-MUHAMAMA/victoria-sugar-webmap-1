@@ -1,5 +1,6 @@
 import { createSupabaseClient } from "./supabase-client.js";
 import { clearStatus, setStatus } from "./utils.js";
+import { cacheProfile } from "./role-store.js";
 
 const supabase = createSupabaseClient();
 const statusEl = document.getElementById("status");
@@ -25,9 +26,12 @@ async function handleSignIn() {
       return;
     }
 
+    // Selects the whole display profile, not just role/is_active: this is
+    // the one fetch the map then reads back out of the cache instead of
+    // repeating on every load (see role-store.js and initUser in map-app.js).
     const { data: profile, error: profileError } = await supabase
       .from("vsl_profiles")
-      .select("role, is_active")
+      .select("id, email, role, full_name, phone, title, avatar_url, is_active")
       .eq("id", data.user.id)
       .single();
 
@@ -43,6 +47,10 @@ async function handleSignIn() {
     }
 
     sessionStorage.setItem("vsl_role", profile.role);
+    // The map reads this on boot instead of refetching vsl_profiles, so the
+    // tool buttons are right on the first paint. Purely a UI optimisation —
+    // RLS and the workers still decide what anyone can actually do.
+    cacheProfile(profile);
     // Best-effort — don't block login if this fails (e.g. RLS not yet caught up).
     supabase.from("vsl_profiles").update({ last_login_at: new Date().toISOString() }).eq("id", data.user.id).then(() => {});
     window.location.href = "./webmap.html";

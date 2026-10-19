@@ -21,6 +21,13 @@ import { initExportTools } from "./export-tools.js";
 import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
 import { initPrintTool } from "./print-tool.js";
 import { attachMediaToRecords, mediaFileError } from "./media-store.js";
+// Role → which tools are reachable, plus the local profile cache that keeps
+// boot from refetching vsl_profiles. See role-store.js for why the cache is
+// a UI optimisation and never a permission check.
+import {
+  readCachedProfile, cacheProfile, clearCachedProfiles,
+  applyToolVisibility, isLandEditor
+} from "./role-store.js";
 import { confirmDanger, promptFields } from "../popups/popup.js";
 
 const supabase = createSupabaseClient();
@@ -1160,6 +1167,9 @@ function initProfileModal() {
 
   dropdownEditBtn?.addEventListener("click", openEditModal);
   dropdownLogoutBtn?.addEventListener("click", async () => {
+    // Before the redirect, so a shared machine doesn't hand the next person
+    // a toolbar already laid out for this one's role.
+    clearCachedProfiles();
     await supabase.auth.signOut();
     window.location.href = "./login.html";
   });
@@ -4015,6 +4025,7 @@ function openParcelStatusPanel() {
   // Forcibly close Survey UAM at DOM level (does not depend on window.closeMenu)
   closeUAM();
 
+  window.closeLogActivityPicker?.();
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
   parcelStatusState.panelOpen = true;
@@ -4443,6 +4454,174 @@ function openLogActivityModal(feature, layerType) {
 function closeLogActivityModal() {
   const modal = document.getElementById("logActivityModal");
   if (modal) modal.hidden = true;
+}
+
+// ---------------------------------------------------------------------------
+// Log Activity picker (windows/log-activity-picker.html)
+//
+// Pick Estate → Block → (optionally) Plot, then hand off to the Log Activity
+// form above. Exists so logging doesn't require finding the plot on the map
+// first — see the note in that file.
+//
+// The form takes an OpenLayers feature, because every other way in starts
+// from one that was clicked. Here there may be no such feature on the map at
+// all: the chosen plot can be well outside the current viewport, and
+// parcelsSource only holds what the last bbox fetch returned. So a plain
+// ol.Feature is built carrying the three properties the form actually reads
+// — its id, its name, and expected_area_acres for the area-covered cap.
+// resolveSelectionParcelIds() works off getId() alone, so a synthetic feature
+// is indistinguishable to everything downstream.
+// ---------------------------------------------------------------------------
+function setupLogActivityPicker() {
+  const panel = document.getElementById("logActivityPickerPanel");
+  const openBtn = document.getElementById("mapLogActivityBtn");
+  const closeBtn = document.getElementById("logActivityPickerCloseBtn");
+  const estateSel = document.getElementById("logPickerEstate");
+  const blockSel = document.getElementById("logPickerBlock");
+  const plotSel = document.getElementById("logPickerPlot");
+  const continueBtn = document.getElementById("logActivityPickerContinueBtn");
+  const errorEl = document.getElementById("logActivityPickerError");
+  if (!panel || !openBtn) return;
+
+  /** Plots for the selected block, kept so Continue can read a plot's area
+   *  without a second fetch. */
+  let plotRows = [];
+
+  const showError = (msg) => {
+    if (!errorEl) return;
+    errorEl.textContent = msg || "";
+    errorEl.hidden = !msg;
+  };
+
+  const fill = (select, rows, placeholder, labelOf) => {
+    select.innerHTML =
+      `<option value="">${placeholder}</option>` +
+      rows.map((r) => `<option value="${escapeHtml(String(r.id))}">${escapeHtml(labelOf(r))}</option>`).join("");
+    select.disabled = rows.length === 0;
+  };
+
+  /** Continue needs a block at minimum — an activity belongs to plots, and
+   *  an estate on its own doesn't identify any. */
+  const syncContinue = () => {
+    continueBtn.disabled = !blockSel.value;
+  };
+
+  async function loadEstates() {
+    showError("");
+    const { data, error } = await supabase
+      .from("vsl_estate").select("id, estate_name").order("estate_name");
+    if (error) { showError(`Couldn't load estates: ${error.message}`); return; }
+    fill(estateSel, data || [], "— Select estate —", (r) => r.estate_name || "(unnamed)");
+  }
+
+  estateSel.addEventListener("change", async () => {
+    showError("");
+    plotRows = [];
+    blockSel.innerHTML = '<option value="">— Select estate first —</option>';
+    blockSel.disabled = true;
+    plotSel.innerHTML = '<option value="">— Select block first —</option>';
+    plotSel.disabled = true;
+    syncContinue();
+    if (!estateSel.value) return;
+
+    const { data, error } = await supabase
+      .from("vsl_blocks").select("id, block_code, block_name")
+      .eq("estate_id", estateSel.value).order("block_code");
+    if (error) { showError(`Couldn't load blocks: ${error.message}`); return; }
+    const rows = data || [];
+    fill(blockSel, rows, rows.length ? "— Select block —" : "— No blocks —",
+      (r) => r.block_name || r.block_code || "(unnamed)");
+    syncContinue();
+  });
+
+  blockSel.addEventListener("change", async () => {
+    showError("");
+    plotRows = [];
+    plotSel.innerHTML = '<option value="">— Select block first —</option>';
+    plotSel.disabled = true;
+    syncContinue();
+    if (!blockSel.value) return;
+
+    const { data, error } = await supabase
+      .from("vsl_parcels").select("id, parcel_code, parcel_name, expected_area_acres")
+      .eq("block_id", blockSel.value).order("parcel_code");
+    if (error) { showError(`Couldn't load plots: ${error.message}`); return; }
+    plotRows = data || [];
+    // "All plots" is the empty option here rather than a prompt — leaving it
+    // selected logs against the whole block, which is a real choice, not a
+    // missing one.
+    plotSel.innerHTML =
+      `<option value="">All plots in this block</option>` +
+      plotRows.map((r) =>
+        `<option value="${escapeHtml(String(r.id))}">${escapeHtml(r.parcel_name || r.parcel_code || "(unnamed)")}</option>`
+      ).join("");
+    plotSel.disabled = false;
+    syncContinue();
+  });
+
+  plotSel.addEventListener("change", syncContinue);
+
+  continueBtn.addEventListener("click", () => {
+    if (!blockSel.value) return;
+
+    // Synthetic feature — see the note at the top of this function.
+    const feature = new ol.Feature();
+    let layerType;
+    if (plotSel.value) {
+      const row = plotRows.find((r) => String(r.id) === plotSel.value);
+      feature.setId(plotSel.value);
+      feature.set("parcel_name", row?.parcel_name || row?.parcel_code || "");
+      feature.set("expected_area_acres", row?.expected_area_acres ?? null);
+      layerType = "PARCELS";
+    } else {
+      const label = blockSel.options[blockSel.selectedIndex]?.textContent || "";
+      feature.setId(blockSel.value);
+      feature.set("block_name", label);
+      layerType = "BLOCKS";
+    }
+
+    // The form's own save path reads these two module-level values, same as
+    // when a feature is clicked on the map.
+    selectedFeature = feature;
+    selectedLayerType = layerType;
+
+    closeLogActivityPicker();
+    openLogActivityModal(feature, layerType);
+  });
+
+  function openLogActivityPicker() {
+    closeOtherMapPanels();
+    showError("");
+    panel.hidden = false;
+    openBtn.classList.add("active");
+    // Refetched each open so an estate or block added since the page loaded
+    // is offered without a reload.
+    loadEstates();
+  }
+
+  function closeLogActivityPicker() {
+    panel.hidden = true;
+    openBtn.classList.remove("active");
+  }
+  window.closeLogActivityPicker = closeLogActivityPicker;
+
+  openBtn.addEventListener("click", () => {
+    if (panel.hidden) openLogActivityPicker();
+    else closeLogActivityPicker();
+  });
+  closeBtn?.addEventListener("click", closeLogActivityPicker);
+}
+
+/** The docked panels all share one column, so opening any of them closes the
+ *  rest. Each exposes its own closer as a window hook (the same loosely
+ *  coupled pattern unified-menu.js uses). */
+function closeOtherMapPanels() {
+  window.closeSearchPanel?.();
+  window.closeMenu?.();
+  window.closeParcelStatusPanel?.();
+  window.vslClosePrintPanel?.();
+  const measurePanel = document.getElementById("measurePanel");
+  if (measurePanel) measurePanel.hidden = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -6042,6 +6221,7 @@ function openSearchPanel(tab = "parcel") {
   closeUAM();
   // Measure moved into the same column too (see app-boot.js) — same reason.
   if (measurePanel) measurePanel.hidden = true;
+  window.closeLogActivityPicker?.();
   panel.hidden = false;
   btn.classList.add("active");
   btn.setAttribute("aria-expanded", "true");
@@ -7375,6 +7555,7 @@ function bindEvents() {
         closeSearchPanel({ clearHighlight: false });
         closeUAM();
         closeParcelStatusPanel();
+        window.closeLogActivityPicker?.();
         
         const tabPick = document.getElementById('measureTabPick');
         const tabWalk = document.getElementById('measureTabWalk');
@@ -7456,39 +7637,107 @@ async function initUser() {
   }
   currentUser = data.session.user;
   isAuthenticated = true;
-  const { data: profile, error } = await supabase
-    .from("vsl_profiles")
-    .select("id, email, role, full_name, phone, title, avatar_url")
-    .eq("id", currentUser.id)
-    .single();
-  if (error || !profile?.role) {
+
+  // Cached role first. Sign-in wrote the profile to localStorage, so the
+  // common case needs no round trip at all and the tool buttons are correct
+  // on the first paint rather than after a fetch resolves.
+  const cached = readCachedProfile(currentUser.id);
+  if (cached) {
+    currentProfile = cached;
+    applyRoleGating(currentProfile.role);
+    // Confirm in the background. A role change is rare but real (someone
+    // promoted or demoted between visits), so the cache is checked rather
+    // than trusted forever — just not on the critical path.
+    revalidateProfile();
+    return true;
+  }
+
+  // No usable cache — first visit on this browser, storage unavailable, or
+  // a cache written for a different user. Fetch and remember.
+  const profile = await fetchProfile();
+  if (!profile) {
+    clearCachedProfiles();
     await supabase.auth.signOut();
     window.location.href = "./login.html";
     return false;
   }
   currentProfile = profile;
+  cacheProfile(profile);
+  applyRoleGating(profile.role);
+  return true;
+}
+
+/** The signed-in user's vsl_profiles row, or null if it's missing/unreadable
+ *  (which is a sign-out, since a session without a role is unusable). */
+async function fetchProfile() {
+  const { data, error } = await supabase
+    .from("vsl_profiles")
+    .select("id, email, role, full_name, phone, title, avatar_url")
+    .eq("id", currentUser.id)
+    .single();
+  if (error || !data?.role) return null;
+  return data;
+}
+
+/**
+ * Background re-check of a cached profile.
+ *
+ * Deliberately not awaited: the UI is already up from the cache, and this
+ * only has to correct it if something changed. A network failure leaves the
+ * cached role in place, which is the right call — being offline shouldn't
+ * lock a surveyor out of their own tools.
+ */
+async function revalidateProfile() {
+  try {
+    const fresh = await fetchProfile();
+    if (!fresh) return;
+    const roleChanged = fresh.role !== currentProfile?.role;
+    currentProfile = fresh;
+    cacheProfile(fresh);
+    if (roleChanged) {
+      applyRoleGating(fresh.role);
+      updateProfileButtonAvatar();
+    }
+  } catch (err) {
+    console.warn("[Victoria] Could not revalidate the cached profile:", err);
+  }
+}
+
+/**
+ * Everything that depends on the current role, in one place.
+ *
+ * Runs on boot and again if revalidation finds the role changed, so it has
+ * to be idempotent — hence setting both sides of every flag rather than only
+ * the restricting one.
+ */
+function applyRoleGating(role) {
+  // Which map tools are reachable at all (see TOOL_ROLES in role-store.js).
+  applyToolVisibility(role);
+
+  // The Select window's own read-only state. Separate from the button
+  // gating above because MANAGMENT can still OPEN things they can't change.
   const psBanner = document.getElementById("parcelStatusReadOnlyBanner");
   const psApply = document.getElementById("parcelStatusApplyBtn");
-  const statusReadonly =
-    currentProfile.role === "MANAGMENT";
+  const statusReadonly = !isLandEditor(role);
   if (psBanner) psBanner.hidden = !statusReadonly;
   if (psApply) psApply.disabled = statusReadonly;
 
-  if (currentProfile.role === "MANAGMENT") {
-    if (measureLineBtn) measureLineBtn.disabled = true;
-    if (measureAreaBtn) measureAreaBtn.disabled = true;
-    if (measureTopBtn) measureTopBtn.disabled = true;
-    const undoMeasureBtn = document.getElementById("undoMeasureBtn");
-    if (undoMeasureBtn) undoMeasureBtn.disabled = true;
-    if (stopDrawBtn) stopDrawBtn.disabled = true;
-    if (clearMeasuresBtn) clearMeasuresBtn.disabled = true;
-    if (snapMasterCb) snapMasterCb.disabled = true;
-    // surveyPreviewBtn now does double duty as Preview AND Save (see
-    // survey-import.js) — disabling it alone covers both for MANAGMENT.
-    const sp = document.getElementById("surveyPreviewBtn");
-    if (sp) sp.disabled = true;
+  // Importing reshapes land records, so it stays with the land editors even
+  // though the Survey window is already hidden from everyone else.
+  // surveyPreviewBtn does double duty as Preview AND Save (see
+  // survey-import.js), so this one flag covers both.
+  const sp = document.getElementById("surveyPreviewBtn");
+  if (sp) sp.disabled = statusReadonly;
+
+  // Measure is open to every role — it draws nothing and saves nothing.
+  // These controls used to be disabled for MANAGMENT; they are explicitly
+  // re-enabled rather than simply left alone, so that a demotion applied by
+  // revalidateProfile() can't leave a stale disabled button behind.
+  for (const el of [measureLineBtn, measureAreaBtn, measureTopBtn, stopDrawBtn,
+                    clearMeasuresBtn, snapMasterCb,
+                    document.getElementById("undoMeasureBtn")]) {
+    if (el) el.disabled = false;
   }
-  return true;
 }
 
 async function initMap() {
@@ -7573,6 +7822,7 @@ async function initMap() {
   setupInfoPopup();
   setupParcelActionToolbar();
   setupLegendPanel();
+  setupLogActivityPicker();
   setupMessagesPanel();
   setupToolStackCollapse();
   setupSnapPanel();
@@ -7598,7 +7848,10 @@ async function initMap() {
     // the client's estate-boundary layer was only ever loaded once at boot
     // — this lets a BLOCKS commit pull the freshly (re)computed bounds in.
     refreshEstateBoundaries: loadEstateBoundaries,
-    getManagementLocked: () => currentProfile?.role === "MANAGMENT",
+    // Importing rewrites land records, so it's the land editors' job. Asks
+    // the shared role rule rather than naming a role, so adding a fourth
+    // role later only means editing role-store.js.
+    getManagementLocked: () => !isLandEditor(currentProfile?.role),
     blocksSource,
     parcelsSource
   });

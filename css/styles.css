@@ -8452,3 +8452,31 @@ select.search-panel__input {
   line-height: 1.35;
   color: var(--muted);
 }
+
+/* =============================================================
+   LOG ACTIVITY PICKER (windows/log-activity-picker.html)
+   -------------------------------------------------------------
+   Estate → Block → Plot, then hand off to the existing Log Activity form.
+   Docks in .map-left-stack with the other windows, so it only needs its own
+   width and the label/field rhythm.
+   ============================================================= */
+.log-activity-picker {
+  align-self: flex-start;
+  width: 290px;
+}
+
+.log-picker__label {
+  display: block;
+  margin: 0.7rem 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+
+/* The first label sits right under the hint line, which already has its own
+   bottom margin. */
+.log-picker__label:first-of-type {
+  margin-top: 0.3rem;
+}

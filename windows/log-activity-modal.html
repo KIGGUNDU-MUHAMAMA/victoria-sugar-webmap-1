@@ -52,29 +52,31 @@
              the whole block, which is what the warning says. -->
         <div id="logActivityStepLocation">
           <div class="vsl-section-label">Location</div>
+          <!-- Three columns side by side, each label sitting above its own
+               select. Placeholders carry the "pick the one above me first"
+               instruction, so no separate hint line is needed under them. -->
           <div class="log-target">
-            <label class="log-target__label" for="logActivityEstate">Estate</label>
-            <select id="logActivityEstate" class="uam-select">
-              <option value="">— Select estate —</option>
-            </select>
+            <div class="log-target__field">
+              <label class="log-target__label" for="logActivityEstate">Estate</label>
+              <select id="logActivityEstate" class="uam-select">
+                <option value="">— Select estate —</option>
+              </select>
+            </div>
 
-            <label class="log-target__label" for="logActivityBlock">Block</label>
-            <select id="logActivityBlock" class="uam-select" disabled>
-              <option value="">— Select estate first —</option>
-            </select>
+            <div class="log-target__field">
+              <label class="log-target__label" for="logActivityBlock">Block</label>
+              <select id="logActivityBlock" class="uam-select" disabled>
+                <option value="">— Estate first —</option>
+              </select>
+            </div>
 
-            <label class="log-target__label" for="logActivityPlot">Plot</label>
-            <select id="logActivityPlot" class="uam-select" disabled>
-              <option value="">— Select block first —</option>
-            </select>
+            <div class="log-target__field">
+              <label class="log-target__label" for="logActivityPlot">Plot</label>
+              <select id="logActivityPlot" class="uam-select" disabled>
+                <option value="">— Block first —</option>
+              </select>
+            </div>
           </div>
-
-          <p id="logActivityBlockWarning" class="feature-info-readonly-msg" hidden>
-            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
-            No plot chosen — this activity will be logged against every plot in the block.
-          </p>
-
-          <p id="logActivityEmptyHint" class="map-popup__empty">Pick an activity above and where it happened, then press Next.</p>
         </div>
 
         <!-- ── STEP 2: the activity's own fields ── -->

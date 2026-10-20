@@ -4385,7 +4385,6 @@ function renderLogActivityChip() {
 
 function renderLogActivityFields(activityName) {
   const wrap = document.getElementById("logActivityFieldsWrap");
-  const emptyHint = document.getElementById("logActivityEmptyHint");
   const commonBody = document.getElementById("logActivityCommonFields");
   const propsSection = document.getElementById("logActivityPropsSection");
   const propsBody = document.getElementById("logActivityPropsFields");
@@ -4397,7 +4396,6 @@ function renderLogActivityFields(activityName) {
   // reveal the fields underneath the location pane.
   if (!activityName || logActivityStep !== "details") {
     wrap.hidden = true;
-    if (emptyHint) emptyHint.hidden = false;
     if (saveBtn) saveBtn.disabled = true;
     syncLogActivityStepButtons();
     return;
@@ -4485,7 +4483,6 @@ function renderLogActivityFields(activityName) {
   }
 
   wrap.hidden = false;
-  if (emptyHint) emptyHint.hidden = true;
   syncLogActivityStepButtons();
 }
 
@@ -4637,7 +4634,6 @@ function setLogActivityError(msg) {
  */
 function syncLogActivityTarget() {
   const { block, plot } = logTargetEls();
-  const warning = document.getElementById("logActivityBlockWarning");
   const titleEl = document.getElementById("logActivityTitle");
 
   let feature = null;
@@ -4665,10 +4661,9 @@ function syncLogActivityTarget() {
   logActivityState.feature = feature;
   logActivityState.layerType = layerType;
 
-  // The warning is about scope, so it follows the PLOT dropdown rather than
-  // how the form was opened — clearing the plot after a plot-level click
-  // widens the target, and the warning has to say so.
-  if (warning) warning.hidden = layerType !== "BLOCKS";
+  // The block-scope warning line was removed from the markup. Scope is
+  // still legible without it: the chip reads "All plots" whenever no plot
+  // is picked.
   if (titleEl) titleEl.textContent = `Log Activity${label ? ` — ${label}` : ""}`;
 
   renderLogActivityChip();

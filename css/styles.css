@@ -8478,13 +8478,23 @@ select.search-panel__input {
   gap: 1px;
   padding: 5px 10px;
   margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 9px;
+  /* Same frame as the activity select beside it (see
+     #logActivityModal .popWinTabs__select): 2px green border, 8px radius and
+     the same soft shadow, so the two read as one pair of controls. */
+  border: 2px solid #285f28;
+  border-radius: 8px;
   background: #fff;
   text-align: left;
   font: inherit;
   cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+/* Matches the select's own focus ring, for the same reason. */
+.log-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(40, 95, 40, 0.2);
 }
 
 .log-chip:hover {
@@ -8523,30 +8533,41 @@ select.search-panel__input {
 }
 
 /* ── Step 1: the Estate/Block/Plot row ── */
+/* Three equal columns side by side, each with its label stacked above its
+   own select. Was a two-column label/field grid stacked vertically, which
+   made the location block three rows tall for what is really one choice. */
 .log-target {
   display: grid;
-  /* Label column sized to the longest word ("Estate"), so the three selects
-     line up with each other rather than each starting wherever its own
-     label happens to end. */
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 6px 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px;
   margin-bottom: 0.6rem;
+}
+
+/* minmax(0, 1fr) above plus min-width: 0 here is what lets a long estate
+   name shrink its own column instead of widening the whole modal. */
+.log-target__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
 }
 
 .log-target__label {
   font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--muted);
+  font-weight: 600;
+  color: var(--text);
   white-space: nowrap;
 }
 
-/* min-width: 0 lets a long estate name ellipsise inside the grid cell
-   instead of stretching the whole modal. */
 .log-target .uam-select {
   width: 100%;
   min-width: 0;
   margin: 0;
+}
+
+/* Narrow phones can't fit three selects across — stack them rather than
+   squeezing each down to a few characters. */
+@media (max-width: 460px) {
+  .log-target { grid-template-columns: 1fr; }
 }

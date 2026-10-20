@@ -602,7 +602,6 @@ async function loadLiveData() {
       machines: a.number_of_machines,
       completionValue: a.completion_value,
       areaCoveredAcres: a.area_covered_acres,
-      challenges: a.challenges,
       comments: a.comments,
       properties: a.activity_properties || {},
       createdAt: a.created_at,

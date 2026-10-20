@@ -2584,7 +2584,6 @@ function renderActivities(el) {
       ['Machines', a.machines ?? '—'],
       ['Completion', a.completionValue != null ? a.completionValue + '%' : '—'],
       ['Area Covered (ac)', a.areaCoveredAcres ?? '—'],
-      ['Challenges', a.challenges || '—'],
       ['Comments', a.comments || '—'],
       ['Logged By', a.createdByName || '—'],
       ['Logged', a.createdAt ? a.createdAt.replace('T',' ').slice(0,16) : '—'],
@@ -2710,7 +2709,7 @@ function renderActivities(el) {
 
   // ── Activity-specific property fields ──
   // Log/Edit Activity used to only ever show the columns every activity
-  // shares (team size, completion, challenges, comments) — none of the
+  // shares (team size, completion, area covered, comments) — none of the
   // per-activity extras (e.g. Bush Clearing's vegetation density/disposal
   // method, Harvesting's yield/brix, Spraying's chemical type, etc) had
   // anywhere to be entered from the dashboard at all, even though the
@@ -2804,7 +2803,6 @@ function renderActivities(el) {
         ${completionFieldHTML('aa', null, null)}
       </div>
       ${activityPropsSectionHTML('aa', firstType, null)}
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Challenges</label><textarea class="form-input" id="aa-challenges" rows="2"></textarea></div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="aa-comments" rows="2"></textarea></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2821,7 +2819,6 @@ function renderActivities(el) {
     const team = document.getElementById('aa-team').value;
     const completion = document.getElementById('aa-completion').value;
     const areaCovered = completion !== '100' ? document.getElementById('aa-area').value : '';
-    const challenges = document.getElementById('aa-challenges').value.trim();
     const comments = document.getElementById('aa-comments').value.trim();
     const properties = readActivityPropsFromForm('aa');
     try {
@@ -2840,7 +2837,7 @@ function renderActivities(el) {
         block_id: blockId, parcel_id: parcelId, estate_id: estateRow ? estateRow._id : null,
         team_size: team || null, completion_value: completion || null,
         area_covered_acres: areaCovered || null,
-        challenges: challenges || null, comments: comments || null,
+        comments: comments || null,
         activity_properties: properties,
         created_by: uid,
       }]);
@@ -2872,7 +2869,6 @@ function renderActivities(el) {
         ${completionFieldHTML('ea', a.completionValue, a.areaCoveredAcres)}
       </div>
       ${activityPropsSectionHTML('ea', a.name, a.properties)}
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Challenges</label><textarea class="form-input" id="ea-challenges" rows="2">${a.challenges||''}</textarea></div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="ea-comments" rows="2">${a.comments||''}</textarea></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2887,7 +2883,6 @@ function renderActivities(el) {
     const team = document.getElementById('ea-team').value;
     const completion = document.getElementById('ea-completion').value;
     const areaCovered = completion !== '100' ? document.getElementById('ea-area').value : '';
-    const challenges = document.getElementById('ea-challenges').value.trim();
     const comments = document.getElementById('ea-comments').value.trim();
     // Merge onto the existing activity_properties rather than replacing it
     // outright — anything computed elsewhere and not rendered as a form
@@ -2905,7 +2900,7 @@ function renderActivities(el) {
       const { error } = await client.from('vsl_activities').update({
         activity_name: name, activity_date: date, team_size: team || null,
         completion_value: completion || null, area_covered_acres: areaCovered || null,
-        challenges: challenges || null, comments: comments || null,
+        comments: comments || null,
         activity_properties: properties,
       }).eq('id', id);
       if (error) throw error;

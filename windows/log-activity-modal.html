@@ -82,9 +82,13 @@
         <!-- ── STEP 2: the activity's own fields ── -->
         <div id="logActivityFieldsWrap" hidden>
           <div class="vsl-section-label">General Details</div>
-          <table class="map-popup__table vsl-prop-table">
-            <tbody id="logActivityCommonFields"></tbody>
-          </table>
+          <!-- The common fields are a GRID, not a table like the per-activity
+               "Other Details" below: Team size / Machines / Progress / Area
+               covered are all short values, so they sit two to a row with the
+               label above the input. Long fields (Comments) span the full
+               width — see buildPropFieldCell() in js/map-app.js, which marks
+               textarea-typed defs with --full. -->
+          <div class="vsl-field-grid" id="logActivityCommonFields"></div>
           <div id="logActivityPropsSection" hidden>
             <div class="vsl-section-label vsl-section-label--second">Other Details</div>
             <table class="map-popup__table vsl-prop-table" id="logActivityPropsTable">

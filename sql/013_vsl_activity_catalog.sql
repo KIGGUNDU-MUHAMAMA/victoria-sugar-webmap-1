@@ -110,9 +110,16 @@ insert into public.vsl_activity_common_fields (key, label, data_type, options, o
   ('team_size','Team size','number',null,null,null,1),
   ('number_of_machines','Number of machines','number',null,null,null,2),
   ('completion_value','Progress (%)','select','["0","20","50","75","100"]','["0%","20%","50%","75%","100%"]',null,3),
-  ('area_covered_acres','Area covered (ac)','number',null,null,'{"key":"completion_value","notEquals":"100"}',4),
-  ('comments','Comments','textarea',null,null,null,5),
-  ('challenges','Challenges','textarea',null,null,null,6)
+  -- Area covered no longer hides at 100% (its original show_when); it stays
+  -- visible and is auto-filled with the plot/block's own area and locked
+  -- instead — see applyAreaCoveredLock() in js/map-app.js. Cleared in
+  -- 023_vsl_drop_activity_challenges.sql and here too, so re-running this
+  -- script can't put the show_when back.
+  ('area_covered_acres','Area covered (ac)','number',null,null,null,4),
+  -- 'challenges' used to be seeded here as sort_order 6; dropped in
+  -- 023_vsl_drop_activity_challenges.sql, and removed from this seed too so
+  -- re-running the catalog script can't resurrect it.
+  ('comments','Comments','textarea',null,null,null,5)
 on conflict (key) do update set
   label = excluded.label, data_type = excluded.data_type, options = excluded.options,
   option_labels = excluded.option_labels, show_when = excluded.show_when, sort_order = excluded.sort_order;

@@ -322,7 +322,7 @@ const WEATHER_CONDITION_FIELD = {
 // X" properties) were removed from this form entirely — costs are now
 // admin-only, logged against an activity later from the dashboard into
 // vsl_activity_costs (see that table's migration). Team size/number of
-// machines/progress/comments/challenges are the only fields shown for every
+// machines/progress/area covered/comments are the only fields shown for every
 // activity regardless of which one is picked.
 //
 // Progress is an enum (0%, 20%, 50%, 75%, 100%), not free numeric input.
@@ -344,8 +344,10 @@ let LOG_ACTIVITY_COMMON_FIELDS = [
   // auto-filled with the selected plot/block's own area and locked instead;
   // see applyAreaCoveredLock() in renderLogActivityFields.
   { key: "area_covered_acres", label: "Area covered (ac)", type: "number" },
-  { key: "comments", label: "Comments", type: "textarea" },
-  { key: "challenges", label: "Challenges", type: "textarea" }
+  // One free-text box only. There used to be a second ("Challenges"); it was
+  // dropped from the form AND from vsl_activities, since in practice whatever
+  // went wrong was written into Comments anyway.
+  { key: "comments", label: "Comments", type: "textarea" }
 ];
 
 let ACTIVITY_PROPERTY_DEFS = {
@@ -534,21 +536,22 @@ async function loadActivityCatalogFromDb() {
   }
 }
 
-/** Renders one <tr><th>label</th><td><input/></td></tr> row for a field def
- *  ({key, label, type: text|number|date|select|textarea, options?, optionLabels?,
- *  default?, min?, max?, allowNegative?, showWhen?: {key, notEquals}}).
- *  Shared by the Log Activity and Log Alert modals.
+/** The markup-neutral half of a field def ({key, label, type:
+ *  text|number|date|select|textarea, options?, optionLabels?, default?, min?,
+ *  max?, allowNegative?, showWhen?: {key, notEquals}}): builds the control
+ *  itself plus the wrapper attributes, leaving it to the caller to wrap them
+ *  in a table row (buildPropFieldRow) or a grid cell (buildPropFieldCell).
  *
  *  Every number field gets min="0" unless def.allowNegative is true — none
  *  of the activity properties (depths, quantities, counts, hours, weights,
  *  pH, etc.) are ever legitimately negative, so this is the default rather
  *  than something each def has to opt into.
  *
- *  showWhen lets a row hide itself until another field (in the same
+ *  showWhen lets the wrapper hide itself until another field (in the same
  *  container) has a value other than notEquals — used for the "Area
  *  covered" field, which only makes sense while Progress isn't 100%. See
  *  wireConditionalFieldVisibility, which actually applies this at render time. */
-function buildPropFieldRow(def) {
+function buildPropFieldParts(def) {
   const fieldId = `propField_${def.key}_${Math.random().toString(36).slice(2, 8)}`;
   let control;
   const isNumber = def.type === "number";
@@ -566,10 +569,42 @@ function buildPropFieldRow(def) {
   } else {
     control = `<input id="${fieldId}" class="vsl-prop-input" data-key="${escapeHtml(def.key)}" type="${def.type}" value="${escapeHtml(def.default || "")}"${minAttr}${maxAttr}>`;
   }
-  const rowAttrs = def.showWhen
+  const wrapAttrs = def.showWhen
     ? ` data-show-when-key="${escapeHtml(def.showWhen.key)}" data-show-when-not-equals="${escapeHtml(def.showWhen.notEquals)}"`
     : "";
-  return `<tr${rowAttrs}><th><label for="${fieldId}">${escapeHtml(def.label)}</label></th><td>${control}</td></tr>`;
+  const label = `<label for="${fieldId}">${escapeHtml(def.label)}</label>`;
+  return { fieldId, control, wrapAttrs, label };
+}
+
+/** Renders one <tr><th>label</th><td><input/></td></tr> row for a field def —
+ *  label LEFT, control RIGHT, one field per row. Used by the Log Alert modal
+ *  and by Log Activity's per-activity "Other Details" table. */
+function buildPropFieldRow(def) {
+  const { control, wrapAttrs, label } = buildPropFieldParts(def);
+  return `<tr${wrapAttrs}><th>${label}</th><td>${control}</td></tr>`;
+}
+
+/** Same field defs, laid out as a GRID CELL instead of a table row: label
+ *  above its control, two cells to a row (see .vsl-field-grid in
+ *  css/styles.css). Used for the Log Activity modal's common fields, whose
+ *  values are all short enough to sit side by side — Team size, Machines,
+ *  Progress, Area covered.
+ *
+ *  textarea defs (Comments) get --full so they span the whole width; a
+ *  two-line box squeezed into half a 460px modal is unusable.
+ *
+ *  The control keeps its own wrapper div because the Area covered warning is
+ *  injected into input.parentElement and positioned absolutely against it
+ *  (renderLogActivityFields) — exactly the role the <td> played in the table
+ *  layout. The showWhen/data-key/id contracts are identical to
+ *  buildPropFieldRow's, so wireConditionalFieldVisibility and the save path
+ *  work on either markup unchanged. */
+function buildPropFieldCell(def) {
+  const { control, wrapAttrs, label } = buildPropFieldParts(def);
+  const fullClass = def.type === "textarea" ? " vsl-field-grid__item--full" : "";
+  return `<div class="vsl-field-grid__item${fullClass}"${wrapAttrs}>` +
+    `<div class="vsl-field-grid__label">${label}</div>` +
+    `<div class="vsl-field-grid__control">${control}</div></div>`;
 }
 
 /** Wires up any showWhen-driven rows inside a rendered field table: hides a
@@ -580,7 +615,10 @@ function buildPropFieldRow(def) {
  *  are no conditional rows in it. */
 function wireConditionalFieldVisibility(container) {
   if (!container) return;
-  const rows = Array.from(container.querySelectorAll("tr[data-show-when-key]"));
+  // Not "tr[...]": the Log Activity common fields are grid cells (divs), not
+  // table rows — see buildPropFieldCell. Both carry the same data attributes
+  // and both respond to .hidden, so the selector stays element-agnostic.
+  const rows = Array.from(container.querySelectorAll("[data-show-when-key]"));
   if (!rows.length) return;
   const apply = () => {
     rows.forEach((row) => {
@@ -765,7 +803,7 @@ const RECORD_DETAIL_SKIP_KEYS = new Set(["id", "parcel_id", "block_id", "target_
 
 const RECORD_DETAIL_LABELS = {
   alert: { alert_name: "Alert name", note: "Description", status: "Status", severity: "Severity", created_at: "Logged", resolved_at: "Resolved at", created_by: "Logged by", resolved_by: "Resolved by" },
-  activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", completion_value: "Progress (%)", area_covered_acres: "Area covered (ac)", challenges: "Challenges", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
+  activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", completion_value: "Progress (%)", area_covered_acres: "Area covered (ac)", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
   harvest: { harvest_date: "Harvest date", gross_weight_tonnes: "Yield (tonnes)", ratoon_at_harvest: "Ratoon", created_at: "Logged at", created_by: "Logged by" },
   // media/comment's real "who" columns are captured_by/user_id, not
   // created_by — see RECORD_WHO_COLUMNS above.
@@ -919,7 +957,6 @@ async function saveRecordDetailEdit() {
       number_of_machines: numOrNull(common.number_of_machines),
       completion_value: numOrNull(common.completion_value),
       area_covered_acres: common.area_covered_acres !== "" ? numOrNull(common.area_covered_acres) : null,
-      challenges: common.challenges || null,
       comments: common.comments || null,
       activity_properties: properties
     };
@@ -4401,7 +4438,7 @@ function renderLogActivityFields(activityName) {
     return;
   }
 
-  commonBody.innerHTML = LOG_ACTIVITY_COMMON_FIELDS.map(buildPropFieldRow).join("");
+  commonBody.innerHTML = LOG_ACTIVITY_COMMON_FIELDS.map(buildPropFieldCell).join("");
   wireConditionalFieldVisibility(commonBody);
 
   // Area covered can't exceed the selected plot's (or block's) own expected
@@ -4939,7 +4976,6 @@ async function saveLogActivityForm(event) {
       number_of_machines: numOrNull(common.number_of_machines),
       completion_value: numOrNull(common.completion_value),
       area_covered_acres: areaCoveredAcres,
-      challenges: common.challenges || null,
       comments: common.comments || null,
       activity_date: new Date().toISOString().slice(0, 10),
       created_by: currentUser.id,

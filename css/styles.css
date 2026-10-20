@@ -6971,7 +6971,7 @@ select.search-panel__input {
 
 /* Log Activity only (Log Alert keeps the stacked single-column layout
    above) — approved mockup: label LEFT / input RIGHT for every field except
-   Comments and Challenges (label above, full width), each row divided by a
+   Comments (label above, full width), each row divided by a
    bottom border so it's unambiguous where one field ends and the next
    begins, grouped under two static section headings ("General Details" /
    "Other Details" — see .vsl-section-label below and
@@ -7014,7 +7014,7 @@ select.search-panel__input {
   flex: 1 1 auto;
   min-width: 0;
 }
-/* Comments / Challenges — the label-above, full-width exception. */
+/* Comments — the label-above, full-width exception. */
 #logActivityModal .vsl-prop-table tr:has(textarea) {
   flex-direction: column;
   align-items: stretch;
@@ -7043,6 +7043,96 @@ select.search-panel__input {
 #logActivityModal .vsl-prop-table select {
   padding-right: 2rem;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23374140' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* ── Log Activity "General Details" — the horizontal common fields ──
+   Team size / Machines / Progress / Area covered are all short values, so
+   instead of the label-left/input-right table rows used above (which gave
+   each of them a whole 460px line) they go two-to-a-row with the label
+   stacked above its control. Rendered by buildPropFieldCell() in
+   js/map-app.js into #logActivityCommonFields.
+
+   Only the per-activity "Other Details" table (#logActivityPropsFields)
+   still uses .vsl-prop-table — those fields vary in length and label
+   width, so the one-per-row table reads better there.
+
+   Field colours/sizes below are deliberately the same values as the
+   .vsl-prop-table rules above (they can't be inherited: those are scoped as
+   descendants of .vsl-prop-table, and these elements aren't in a table). */
+#logActivityModal .vsl-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+#logActivityModal .vsl-field-grid__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+#logActivityModal .vsl-field-grid__item[hidden] {
+  display: none !important;
+}
+/* Comments — a half-width two-line box is unusable, so textarea fields
+   take the whole row (buildPropFieldCell adds --full for them). */
+#logActivityModal .vsl-field-grid__item--full {
+  grid-column: 1 / -1;
+}
+#logActivityModal .vsl-field-grid__label label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374140;
+}
+/* Positioning context for the absolutely-placed .vsl-field-warning that
+   renderLogActivityFields injects here (the <td> did this job before). */
+#logActivityModal .vsl-field-grid__control {
+  position: relative;
+  min-width: 0;
+}
+#logActivityModal .vsl-field-grid input,
+#logActivityModal .vsl-field-grid select,
+#logActivityModal .vsl-field-grid textarea {
+  width: 100%;
+  min-height: 0;
+  padding: 8px 12px;
+  border: 1px solid #c8d0ce;
+  border-radius: 6px;
+  background-color: #fff;
+  font-size: 13px;
+  color: #1c1f1e;
+  font-family: inherit;
+}
+#logActivityModal .vsl-field-grid input:focus,
+#logActivityModal .vsl-field-grid select:focus,
+#logActivityModal .vsl-field-grid textarea:focus {
+  outline: none;
+  border-color: #4a9e6e;
+  box-shadow: 0 0 0 3px rgba(74, 158, 110, 0.12);
+}
+#logActivityModal .vsl-field-grid input:disabled,
+#logActivityModal .vsl-field-grid select:disabled {
+  background-color: #f1f4f1;
+  color: #6b7570;
+  cursor: not-allowed;
+}
+#logActivityModal .vsl-field-grid select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23374140' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  cursor: pointer;
+}
+#logActivityModal .vsl-field-grid textarea {
+  resize: vertical;
+  min-height: 4.5em;
+}
+/* Same out-of-range treatment as .vsl-prop-table input.vsl-field-warn. */
+#logActivityModal .vsl-field-grid input.vsl-field-warn {
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+  margin-top: 14px;
 }
 
 /* Section headings — "General Details" / "Other Details" (see

@@ -943,10 +943,8 @@ function renderEstatesPage(el) {
       ['Irrigation Type',    b.irrigationType || '—'],
       ['Ownership',          b.ownership || '—'],
       ['Geometry Status',    b.geometryStatus ? titleCaseLocal(b.geometryStatus) : '—'],
-      ['Cultivation Status', b.cultivationStatus ? titleCaseLocal(b.cultivationStatus) : '—'],
       ['Last Harvest Date',  b.lastHarvestDate || '—'],
       ['Harvest Tonnes',     b.harvestTonnes ? b.harvestTonnes + ' t' : '—'],
-      ['Cultivation Notes',  b.cultivationNotes || '—'],
       ['Date Created',       b.createdAt ? b.createdAt.replace('T',' ').slice(0,16) : '—'],
       ['Last Updated',       b.updatedAt ? b.updatedAt.replace('T',' ').slice(0,16) : '—'],
       ['Record ID (UUID)',   b._uuid || '—'],
@@ -1425,8 +1423,6 @@ function renderEstatesPage(el) {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Expected Area (acres)</label><input class="form-input" id="ab-area" type="number" placeholder="0.00"></div>
-        <div class="form-group"><label class="form-label">Cultivation Status</label>
-          <select class="form-input" id="ab-status"><option value="vacant">Vacant</option><option value="prepared">Prepared</option><option value="planted">Planted</option><option value="ratoon">Ratoon</option><option value="harvested">Harvested</option></select></div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1438,14 +1434,13 @@ function renderEstatesPage(el) {
     const code = document.getElementById('ab-code').value.trim();
     const estateId = document.getElementById('ab-estate').value;
     const area = document.getElementById('ab-area').value;
-    const status = document.getElementById('ab-status').value;
     if (!code) { showToast('Block code is required','red'); return; }
     if (!estateId) { showToast('Every block must belong to an estate — pick one','red'); return; }
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_blocks').insert([{
         block_code: code, block_name: code, estate_id: estateId || null,
-        expected_area_acres: area || null, cultivation_status: status,
+        area_acres: area || null,
       }]);
       if (error) throw error;
       closeModal();
@@ -1465,14 +1460,6 @@ function renderEstatesPage(el) {
       <div class="modal-title">Edit Block — ${b.name || b.id}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Block Code</label><input class="form-input" id="eb-code" value="${b.id}"></div>
-        <div class="form-group"><label class="form-label">Cultivation Status</label>
-          <select class="form-input" id="eb-status">
-            <option value="vacant" ${b.cultivationStatus==='vacant'?'selected':''}>Vacant</option>
-            <option value="prepared" ${b.cultivationStatus==='prepared'?'selected':''}>Prepared</option>
-            <option value="planted" ${b.cultivationStatus==='planted'?'selected':''}>Planted</option>
-            <option value="ratoon" ${b.cultivationStatus==='ratoon'?'selected':''}>Ratoon</option>
-            <option value="harvested" ${b.cultivationStatus==='harvested'?'selected':''}>Harvested</option>
-          </select></div>
       </div>
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Expected Area (acres)</label>
         <input class="form-input" id="eb-area" type="number" value="${b.areaHa ? (b.areaHa/0.404686).toFixed(3) : ''}"></div>
@@ -1484,12 +1471,11 @@ function renderEstatesPage(el) {
 
   window.submitEditBlock = async function(blockDbId) {
     const code = document.getElementById('eb-code').value.trim();
-    const status = document.getElementById('eb-status').value;
     const area = document.getElementById('eb-area').value;
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_blocks').update({
-        block_code: code, block_name: code, cultivation_status: status, expected_area_acres: area || null,
+        block_code: code, block_name: code, area_acres: area || null,
       }).eq('id', blockDbId);
       if (error) throw error;
       closeModal();
@@ -1566,7 +1552,7 @@ function renderEstatesPage(el) {
       const client = getSbClient();
       const { error } = await client.from('vsl_parcels').insert([{
         block_id: blockId, parcel_code: code, parcel_name: code,
-        expected_area_acres: area || null, ratoon_number: ratoon || 0,
+        area_acres: area || null, ratoon_number: ratoon || 0,
         planting_date: planted || null,
         cultivation_status: 'vacant',
       }]);
@@ -1583,7 +1569,7 @@ function renderEstatesPage(el) {
 
   // Every editable vsl_parcels column is exposed here except: id (plot ID),
   // parcel_code, geom, created_by/updated_by, created_at/updated_at,
-  // geometry_status, and expected_area_acres (all excluded per request) —
+  // geometry_status, and area_acres (all excluded per request) —
   // plus current_activity_id/current_activity_name and current_season_id,
   // which are trigger-maintained cache pointers (vsl_sync_parcel_current_activity /
   // vsl_sync_parcel_season), and cultivation_updated_at/by, which are

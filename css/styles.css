@@ -1222,12 +1222,12 @@ button:hover {
   background-color: #ffffff;
 }
 
-.map-popup__empty {
+/* .map-popup__empty {
   margin: 0;
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.45;
-}
+} */
 
 /* Feature info panel's "Modify" tab: read-only notice + form wrapper
    (previously inline styles on the generated markup in map-app.js). */
@@ -6605,31 +6605,14 @@ select.search-panel__input {
   filter: brightness(0.85);
 }
 
-/* ── "More info" — replaces the old round info button ── */
-.parcel-action-toolbar__more {
-  width: auto;
-  align-self: flex-start;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #1976d2;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-.parcel-action-toolbar__more:hover {
-  color: #0d47a1;
-}
-
 /* ── Action buttons ── */
+/* The three actions share the row evenly rather than bunching left with the
+   info button shoved to the far edge — at three items that read as one set,
+   even spacing looks deliberate where a lone outlier looked like a mistake. */
 .parcel-action-toolbar__actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding-top: 7px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
@@ -6671,9 +6654,15 @@ select.search-panel__input {
   background: linear-gradient(145deg, #f9a825, #c77800);
 }
 
-/* .parcel-action-toolbar__btn--info is gone — the round blue "i" button was
-   replaced by the .parcel-action-toolbar__more text link above, which opens
-   the same Feature Info panel. */
+/* Third action. Was briefly a "More info" text link under the summary; it
+   reads better as a sibling of the other two, since opening the full panel
+   is the same kind of act as logging. Blue rather than green/amber so it is
+   obviously navigation rather than a write. */
+/* Blue rather than green/amber, so it still reads as navigation rather than
+   a write even while sharing the row evenly with the other two. */
+.parcel-action-toolbar__btn--info {
+  background: linear-gradient(145deg, #1976d2, #0d47a1);
+}
 
 /* =============================================================
    Log Activity / Log Alert modals — the .popWinTabs bar (normally
@@ -8454,29 +8443,110 @@ select.search-panel__input {
 }
 
 /* =============================================================
-   LOG ACTIVITY PICKER (windows/log-activity-picker.html)
+   LOG ACTIVITY — two-step form
    -------------------------------------------------------------
-   Estate → Block → Plot, then hand off to the existing Log Activity form.
-   Docks in .map-left-stack with the other windows, so it only needs its own
-   width and the label/field rhythm.
+   Step 1 picks the activity and the Estate/Block/Plot; step 2 shows only
+   that activity's fields, with the location collapsed into .log-chip beside
+   the activity dropdown. See setLogActivityStep() in js/map-app.js.
    ============================================================= */
-.log-activity-picker {
-  align-self: flex-start;
-  width: 290px;
+
+/* The header row carries the activity select and, on step 2, the chip. */
+.log-head {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
 }
 
-.log-picker__label {
+/* min-width: 0 lets the select shrink when the chip appears, instead of
+   pushing it out of the row. */
+.log-head .popWinTabs__select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Collapsed location. A button, because it is the route back to step 1 —
+   `width: auto` opts out of the app-wide
+   `input, select, button, textarea { width: 100% }` reset near the top of
+   this file, the same opt-out .toggle-password needs. */
+.log-chip {
+  width: auto;
+  flex: 0 0 auto;
+  max-width: 42%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 5px 10px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.log-chip:hover {
+  border-color: var(--primary, #3f8f3f);
+  background: #f4faf3;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+.log-chip[hidden] {
+  display: none !important;
+}
+
+/* Each line ellipsises on its own rather than the chip growing — a long
+   estate name must not squeeze the activity dropdown. */
+.log-chip__line {
   display: block;
-  margin: 0.7rem 0 0.25rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.log-chip__line[hidden] {
+  display: none;
+}
+
+/* The plot line is the one that most often reads "All plots", so it is
+   deliberately quieter than the estate/block above it. */
+.log-chip__line--plot {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ── Step 1: the Estate/Block/Plot row ── */
+.log-target {
+  display: grid;
+  /* Label column sized to the longest word ("Estate"), so the three selects
+     line up with each other rather than each starting wherever its own
+     label happens to end. */
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 0.6rem;
+}
+
+.log-target__label {
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
-/* The first label sits right under the hint line, which already has its own
-   bottom margin. */
-.log-picker__label:first-of-type {
-  margin-top: 0.3rem;
+/* min-width: 0 lets a long estate name ellipsise inside the grid cell
+   instead of stretching the whole modal. */
+.log-target .uam-select {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
 }

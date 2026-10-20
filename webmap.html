@@ -126,11 +126,11 @@
         <button type="button" class="dashboard-btn" id="printTopBtn" title="Print Map">
           <i class="fas fa-print"></i><span class="dashboard-btn__label">Print</span>
         </button>
-        <!-- Open to every role. The map's other route to logging needs you to
-             find and click the plot first, which is fine on a desktop in the
-             office but not for someone recording work they've just finished.
-             This opens a small Estate → Block → Plot picker instead
-             (windows/log-activity-picker.html). -->
+        <!-- Open to every role. Opens the SAME form a map click opens
+             (windows/log-activity-modal.html), just with its Estate/Block/
+             Plot row empty rather than prefilled — because the other route
+             needs you to find and click the plot first, which is fine at a
+             desk but not for someone recording work they just finished. -->
         <button type="button" class="dashboard-btn" id="mapLogActivityBtn" title="Log Activity">
           <i class="fas fa-person-digging"></i><span class="dashboard-btn__label">Log Activity</span>
         </button>
@@ -176,21 +176,22 @@
            above the selected block/parcel each time one is clicked). Buttons are
            UI-only for now; click handling/logic comes in a follow-up pass. -->
       <div class="parcel-action-toolbar" id="parcelActionToolbar" hidden>
-        <!-- Live summary of whatever is selected: status, ratoon, the most
-             recent activity and any open alerts. This is where the ratoon
-             and alert lines went after they were taken off the map labels —
-             a printed map outlives both, but this popup is always read
-             live. Rows are built by renderParcelActionInfo() in
-             js/map-app.js, entirely from properties the feature already
-             carries (vsl_get_features_bbox returns them), so opening it
-             costs no round trip. -->
-        <div class="parcel-action-toolbar__summary" id="parcelActionSummary"></div>
+        <!-- Live summary of whatever is selected, built by
+             renderParcelActionInfo() in js/map-app.js:
 
-        <!-- Replaces the old round "i" button. Everything this popup leaves
-             out lives behind it, in the full Feature Info panel. -->
-        <button type="button" class="parcel-action-toolbar__more" id="parcelActionMoreBtn">
-          More info
-        </button>
+               PLOT  — Status, Ratoon, Alerts, Activity
+               BLOCK — Block area, Plots (a count, not an area), Alerts, Manager
+
+             This is where the ratoon and alert lines went after they were
+             taken off the map labels: a printed map outlives both, but this
+             popup is always read live.
+
+             A plot's rows all come off properties the feature already
+             carries (vsl_get_features_bbox returns them), so it opens with
+             no round trip. A block's manager and alert count are the one
+             exception — neither is on the feature — so they fill in a beat
+             later rather than holding the popup closed. -->
+        <div class="parcel-action-toolbar__summary" id="parcelActionSummary"></div>
 
         <div class="parcel-action-toolbar__actions">
           <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--activity" id="parcelActionLogActivityBtn" title="Log Activity" aria-label="Log Activity">
@@ -198,6 +199,12 @@
           </button>
           <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--alert" id="parcelActionLogAlertBtn" title="Log Alert" aria-label="Log Alert">
             <i class="fas fa-bullhorn" aria-hidden="true"></i>
+          </button>
+          <!-- Was a "More info" text link under the summary; now the third
+               action, since it is one of the same kind of thing as the other
+               two. Opens the full Feature Info panel. -->
+          <button type="button" class="parcel-action-toolbar__btn parcel-action-toolbar__btn--info" id="parcelActionMoreBtn" title="More info" aria-label="More info">
+            <i class="fas fa-circle-info" aria-hidden="true"></i>
           </button>
         </div>
       </div>

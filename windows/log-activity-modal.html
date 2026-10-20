@@ -1,8 +1,22 @@
-<!-- Log Activity modal — opened from the map selection toolbar's "+" button
-     (see js/map-app.js openLogActivityModal / setupLogActivityModal). The
-     dropdown that would normally sit in .popWinTabs holds the activity-name
-     picker instead of tabs; the body renders a shared field table plus a
-     per-activity property table (see ACTIVITY_PROPERTY_DEFS in map-app.js). -->
+<!-- Log Activity modal — the one and only activity form, reached two ways:
+     by clicking a plot or block on the map (its action popup), or straight
+     from the Log Activity button in the left tool stack, which every role
+     can see.
+
+     ── TWO STEPS ──
+     Showing the location dropdowns and every activity field at once made a
+     tall form where the part you had already dealt with kept taking up room.
+     So it is split:
+
+       1. SETUP   — pick the activity, then Estate → Block → Plot. "Next".
+       2. DETAILS — just the fields for that activity. The location collapses
+                    into the summary chip beside the activity dropdown;
+                    clicking that chip comes back to step 1 with everything
+                    still chosen.
+
+     Both routes in start at step 1 — arriving from a map click only means
+     the location dropdowns are already filled, since the activity still has
+     to be picked. See setLogActivityStep() in js/map-app.js. -->
 <div id="logActivityModal" class="vsl-modal-overlay" hidden>
   <div class="vsl-modal-card vsl-modal-card--wide popWinMain">
     <header class="popWinHead">
@@ -15,21 +29,55 @@
       </button>
     </header>
 
-    <div class="popWinTabs">
+    <!-- Activity picker, plus (on step 2 only) the collapsed location. The
+         chip is a button because it is the way back to step 1 — the
+         location is never re-shown as dropdowns alongside the fields. -->
+    <div class="popWinTabs log-head">
       <select id="logActivitySelect" class="popWinTabs__select" aria-label="Select activity">
         <option value="">-- Select Activity --</option>
       </select>
+      <button type="button" id="logActivityTargetChip" class="log-chip" hidden
+              title="Change where this is logged">
+        <span class="log-chip__line" id="logChipEstate"></span>
+        <span class="log-chip__line" id="logChipBlock"></span>
+        <span class="log-chip__line log-chip__line--plot" id="logChipPlot"></span>
+      </button>
     </div>
 
     <form id="logActivityForm" novalidate class="popWin-formShell">
       <div class="popWinBody vsl-modal-form">
-        <p id="logActivityBlockWarning" class="feature-info-readonly-msg" hidden>
-          <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
-          This selection is a block — logging here will apply this activity to every plot in the block.
-        </p>
+        <!-- ── STEP 1: where the work happened ──
+             Prefilled when you arrive from a map click, empty from the tool
+             stack. Plot is optional: leaving it on "All plots" logs against
+             the whole block, which is what the warning says. -->
+        <div id="logActivityStepLocation">
+          <div class="vsl-section-label">Location</div>
+          <div class="log-target">
+            <label class="log-target__label" for="logActivityEstate">Estate</label>
+            <select id="logActivityEstate" class="uam-select">
+              <option value="">— Select estate —</option>
+            </select>
 
-        <p id="logActivityEmptyHint" class="map-popup__empty">Select an activity above to log its details.</p>
+            <label class="log-target__label" for="logActivityBlock">Block</label>
+            <select id="logActivityBlock" class="uam-select" disabled>
+              <option value="">— Select estate first —</option>
+            </select>
 
+            <label class="log-target__label" for="logActivityPlot">Plot</label>
+            <select id="logActivityPlot" class="uam-select" disabled>
+              <option value="">— Select block first —</option>
+            </select>
+          </div>
+
+          <p id="logActivityBlockWarning" class="feature-info-readonly-msg" hidden>
+            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+            No plot chosen — this activity will be logged against every plot in the block.
+          </p>
+
+          <p id="logActivityEmptyHint" class="map-popup__empty">Pick an activity above and where it happened, then press Next.</p>
+        </div>
+
+        <!-- ── STEP 2: the activity's own fields ── -->
         <div id="logActivityFieldsWrap" hidden>
           <div class="vsl-section-label">General Details</div>
           <table class="map-popup__table vsl-prop-table">
@@ -67,8 +115,15 @@
         <p id="logActivityError" class="search-panel__error" role="alert" hidden></p>
       </div>
 
+      <!-- One footer, two buttons — only ever one of them visible, so the
+           action always matches the step you are on. Next is type="button"
+           on purpose: submitting is step 2's job, and a stray Enter on step 1
+           must advance rather than save a half-filled record. -->
       <div class="popWinActionBtns">
-        <button type="submit" id="logActivitySaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>Log Activity</button>
+        <button type="button" id="logActivityNextBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>
+          Next <i class="fas fa-arrow-right" aria-hidden="true"></i>
+        </button>
+        <button type="submit" id="logActivitySaveBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" hidden>Log Activity</button>
       </div>
     </form>
   </div>

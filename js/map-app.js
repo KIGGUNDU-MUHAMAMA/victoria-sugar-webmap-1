@@ -5,6 +5,7 @@ import {
   // see the big comment on MAP_ZOOM in utils.js for the order and why.
   MAP_ZOOM, zoomFromResolution, layerMinZoom
 } from "./utils.js";
+import { readLandCache, writeLandCache, clearLandCache } from "./land-cache.js";
 import { initSurveyImport } from "./survey-import.js";
 import { initSurveyDraw } from "./survey-draw.js";
 import { initManageFeatures } from "./manage-features.js";
@@ -1168,8 +1169,11 @@ function initProfileModal() {
   dropdownEditBtn?.addEventListener("click", openEditModal);
   dropdownLogoutBtn?.addEventListener("click", async () => {
     // Before the redirect, so a shared machine doesn't hand the next person
-    // a toolbar already laid out for this one's role.
+    // a toolbar already laid out for this one's role — or, in the land
+    // cache's case, a readable copy of the boundaries. Row-level security
+    // protects the database, not a local copy of it.
     clearCachedProfiles();
+    await clearLandCache();
     await supabase.auth.signOut();
     window.location.href = "./login.html";
   });
@@ -1623,7 +1627,7 @@ async function buildParcelInfoHtml(parcelId) {
     ["Estate name", fmt(blockRow?.vsl_estate?.estate_name)],
     ["Current activity", fmt(parcel.current_activity_name)],
     ["Cultivation status", fmt(CULTIVATION_STATUS_LABELS[parcel.cultivation_status] || parcel.cultivation_status)],
-    ["Expected area", parcel.expected_area_acres != null ? `${Number(parcel.expected_area_acres).toFixed(2)} ac` : "—"],
+    ["Area", parcel.area_acres != null ? `${Number(parcel.area_acres).toFixed(2)} ac` : "—"],
     ["Geometry status", fmt(parcel.geometry_status)],
     ["Notes", fmt(parcel.cultivation_notes)],
     ["Last updated", fmt(parcel.cultivation_updated_at ? String(parcel.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
@@ -1718,7 +1722,7 @@ async function buildParcelInfoHtml(parcelId) {
     estateName: blockRow?.vsl_estate?.estate_name || null,
     blockName: blockRow?.block_name || null,
     parcelName: parcel.parcel_name || parcel.parcel_code || null,
-    expectedAreaAcres: parcel.expected_area_acres ?? null
+    expectedAreaAcres: parcel.area_acres ?? null
   };
 }
 
@@ -1738,7 +1742,7 @@ function buildParcelExportSections({ parcel, blockRow, alerts, currentSeason, ac
     ["Estate name", fmtPlain(blockRow?.vsl_estate?.estate_name)],
     ["Current activity", fmtPlain(parcel.current_activity_name)],
     ["Cultivation status", fmtPlain(CULTIVATION_STATUS_LABELS[parcel.cultivation_status] || parcel.cultivation_status)],
-    ["Expected area", parcel.expected_area_acres != null ? `${Number(parcel.expected_area_acres).toFixed(2)} ac` : "—"],
+    ["Area", parcel.area_acres != null ? `${Number(parcel.area_acres).toFixed(2)} ac` : "—"],
     ["Geometry status", fmtPlain(parcel.geometry_status)],
     ["Notes", fmtPlain(parcel.cultivation_notes)],
     ["Last updated", fmtPlain(parcel.cultivation_updated_at ? String(parcel.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
@@ -1795,7 +1799,7 @@ async function buildBlockInfoHtml(blockId) {
     // vsl_profiles!manager_id embeds the assigned manager's profile straight off
     // vsl_blocks.manager_id — vsl_estate_managers (the old junction table) was dropped.
     supabase.from("vsl_blocks").select("*, vsl_estate(estate_name), vsl_profiles!manager_id(email, full_name, phone, title)").eq("id", blockId).single(),
-    supabase.from("vsl_parcels").select("id, parcel_name, cultivation_status, ratoon_number, current_activity_name, expected_area_acres").eq("block_id", blockId),
+    supabase.from("vsl_parcels").select("id, parcel_name, cultivation_status, ratoon_number, current_activity_name, area_acres").eq("block_id", blockId),
     supabase.from("vsl_media").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("captured_at", { ascending: false }),
     supabase.from("vsl_documents").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("upload_date", { ascending: false }),
     supabase.from("vsl_comments").select("*").eq("entity_type", "block").eq("entity_id", String(blockId)).order("created_at", { ascending: false })
@@ -1819,8 +1823,7 @@ async function buildBlockInfoHtml(blockId) {
   ]);
 
   const totalPlots = parcels.length;
-  const totalArea = parcels.reduce((s, p) => s + (Number(p.expected_area_acres) || 0), 0);
-  const avgPlotSize = totalPlots ? totalArea / totalPlots : 0;
+  const totalArea = parcels.reduce((s, p) => s + (Number(p.area_acres) || 0), 0);
 
   const statusCounts = {};
   for (const p of parcels) {
@@ -1873,7 +1876,7 @@ async function buildBlockInfoHtml(blockId) {
     .sort((a, b) => String(a.parcel_name ?? "").localeCompare(String(b.parcel_name ?? ""), undefined, { numeric: true }))
     .map((p) => [
       p.parcel_name || "Plot",
-      p.expected_area_acres != null ? `${Number(p.expected_area_acres).toFixed(2)} ac` : "—",
+      p.area_acres != null ? `${Number(p.area_acres).toFixed(2)} ac` : "—",
       p.ratoon_number != null ? String(p.ratoon_number) : "0",
       latestSeasonByParcel.get(p.id)?.cane_variety || "—"
     ]);
@@ -1894,16 +1897,13 @@ async function buildBlockInfoHtml(blockId) {
     ["Block name", fmt(block.block_name)],
     ["Estate name", fmt(block.vsl_estate?.estate_name)],
     ["Number of plots", String(totalPlots)],
-    ["Total area", `${totalArea.toFixed(2)} ac`],
-    ["Average plot size", `${avgPlotSize.toFixed(2)} ac`],
+    ["Block area", block.area_acres != null ? `${Number(block.area_acres).toFixed(2)} ac` : "—"],
+    ["Total plot area", `${totalArea.toFixed(2)} ac`],
     ["Dominant soil type", fmt(block.soil_type)],
     ["Soil pH", fmt(block.soil_ph)],
     ["Irrigation type", fmt(block.irrigation_type)],
     ["Manager (flat field)", fmt(block.manager_name)],
-    ["Manager phone", fmt(block.manager_phone)],
-    ["Cultivation status", fmt(CULTIVATION_STATUS_LABELS[block.cultivation_status] || block.cultivation_status)],
-    ["Notes", fmt(block.cultivation_notes)],
-    ["Last updated", fmt(block.cultivation_updated_at ? String(block.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
+    ["Manager phone", fmt(block.manager_phone)]
   ]), { open: true }));
 
   groups.push(buildCollapsibleGroup(`Plots (${plotRows.length})`, buildListTable(
@@ -1950,7 +1950,7 @@ async function buildBlockInfoHtml(blockId) {
   infoPanelRecords = {};
 
   const exportSections = buildBlockExportSections({
-    block, totalPlots, totalArea, avgPlotSize, plotRows, statusRows, ratoonRows, activityRows, alertRows,
+    block, totalPlots, totalArea, plotRows, statusRows, ratoonRows, activityRows, alertRows,
     harvestList, plotsHarvested, totalGross, lastHarvestDate, varietyRows, media, docs, comments
   });
 
@@ -1964,14 +1964,14 @@ async function buildBlockInfoHtml(blockId) {
     estateName: block.vsl_estate?.estate_name || null,
     blockName: block.block_name || block.block_code || null,
     parcelName: null,
-    expectedAreaAcres: block.expected_area_acres ?? null
+    expectedAreaAcres: block.area_acres ?? null
   };
 }
 
 /** Plain-text mirror of buildBlockInfoHtml's groups — see
  *  buildParcelExportSections above for why this is a separate function
  *  rather than threading export rows through the HTML builder. */
-function buildBlockExportSections({ block, totalPlots, totalArea, avgPlotSize, plotRows, statusRows, ratoonRows, activityRows, alertRows, harvestList, plotsHarvested, totalGross, lastHarvestDate, varietyRows, media, docs, comments }) {
+function buildBlockExportSections({ block, totalPlots, totalArea, plotRows, statusRows, ratoonRows, activityRows, alertRows, harvestList, plotsHarvested, totalGross, lastHarvestDate, varietyRows, media, docs, comments }) {
   const sections = [];
 
   sections.push({ title: "Details", type: "kv", rows: [
@@ -1979,16 +1979,13 @@ function buildBlockExportSections({ block, totalPlots, totalArea, avgPlotSize, p
     ["Block name", fmtPlain(block.block_name)],
     ["Estate name", fmtPlain(block.vsl_estate?.estate_name)],
     ["Number of plots", String(totalPlots)],
-    ["Total area", `${totalArea.toFixed(2)} ac`],
-    ["Average plot size", `${avgPlotSize.toFixed(2)} ac`],
+    ["Block area", block.area_acres != null ? `${Number(block.area_acres).toFixed(2)} ac` : "—"],
+    ["Total plot area", `${totalArea.toFixed(2)} ac`],
     ["Dominant soil type", fmtPlain(block.soil_type)],
     ["Soil pH", fmtPlain(block.soil_ph)],
     ["Irrigation type", fmtPlain(block.irrigation_type)],
     ["Manager (flat field)", fmtPlain(block.manager_name)],
-    ["Manager phone", fmtPlain(block.manager_phone)],
-    ["Cultivation status", fmtPlain(CULTIVATION_STATUS_LABELS[block.cultivation_status] || block.cultivation_status)],
-    ["Notes", fmtPlain(block.cultivation_notes)],
-    ["Last updated", fmtPlain(block.cultivation_updated_at ? String(block.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
+    ["Manager phone", fmtPlain(block.manager_phone)]
   ] });
 
   sections.push({ title: `Plots (${plotRows.length})`, type: "table", headers: ["Plot", "Area", "Ratoon", "Cane variety"], rows: plotRows });
@@ -2034,13 +2031,13 @@ function buildBlockExportSections({ block, totalPlots, totalArea, avgPlotSize, p
  *  buildParcelInfoHtml/buildBlockInfoHtml's { html, exportSections, title,
  *  estateId/blockId/parcelId, estateName/blockName/parcelName } shape so it
  *  slots into the same rendering/export pipeline. "Planted area" (per
- *  block and estate-wide) is the sum of vsl_parcels.expected_area_acres
+ *  block and estate-wide) is the sum of vsl_parcels.area_acres
  *  for plots whose cultivation_status is
  *  anything other than "vacant" — there's no dedicated column for it. */
 async function buildEstateInfoHtml(estateId) {
   const [estateRes, blocksRes] = await Promise.all([
     supabase.from("vsl_estate").select("*, vsl_profiles!manager_id(email, full_name, phone, title)").eq("id", estateId).single(),
-    supabase.from("vsl_blocks").select("id, block_code, block_name, expected_area_acres").eq("estate_id", estateId)
+    supabase.from("vsl_blocks").select("id, block_code, block_name, area_acres").eq("estate_id", estateId)
   ]);
 
   const estate = estateRes.data;
@@ -2049,7 +2046,7 @@ async function buildEstateInfoHtml(estateId) {
   const blockIds = blocks.map((b) => b.id);
 
   const parcelRowsRes = blockIds.length
-    ? await supabase.from("vsl_parcels").select("block_id, expected_area_acres, cultivation_status").in("block_id", blockIds)
+    ? await supabase.from("vsl_parcels").select("block_id, area_acres, cultivation_status").in("block_id", blockIds)
     : { data: [] };
   const parcelRows = parcelRowsRes.data || [];
 
@@ -2060,7 +2057,7 @@ async function buildEstateInfoHtml(estateId) {
     if (!agg) continue;
     agg.plots += 1;
     if (p.cultivation_status && p.cultivation_status !== "vacant") {
-      agg.plantedArea += Number(p.expected_area_acres) || 0;
+      agg.plantedArea += Number(p.area_acres) || 0;
     }
   }
 
@@ -2074,7 +2071,7 @@ async function buildEstateInfoHtml(estateId) {
       const agg = perBlock.get(b.id) || { plots: 0, plantedArea: 0 };
       return {
         name: b.block_name || b.block_code || "Block",
-        area: Number(b.expected_area_acres) || 0,
+        area: Number(b.area_acres) || 0,
         plots: agg.plots,
         plantedArea: agg.plantedArea
       };
@@ -2489,8 +2486,8 @@ function computeExportGeometry(kind, { estateId, blockId, parcelId }) {
 function makeFeatureInfoShim(layerType, sel) {
   const id = layerType === "PARCELS" ? sel.parcelId : sel.blockId;
   const props = layerType === "PARCELS"
-    ? { parcel_name: sel.parcelName, block_name: sel.blockName, expected_area_acres: sel.expectedAreaAcres }
-    : { block_name: sel.blockName, expected_area_acres: sel.expectedAreaAcres };
+    ? { parcel_name: sel.parcelName, block_name: sel.blockName, area_acres: sel.expectedAreaAcres }
+    : { block_name: sel.blockName, area_acres: sel.expectedAreaAcres };
   return {
     getId: () => id,
     get: (key) => props[key],
@@ -2639,7 +2636,7 @@ const titlesLayer = new ol.layer.Vector({
     const interiorPoint = getFeatureInteriorPoint(geometry);
     const name = String(feature.get("title_name") ?? "").trim();
     if (interiorPoint) {
-      const expArea = feature.get("expected_area_acres");
+      const expArea = feature.get("area_acres");
       const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
       const text = name && area ? `${name}\n${area}` : (name || area || "");
       if (text) {
@@ -2702,18 +2699,16 @@ const blocksLayer = new ol.layer.Vector({
     const hi = isSearchHi || isStatusHi;
     const zoom = zoomFromResolution(map?.getView?.(), resolution);
 
-    const status = feature.get("cultivation_status");
-    let fillColor = "rgba(255, 255, 255, 0.05)";
+    // Blocks (like estates) carry no status fill — a block's state is the
+    // mix of its plots', which draw their own colours. This near-invisible
+    // fill only exists so clicks inside a block still hit it.
+    const fillColor = "rgba(255, 255, 255, 0.05)";
     let strokeColor = "#d32f2f";
     // Thinner outline until the block's own name appears — before that a
     // block is context rather than the subject, and a heavy outline at that
     // zoom just crowds the estate boundaries.
     let strokeWidth = zoom < MAP_ZOOM.BLOCK_LABEL && !hi ? 1.5 : (hi ? 5 : 3);
     let textColor = "#d32f2f";
-
-    if (status && CULTIVATION_PALETTE[status] && status !== "vacant") {
-      fillColor = CULTIVATION_PALETTE[status].fill;
-    }
 
     let textStyle = null;
     // A highlighted block keeps its name at any zoom — if something has been
@@ -2803,7 +2798,7 @@ const parcelsLayer = new ol.layer.Vector({
     let textStyle = null;
     // A highlighted plot keeps its label at any zoom, same as a block.
     if (hi || zoom >= MAP_ZOOM.PLOT_LABEL) {
-      const expArea = feature.get("expected_area_acres");
+      const expArea = feature.get("area_acres");
       const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
       const text = area ? `${label}\n${area}` : label;
 
@@ -3692,11 +3687,11 @@ async function openModifySelectedPopup() {
       // there's no estate/block parentage to reassign (a title is never
       // linked to one; see the vsl_title comment above titlesLayer).
       const { data: rows } = await supabase
-        .from("vsl_title").select("id, title_name, expected_area_acres").in("id", ids);
+        .from("vsl_title").select("id, title_name, area_acres").in("id", ids);
       const list = rows || [];
       const initial = {
         title_name: many ? NAME_MULTI : String(list[0]?.title_name ?? ""),
-        expected_area_acres: many ? "" : String(list[0]?.expected_area_acres ?? "")
+        area_acres: many ? "" : String(list[0]?.area_acres ?? "")
       };
       const result = await promptFields({
         title: many ? `Modify ${ids.length} Land Titles` : "Modify Land Title",
@@ -3704,22 +3699,22 @@ async function openModifySelectedPopup() {
         fields: [
           { key: "title_name", label: "Title name", type: "text", value: initial.title_name,
             required: !many, disabled: many },
-          { key: "expected_area_acres", label: "Titled area (acres)", type: "text",
-            value: initial.expected_area_acres, placeholder: "e.g. 42.5" }
+          { key: "area_acres", label: "Titled area (acres)", type: "text",
+            value: initial.area_acres, placeholder: "e.g. 42.5" }
         ]
       });
       if (!result) return;
       const patch = patchFrom(result, initial, {
-        title_name: "title_name", expected_area_acres: "expected_area_acres"
+        title_name: "title_name", area_acres: "area_acres"
       });
       if (many) delete patch.title_name; // never bulk-rename
-      if (patch.expected_area_acres !== undefined && patch.expected_area_acres !== null) {
-        const acres = Number(patch.expected_area_acres);
+      if (patch.area_acres !== undefined && patch.area_acres !== null) {
+        const acres = Number(patch.area_acres);
         if (!Number.isFinite(acres) || acres < 0) {
           setParcelStatusFormError("Titled area must be a positive number.");
           return;
         }
-        patch.expected_area_acres = acres;
+        patch.area_acres = acres;
       }
       if (!Object.keys(patch).length) return;
       const { error } = await supabase.from("vsl_title").update(patch).in("id", ids);
@@ -4025,7 +4020,6 @@ function openParcelStatusPanel() {
   // Forcibly close Survey UAM at DOM level (does not depend on window.closeMenu)
   closeUAM();
 
-  window.closeLogActivityPicker?.();
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
   parcelStatusState.panelOpen = true;
@@ -4320,6 +4314,75 @@ function setupParcelStatusPanel() {
 // ---------------------------------------------------------------------------
 const logActivityState = { feature: null, layerType: null };
 
+// ---------------------------------------------------------------------------
+// Two-step form
+//
+// "location" — pick the activity and where it happened, then Next.
+// "details"  — only that activity's own fields; the location collapses into
+//              a chip next to the activity dropdown, which clicks back here.
+//
+// Both steps live in the same modal rather than in two windows: going back
+// has to keep everything already chosen, and a second window would mean
+// either re-reading it out of the first or holding the state in two places.
+// ---------------------------------------------------------------------------
+let logActivityStep = "location";
+
+/** Shows one step and the footer button that belongs to it. */
+function setLogActivityStep(step) {
+  logActivityStep = step;
+  const details = step === "details";
+
+  const locationPane = document.getElementById("logActivityStepLocation");
+  const fieldsWrap = document.getElementById("logActivityFieldsWrap");
+  const nextBtn = document.getElementById("logActivityNextBtn");
+  const saveBtn = document.getElementById("logActivitySaveBtn");
+  const chip = document.getElementById("logActivityTargetChip");
+
+  if (locationPane) locationPane.hidden = details;
+  if (nextBtn) nextBtn.hidden = details;
+  if (saveBtn) saveBtn.hidden = !details;
+  if (chip) chip.hidden = !details;
+
+  // The fields themselves are still gated on an activity being chosen —
+  // renderLogActivityFields owns that, and it only ever shows them on the
+  // details step.
+  if (!details && fieldsWrap) fieldsWrap.hidden = true;
+  if (details) renderLogActivityFields(document.getElementById("logActivitySelect")?.value || "");
+
+  syncLogActivityStepButtons();
+}
+
+/** Next needs both halves of step 1; Save needs step 2 to have rendered. */
+function syncLogActivityStepButtons() {
+  const nextBtn = document.getElementById("logActivityNextBtn");
+  const saveBtn = document.getElementById("logActivitySaveBtn");
+  const hasActivity = !!document.getElementById("logActivitySelect")?.value;
+  const hasTarget = !!logActivityState.feature;
+
+  if (nextBtn) nextBtn.disabled = !(hasActivity && hasTarget);
+  if (saveBtn) saveBtn.disabled = !(hasActivity && hasTarget);
+}
+
+/** Fills the collapsed location chip shown on step 2. */
+function renderLogActivityChip() {
+  const { estate, block, plot } = logTargetEls();
+  const line = (id, text) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text || "";
+    el.hidden = !text;
+  };
+  const textOf = (sel) => (sel && sel.selectedIndex > 0)
+    ? (sel.options[sel.selectedIndex]?.textContent || "")
+    : "";
+
+  line("logChipEstate", textOf(estate));
+  line("logChipBlock", textOf(block));
+  // Blank plot means the whole block, which the chip has to say rather than
+  // leaving a gap that reads as "some plot".
+  line("logChipPlot", plot?.value ? textOf(plot) : "All plots");
+}
+
 function renderLogActivityFields(activityName) {
   const wrap = document.getElementById("logActivityFieldsWrap");
   const emptyHint = document.getElementById("logActivityEmptyHint");
@@ -4329,10 +4392,14 @@ function renderLogActivityFields(activityName) {
   const saveBtn = document.getElementById("logActivitySaveBtn");
   if (!wrap || !commonBody || !propsBody) return;
 
-  if (!activityName) {
+  // Fields belong to step 2 only. On step 1 this still runs (the activity
+  // dropdown lives up in the header and can change there), but it must not
+  // reveal the fields underneath the location pane.
+  if (!activityName || logActivityStep !== "details") {
     wrap.hidden = true;
     if (emptyHint) emptyHint.hidden = false;
     if (saveBtn) saveBtn.disabled = true;
+    syncLogActivityStepButtons();
     return;
   }
 
@@ -4344,7 +4411,7 @@ function renderLogActivityFields(activityName) {
   // whose area it's bounded by is known (also enforced again on save).
   const areaCoveredInput = commonBody.querySelector('[data-key="area_covered_acres"]');
   if (areaCoveredInput) {
-    const ownArea = Number(logActivityState.feature?.get("expected_area_acres"));
+    const ownArea = Number(logActivityState.feature?.get("area_acres"));
     if (Number.isFinite(ownArea)) {
       areaCoveredInput.max = String(ownArea + 5);
     } else {
@@ -4419,197 +4486,241 @@ function renderLogActivityFields(activityName) {
 
   wrap.hidden = false;
   if (emptyHint) emptyHint.hidden = true;
-  if (saveBtn) saveBtn.disabled = false;
+  syncLogActivityStepButtons();
 }
 
-function openLogActivityModal(feature, layerType) {
+/**
+ * Opens the Log Activity form.
+ *
+ * `feature`/`layerType` are OPTIONAL. Pass them when arriving from a map
+ * click and the Estate/Block/Plot row is prefilled to match; omit them (the
+ * Log Activity button in the tool stack) and the row starts empty for the
+ * person to fill in. Either way those dropdowns are the source of truth from
+ * then on — see syncLogActivityTarget().
+ */
+async function openLogActivityModal(feature = null, layerType = null) {
   const modal = document.getElementById("logActivityModal");
   const select = document.getElementById("logActivitySelect");
-  const warning = document.getElementById("logActivityBlockWarning");
   const errorEl = document.getElementById("logActivityError");
-  const titleEl = document.getElementById("logActivityTitle");
-  if (!modal || !feature || !layerType) return;
+  if (!modal) return;
 
   // A queue left over from a form the person opened and walked away from
   // would otherwise attach itself to whatever they log next.
   logActivityMedia.reset();
-  logActivityState.feature = feature;
-  logActivityState.layerType = layerType;
+  logActivityState.feature = null;
+  logActivityState.layerType = null;
 
   if (select) {
     select.innerHTML = `<option value="">-- Select Activity --</option>` +
       ACTIVITY_NAMES.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
     select.value = "";
   }
-  if (warning) warning.hidden = layerType !== "BLOCKS";
   if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
-  if (titleEl) {
-    const name = layerType === "BLOCKS" ? feature.get("block_name") : feature.get("parcel_name");
-    titleEl.textContent = `Log Activity${name ? ` — ${name}` : ""}`;
-  }
-  renderLogActivityFields("");
+
+  // Always starts at step 1. Arriving from a map click only prefills the
+  // location — the activity still has to be chosen.
+  setLogActivityStep("location");
   modal.hidden = false;
+
+  // After the modal is up, so loading the estate list can't delay it.
+  await prefillLogActivityTarget(feature, layerType);
+}
+
+// ---------------------------------------------------------------------------
+// Where the activity is being logged — the Estate/Block/Plot row in the form
+//
+// These three dropdowns replaced a separate picker window that did nothing
+// else. Keeping them inside the form means one way in regardless of how the
+// person got here, and it means the target can be corrected without starting
+// over: pick the wrong plot on the map and you fix it here rather than
+// closing the form and clicking again.
+//
+// They keep logActivityState.feature/layerType in step with themselves, so
+// everything downstream — the area-covered cap in renderLogActivityFields,
+// resolveSelectionParcelIds in the save — carries on reading exactly what it
+// always read and needed no changes at all.
+// ---------------------------------------------------------------------------
+
+/** Plots for the selected block. Cached so switching plots can read an area
+ *  without another round trip. */
+let logActivityPlotRows = [];
+
+function logTargetEls() {
+  return {
+    estate: document.getElementById("logActivityEstate"),
+    block: document.getElementById("logActivityBlock"),
+    plot: document.getElementById("logActivityPlot")
+  };
+}
+
+function fillTargetSelect(select, rows, placeholder, labelOf) {
+  if (!select) return;
+  select.innerHTML =
+    `<option value="">${placeholder}</option>` +
+    rows.map((r) => `<option value="${escapeHtml(String(r.id))}">${escapeHtml(labelOf(r))}</option>`).join("");
+  select.disabled = rows.length === 0;
+}
+
+async function loadLogActivityEstates(selectedId = "") {
+  const { estate } = logTargetEls();
+  if (!estate) return;
+  const { data, error } = await supabase
+    .from("vsl_estate").select("id, estate_name").order("estate_name");
+  if (error) { setLogActivityError(`Couldn't load estates: ${error.message}`); return; }
+  fillTargetSelect(estate, data || [], "— Select estate —", (r) => r.estate_name || "(unnamed)");
+  if (selectedId) estate.value = String(selectedId);
+}
+
+async function loadLogActivityBlocks(estateId, selectedId = "") {
+  const { block, plot } = logTargetEls();
+  if (!block) return;
+  logActivityPlotRows = [];
+  if (plot) {
+    plot.innerHTML = '<option value="">— Select block first —</option>';
+    plot.disabled = true;
+  }
+  if (!estateId) {
+    block.innerHTML = '<option value="">— Select estate first —</option>';
+    block.disabled = true;
+    return;
+  }
+  const { data, error } = await supabase
+    .from("vsl_blocks").select("id, block_code, block_name")
+    .eq("estate_id", estateId).order("block_code");
+  if (error) { setLogActivityError(`Couldn't load blocks: ${error.message}`); return; }
+  const rows = data || [];
+  fillTargetSelect(block, rows, rows.length ? "— Select block —" : "— No blocks —",
+    (r) => r.block_name || r.block_code || "(unnamed)");
+  if (selectedId) block.value = String(selectedId);
+}
+
+async function loadLogActivityPlots(blockId, selectedId = "") {
+  const { plot } = logTargetEls();
+  if (!plot) return;
+  logActivityPlotRows = [];
+  if (!blockId) {
+    plot.innerHTML = '<option value="">— Select block first —</option>';
+    plot.disabled = true;
+    return;
+  }
+  const { data, error } = await supabase
+    .from("vsl_parcels").select("id, parcel_code, parcel_name, area_acres")
+    .eq("block_id", blockId).order("parcel_code");
+  if (error) { setLogActivityError(`Couldn't load plots: ${error.message}`); return; }
+  logActivityPlotRows = data || [];
+  // "All plots" is the blank option rather than a prompt — leaving it selected
+  // is a real choice (log against the whole block), not an omission.
+  plot.innerHTML =
+    `<option value="">All plots in this block</option>` +
+    logActivityPlotRows.map((r) =>
+      `<option value="${escapeHtml(String(r.id))}">${escapeHtml(r.parcel_name || r.parcel_code || "(unnamed)")}</option>`
+    ).join("");
+  plot.disabled = false;
+  if (selectedId) plot.value = String(selectedId);
+}
+
+function setLogActivityError(msg) {
+  const el = document.getElementById("logActivityError");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.hidden = !msg;
+}
+
+/**
+ * Rebuilds logActivityState from whatever the dropdowns currently say.
+ *
+ * The feature is synthesised rather than looked up on the map: the chosen
+ * plot may well be outside the current viewport, and parcelsSource only
+ * holds what the last bbox fetch returned. Everything downstream reads it
+ * through getId()/get(), so a synthetic feature is indistinguishable from a
+ * clicked one.
+ */
+function syncLogActivityTarget() {
+  const { block, plot } = logTargetEls();
+  const warning = document.getElementById("logActivityBlockWarning");
+  const titleEl = document.getElementById("logActivityTitle");
+
+  let feature = null;
+  let layerType = null;
+  let label = "";
+
+  if (block?.value) {
+    feature = new ol.Feature();
+    if (plot?.value) {
+      const row = logActivityPlotRows.find((r) => String(r.id) === plot.value);
+      label = row?.parcel_name || row?.parcel_code || "";
+      feature.setId(plot.value);
+      feature.set("parcel_name", label);
+      // What the area-covered cap is measured against.
+      feature.set("area_acres", row?.area_acres ?? null);
+      layerType = "PARCELS";
+    } else {
+      label = block.options[block.selectedIndex]?.textContent || "";
+      feature.setId(block.value);
+      feature.set("block_name", label);
+      layerType = "BLOCKS";
+    }
+  }
+
+  logActivityState.feature = feature;
+  logActivityState.layerType = layerType;
+
+  // The warning is about scope, so it follows the PLOT dropdown rather than
+  // how the form was opened — clearing the plot after a plot-level click
+  // widens the target, and the warning has to say so.
+  if (warning) warning.hidden = layerType !== "BLOCKS";
+  if (titleEl) titleEl.textContent = `Log Activity${label ? ` — ${label}` : ""}`;
+
+  renderLogActivityChip();
+  // Re-render so the area cap picks up the new target's own area. Harmless
+  // when no activity is chosen yet — it just redraws the empty state.
+  renderLogActivityFields(document.getElementById("logActivitySelect")?.value || "");
+  syncLogActivityStepButtons();
+}
+
+/** Fills the dropdowns to match a feature clicked on the map, or clears them
+ *  when opened from the tool stack. */
+async function prefillLogActivityTarget(feature, layerType) {
+  const { estate, block, plot } = logTargetEls();
+  if (!estate) return;
+
+  if (!feature || !layerType) {
+    await loadLogActivityEstates();
+    await loadLogActivityBlocks("");
+    syncLogActivityTarget();
+    return;
+  }
+
+  let estateId = "";
+  let blockId = "";
+  let plotId = "";
+
+  if (layerType === "BLOCKS") {
+    estateId = feature.get("estate_id") || "";
+    blockId = feature.getId();
+  } else {
+    plotId = feature.getId();
+    // A parcel's map properties carry block_code but not block_id or
+    // estate_id (see vsl_get_features_bbox), so the parentage is fetched.
+    const { data } = await supabase
+      .from("vsl_parcels").select("block_id, vsl_blocks(estate_id)")
+      .eq("id", plotId).single();
+    blockId = data?.block_id || "";
+    estateId = data?.vsl_blocks?.estate_id || "";
+  }
+
+  await loadLogActivityEstates(estateId);
+  await loadLogActivityBlocks(estateId, blockId);
+  await loadLogActivityPlots(blockId, plotId);
+  if (estate) estate.value = String(estateId || "");
+  if (block) block.value = String(blockId || "");
+  if (plot) plot.value = String(plotId || "");
+  syncLogActivityTarget();
 }
 
 function closeLogActivityModal() {
   const modal = document.getElementById("logActivityModal");
   if (modal) modal.hidden = true;
-}
-
-// ---------------------------------------------------------------------------
-// Log Activity picker (windows/log-activity-picker.html)
-//
-// Pick Estate → Block → (optionally) Plot, then hand off to the Log Activity
-// form above. Exists so logging doesn't require finding the plot on the map
-// first — see the note in that file.
-//
-// The form takes an OpenLayers feature, because every other way in starts
-// from one that was clicked. Here there may be no such feature on the map at
-// all: the chosen plot can be well outside the current viewport, and
-// parcelsSource only holds what the last bbox fetch returned. So a plain
-// ol.Feature is built carrying the three properties the form actually reads
-// — its id, its name, and expected_area_acres for the area-covered cap.
-// resolveSelectionParcelIds() works off getId() alone, so a synthetic feature
-// is indistinguishable to everything downstream.
-// ---------------------------------------------------------------------------
-function setupLogActivityPicker() {
-  const panel = document.getElementById("logActivityPickerPanel");
-  const openBtn = document.getElementById("mapLogActivityBtn");
-  const closeBtn = document.getElementById("logActivityPickerCloseBtn");
-  const estateSel = document.getElementById("logPickerEstate");
-  const blockSel = document.getElementById("logPickerBlock");
-  const plotSel = document.getElementById("logPickerPlot");
-  const continueBtn = document.getElementById("logActivityPickerContinueBtn");
-  const errorEl = document.getElementById("logActivityPickerError");
-  if (!panel || !openBtn) return;
-
-  /** Plots for the selected block, kept so Continue can read a plot's area
-   *  without a second fetch. */
-  let plotRows = [];
-
-  const showError = (msg) => {
-    if (!errorEl) return;
-    errorEl.textContent = msg || "";
-    errorEl.hidden = !msg;
-  };
-
-  const fill = (select, rows, placeholder, labelOf) => {
-    select.innerHTML =
-      `<option value="">${placeholder}</option>` +
-      rows.map((r) => `<option value="${escapeHtml(String(r.id))}">${escapeHtml(labelOf(r))}</option>`).join("");
-    select.disabled = rows.length === 0;
-  };
-
-  /** Continue needs a block at minimum — an activity belongs to plots, and
-   *  an estate on its own doesn't identify any. */
-  const syncContinue = () => {
-    continueBtn.disabled = !blockSel.value;
-  };
-
-  async function loadEstates() {
-    showError("");
-    const { data, error } = await supabase
-      .from("vsl_estate").select("id, estate_name").order("estate_name");
-    if (error) { showError(`Couldn't load estates: ${error.message}`); return; }
-    fill(estateSel, data || [], "— Select estate —", (r) => r.estate_name || "(unnamed)");
-  }
-
-  estateSel.addEventListener("change", async () => {
-    showError("");
-    plotRows = [];
-    blockSel.innerHTML = '<option value="">— Select estate first —</option>';
-    blockSel.disabled = true;
-    plotSel.innerHTML = '<option value="">— Select block first —</option>';
-    plotSel.disabled = true;
-    syncContinue();
-    if (!estateSel.value) return;
-
-    const { data, error } = await supabase
-      .from("vsl_blocks").select("id, block_code, block_name")
-      .eq("estate_id", estateSel.value).order("block_code");
-    if (error) { showError(`Couldn't load blocks: ${error.message}`); return; }
-    const rows = data || [];
-    fill(blockSel, rows, rows.length ? "— Select block —" : "— No blocks —",
-      (r) => r.block_name || r.block_code || "(unnamed)");
-    syncContinue();
-  });
-
-  blockSel.addEventListener("change", async () => {
-    showError("");
-    plotRows = [];
-    plotSel.innerHTML = '<option value="">— Select block first —</option>';
-    plotSel.disabled = true;
-    syncContinue();
-    if (!blockSel.value) return;
-
-    const { data, error } = await supabase
-      .from("vsl_parcels").select("id, parcel_code, parcel_name, expected_area_acres")
-      .eq("block_id", blockSel.value).order("parcel_code");
-    if (error) { showError(`Couldn't load plots: ${error.message}`); return; }
-    plotRows = data || [];
-    // "All plots" is the empty option here rather than a prompt — leaving it
-    // selected logs against the whole block, which is a real choice, not a
-    // missing one.
-    plotSel.innerHTML =
-      `<option value="">All plots in this block</option>` +
-      plotRows.map((r) =>
-        `<option value="${escapeHtml(String(r.id))}">${escapeHtml(r.parcel_name || r.parcel_code || "(unnamed)")}</option>`
-      ).join("");
-    plotSel.disabled = false;
-    syncContinue();
-  });
-
-  plotSel.addEventListener("change", syncContinue);
-
-  continueBtn.addEventListener("click", () => {
-    if (!blockSel.value) return;
-
-    // Synthetic feature — see the note at the top of this function.
-    const feature = new ol.Feature();
-    let layerType;
-    if (plotSel.value) {
-      const row = plotRows.find((r) => String(r.id) === plotSel.value);
-      feature.setId(plotSel.value);
-      feature.set("parcel_name", row?.parcel_name || row?.parcel_code || "");
-      feature.set("expected_area_acres", row?.expected_area_acres ?? null);
-      layerType = "PARCELS";
-    } else {
-      const label = blockSel.options[blockSel.selectedIndex]?.textContent || "";
-      feature.setId(blockSel.value);
-      feature.set("block_name", label);
-      layerType = "BLOCKS";
-    }
-
-    // The form's own save path reads these two module-level values, same as
-    // when a feature is clicked on the map.
-    selectedFeature = feature;
-    selectedLayerType = layerType;
-
-    closeLogActivityPicker();
-    openLogActivityModal(feature, layerType);
-  });
-
-  function openLogActivityPicker() {
-    closeOtherMapPanels();
-    showError("");
-    panel.hidden = false;
-    openBtn.classList.add("active");
-    // Refetched each open so an estate or block added since the page loaded
-    // is offered without a reload.
-    loadEstates();
-  }
-
-  function closeLogActivityPicker() {
-    panel.hidden = true;
-    openBtn.classList.remove("active");
-  }
-  window.closeLogActivityPicker = closeLogActivityPicker;
-
-  openBtn.addEventListener("click", () => {
-    if (panel.hidden) openLogActivityPicker();
-    else closeLogActivityPicker();
-  });
-  closeBtn?.addEventListener("click", closeLogActivityPicker);
 }
 
 /** The docked panels all share one column, so opening any of them closes the
@@ -4735,7 +4846,25 @@ async function saveLogActivityForm(event) {
   const activityName = select?.value || "";
   const { feature, layerType } = logActivityState;
 
-  if (!feature || !layerType || !activityName) return;
+  // Enter inside step 1 still reaches the form's submit handler even though
+  // its own button is type="button" — so saving is refused there outright
+  // rather than committing a record whose fields were never shown.
+  if (logActivityStep !== "details") {
+    setLogActivityStep("details");
+    return;
+  }
+
+  // The target comes from the Estate/Block/Plot row rather than from however
+  // the form was opened, so a missing one is a real user-facing state (the
+  // tool-stack route starts empty) and gets told, not silently ignored.
+  if (!feature || !layerType) {
+    if (errorEl) {
+      errorEl.textContent = "Choose at least an estate and a block to log against.";
+      errorEl.hidden = false;
+    }
+    return;
+  }
+  if (!activityName) return;
 
   if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
     if (errorEl) { errorEl.textContent = "Sign in to log an activity."; errorEl.hidden = false; }
@@ -4771,7 +4900,7 @@ async function saveLogActivityForm(event) {
     if (common.area_covered_acres !== "") {
       const areaCovered = numOrNull(common.area_covered_acres);
       if (areaCovered != null) {
-        const ownArea = Number(feature.get("expected_area_acres"));
+        const ownArea = Number(feature.get("area_acres"));
         if (Number.isFinite(ownArea) && areaCovered > ownArea + 5) {
           throw new Error(`Area covered can't exceed the plot's area + 5 (max ${(ownArea + 5).toFixed(2)} ac).`);
         }
@@ -4887,9 +5016,47 @@ function setupLogActivityModal() {
   const form = document.getElementById("logActivityForm");
   if (!modal) return;
 
-  select?.addEventListener("change", () => renderLogActivityFields(select.value));
+  // The activity dropdown lives in the header and is reachable from BOTH
+  // steps, so a change has to re-gate Next as well as redraw the fields.
+  select?.addEventListener("change", () => {
+    renderLogActivityFields(select.value);
+    syncLogActivityStepButtons();
+  });
   closeBtn?.addEventListener("click", () => closeLogActivityModal());
   form?.addEventListener("submit", (e) => saveLogActivityForm(e));
+
+  document.getElementById("logActivityNextBtn")?.addEventListener("click", () => {
+    setLogActivityError("");
+    setLogActivityStep("details");
+  });
+
+  // The collapsed location chip is the only way back — tapping it reopens
+  // step 1 with the activity and location still chosen, so correcting a
+  // wrong plot costs one click rather than restarting the form.
+  document.getElementById("logActivityTargetChip")?.addEventListener("click", () => {
+    setLogActivityError("");
+    setLogActivityStep("location");
+  });
+
+  // Estate → Block → Plot. Each level clears the ones under it before
+  // reloading, so a half-stale selection can never survive a change higher
+  // up — picking a different estate must not leave the old estate's block
+  // still chosen underneath.
+  const { estate, block, plot } = logTargetEls();
+  estate?.addEventListener("change", async () => {
+    setLogActivityError("");
+    await loadLogActivityBlocks(estate.value);
+    syncLogActivityTarget();
+  });
+  block?.addEventListener("change", async () => {
+    setLogActivityError("");
+    await loadLogActivityPlots(block.value);
+    syncLogActivityTarget();
+  });
+  plot?.addEventListener("change", () => {
+    setLogActivityError("");
+    syncLogActivityTarget();
+  });
 
   logActivityMedia.bind((message) => {
     const errorEl = document.getElementById("logActivityError");
@@ -5108,40 +5275,143 @@ function renderParcelActionInfo(feature, layerType) {
     );
   };
 
-  const statusKey = cultivationKeyFromFeature(feature);
-  addRow("Status", CULTIVATION_STATUS_LABELS[statusKey] || statusKey, {
-    color: CULTIVATION_PALETTE[statusKey]?.text
-  });
+  /** Alerts row, shared by both kinds. A real button when there are any —
+   *  it opens the same Alerts List modal the on-map "Alerts(n)" text line
+   *  used to, which is where that capability went when the line was taken
+   *  off the plot label. */
+  const addAlertsRow = (count, severity, { pending = false, clickable = true } = {}) => {
+    if (pending) { addRow("Alerts", "…"); return; }
+    if (count > 0) {
+      addRow("Alerts", `${count} open`, {
+        color: ALERT_SEVERITY_COLORS[severity] || ALERT_SEVERITY_COLORS.information,
+        button: clickable ? 'data-open-alerts="1"' : null
+      });
+    } else {
+      addRow("Alerts", "None");
+    }
+  };
 
   if (layerType === "PARCELS") {
+    // Status, Ratoon, Alerts, Activity — all already on the feature, so this
+    // renders with no round trip at all.
+    const statusKey = cultivationKeyFromFeature(feature);
+    addRow("Status", CULTIVATION_STATUS_LABELS[statusKey] || statusKey, {
+      color: CULTIVATION_PALETTE[statusKey]?.text
+    });
+
     // Ratoon 0 is meaningful ("planted, not yet ratooned"), so this tests for
     // absence rather than falsiness.
     const ratoon = feature.get("ratoon_number");
     if (ratoon !== null && ratoon !== undefined && ratoon !== "") {
       addRow("Ratoon", `R${ratoon}`);
     }
-    addRow("Activity", feature.get("current_activity_name"));
+
+    addAlertsRow(Number(feature.get("_alert_count")) || 0, feature.get("_alert_severity"));
+    // Always shown, even when empty. current_activity_name is null on every
+    // plot until something is logged against it, and omitting the row made
+    // the field look forgotten rather than simply blank.
+    addRow("Activity", feature.get("current_activity_name") || "None yet");
   } else {
+    // Block area, Plots, Alerts, Manager.
+    //
+    // Area and plot count ride along on the feature (vsl_block_stats feeds
+    // them through vsl_get_features_bbox). Manager and alerts do not: the
+    // manager is a join onto vsl_profiles, and alerts are recorded against
+    // PARCELS, so a block's figure is the sum across its own plots — see
+    // refreshParcelAlertBadges, which only ever stamps parcels. Both are
+    // fetched by loadBlockPopupExtras() and patched in when they land.
+    // area_acres, NOT expected_area_acres — the column was renamed on both
+    // vsl_blocks and vsl_parcels, and the old name silently yields undefined
+    // here, which is why this row went missing entirely.
+    const area = Number(feature.get("area_acres"));
+    if (Number.isFinite(area)) addRow("Block area", `${area.toFixed(2)} ac`);
+
     const plots = feature.get("total_plots");
-    if (plots !== null && plots !== undefined && plots !== "") {
-      addRow("Plots", plots);
+    if (plots !== null && plots !== undefined && plots !== "") addRow("Plots", plots);
+
+    const cached = blockPopupExtras.get(String(feature.getId()));
+    if (cached) {
+      // Not clickable: the Alerts List modal is per-plot, and a block's
+      // figure spans several. "More info" is the way into the detail.
+      addAlertsRow(cached.alertCount, cached.alertSeverity, { clickable: false });
+      addRow("Manager", cached.manager || "—");
+    } else {
+      addAlertsRow(0, null, { pending: true });
+      addRow("Manager", "…");
     }
   }
 
-  // Alerts last, and as a real button when there are any — it opens the same
-  // Alerts List modal the on-map "Alerts(n)" text line used to.
-  const alertCount = Number(feature.get("_alert_count")) || 0;
-  const alertSeverity = feature.get("_alert_severity");
-  if (alertCount > 0) {
-    addRow("Alerts", `${alertCount} open`, {
-      color: ALERT_SEVERITY_COLORS[alertSeverity] || ALERT_SEVERITY_COLORS.information,
-      button: 'data-open-alerts="1"'
+  el.innerHTML = rows.join("");
+}
+
+/**
+ * Manager name and alert count for a block, keyed by block id.
+ *
+ * Cached for the life of the page: a popup reopened on the same block should
+ * not refetch, and neither value changes often. Cleared by
+ * refreshParcelAlertBadges, which is already the point at which alert
+ * figures are known to be stale.
+ */
+const blockPopupExtras = new Map();
+
+/**
+ * Fetches the two block rows that aren't on the feature, then re-renders.
+ *
+ * Deliberately fire-and-forget: the popup is already on screen showing "…"
+ * for these, and a slow or failed lookup must not hold up the rows that were
+ * ready immediately.
+ */
+async function loadBlockPopupExtras(feature) {
+  const blockId = feature?.getId();
+  if (!blockId || blockPopupExtras.has(String(blockId))) return;
+
+  try {
+    // One round trip for the manager and the block's plot ids — the ids are
+    // needed because alerts are recorded per plot, never per block.
+    // manager_name is a plain column on vsl_blocks now; the manager_id join
+    // onto vsl_profiles is the older route and is kept as the fallback,
+    // since most blocks currently have one or the other rather than both.
+    const { data: block, error } = await supabase
+      .from("vsl_blocks")
+      .select("id, manager_name, vsl_profiles!manager_id(full_name), vsl_parcels(id)")
+      .eq("id", blockId)
+      .single();
+    if (error) throw error;
+
+    const parcelIds = (block?.vsl_parcels || []).map((p) => String(p.id));
+    let alertCount = 0;
+    let alertSeverity = null;
+    if (parcelIds.length) {
+      const { data: alerts } = await supabase
+        .from("vsl_alerts")
+        .select("severity")
+        .eq("layer_type", "PARCELS")
+        .neq("status", "resolved")
+        .in("target_id", parcelIds);
+      const RANK = { critical: 3, warning: 2, information: 1 };
+      alertCount = (alerts || []).length;
+      // The block shows its WORST open severity, same rule the plot fills use.
+      alertSeverity = (alerts || []).reduce((worst, a) =>
+        (RANK[a.severity] || 0) > (RANK[worst] || 0) ? a.severity : worst, null);
+    }
+
+    blockPopupExtras.set(String(blockId), {
+      manager: block?.manager_name || block?.vsl_profiles?.full_name || null,
+      alertCount,
+      alertSeverity
     });
-  } else {
-    addRow("Alerts", "None");
+  } catch (err) {
+    console.warn("[Victoria] Could not load block popup details:", err);
+    // Cached as blanks rather than left pending, so the popup settles on
+    // "—"/"None" instead of showing "…" forever.
+    blockPopupExtras.set(String(blockId), { manager: null, alertCount: 0, alertSeverity: null });
   }
 
-  el.innerHTML = rows.join("");
+  // Only repaint if this block is still the one on screen — the person may
+  // have clicked elsewhere while this was in flight.
+  if (selectedFeature?.getId?.() === blockId && selectedLayerType === "BLOCKS") {
+    renderParcelActionInfo(selectedFeature, "BLOCKS");
+  }
 }
 
 /**
@@ -5172,6 +5442,9 @@ function showParcelActionToolbar(feature) {
   // Filled before it's shown, so the card is never briefly visible with the
   // previous selection's details still in it.
   renderParcelActionInfo(feature, selectedLayerType);
+  // A block's manager and alert count aren't on the feature. Not awaited —
+  // the rows that were ready render now, and these patch in when they land.
+  if (selectedLayerType === "BLOCKS") loadBlockPopupExtras(feature);
 
   el.hidden = false;
   parcelActionOverlay.setPosition(anchor);
@@ -6045,29 +6318,145 @@ function setupPlaceSearch() {
   });
 }
 
-async function loadLayersFromDb() {
-  if (!map) return;
-  map.updateSize();
-  const size = map.getSize();
-  if (!size || size[0] < 2 || size[1] < 2) {
-    if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
-      console.debug("[Victoria map] Skipping bbox load: map size not ready yet");
-    }
-    return;
-  }
-  const extent = map.getView().calculateExtent(size);
-  const [minLon, minLat, maxLon, maxLat] = ol.proj.transformExtent(extent, "EPSG:3857", "EPSG:4326");
-  const { data, error } = await supabase.rpc("vsl_get_features_bbox", {
-    p_min_lon: minLon,
-    p_min_lat: minLat,
-    p_max_lon: maxLon,
-    p_max_lat: maxLat
-  });
-  if (error) {
-    setStatus(statusEl, `Layer load failed: ${error.message}`, true);
-    return;
-  }
+// ---------------------------------------------------------------------------
+// Offline land cache
+//
+// The map draws from whatever is in IndexedDB before it asks the network for
+// anything, so a device with one bar shows its boundaries immediately instead
+// of waiting on a request that may never answer. Freshness is settled by a
+// counter in the database (public.vsl_sync_version), bumped by a trigger on
+// every insert, update and delete across estates, blocks, plots, features and
+// titles. The client keeps the version it downloaded; when the two differ it
+// re-downloads in the background.
+//
+// No polling. The version is checked when the app opens, when the browser
+// says it's back online, and on refocus if the last check is stale — enough
+// to catch a long field session without a timer running all day.
+// ---------------------------------------------------------------------------
 
+/** How long a version check stays "recent enough" that returning to the tab
+ *  doesn't trigger another one. */
+const LAND_CACHE_RECHECK_MS = 10 * 60 * 1000;
+
+const landCacheState = {
+  /** ISO timestamp of the cached rows currently drawn, for the status line. */
+  savedAt: null,
+  /** Version of the rows currently in the cache. */
+  version: null,
+  /** Epoch ms of the last completed version check. */
+  lastCheck: 0,
+  /** Guards against two checks overlapping (open + online can fire together). */
+  busy: false
+};
+
+/** "Land data saved 14:20 — showing the offline copy", or "" when the cache
+ *  isn't what's on screen. Used only to explain a failed network load. */
+function landCacheStatusText() {
+  if (!landCacheState.savedAt) return "";
+  const when = new Date(landCacheState.savedAt);
+  const time = Number.isNaN(when.getTime())
+    ? ""
+    : when.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  return `Offline copy of the land data${time ? ` from ${time}` : ""} — reconnect to refresh.`;
+}
+
+/** The server's current land version, or null when it can't be reached. */
+async function fetchServerLandVersion() {
+  const { data, error } = await supabase
+    .from("vsl_sync_version")
+    .select("version")
+    .eq("dataset", "land")
+    .maybeSingle();
+  if (error || !data) return null;
+  return Number(data.version);
+}
+
+/**
+ * Draws the cached boundaries, if there are any. Called before the first
+ * network request so there's something on screen straight away.
+ */
+async function drawLandFromCache() {
+  const cached = await readLandCache();
+  if (!cached) return false;
+  landCacheState.savedAt = cached.savedAt;
+  landCacheState.version = cached.version;
+  const n = drawLandRows(cached.rows);
+  if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
+    console.debug(`[Victoria map] Drew ${n} feature(s) from the land cache (version ${cached.version}).`);
+  }
+  return n > 0;
+}
+
+/**
+ * Compares the cached version against the server's and re-downloads if they
+ * differ. Safe to call whenever; does nothing when already current, already
+ * running, or offline.
+ *
+ * Never awaited by the render path — the whole point is that the map is
+ * already usable while this happens.
+ */
+async function syncLandCache({ force = false } = {}) {
+  if (landCacheState.busy) return;
+  if (!navigator.onLine && !force) return;
+  landCacheState.busy = true;
+  try {
+    // Version first, snapshot second. The other order can pair a new version
+    // number with older rows and then never notice it's stale — see the
+    // comment on vsl_land_snapshot.
+    const serverVersion = await fetchServerLandVersion();
+    landCacheState.lastCheck = Date.now();
+    if (serverVersion === null) return; // offline or blocked; cache stands
+    if (!force && serverVersion === landCacheState.version) return;
+
+    const { data, error } = await supabase.rpc("vsl_land_snapshot");
+    if (error || !Array.isArray(data)) {
+      console.warn("[Victoria map] Land snapshot failed:", error?.message);
+      return;
+    }
+
+    // Only written once every row is in hand — a partial cache would look
+    // authoritative and hide plots that exist.
+    await writeLandCache(serverVersion, data);
+    landCacheState.version = serverVersion;
+    landCacheState.savedAt = new Date().toISOString();
+    if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
+      console.debug(`[Victoria map] Land cache updated to version ${serverVersion} (${data.length} rows).`);
+    }
+    // The visible layers are bbox-filtered, so they're refreshed from the
+    // network rather than redrawn wholesale from what was just cached.
+    await loadLayersFromDb();
+  } catch (e) {
+    console.warn("[Victoria map] Land cache sync failed:", e);
+  } finally {
+    landCacheState.busy = false;
+  }
+}
+
+/** The three moments worth re-checking, per the note at the top. */
+function setupLandCacheSync() {
+  window.addEventListener("online", () => syncLandCache());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (Date.now() - landCacheState.lastCheck < LAND_CACHE_RECHECK_MS) return;
+    syncLandCache();
+  });
+  // Any edit made in this tab invalidates the cache immediately — no need to
+  // wait for a reload to notice our own change.
+  ["vsl-features-changed", "vsl-estates-changed", "vsl-feature-types-changed"].forEach((evt) => {
+    window.addEventListener(evt, () => syncLandCache({ force: true }));
+  });
+}
+
+/**
+ * Puts a set of vsl_get_features_bbox-shaped rows onto the three land
+ * layers, replacing whatever was there.
+ *
+ * Split out of loadLayersFromDb because the cache path (js/land-cache.js)
+ * feeds in exactly the same row shape — vsl_land_snapshot is literally
+ * vsl_get_features_bbox over the whole world — and both must draw it the
+ * same way. Returns how many features were actually rendered.
+ */
+function drawLandRows(rows) {
   blocksSource.clear(true);
   parcelsSource.clear(true);
   titlesSource.clear(true);
@@ -6085,7 +6474,7 @@ async function loadLayersFromDb() {
   ]);
 
   let n = 0;
-  for (const row of data || []) {
+  for (const row of rows || []) {
     if (!row.geojson) continue;
     let feature;
     const gj = row.geojson;
@@ -6110,9 +6499,39 @@ async function loadLayersFromDb() {
     if (row.layer_type === "TITLES") titlesSource.addFeature(feature);
     n += 1;
   }
-  const rowCount = (data || []).length;
+  return n;
+}
+
+async function loadLayersFromDb() {
+  if (!map) return;
+  map.updateSize();
+  const size = map.getSize();
+  if (!size || size[0] < 2 || size[1] < 2) {
+    if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
+      console.debug("[Victoria map] Skipping bbox load: map size not ready yet");
+    }
+    return;
+  }
+  const extent = map.getView().calculateExtent(size);
+  const [minLon, minLat, maxLon, maxLat] = ol.proj.transformExtent(extent, "EPSG:3857", "EPSG:4326");
+  const { data, error } = await supabase.rpc("vsl_get_features_bbox", {
+    p_min_lon: minLon,
+    p_min_lat: minLat,
+    p_max_lon: maxLon,
+    p_max_lat: maxLat
+  });
+  if (error) {
+    // Offline or a flaky link. Whatever is already drawn came from the cache
+    // at startup and is better than an empty map, so it's left alone — this
+    // only reports, it doesn't clear.
+    console.warn("[Victoria map] bbox load failed, keeping what's drawn:", error.message);
+    setStatus(statusEl, landCacheStatusText() || `Layer load failed: ${error.message}`, true);
+    return;
+  }
+
+  const n = drawLandRows(data);
   if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
-    console.debug(`[Victoria map] vsl_get_features_bbox: ${n} feature(s) drawn, ${rowCount} row(s) from API`);
+    console.debug(`[Victoria map] vsl_get_features_bbox: ${n} feature(s) drawn, ${(data || []).length} row(s) from API`);
   }
 
   await refreshParcelAlertBadges();
@@ -6129,6 +6548,10 @@ async function loadLayersFromDb() {
  * new alert.
  */
 async function refreshParcelAlertBadges() {
+  // A block popup's alert figure is derived from its plots' alerts, so this
+  // is exactly the moment those cached totals stop being trustworthy.
+  blockPopupExtras.clear();
+
   const features = parcelsSource.getFeatures();
   if (!features.length) return;
 
@@ -6221,7 +6644,6 @@ function openSearchPanel(tab = "parcel") {
   closeUAM();
   // Measure moved into the same column too (see app-boot.js) — same reason.
   if (measurePanel) measurePanel.hidden = true;
-  window.closeLogActivityPicker?.();
   panel.hidden = false;
   btn.classList.add("active");
   btn.setAttribute("aria-expanded", "true");
@@ -7555,7 +7977,6 @@ function bindEvents() {
         closeSearchPanel({ clearHighlight: false });
         closeUAM();
         closeParcelStatusPanel();
-        window.closeLogActivityPicker?.();
         
         const tabPick = document.getElementById('measureTabPick');
         const tabWalk = document.getElementById('measureTabWalk');
@@ -7657,6 +8078,7 @@ async function initUser() {
   const profile = await fetchProfile();
   if (!profile) {
     clearCachedProfiles();
+    await clearLandCache();
     await supabase.auth.signOut();
     window.location.href = "./login.html";
     return false;
@@ -7822,7 +8244,11 @@ async function initMap() {
   setupInfoPopup();
   setupParcelActionToolbar();
   setupLegendPanel();
-  setupLogActivityPicker();
+  // Log Activity button in the left tool stack — opens the same form a map
+  // click opens, just with an empty Estate/Block/Plot row to fill in.
+  document.getElementById("mapLogActivityBtn")?.addEventListener("click", () => {
+    openLogActivityModal();
+  });
   setupMessagesPanel();
   setupToolStackCollapse();
   setupSnapPanel();
@@ -8033,11 +8459,20 @@ async function initMap() {
     stopActiveTool
   });
 
+  // Cached boundaries go up first so a weak connection has something to show
+  // immediately; the bbox load then refreshes them when the network answers.
+  await drawLandFromCache();
+  setupLandCacheSync();
+
   await loadLayersFromDb();
   await loadEstateBoundaries();
   map.on("moveend", async () => {
     await loadLayersFromDb();
   });
+
+  // Deliberately not awaited: the map is already usable, and on a bad link
+  // this can take a while or never finish.
+  syncLandCache();
 
   const loader = document.getElementById("mapLoader");
   if (loader) {

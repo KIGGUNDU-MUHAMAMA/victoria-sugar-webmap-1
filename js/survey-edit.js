@@ -109,7 +109,7 @@ export function initSurveyEdit({
   // uses (via computeUtmCartesianAreaAcres, imported from the same shared
   // utils.js both modules already pull from), so the number matches exactly
   // what the rest of the app would compute for this shape. Kept in sync
-  // onto the feature's own "expected_area_acres" property while editing
+  // onto the feature's own "area_acres" property while editing
   // (see modifyend below) — that property is what blocksLayer/parcelsLayer
   // in map-app.js *prefers* over live computation for their on-map label,
   // so without this, dragging a node would leave that label showing the
@@ -262,7 +262,7 @@ export function initSurveyEdit({
         // Only meaningful for block/parcel (see liveAreaAcres/modifyend
         // below) — snapshotted so Cancel/discard can put the true original
         // value back, not whatever it got live-recomputed to mid-edit.
-        originalExpectedArea: kind === "block" || kind === "parcel" ? feature.get("expected_area_acres") : undefined,
+        originalExpectedArea: kind === "block" || kind === "parcel" ? feature.get("area_acres") : undefined,
         // The custom-feature equivalent: _areaAc mirrors vsl_feature.area_ac
         // (see js/survey-draw.js areaAcresText), which the map label and the
         // PDF both display verbatim. Dragging a node has to keep it honest,
@@ -287,7 +287,7 @@ export function initSurveyEdit({
       if (restore) {
         feature.setGeometry(originalGeom.clone());
         if (kind === "block" || kind === "parcel") {
-          feature.set("expected_area_acres", originalExpectedArea);
+          feature.set("area_acres", originalExpectedArea);
         }
         if (kind === "feature") {
           feature.set("_areaAc", originalAreaAc);
@@ -384,7 +384,7 @@ export function initSurveyEdit({
     });
     map.addInteraction(modifyInteraction);
 
-    // Re-syncs the focused block/parcel's "expected_area_acres" to its
+    // Re-syncs the focused block/parcel's "area_acres" to its
     // just-reshaped geometry after every discrete Modify action (a drag,
     // an inserted vertex, or a deleted one all fire this) — see
     // liveAreaAcres's comment above for why that property specifically.
@@ -406,7 +406,7 @@ export function initSurveyEdit({
       }
       modifyStartSnapshot = {
         geometry: entry.feature.getGeometry().clone(),
-        expectedArea: entry.feature.get("expected_area_acres"),
+        expectedArea: entry.feature.get("area_acres"),
         // Custom features label from _areaAc, so undoing a drag has to walk
         // that back alongside the geometry or the shape and its acreage
         // would disagree (see modifyend below).
@@ -426,7 +426,7 @@ export function initSurveyEdit({
       const areaAcres = liveAreaAcres(entry.feature.getGeometry());
       if (areaAcres == null) return;
       if (entry.kind === "block" || entry.kind === "parcel") {
-        entry.feature.set("expected_area_acres", areaAcres);
+        entry.feature.set("area_acres", areaAcres);
       } else if (entry.kind === "feature") {
         // Same reason as the two above: the map label (and the PDF) read
         // _areaAc in preference to computing, so without this a dragged
@@ -506,7 +506,7 @@ export function initSurveyEdit({
     const snapshot = entry.undoStack.pop();
     entry.feature.setGeometry(snapshot.geometry.clone());
     if (entry.kind === "block" || entry.kind === "parcel") {
-      entry.feature.set("expected_area_acres", snapshot.expectedArea);
+      entry.feature.set("area_acres", snapshot.expectedArea);
     } else if (entry.kind === "feature") {
       entry.feature.set("_areaAc", snapshot.areaAc);
     }
@@ -582,9 +582,9 @@ export function initSurveyEdit({
             // already recomputed onto the feature live while it was being
             // dragged (see modifyend above) with a plain follow-up update,
             // same pattern the Draw tab uses for block_name/parcel_name.
-            const areaAcres = feature.get("expected_area_acres");
+            const areaAcres = feature.get("area_acres");
             if (areaAcres != null) {
-              await supabase.from("vsl_blocks").update({ expected_area_acres: areaAcres }).eq("id", id);
+              await supabase.from("vsl_blocks").update({ area_acres: areaAcres }).eq("id", id);
             }
           } else if (kind === "parcel") {
             const { error } = await supabase.rpc("vsl_update_parcel_geom", {
@@ -593,9 +593,9 @@ export function initSurveyEdit({
               p_user_id: userId
             });
             if (error) throw error;
-            const areaAcres = feature.get("expected_area_acres");
+            const areaAcres = feature.get("area_acres");
             if (areaAcres != null) {
-              await supabase.from("vsl_parcels").update({ expected_area_acres: areaAcres }).eq("id", id);
+              await supabase.from("vsl_parcels").update({ area_acres: areaAcres }).eq("id", id);
             }
           } else {
             const { error } = await supabase.rpc("vsl_update_feature_geom", {

@@ -392,7 +392,7 @@ export function initFarmReports(opts) {
   async function loadBlockList() {
     const { data, error } = await supabase
       .from("vsl_blocks")
-      .select("id, block_code, block_name, estate_id, vsl_estate(estate_name), expected_area_acres, geometry_status, cultivation_status")
+      .select("id, block_code, block_name, estate_id, vsl_estate(estate_name), area_acres, geometry_status")
       .order("block_code", { ascending: true });
     if (error) {
       if (setStatus) setStatus(statusEl, `Report blocks: ${error.message}`, true);
@@ -828,7 +828,7 @@ export function initFarmReports(opts) {
       const { data: blockData, error: e1 } = await supabase
         .from("vsl_blocks")
         .select(
-          "id, block_code, block_name, estate_id, vsl_estate(estate_name), expected_area_acres, geometry_status, cultivation_status, cultivation_updated_at"
+          "id, block_code, block_name, estate_id, vsl_estate(estate_name), area_acres, geometry_status"
         )
         .eq("id", bid)
         .single();
@@ -847,7 +847,7 @@ export function initFarmReports(opts) {
 
       const { data: parcelData, error: e2 } = await supabase
         .from("vsl_parcels")
-        .select("id, block_id, parcel_code, expected_area_acres, cultivation_status, geometry_status")
+        .select("id, block_id, parcel_code, area_acres, cultivation_status, geometry_status")
         .eq("block_id", bid);
       if (e2) throw e2;
       const parcels = parcelData || [];
@@ -951,7 +951,7 @@ export function initFarmReports(opts) {
         )} | ${String(statPayload.time_range?.from || "").slice(0, 10)} to ${String(
           statPayload.time_range?.to || ""
         ).slice(0, 10)} | ${String(statPayload.interval || "P16D")} | SCL mask | ${
-          fmtNum(bl.expected_area_acres, 1)
+          fmtNum(bl.area_acres, 1)
         } ac | ${parcels.length} plots${
           h.n > 0 ? ` | ${fmtNum(h.sum, 2)} t (plots)` : ""
         } | Health ${hScore != null ? String(hScore) + "/100" : "-"} | ${zone.label}`;
@@ -1187,7 +1187,7 @@ export function initFarmReports(opts) {
       doc.setTextColor(60, 60, 60);
       doc.text(
         pdfText(
-          `Block cultiv.: ${CULTIVATION_LABELS[bl.cultivation_status] || bl.cultivation_status} | Block harvest: ${
+          `Block harvest: ${
             bl.harvest_tonnes != null ? fmtNum(bl.harvest_tonnes, 2) + " t" : "-"
           }`
         ),
@@ -1207,7 +1207,7 @@ export function initFarmReports(opts) {
           ? bParcels.map((p) =>
               [
                 String(p.parcel_code),
-                fmtNum(p.expected_area_acres, 2),
+                fmtNum(p.area_acres, 2),
                 CULTIVATION_LABELS[p.cultivation_status] || p.cultivation_status,
                 p.harvest_tonnes != null ? fmtNum(p.harvest_tonnes, 2) : "-",
                 p.last_harvest_date != null ? String(p.last_harvest_date).slice(0, 10) : "-"

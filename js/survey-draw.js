@@ -411,7 +411,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
    *   - a feature whose nodes are being dragged in the Edit tab, where the
    *     stored value belongs to the geometry as it was before the drag.
    * survey-edit.js keeps _areaAc in step on modifyend, the same way it
-   * already maintains expected_area_acres for a block or plot.
+   * already maintains area_acres for a block or plot.
    */
   function areaAcresText(feature, geometry) {
     const stored = feature?.get("_areaAc");

@@ -24,7 +24,7 @@ export async function importAttributesCsv({
     throw new Error("CSV has no data rows.");
   }
 
-  const requiredColumns = ["block_code", "block_name", "estate_name", "expected_area_acres"];
+  const requiredColumns = ["block_code", "block_name", "estate_name", "area_acres"];
   for (const col of requiredColumns) {
     if (!(col in rows[0])) {
       throw new Error(`Missing required column: ${col}`);

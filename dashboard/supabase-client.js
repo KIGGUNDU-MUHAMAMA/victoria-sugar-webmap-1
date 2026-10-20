@@ -295,10 +295,10 @@ async function loadLiveData() {
   // ── BLOCKS reshaped first (estates roll up from blocks) ──
   const blocks = rawBlocks.map(b => {
     const parcelsInBlock = rawParcels.filter(p => p.block_id === b.id);
-    const areaHa = acresToHa(b.expected_area_acres);
+    const areaHa = acresToHa(b.area_acres);
     const plantedAcres = parcelsInBlock
       .filter(p => p.cultivation_status && p.cultivation_status !== 'vacant' && p.cultivation_status !== 'pending')
-      .reduce((s, p) => s + (parseFloat(p.expected_area_acres) || 0), 0);
+      .reduce((s, p) => s + (parseFloat(p.area_acres) || 0), 0);
     const plantedHa = acresToHa(plantedAcres) || (areaHa * 0.0); // 0 if nothing planted yet
     const seed = seedFromString(b.id);
     const harvest = blockHarvestById.get(b.id);
@@ -314,7 +314,8 @@ async function loadLiveData() {
       plots: parcelsInBlock.length,
       areaHa: Number(areaHa.toFixed(2)),
       plantedHa: Number(plantedHa.toFixed(2)),
-      status: b.cultivation_status === 'vacant' ? 'watch' : 'active',
+      // Block has no status of its own; 'watch' when it has no plots yet.
+      status: parcelsInBlock.length ? 'active' : 'watch',
       avgYield: harvestTonnes && areaHa ? Number((harvestTonnes / (areaHa * 2.47105)).toFixed(2)) : Number(((6.5 + (seed % 30) / 10) / 2.47105).toFixed(2)), // t/acre; placeholder if no harvest yet
       season: '2024-B',
       // Legacy plain-text columns (kept for reference, not the assigned-manager source of truth anymore).
@@ -332,10 +333,8 @@ async function loadLiveData() {
       soilPh: b.soil_ph ?? null,
       ownership: b.ownership || null,
       geometryStatus: b.geometry_status || 'pending',
-      cultivationStatus: b.cultivation_status || 'vacant',
       lastHarvestDate: harvest?.last_harvest_date ?? null,
       harvestTonnes,
-      cultivationNotes: b.cultivation_notes,
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     };
@@ -348,7 +347,7 @@ async function loadLiveData() {
     // DB-backed soil/irrigation values as a block-level fallback — no more
     // per-parcel seeded placeholders.
     const parentBlockReshaped = blocks.find(b => b._uuid === p.block_id);
-    const areaHa = acresToHa(p.expected_area_acres);
+    const areaHa = acresToHa(p.area_acres);
     const harvest = parcelHarvestById.get(p.id);
     const parcelStats = parcelStatsById.get(p.id);
     // Real per-parcel season history (cane_variety etc.) — trigger-maintained
@@ -404,7 +403,7 @@ async function loadLiveData() {
       harvestDueDate: harvestDue.dueDate,
       monthsPastDue: harvestDue.monthsPastDue,
       isHarvestDue: harvestDue.isDue,
-      expectedYieldTons: harvestDue.isDue ? Number(((parseFloat(p.expected_area_acres) || 0) * harvestSettings.yieldPerAcreTons).toFixed(1)) : null,
+      expectedYieldTons: harvestDue.isDue ? Number(((parseFloat(p.area_acres) || 0) * harvestSettings.yieldPerAcreTons).toFixed(1)) : null,
       geometryStatus: p.geometry_status || 'pending',
       parcelName: p.parcel_name,
       currentActivity: p.current_activity_name || null,

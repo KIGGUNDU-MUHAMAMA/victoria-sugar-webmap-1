@@ -55,8 +55,6 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
     // (see windows/survey-panel.html) instead of floating as its own
     // overlay, so Search needs to be explicitly closed here too.
     if (typeof window.closeSearchPanel === "function") window.closeSearchPanel();
-    // Log Activity picker docks in the same column (see app-boot.js).
-    if (typeof window.closeLogActivityPicker === "function") window.closeLogActivityPicker();
 
     overlay.hidden = false;
     overlay.setAttribute("aria-hidden", "false");

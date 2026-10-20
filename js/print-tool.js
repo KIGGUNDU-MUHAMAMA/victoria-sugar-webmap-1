@@ -2276,20 +2276,12 @@ export function initPrintTool({
   function drawBlockVector(doc, feature, project, sizes, frame) {
     const geometry = feature.getGeometry();
     if (!geometry) return;
-    const status = feature.get("cultivation_status");
-    let fillRGB = null, fillAlpha = 1;
-    // "Status colour fills" off in Setup means outlines only — no
-    // cultivation-status shading at all.
-    if (settings.hatching && status && CULTIVATION_PALETTE?.[status] && status !== "vacant") {
-      const parsed = parseRgba(CULTIVATION_PALETTE[status].fill);
-      fillRGB = parsed.rgb;
-      fillAlpha = parsed.a;
-    }
+    // Blocks are outline-only — no status fill (that lives on plots).
     forEachOuterRing(geometry, (ring) => {
       const clipped = clipPolygonToRect(ring.map(project), frame);
       if (clipped.length < 3) return;
       drawClosedPath(doc, clipped, {
-        fill: fillRGB, fillAlpha,
+        fill: null, fillAlpha: 1,
         strokeColor: BLOCK_STROKE_RGB, strokeWidth: sizes.blockStroke
       });
     });
@@ -2356,7 +2348,7 @@ export function initPrintTool({
     const label = pLabel != null && pLabel !== "" ? String(pLabel) : "—";
 
     // Each line of the plot label is its own toggle in the Text labels tab.
-    const expArea = feature.get("expected_area_acres");
+    const expArea = feature.get("area_acres");
     const areaText = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
     const area = settings.labels.area ? areaText : "";
     const ratoonVal = feature.get("ratoon_number");
@@ -2443,7 +2435,7 @@ export function initPrintTool({
     const anchor = project(ip.getCoordinates());
     if (!pointInRect(anchor, frame)) return; // label anchored off-page
     const name = String(feature.get("title_name") ?? "").trim();
-    const expArea = feature.get("expected_area_acres");
+    const expArea = feature.get("area_acres");
     const areaText = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
     const text = name && areaText ? `${name}\n${areaText}` : (name || areaText);
     if (text) {

@@ -28,6 +28,29 @@ const pwd = el("spPassword");
 const confirmPwd = el("spConfirm");
 const submitBtn = el("spSubmit");
 
+const photoInput = el("spPhoto");
+const photoPreview = el("spPhotoPreview");
+photoInput.addEventListener("change", () => {
+  const file = photoInput.files && photoInput.files[0];
+  if (!file) { photoPreview.hidden = true; return; }
+  const reader = new FileReader();
+  reader.onload = () => { photoPreview.src = reader.result; photoPreview.hidden = false; };
+  reader.readAsDataURL(file);
+});
+
+// Same convention as the dashboard / map: public "Media" bucket under
+// avatars/ with a fresh random name, URL saved on the user's own
+// vsl_profiles row (RLS lets a user update their own row).
+async function saveProfilePhoto(userId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const path = `avatars/${crypto.randomUUID()}.${ext}`;
+  const { error: upErr } = await supabase.storage.from("Media").upload(path, file, { upsert: false, contentType: file.type || undefined });
+  if (upErr) throw upErr;
+  const url = supabase.storage.from("Media").getPublicUrl(path).data.publicUrl;
+  const { error } = await supabase.from("vsl_profiles").update({ avatar_url: url }).eq("id", userId);
+  if (error) throw error;
+}
+
 function checkRules() {
   const v = pwd.value;
   const rules = {
@@ -56,6 +79,17 @@ el("spForm").addEventListener("submit", async (e) => {
     const { data, error } = await supabase.auth.updateUser({ password: pwd.value });
     if (error) throw error;
     const email = data?.user?.email || "";
+    // Optional photo. The password is already saved at this point, so a
+    // failed upload must not turn the whole step into an error — they can
+    // add a photo later from their profile.
+    const photo = photoInput.files && photoInput.files[0];
+    if (photo && data?.user?.id) {
+      try {
+        await saveProfilePhoto(data.user.id, photo);
+      } catch (photoErr) {
+        console.error("Profile photo could not be saved:", photoErr);
+      }
+    }
     // Make them sign in properly — login.html runs the role / active checks.
     await supabase.auth.signOut();
     el("spDoneTitle").textContent = linkType === "recovery" ? "Password updated" : "Your account is ready";
@@ -86,6 +120,8 @@ async function init() {
     return;
   }
   el("spEmail").textContent = data.session.user?.email || "—";
+  // Photo is part of first-time setup only, not a password reset.
+  el("spPhotoField").hidden = linkType === "recovery";
   if (linkType === "recovery") {
     el("spTitle").textContent = "Choose a new password";
     el("spSub").textContent = "Enter a new password for your account.";

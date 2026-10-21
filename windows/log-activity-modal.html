@@ -42,6 +42,17 @@
         <span class="log-chip__line" id="logChipBlock"></span>
         <span class="log-chip__line log-chip__line--plot" id="logChipPlot"></span>
       </button>
+
+      <!-- Only for the "Other" option at the bottom of the list: the work
+           that isn't one of the catalogued activities. Typing the name is
+           mandatory (Next/Save stay disabled until it's filled), and "Other"
+           has no per-activity properties, so the form below shows nothing
+           but the general details. The typed name is saved to
+           vsl_activities.custom_activity_name — activity_name itself is a
+           foreign key to the catalogue and stays 'Other'. -->
+      <input type="text" id="logActivityCustomName" class="log-head__custom-name"
+             placeholder="Type the activity name" maxlength="80"
+             aria-label="Custom activity name" hidden>
     </div>
 
     <form id="logActivityForm" novalidate class="popWin-formShell">

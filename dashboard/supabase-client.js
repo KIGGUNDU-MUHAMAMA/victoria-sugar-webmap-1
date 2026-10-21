@@ -512,7 +512,7 @@ async function loadLiveData() {
   // ── USERS (profiles) reshaped ──
   const ROLE_LABELS = {
     ADMIN: 'Admin',
-    MANAGMENT: 'Management', // NB: source value is misspelled "MANAGMENT" in the DB — kept as-is to match the check constraint
+    MANAGMENT: 'Manager', // NB: source value is misspelled "MANAGMENT" in the DB — kept as-is to match the check constraint
     SURVEYOR: 'Surveyor',
   };
   const estateNameByIdForUsers = new Map(rawEstates.map(e => [e.id, e.estate_name]));
@@ -588,9 +588,18 @@ async function loadLiveData() {
     // Logged By — vsl_activities.created_by → vsl_profiles (created_by targets
     // auth.users.id, which is the same id vsl_profiles rows key on 1:1).
     const logger = a.created_by ? profileById.get(a.created_by) : null;
+    // 'Other' is the catalogue's catch-all: activity_name stays 'Other'
+    // (it's an FK to vsl_activity_types) and what the work actually was is
+    // in custom_activity_name. So `name` is what to SHOW, and `typeName` is
+    // the catalogue row — anything matching against the type list or looking
+    // up property definitions must use typeName, not name.
+    const customName = (a.custom_activity_name || '').trim();
+    const isOther = a.activity_name === 'Other';
     return {
       id: a.id,
-      name: a.activity_name,
+      name: isOther && customName ? customName : a.activity_name,
+      typeName: a.activity_name,
+      customName: customName || null,
       date: a.activity_date,
       estate: estateNameForActivity(a),
       block: block ? (block.block_name || block.block_code || block.id) : '—',
@@ -620,7 +629,12 @@ async function loadLiveData() {
     return {
       id: c.id,
       activityId: c.activity_id,
-      activityName: activity ? activity.activity_name : '—',
+      // Raw row here, so the 'Other' → typed-name substitution has to be
+      // repeated (activityById is built from the unmapped activity rows).
+      activityName: activity
+        ? ((activity.activity_name === 'Other' && (activity.custom_activity_name || '').trim())
+            || activity.activity_name)
+        : '—',
       costType: c.cost_type || '—',
       description: c.description || '',
       amount: Number(c.amount) || 0,

@@ -7078,7 +7078,15 @@ select.search-panel__input {
 #logActivityModal .vsl-field-grid__item--full {
   grid-column: 1 / -1;
 }
+#logActivityModal .vsl-field-grid__label {
+  margin: 0;
+}
 #logActivityModal .vsl-field-grid__label label {
+  /* The app-wide `label` reset near the top of this file adds
+     margin-top: 0.7rem, which here pushed every label away from the field
+     above it and made the grid rows look unevenly spaced. The grid's own
+     gap does all the spacing needed. */
+  margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: #374140;
@@ -8540,9 +8548,12 @@ select.search-panel__input {
    the activity dropdown. See setLogActivityStep() in js/map-app.js.
    ============================================================= */
 
-/* The header row carries the activity select and, on step 2, the chip. */
+/* The header row carries the activity select and, on step 2, the chip.
+   wrap, so the "Other" name input can drop onto its own line underneath
+   rather than squeezing the select and chip along one row. */
 .log-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   gap: 8px;
 }
@@ -8552,6 +8563,36 @@ select.search-panel__input {
 .log-head .popWinTabs__select {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* The custom name typed for the "Other" activity. flex-basis 100% puts it
+   on its own line below the select; it is the activity's name, so it gets
+   the same weight and frame as the dropdown it stands in for. */
+.log-head__custom-name {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 2px solid #285f28;
+  border-radius: 8px;
+  background-color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1c1f1e;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.log-head__custom-name::placeholder {
+  font-weight: 500;
+  color: #8a948e;
+}
+.log-head__custom-name:focus {
+  outline: none;
+  border-color: #285f28;
+  box-shadow: 0 0 0 3px rgba(40, 95, 40, 0.2);
+}
+/* Author rules at this specificity beat the UA's [hidden], so the hidden
+   state needs saying explicitly. */
+.log-head__custom-name[hidden] {
+  display: none !important;
 }
 
 /* Collapsed location. A button, because it is the route back to step 1 —

@@ -182,8 +182,6 @@ body {
 
 /* Topbar bits reused inside panel header */
 .topbar-row { display: flex; align-items: center; gap: 10px; }
-.topbar-season { font-size: 12px; color: var(--gray-500); }
-.topbar-season strong { color: var(--green-700); }
 .topbar-alert-badge {
   position: relative; cursor: pointer; font-size: 18px; color: var(--gray-500);
   display: flex; align-items: center;
@@ -195,6 +193,17 @@ body {
   border-radius: 50%; width: 15px; height: 15px;
   display: flex; align-items: center; justify-content: center;
 }
+.modal-text { font-size: 14px; color: var(--gray-700); margin-bottom: 20px; }
+.modal-hint { font-size: 11px; color: var(--gray-500); }
+.modal-footnote { font-size: 11px; color: var(--gray-500); margin-bottom: 12px; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.form-label-note { font-weight: 400; color: var(--gray-500); }
+.modal-warning-list { margin: 12px 0 12px 20px; font-size: 13px; color: var(--gray-700); line-height: 1.7; }
+/* Users tab filter row: role dropdown first, then search, one line */
+.users-filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.users-filter-role { width: 140px; flex-shrink: 0; }
+.users-filter-search { width: 200px; }
+.badge-count[hidden] { display: none; }
 .topbar-avatar {
   width: 32px; height: 32px; border-radius: 50%;
   background: var(--green-700); color: #fff;
@@ -243,6 +252,7 @@ body {
 
 .stat-label { font-size: 10px; color: var(--gray-500); text-transform: uppercase; letter-spacing: .8px; font-weight: 600; }
 .stat-value { font-size: 26px; font-weight: 800; color: var(--gray-900); line-height: 1.15; }
+.stat-value-sm { font-size: 18px; }
 .stat-meta  { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
 
 /* ═══════════════════════════════════════
@@ -297,6 +307,8 @@ table { min-width: 500px; }
 .btn-danger  { background: var(--red-500); color: #fff; }
 .btn-danger:hover { opacity: .85; }
 .btn-sm   { padding: 5px 11px; font-size: 12px; }
+.btn-xl   { padding: 0 22px; font-size: 14px; }  /* Add Subscriber — height comes from .btn-header-action below */
+.btn-header-action { height: 54px; justify-content: center; }  /* Settings + Add Subscriber share one height (roughly double .btn-sm) */
 .btn:disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .btn-icon { padding: 6px 9px; }
 
@@ -314,6 +326,16 @@ table { min-width: 500px; }
 ═══════════════════════════════════════ */
 .form-row   { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
 .form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.form-group-tight { margin-bottom: 12px; }
+/* The "Activity Name" box in Add/Edit Activity, shown only when the type is
+   "Other". .form-group above is display:flex, which beats the browser's own
+   [hidden] rule at equal specificity — so hiding it has to be said here, or
+   toggling the hidden attribute in onActivityTypeChange() does nothing. */
+.activity-custom-name { margin-bottom: 12px; }
+.activity-custom-name[hidden] { display: none !important; }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.modal-subtitle   { font-size: 12px; color: var(--gray-500); margin: -6px 0 14px; }
+.modal-intro-text { font-size: 13px; color: var(--gray-700); margin-bottom: 14px; }
 label.form-label { font-size: 12px; font-weight: 600; color: var(--gray-700); }
 input.form-input, select.form-input, textarea.form-input {
   padding: 8px 12px; border: 1px solid var(--gray-300);
@@ -335,6 +357,10 @@ input.form-input:focus, select.form-input:focus {
 }
 .page-header-title { font-size: 20px; font-weight: 800; color: var(--gray-900); }
 .page-header-sub   { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+
+/* Generic "buttons next to a page title" row — kept as one shared
+   class rather than repeating the same inline flex per page. */
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 /* ═══════════════════════════════════════
    CHARTS
@@ -382,14 +408,14 @@ input.form-input:focus, select.form-input:focus {
 /* ═══════════════════════════════════════
    EMAIL NOTIFICATIONS
 ═══════════════════════════════════════ */
-.email-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px; border-bottom: 1px solid var(--gray-100);
-  flex-wrap: wrap;
-}
-.email-row:last-child { border-bottom: none; }
-.email-freq { font-size: 12px; color: var(--gray-500); min-width: 90px; }
-.email-last { font-size: 12px; color: var(--gray-500); min-width: 110px; }
+/* Recipient cell — avatar + name/email, used inside the Subscriber List
+   table's first column. */
+.subscriber-cell { display: flex; align-items: center; gap: 12px; }
+.subscriber-identity { flex: 1; min-width: 0; }
+.ua-sm { font-size: 10px; }
+.email-off { color: var(--red-500); }
+.row-icon-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.empty-state { padding: 20px; text-align: center; color: var(--gray-500); }
 
 /* ═══════════════════════════════════════
    ALERTS
@@ -433,6 +459,8 @@ input.form-input:focus, select.form-input:focus {
 /* Opt-in wider variant (see showModal({wide:true}) in app.js) — for forms
    with fields that want room to sit side by side. */
 .modal-box.modal-wide { width: 720px; }
+.modal-box.modal-md   { width: 520px; }
+.modal-box.modal-sm   { width: 380px; }
 
 /* ── Reports fixed toggle table (Add/Edit Subscriber modal) ──
    Always exactly 4 rows, one per report type — no add/remove, so no
@@ -450,12 +478,12 @@ input.form-input:focus, select.form-input:focus {
    made "REPORT TYPE" render in the bold black row style instead of the
    small green header style. */
 .rtt-head {
-  display: flex; align-items: center; gap: 14px;
-  padding: 10px 14px; background: var(--green-50);
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--green-50);
 }
 .rtt-head > span { font-size: 10px; font-weight: 700; letter-spacing: .6px; color: var(--green-700); }
 .report-toggle-row {
-  display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 10px; padding: 12px;
   border-top: 1px solid var(--gray-100);
   transition: opacity .15s, background-color .15s;
 }
@@ -466,11 +494,15 @@ input.form-input:focus, select.form-input:focus {
 .report-toggle-row.is-disabled .rtcol-type,
 .report-toggle-row.is-disabled .rtcol-estate,
 .report-toggle-row.is-disabled .rtcol-freq { opacity: .5; }
-.rtcol-toggle { width: 40px;  flex-shrink: 0; }
-.rtcol-type   { width: 130px; flex-shrink: 0; }
-.rtcol-estate { width: 155px; flex-shrink: 0; position: relative; }
-.rtcol-freq   { flex: 1 1 200px; min-width: 200px; display: flex; flex-wrap: wrap; gap: 6px; }
-.rtr-type-text { font-weight: 700; font-size: 13px; color: var(--gray-900); }
+/* Sized to fit the 520px Add/Edit Subscriber modal (.modal-md) without a
+   horizontal scrollbar — rtcol-type is the only flexible column, since
+   the bundle labels are the longest content here and wrapping to a
+   second line costs nothing, while estate/freq truncate or are short. */
+.rtcol-toggle { width: 28px;  flex-shrink: 0; }
+.rtcol-type   { flex: 1 1 120px; min-width: 120px; }
+.rtcol-estate { width: 115px; flex-shrink: 0; position: relative; }
+.rtcol-freq   { width: 84px;  flex-shrink: 0; }
+.rtr-type-text { font-weight: 700; font-size: 13px; color: var(--gray-900); padding-left: 10px; }
 
 /* Frequency pills — click to select/deselect, same look as other pill
    controls in the app (e.g. Name/Dist), not checkboxes. */
@@ -482,6 +514,20 @@ input.form-input:focus, select.form-input:focus {
 .freq-pill:hover:not(:disabled) { border-color: var(--green-400); }
 .freq-pill.is-selected { background: var(--green-50); border-color: var(--green-600); color: var(--green-700); }
 .freq-pill:disabled { cursor: default; opacity: .7; }
+.freq-pill.is-fixed { cursor: default; pointer-events: none; padding: 4px 9px; font-size: 11px; }  /* static badge, sized to fit the narrow .rtcol-freq column */
+
+/* Automated Schedule Settings modal — Daily/Weekly/Monthly rows laid out
+   as an invisible table (CSS grid, no visible cell borders) so the day
+   and time controls line up and stay the same width across all three
+   rows regardless of which control (select vs. placeholder) a row has. */
+.sched-table { display: flex; flex-direction: column; }
+.sched-row {
+  display: grid; grid-template-columns: 110px 1fr 1fr; align-items: center;
+  gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--gray-100);
+}
+.sched-row:last-child { border-bottom: none; }
+.sched-cell-label { font-size: 13px; font-weight: 600; color: var(--gray-700); }
+.sched-input { width: 100%; }
 
 /* Multi-select Estate dropdown, built from a native <details>/<summary> so
    it needs no open/close JS of its own. */
@@ -758,7 +804,6 @@ input.form-input:focus, select.form-input:focus {
   .grid-4, .grid-3, .grid-2, .grid-2-1, .grid-1-2 { grid-template-columns: 1fr; }
 
   /* Panel header */
-  .topbar-season { display: none; }
 
   /* Content padding */
   .panel-body { padding: 14px; }
@@ -790,6 +835,8 @@ input.form-input:focus, select.form-input:focus {
   .page-header-title { font-size: 17px; }
   .kpi-mini-val { font-size: 17px; }
   .btn-sm { padding: 4px 8px; font-size: 11px; }
+  .btn-xl { padding: 0 16px; font-size: 12px; }
+  .btn-header-action { height: 40px; }
 }
 
 

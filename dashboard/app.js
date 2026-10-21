@@ -192,6 +192,7 @@ function openPanel(page, navEl) {
   }
 
   currentPage = page;
+  if (page === 'activities') markActivitiesSeen();
   document.getElementById('panel-title').textContent = PAGE_TITLES[page] || page;
 
   destroyCharts();
@@ -1774,8 +1775,8 @@ function renderProduction(el) {
       <div class="page-header-sub">Harvest records from live plot data${DATA.isLive ? '' : ' · placeholder data'}</div>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-outline btn-sm" onclick="showHarvestSettingsModal()">⚙ Configure</button>
-      <button class="btn btn-primary btn-sm" onclick="showLogHarvestModal()">+ Log Harvest</button>
+      <button class="btn btn-outline btn-sm btn-header-action" onclick="showHarvestSettingsModal()">⚙ Configure</button>
+      <button class="btn btn-primary btn-xl btn-header-action" onclick="showLogHarvestModal()">+ Log Harvest</button>
     </div>
   </div>
   <div class="grid-4">
@@ -2165,7 +2166,7 @@ function renderSeasons(el) {
       <div class="page-header-sub">Planting &amp; crop-cycle history per plot${DATA.isLive ? '' : ' · placeholder data'}</div>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary btn-sm" onclick="showLogSeasonModal()">+ Log New Season</button>
+      <button class="btn btn-primary btn-xl btn-header-action" onclick="showLogSeasonModal()">+ Log New Season</button>
     </div>
   </div>
   <div class="grid-4">
@@ -2556,7 +2557,7 @@ function renderActivities(el) {
         <option value="">All Estates</option>
         ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
       </select>
-      <button class="btn btn-primary btn-sm" onclick="showAddActivityModal()">+ Log Activity</button>
+      <button class="btn btn-primary btn-xl btn-header-action" onclick="showAddActivityModal()">+ Log Activity</button>
     </div>
   </div>
   <div class="grid-4">
@@ -2594,7 +2595,9 @@ function renderActivities(el) {
     // the floor here even though it was already being fetched into
     // a.properties, so anything logged beyond the shared columns (variety,
     // fuel used, weather condition, yield, etc) was invisible in this modal.
-    const defs = (DATA.activityPropertyDefs && DATA.activityPropertyDefs[a.name]) || [];
+    // typeName, not name: for an 'Other' activity `name` is the typed
+    // one-off description, which is no key into the catalogue.
+    const defs = (DATA.activityPropertyDefs && DATA.activityPropertyDefs[a.typeName || a.name]) || [];
     const labelByKey = {};
     defs.forEach(d => { labelByKey[d.key] = d.label; });
     labelByKey.ratoon_number = labelByKey.ratoon_number || 'Ratoon Number';
@@ -2749,10 +2752,46 @@ function renderActivities(el) {
       </div>
     </div>`;
   }
+  // The catch-all activity type. activity_name is an FK to
+  // vsl_activity_types so it stays 'Other'; what the work actually was goes
+  // in vsl_activities.custom_activity_name, which a check constraint
+  // requires for 'Other' and forbids for everything else. Same arrangement
+  // as the webmap's Log Activity window (see OTHER_ACTIVITY in js/map-app.js).
+  const OTHER_ACTIVITY = 'Other';
+
+  // The "what was it?" box. Hidden unless the type is 'Other', in which case
+  // it is mandatory.
+  function customActivityNameHTML(prefix, value) {
+    return `
+      <div class="form-group activity-custom-name" id="${prefix}-custom-wrap" ${value ? '' : 'hidden'}>
+        <label class="form-label" for="${prefix}-custom-name">Activity Name</label>
+        <input class="form-input" id="${prefix}-custom-name" type="text" maxlength="80"
+               placeholder="Type the activity name" value="${value ? String(value).replace(/"/g, '&quot;') : ''}">
+      </div>`;
+  }
+
+  /** The typed name, or '' when the selected type isn't 'Other'. */
+  function readCustomActivityName(prefix) {
+    const sel = document.getElementById(`${prefix}-name`);
+    if (!sel || sel.value !== OTHER_ACTIVITY) return '';
+    return (document.getElementById(`${prefix}-custom-name`)?.value || '').trim();
+  }
+
   window.onActivityTypeChange = function(prefix) {
     const name = document.getElementById(`${prefix}-name`).value;
     const wrap = document.getElementById(`${prefix}-props-wrap`);
     if (wrap) wrap.outerHTML = activityPropsSectionHTML(prefix, name, null);
+    const customWrap = document.getElementById(`${prefix}-custom-wrap`);
+    if (customWrap) {
+      const isOther = name === OTHER_ACTIVITY;
+      customWrap.hidden = !isOther;
+      // Clear on the way out, so a name typed for a one-off can't be sent
+      // along with a real activity type and trip the check constraint.
+      if (!isOther) {
+        const input = document.getElementById(`${prefix}-custom-name`);
+        if (input) input.value = '';
+      }
+    }
   };
   function readActivityPropsFromForm(prefix) {
     const props = {};
@@ -2797,6 +2836,7 @@ function renderActivities(el) {
         <div class="form-group"><label class="form-label">Date</label>
           <input class="form-input" id="aa-date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
       </div>
+      ${customActivityNameHTML('aa', '')}
       ${plot ? lockedScopeHTML('aa', plot) : scopePickerHTML('aa','','','')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="aa-team" type="number" min="0"></div>
@@ -2820,7 +2860,12 @@ function renderActivities(el) {
     const completion = document.getElementById('aa-completion').value;
     const areaCovered = completion !== '100' ? document.getElementById('aa-area').value : '';
     const comments = document.getElementById('aa-comments').value.trim();
+    const customName = readCustomActivityName('aa');
     const properties = readActivityPropsFromForm('aa');
+    if (name === OTHER_ACTIVITY && !customName) {
+      showToast('Type a name for this activity', 'red');
+      return;
+    }
     try {
       const client = getSbClient();
       // Estate is the primary source of estate_id now — it's picked
@@ -2834,6 +2879,7 @@ function renderActivities(el) {
       const uid = await getCurrentUserId();
       const { error } = await client.from('vsl_activities').insert([{
         activity_name: name, activity_date: date,
+        custom_activity_name: name === OTHER_ACTIVITY ? customName : null,
         block_id: blockId, parcel_id: parcelId, estate_id: estateRow ? estateRow._id : null,
         team_size: team || null, completion_value: completion || null,
         area_covered_acres: areaCovered || null,
@@ -2861,14 +2907,15 @@ function renderActivities(el) {
       <div class="modal-title">Edit Activity — ${a.name}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Activity Type</label>
-          <select class="form-input" id="ea-name" onchange="onActivityTypeChange('ea')">${ACTIVITY_TYPES().map(t=>`<option ${t===a.name?'selected':''}>${t}</option>`).join('')}</select></div>
+          <select class="form-input" id="ea-name" onchange="onActivityTypeChange('ea')">${ACTIVITY_TYPES().map(t=>`<option ${t===(a.typeName||a.name)?'selected':''}>${t}</option>`).join('')}</select></div>
         <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="ea-date" type="date" value="${a.date||''}"></div>
       </div>
+      ${customActivityNameHTML('ea', a.customName || '')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="ea-team" type="number" value="${a.teamSize ?? ''}"></div>
         ${completionFieldHTML('ea', a.completionValue, a.areaCoveredAcres)}
       </div>
-      ${activityPropsSectionHTML('ea', a.name, a.properties)}
+      ${activityPropsSectionHTML('ea', a.typeName || a.name, a.properties)}
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="ea-comments" rows="2">${a.comments||''}</textarea></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2884,6 +2931,11 @@ function renderActivities(el) {
     const completion = document.getElementById('ea-completion').value;
     const areaCovered = completion !== '100' ? document.getElementById('ea-area').value : '';
     const comments = document.getElementById('ea-comments').value.trim();
+    const customName = readCustomActivityName('ea');
+    if (name === OTHER_ACTIVITY && !customName) {
+      showToast('Type a name for this activity', 'red');
+      return;
+    }
     // Merge onto the existing activity_properties rather than replacing it
     // outright — anything computed elsewhere and not rendered as a form
     // field here (e.g. ratoon_number/expected_germination_date, stamped in
@@ -2899,6 +2951,10 @@ function renderActivities(el) {
       const client = getSbClient();
       const { error } = await client.from('vsl_activities').update({
         activity_name: name, activity_date: date, team_size: team || null,
+        // Always sent, so switching an activity's type away from 'Other'
+        // clears the stale one-off name instead of leaving the pair
+        // contradicting each other (the check constraint would refuse it).
+        custom_activity_name: name === OTHER_ACTIVITY ? customName : null,
         completion_value: completion || null, area_covered_acres: areaCovered || null,
         comments: comments || null,
         activity_properties: properties,
@@ -2986,8 +3042,8 @@ function renderCosts(el) {
         <option value="">All Estates</option>
         ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
       </select>
-      <button class="btn btn-outline btn-sm" onclick="showAddCostModal()">+ Log New</button>
-      <button class="btn btn-primary btn-sm" onclick="showAddCostFromActivityModal()">+ Log From Activity</button>
+      <button class="btn btn-outline btn-sm btn-header-action" onclick="showAddCostModal()">+ Log New</button>
+      <button class="btn btn-primary btn-xl btn-header-action" onclick="showAddCostFromActivityModal()">+ Log From Activity</button>
     </div>
   </div>
   <div class="grid-4">
@@ -3213,8 +3269,8 @@ function renderDocuments(el) {
     <div><div class="page-header-title">Documents &amp; Media</div>
     <div class="page-header-sub">${DATA.documents.length} documents · ${DATA.media.length} media files</div></div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary btn-sm" onclick="showAddDocumentModal()">+ Add Document</button>
-      <button class="btn btn-outline btn-sm" onclick="showAddMediaModal()">+ Add Media</button>
+      <button class="btn btn-primary btn-xl btn-header-action" onclick="showAddDocumentModal()">+ Add Document</button>
+      <button class="btn btn-outline btn-sm btn-header-action" onclick="showAddMediaModal()">+ Add Media</button>
     </div>
   </div>
   <div class="tab-bar">
@@ -3405,8 +3461,11 @@ function renderMessages(el) {
 // ══════════════════════════════════════
 
 // Real permission roles, per vsl_profiles' check constraint / RLS policies.
-const ROLE_LABEL_MAP = { ADMIN: 'Admin', SURVEYOR: 'Surveyor', MANAGMENT: 'Management' };
-const ROLE_COLOR_MAP = { Admin: 'red', Surveyor: 'blue', Management: 'green' };
+// NB: the stored value stays "MANAGMENT" (misspelled, per the DB check
+// constraint and RLS); only the label people see says "Manager".
+const ROLE_LABEL_MAP = { ADMIN: 'Admin', MANAGMENT: 'Manager', SURVEYOR: 'Surveyor' };
+const ROLE_COLOR_MAP = { Admin: 'red', Surveyor: 'blue', Manager: 'green' };
+const DEFAULT_NEW_USER_ROLE = 'MANAGMENT';
 
 // Where invitation / reset emails send people: <app root>/set-password.html
 // (the dashboard lives in /dashboard/, so go one level up).
@@ -3441,7 +3500,7 @@ function renderUsers(el) {
   <div class="page-header">
     <div><div class="page-header-title">User Management</div>
     <div class="page-header-sub">${DATA.users.length} registered users · admin-only account creation${DATA.isLive ? '' : ' · placeholder data'}</div></div>
-    <button class="btn btn-primary btn-sm" onclick="showAddUserModal()">+ Add User</button>
+    <button class="btn btn-primary btn-xl btn-header-action" onclick="showAddUserModal()">+ Add User</button>
   </div>
   <div class="grid-4">
     ${[['Total Users',DATA.users.length,'blue'],
@@ -3452,13 +3511,13 @@ function renderUsers(el) {
   </div>
   <div class="card">
     <div class="card-header"><div class="card-title">All Users</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <input class="form-input" style="max-width:200px" placeholder="Search users..."
-               oninput="filterUsers(this.value)">
-        <select class="form-input" style="width:140px" onchange="filterUsersByRole(this.value)">
+      <div class="users-filter-row">
+        <select class="form-input users-filter-role" onchange="filterUsersByRole(this.value)">
           <option value="">All Roles</option>
           ${Object.values(ROLE_LABEL_MAP).map(r=>`<option>${r}</option>`).join('')}
         </select>
+        <input class="form-input users-filter-search" placeholder="Search users..."
+               oninput="filterUsers(this.value)">
       </div>
     </div>
     <div class="table-wrap">
@@ -3477,12 +3536,12 @@ function renderUsers(el) {
               <td>${pill(u.status==='active'?'Active':'Inactive',u.status==='active'?'green':'gray')}</td>
               <td style="font-size:12px;color:var(--gray-500)">${u.lastLogin === '—' ? '<span class="invite-pending">Not signed in yet</span>' : u.lastLogin}</td>
               <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px;flex-wrap:wrap">
-                ${u.lastLogin === '—' ? `<button class="icon-btn" onclick="confirmResendInvite('${u.id}')" title="Resend Invitation" aria-label="Resend Invitation"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>` : ''}
+                ${!isSelf(u.id) && u.lastLogin === '—' ? `<button class="icon-btn" onclick="confirmResendInvite('${u.id}')" title="Resend Invitation" aria-label="Resend Invitation"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>` : ''}
                 <button class="icon-btn" onclick="showEditUserModal('${u.id}')" title="Edit">✎</button>
-                ${u.status==='active'
+                ${isSelf(u.id) ? '' : u.status==='active'
                   ? `<button class="icon-btn" onclick="toggleUserActive('${u.id}',false)" title="Deactivate">⏸</button>`
                   : `<button class="icon-btn primary" onclick="toggleUserActive('${u.id}',true)" title="Reactivate">▶</button>`}
-                <button class="icon-btn danger" onclick="confirmDeleteUser('${u.id}','${u.name}')" title="Delete">🗑</button>
+                ${isSelf(u.id) ? '' : `<button class="icon-btn danger" onclick="confirmDeleteUser('${u.id}','${u.name}')" title="Delete">🗑</button>`}
               </div></td>
             </tr>`).join('')}
         </tbody>
@@ -3511,82 +3570,114 @@ function renderUsers(el) {
       DATA.estates.map(e=>`<option value="${e._id}" ${String(e._id)===String(selectedId)?'selected':''}>${e.name}</option>`).join('');
   }
 
-  // Wires a file input's change event to preview the picked image inline
-  // (before it's uploaded — upload only happens on form submit).
-  function wireAvatarPreview(inputId, previewId) {
-    const input = document.getElementById(inputId);
-    const preview = document.getElementById(previewId);
-    if (!input || !preview) return;
-    input.addEventListener('change', () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => { preview.src = reader.result; preview.style.display = ''; };
-      reader.readAsDataURL(file);
-    });
-  }
-
   window.showAddUserModal = function() {
     showModal(`
       <div class="modal-title">Add New User</div>
-      <div class="modal-note info"><i class="fas fa-envelope" aria-hidden="true"></i>
-        <span>We'll email this person an invitation link. They open it, choose their own password and their account is ready — this also confirms the email address is real. You never see or set their password.</span></div>
-      <div class="form-group" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-        <img id="au-photo-preview" style="width:56px;height:56px;border-radius:50%;object-fit:cover;display:none;flex-shrink:0">
-        <div style="flex:1"><label class="form-label">Profile Photo <span style="font-weight:400;color:var(--gray-500)">(optional)</span></label>
-          <input class="form-input" id="au-photo" type="file" accept="image/*"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="form-row-2">
         <div class="form-group"><label class="form-label">Full Name *</label><input class="form-input" id="au-name" placeholder="e.g. Jane Doe" required></div>
         <div class="form-group"><label class="form-label">Email *</label><input class="form-input" id="au-email" type="email" placeholder="user@example.com" required></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="form-row-2">
         <div class="form-group"><label class="form-label">Role *</label>
-          <select class="form-input" id="au-role">${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+          <select class="form-input" id="au-role">${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}" ${k===DEFAULT_NEW_USER_ROLE?'selected':''}>${v}</option>`).join('')}</select></div>
         <div class="form-group"><label class="form-label">Phone *</label><input class="form-input" id="au-phone" placeholder="07XXXXXXXX" required></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Title / Position <span style="font-weight:400;color:var(--gray-500)">(display only)</span></label>
+      <div class="form-row-2">
+        <div class="form-group"><label class="form-label">Title / Position <span class="form-label-note">(display only)</span></label>
           <input class="form-input" id="au-title" placeholder="e.g. Field Officer, Agronomist"></div>
         <div class="form-group"><label class="form-label">Home Estate</label>
           <select class="form-input" id="au-estate">${estateOptions('')}</select></div>
       </div>
-      <p style="font-size:11px;color:var(--gray-500);margin-bottom:12px">* Required</p>
+      <p class="modal-footnote">* Required</p>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" id="au-submit" onclick="submitAddUser()"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send Invitation</button>
       </div>`);
-    wireAvatarPreview('au-photo', 'au-photo-preview');
   };
 
-  window.submitAddUser = async function() {
-    const full_name = document.getElementById('au-name').value.trim();
-    const email = document.getElementById('au-email').value.trim();
-    const role = document.getElementById('au-role').value;
-    const title = document.getElementById('au-title').value.trim();
-    const phone = document.getElementById('au-phone').value.trim();
-    const estate_id = document.getElementById('au-estate').value || null;
-    const photoFile = document.getElementById('au-photo').files[0] || null;
+  // Validates the Add User form and returns the values, or null (after a
+  // toast) if something is missing.
+  function readAddUserForm() {
+    const v = {
+      full_name: document.getElementById('au-name').value.trim(),
+      email: document.getElementById('au-email').value.trim(),
+      role: document.getElementById('au-role').value,
+      title: document.getElementById('au-title').value.trim(),
+      phone: document.getElementById('au-phone').value.trim(),
+      estate_id: document.getElementById('au-estate').value || null,
+    };
     // Full Name, Email, Role, and Phone are all required. There is no password
     // here on purpose — the invited user sets their own from the email link.
-    if (!full_name) { showToast('Full Name is required','red'); return; }
-    if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Please enter a valid email','red'); return; }
-    if (!role) { showToast('Role is required','red'); return; }
-    if (!phone) { showToast('Phone is required','red'); return; }
-    const btn = document.getElementById('au-submit');
+    if (!v.full_name) { showToast('Full Name is required','red'); return null; }
+    if (!v.email || !/^[^@]+@[^@]+\.[^@]+$/.test(v.email)) { showToast('Please enter a valid email','red'); return null; }
+    if (!v.role) { showToast('Role is required','red'); return null; }
+    if (!v.phone) { showToast('Phone is required','red'); return null; }
+    return v;
+  }
+
+  // Add User → (Admin only) confirm window → send. Creating an Admin hands
+  // over full dashboard rights, so it needs an explicit second yes.
+  let pendingNewUser = null;
+  window.submitAddUser = async function() {
+    const v = readAddUserForm();
+    if (!v) return;
+    if (v.role === 'ADMIN') { showConfirmAdminModal(v); return; }
+    await sendInvitation(v);
+  };
+
+  function showConfirmAdminModal(v) {
+    pendingNewUser = v;
+    const safeEmail = v.email.replace(/[<>&"]/g, '');
+    showModal(`
+      <div class="modal-title">Create Admin User?</div>
+      <div class="modal-note danger"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        <span>You are attempting to create an <strong>Admin</strong> user, <strong>${safeEmail}</strong>. This user will be able to:</span></div>
+      <ol class="modal-warning-list">
+        <li>Access this dashboard</li>
+        <li>Create, edit, deactivate and delete users</li>
+        <li>Use all admin rights across the system</li>
+      </ol>
+      <p class="modal-text">Are you sure you want to continue? An invitation link will still be sent to this email so they can set their own password.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="cancelConfirmAdmin()">Go Back</button>
+        <button class="btn btn-danger" id="au-confirm-admin" onclick="confirmCreateAdmin()">Yes, Create Admin</button>
+      </div>`);
+  }
+  // Going back re-opens the form with what they'd typed.
+  window.cancelConfirmAdmin = function() {
+    const v = pendingNewUser;
+    showAddUserModal();
+    if (!v) return;
+    document.getElementById('au-name').value = v.full_name;
+    document.getElementById('au-email').value = v.email;
+    document.getElementById('au-role').value = v.role;
+    document.getElementById('au-phone').value = v.phone;
+    document.getElementById('au-title').value = v.title;
+    document.getElementById('au-estate').value = v.estate_id || '';
+  };
+  window.confirmCreateAdmin = async function() {
+    if (!pendingNewUser) return;
+    const btn = document.getElementById('au-confirm-admin');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    await sendInvitation(pendingNewUser, 'au-confirm-admin');
+  };
+
+  async function sendInvitation(v, btnId) {
+    const btn = document.getElementById(btnId || 'au-submit');
+    const resetLabel = btnId ? 'Yes, Create Admin' : '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send Invitation';
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     try {
-      const avatar_url = photoFile ? await uploadAvatarFile(photoFile) : null;
-      await callAdminUsersFn('invite', { email, role, full_name, phone, title, estate_id, avatar_url, redirect_to: setPasswordUrl() });
+      await callAdminUsersFn('invite', { ...v, redirect_to: setPasswordUrl() });
+      pendingNewUser = null;
       await retryLiveDataLoad();
       renderTabIfCurrent('users');
-      showInviteSentModal(full_name, email);
+      showInviteSentModal(v.full_name, v.email);
     } catch (err) {
       console.error(err);
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send Invitation'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = resetLabel; }
       showToast('Failed to invite user: ' + err.message, 'red');
     }
-  };
+  }
 
   // Confirmation window after an invite goes out.
   function showInviteSentModal(name, email) {
@@ -3631,17 +3722,14 @@ function renderUsers(el) {
 
   window.showEditUserModal = function(id) {
     const u = DATA.users.find(x=>x.id===id); if (!u) return;
+    const self = isSelf(u.id);
     showModal(`
-      <div class="modal-title">Edit User — ${u.name}</div>
-      <div class="form-group" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-        <img id="eu-photo-preview" src="${u.avatarUrl || ''}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;${u.avatarUrl ? '' : 'display:none;'}flex-shrink:0">
-        <div style="flex:1"><label class="form-label">Profile Photo</label>
-          <input class="form-input" id="eu-photo" type="file" accept="image/*"></div>
-      </div>
+      <div class="modal-title">${self ? 'Edit Profile' : 'Edit User — ' + u.name}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="eu-name" value="${u.name}"></div>
         <div class="form-group"><label class="form-label">Role</label>
-          <select class="form-input" id="eu-role">${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}" ${k===u.roleRaw?'selected':''}>${v}</option>`).join('')}</select></div>
+          <select class="form-input" id="eu-role" ${self ? 'disabled title="You cannot change your own role"' : ''}>${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}" ${k===u.roleRaw?'selected':''}>${v}</option>`).join('')}</select>
+          ${self ? '<div style="font-size:11px;color:var(--gray-500);margin-top:4px">You can\'t change your own role.</div>' : ''}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Title / Position</label><input class="form-input" id="eu-title" value="${u.title||''}"></div>
@@ -3653,19 +3741,19 @@ function renderUsers(el) {
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="submitEditUser('${u.id}')">Save Changes</button>
       </div>`);
-    wireAvatarPreview('eu-photo', 'eu-photo-preview');
   };
 
   window.submitEditUser = async function(id) {
     const full_name = document.getElementById('eu-name').value.trim();
-    const role = document.getElementById('eu-role').value;
+    // Never take your own role from the form — it's locked in the UI, and
+    // this keeps it locked even if the field were re-enabled in devtools.
+    const existing = DATA.users.find(x => x.id === id);
+    const role = isSelf(id) && existing ? existing.roleRaw : document.getElementById('eu-role').value;
     const title = document.getElementById('eu-title').value.trim();
     const phone = document.getElementById('eu-phone').value.trim();
     const estate_id = document.getElementById('eu-estate').value || null;
-    const photoFile = document.getElementById('eu-photo').files[0] || null;
     try {
       const payload = { id, full_name, role, title, phone, estate_id };
-      if (photoFile) payload.avatar_url = await uploadAvatarFile(photoFile);
       await callAdminUsersFn('update', payload);
       closeModal();
       showToast('User updated successfully');
@@ -3734,12 +3822,17 @@ function renderUsers(el) {
       <button class="btn btn-outline btn-sm btn-back-accent" onclick="clearUserDetail()">← Back to Users</button>
       <div style="font-size:13px;color:var(--gray-500)">Full User Profile — <strong>${u.name}</strong></div>
       <div style="margin-left:auto;display:flex;gap:8px">
+        ${isSelf(u.id) ? `
+        <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">&#9998; Edit Profile</button>
+        <button class="btn btn-outline btn-sm" onclick="showChangePasswordModal()">&#128273; Change Password</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmLogout()">Log Out</button>` : `
         <button class="btn btn-outline btn-sm" onclick="confirmResendInvite('${u.id}')"><i class="fas fa-paper-plane" aria-hidden="true"></i> ${u.lastLogin === '—' ? 'Resend Invitation' : 'Send Password Link'}</button>
         <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">✏ Edit User</button>
         ${u.status==='active'
           ? `<button class="btn btn-outline btn-sm" onclick="toggleUserActive('${u.id}',false)">⏸ Deactivate</button>`
           : `<button class="btn btn-outline btn-sm" onclick="toggleUserActive('${u.id}',true)">▶ Reactivate</button>`}
         <button class="btn btn-danger btn-sm" onclick="confirmDeleteUser('${u.id}','${(u.name||'').replace(/'/g,"")}')">🗑 Delete</button>
+        `}
       </div>
     </div>
     <div class="card" style="margin-bottom:20px">
@@ -3782,64 +3875,106 @@ function renderNotifications(el) {
   }
 
   function renderSubList() {
-    if (!subscribers.length) return '<div style="padding:20px;text-align:center;color:var(--gray-500)">No subscribers yet.</div>';
-    return subscribers.map(s=>{
-      const active = (s.reports || []).filter(r => r.enabled);
-      return `
-      <div class="email-row" id="sub-${s.id}">
-        <div class="user-avatar" style="font-size:10px;flex-shrink:0">
-          ${s.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:13px">${s.name}</div>
-          <div style="font-size:11px;color:var(--gray-500)">${s.email}</div>
-        </div>
-        <div style="font-size:11px;color:var(--gray-500);min-width:220px">
-          ${active.length
-            ? active.map(r => `<div style="margin-bottom:2px"><strong style="color:var(--gray-700)">${r.reportType}</strong> @ ${estatesLabel(r.estates)} — ${r.frequencies.join(', ')}</div>`).join('')
-            : '<span style="color:var(--red-500)">All reports off</span>'}
-        </div>
-        <div style="font-size:11px;color:var(--gray-500);min-width:90px">Sent: ${s.lastSent}</div>
-        <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="icon-btn" onclick="showEditSubscriberModal('${s.id}')" title="Edit">\u270e</button>
-          <button class="icon-btn primary" onclick="sendEmailNow('${s.id}','${s.email}')" title="Send Now">\ud83d\udce4</button>
-          <button class="icon-btn danger" onclick="removeSubscriber('${s.id}')" title="Remove">\ud83d\uddd1</button>
-        </div>
-      </div>`;
-    }).join('');
+    if (!subscribers.length) return '<div class="empty-state">No subscribers yet.</div>';
+    // One flattened row per subscriber — Report Type and Estate(s) are each
+    // a single comma-separated summary across that subscriber's enabled
+    // reports (the old per-report "Type @ Estate — Frequency" lines were
+    // confusing to scan). The fine-grained per-report breakdown is still
+    // there to edit, just in the Edit Subscriber modal rather than this list.
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>Recipient</th><th>Report Type</th><th>Estate(s)</th><th>Last Sent</th><th>Actions</th></tr></thead>
+      <tbody>${subscribers.map(s => {
+        const active = (s.reports || []).filter(r => r.enabled);
+        // Show bundle labels (REPORT_GROUPS), not raw report_type values —
+        // a subscriber row created before Land Status and Summary were
+        // merged into one bundle still has separate enabled rows for both,
+        // and listing them raw would show both names for what is now a
+        // single toggle. A group counts as active if any of its underlying
+        // types is enabled, matching showEditSubscriberModal's logic.
+        const typesLabel = REPORT_GROUPS
+          .filter(g => g.types.some(t => active.some(r => r.reportType === t)))
+          .map(g => g.label)
+          .join(', ');
+        const allEstates = active.some(r => (r.estates || []).includes('All Estates'));
+        const estateNames = [...new Set(active.flatMap(r => r.estates || []).filter(e => e !== 'All Estates'))];
+        const estatesText = allEstates ? 'All Estates' : estateNames.join(', ');
+        return `
+        <tr id="sub-${s.id}">
+          <td>
+            <div class="subscriber-cell">
+              <div class="user-avatar ua-sm">${s.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+              <div class="subscriber-identity">
+                <div class="user-name">${s.name}</div>
+                <div class="user-email">${s.email}</div>
+              </div>
+            </div>
+          </td>
+          <td>${active.length ? typesLabel : '<span class="email-off">All reports off</span>'}</td>
+          <td>${active.length ? estatesText : '—'}</td>
+          <td>${s.lastSent}</td>
+          <td>
+            <div class="row-icon-actions">
+              <button class="icon-btn" onclick="showEditSubscriberModal('${s.id}')" title="Edit">✎</button>
+              <button class="icon-btn primary" onclick="sendEmailNow('${s.id}','${s.email}')" title="Send Now">📤</button>
+              <button class="icon-btn danger" onclick="confirmRemoveSubscriber('${s.id}')" title="Remove">🗑</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
   }
 
+  // Frequency is no longer admin-settable — each bundle below always goes
+  // out on its own fixed cadence, so Add/Edit Subscriber only switches a
+  // bundle on/off and picks estates. REPORT_TYPES stays the list of
+  // vsl_report_subscriptions.report_type values — one DB row per type,
+  // unchanged, so the render/send backend's per-type queries don't need to
+  // change. REPORT_GROUPS is the UI-facing grouping: one row per group,
+  // each expanding onto one or more REPORT_TYPES rows with that group's
+  // fixed frequency baked in (see expandDraftReportsToRows below).
   const REPORT_TYPES = ['Land Status Reports','Activity Reports','Harvests Reports','Summary Report'];
-  const REPORT_FREQUENCIES = ['Daily','Weekly','Monthly'];
-  // Sensible starting frequency per report type \u2014 pre-filled so a brand
-  // new subscriber's rows already make sense without an admin having to
-  // think about each one, but every box stays fully editable afterwards.
-  const REPORT_TYPE_DEFAULT_FREQUENCIES = {
-    'Land Status Reports': ['Weekly'],
-    'Activity Reports':    ['Daily'],
-    'Harvests Reports':    ['Weekly'],
-    'Summary Report':      ['Monthly'],
-  };
+  const REPORT_GROUPS = [
+    { key: 'landStatusSummary', label: 'Land status report', frequency: 'Monthly', types: ['Land Status Reports','Summary Report'] },
+    { key: 'harvest',           label: 'Harvest Reports',              frequency: 'Weekly',  types: ['Harvests Reports'] },
+    { key: 'activity',          label: 'Activity Reports',             frequency: 'Daily',   types: ['Activity Reports'] },
+  ];
 
-  // \u2500\u2500 DRAFT STATE for the Add/Edit Subscriber modal \u2500\u2500
-  // Fixed 4-row toggle table: always exactly one entry per REPORT_TYPES, in
-  // order, so duplicate report-type rows are impossible by construction
-  // (there is no add/remove any more). Toggling a row off ("enabled: false")
-  // never clears its estates/frequencies \u2014 those are preserved so
-  // re-enabling later restores them, and the row is always written to the
-  // DB either way (see addSubscriber/submitEditSubscriber below).
-  let draftReports    = [];   // [{ reportType, enabled, estates: [], frequencies: [] }]
+  // ── DRAFT STATE for the Add/Edit Subscriber modal ──
+  // Fixed 3-row toggle table: always exactly one entry per REPORT_GROUPS, in
+  // order, so duplicate rows are impossible by construction (there is no
+  // add/remove any more). Toggling a row off ("enabled: false") never
+  // clears its estates — those are preserved so re-enabling later restores
+  // them, and the row is always written to the DB either way (see
+  // addSubscriber/submitEditSubscriber below). Frequency isn't part of the
+  // draft at all any more — it's fixed per group.
+  let draftReports    = [];   // [{ groupKey, enabled, estates: [] }]
   let draftName       = '';
   let draftEmail      = '';
   let draftEditingId  = null; // recipient id when editing, null when adding
 
   function defaultDraftReports() {
-    return REPORT_TYPES.map(t => ({
-      reportType: t,
+    return REPORT_GROUPS.map(g => ({
+      groupKey: g.key,
       enabled: true,
       estates: ['All Estates'],
-      frequencies: [...(REPORT_TYPE_DEFAULT_FREQUENCIES[t] || [])],
     }));
+  }
+
+  // Expands the 3 UI groups into one DB row per underlying report_type —
+  // vsl_report_subscriptions keeps the shape it always had (one row per
+  // report_type, with a `frequencies` array), so the fixed frequency just
+  // gets baked in here instead of coming from an admin-picked value.
+  function expandDraftReportsToRows(recipientId) {
+    return draftReports.flatMap(r => {
+      const group = REPORT_GROUPS.find(g => g.key === r.groupKey);
+      return group.types.map(t => ({
+        recipient_id: recipientId,
+        report_type: t,
+        enabled: r.enabled,
+        estates: r.estates,
+        frequencies: [group.frequency],
+      }));
+    });
   }
 
   function refreshReportsTable(prefix) {
@@ -3850,14 +3985,11 @@ function renderNotifications(el) {
   function reportsTableHTML(prefix) {
     const rows = draftReports.map((r, idx) => {
       const disabled = !r.enabled;
+      const group = REPORT_GROUPS.find(g => g.key === r.groupKey);
       const estateOptions = [
         `<label class="estate-opt"><input type="checkbox" value="All Estates" ${r.estates.includes('All Estates')?'checked':''} ${disabled?'disabled':''} onchange="onEstateOptionToggle('${prefix}',${idx},'All Estates',this.checked)"> All Estates</label>`,
         ...DATA.estates.map(e => `<label class="estate-opt"><input type="checkbox" value="${e.name}" ${r.estates.includes(e.name)?'checked':''} ${disabled?'disabled':''} onchange="onEstateOptionToggle('${prefix}',${idx},'${e.name}',this.checked)"> ${e.name}</label>`),
       ].join('');
-      // Frequency is a row of pill buttons (click to toggle selected), not
-      // checkboxes — matches the Name/Dist pill style used elsewhere.
-      const freqPills = REPORT_FREQUENCIES.map(f => `
-        <button type="button" class="freq-pill${r.frequencies.includes(f)?' is-selected':''}" ${disabled?'disabled':''} onclick="onFrequencyPillClick('${prefix}',${idx},'${f}',this)">${f}</button>`).join('');
       return `
       <div class="report-toggle-row${disabled ? ' is-disabled' : ''}">
         <div class="rtcol-toggle">
@@ -3866,14 +3998,14 @@ function renderNotifications(el) {
             <span class="toggle-slider"></span>
           </label>
         </div>
-        <div class="rtcol-type"><span class="rtr-type-text">${r.reportType}</span></div>
+        <div class="rtcol-type"><span class="rtr-type-text">${group.label}</span></div>
         <div class="rtcol-estate">
           <details class="estate-multiselect">
             <summary id="${prefix}-est-summary-${idx}" class="estate-multiselect-summary">${estatesLabel(r.estates)}</summary>
             <div class="estate-multiselect-panel" id="${prefix}-est-panel-${idx}">${estateOptions}</div>
           </details>
         </div>
-        <div class="rtcol-freq">${freqPills}</div>
+        <div class="rtcol-freq"><span class="freq-pill is-selected is-fixed">${group.frequency}</span></div>
       </div>`;
     }).join('');
     return `
@@ -3907,15 +4039,6 @@ function renderNotifications(el) {
     refreshReportsTable(prefix);
   };
 
-  window.onFrequencyPillClick = function(prefix, idx, freq, btnEl) {
-    const r = draftReports[idx];
-    const wasSelected = r.frequencies.includes(freq);
-    r.frequencies = wasSelected ? r.frequencies.filter(f => f !== freq) : [...r.frequencies, freq];
-    // Toggle the button's own look in place rather than re-rendering the
-    // whole table — keeps any open Estate dropdown on another row open.
-    if (btnEl) btnEl.classList.toggle('is-selected', !wasSelected);
-  };
-
   window.onEstateOptionToggle = function(prefix, idx, value, checked) {
     const r = draftReports[idx];
     if (value === 'All Estates') {
@@ -3937,20 +4060,20 @@ function renderNotifications(el) {
 
   function subscriberFormFields(prefix) {
     return `
-      <div class="form-group" style="margin-bottom:12px">
+      <div class="form-group form-group-tight">
         <label class="form-label">Select Existing User (optional)</label>
         <select class="form-input" id="${prefix}-user" onchange="onSubscriberUserPick('${prefix}')">
-          <option value="">\u2014 Enter details manually \u2014</option>
+          <option value="">— Enter details manually —</option>
           ${DATA.users.map(u=>`<option value="${u.id}" data-name="${u.name}" data-email="${u.email}">${u.name} (${u.email})</option>`).join('')}
         </select>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="form-grid-2">
         <div class="form-group"><label class="form-label">Full Name</label>
           <input class="form-input" id="${prefix}-name" placeholder="Recipient name" value="${draftName||''}"></div>
         <div class="form-group"><label class="form-label">Email Address</label>
           <input class="form-input" id="${prefix}-email" type="email" placeholder="email@example.com" value="${draftEmail||''}"></div>
       </div>
-      <div class="form-group" style="margin-bottom:12px">
+      <div class="form-group form-group-tight">
         <label class="form-label">Reports</label>
         <div id="${prefix}-reports-table">${reportsTableHTML(prefix)}</div>
       </div>`;
@@ -3973,7 +4096,7 @@ function renderNotifications(el) {
         <div class="modal-actions">
           <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
           <button class="btn btn-primary" onclick="addSubscriber()">Save Subscriber</button>
-        </div>`, { wide: true });
+        </div>`, { size: 'md' });
     } else {
       showModal(`
         <div class="modal-title">Edit Subscriber \u2014 ${draftName}</div>
@@ -3981,7 +4104,7 @@ function renderNotifications(el) {
         <div class="modal-actions">
           <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
           <button class="btn btn-primary" onclick="submitEditSubscriber('${draftEditingId}')">Save Changes</button>
-        </div>`, { wide: true });
+        </div>`, { size: 'md' });
     }
   }
 
@@ -3998,14 +4121,16 @@ function renderNotifications(el) {
   window.showEditSubscriberModal = function(id) {
     const s = subscribers.find(x => x.id === id);
     if (!s) return;
-    // The reshape in supabase-client.js already guarantees one row per
-    // report type, but fall back to sensible defaults defensively in case
-    // a row is ever missing.
-    draftReports = REPORT_TYPES.map(t => {
-      const existing = (s.reports || []).find(r => r.reportType === t);
-      return existing
-        ? { reportType: t, enabled: existing.enabled, estates: [...existing.estates], frequencies: [...existing.frequencies] }
-        : { reportType: t, enabled: false, estates: ['All Estates'], frequencies: [...(REPORT_TYPE_DEFAULT_FREQUENCIES[t] || [])] };
+    // A group is "on" if any of its underlying report_type rows is enabled;
+    // its estates come from that enabled row (every row in a group is
+    // always written with the same enabled/estates pair — see
+    // submitEditSubscriber — so this just reads back what was saved).
+    draftReports = REPORT_GROUPS.map(g => {
+      const rows = (s.reports || []).filter(r => g.types.includes(r.reportType));
+      const active = rows.find(r => r.enabled) || rows[0];
+      return active
+        ? { groupKey: g.key, enabled: active.enabled, estates: [...active.estates] }
+        : { groupKey: g.key, enabled: false, estates: ['All Estates'] };
     });
     draftName = s.name;
     draftEmail = s.email;
@@ -4027,7 +4152,7 @@ function renderNotifications(el) {
       const { error: delErr } = await client.from('vsl_report_subscriptions').delete().eq('recipient_id', id);
       if (delErr) throw delErr;
       const { error: subErr } = await client.from('vsl_report_subscriptions').insert(
-        draftReports.map(r => ({ recipient_id: id, report_type: r.reportType, enabled: r.enabled, estates: r.estates, frequencies: r.frequencies }))
+        expandDraftReportsToRows(id)
       );
       if (subErr) throw subErr;
       closeModal();
@@ -4043,106 +4168,89 @@ function renderNotifications(el) {
     }
   };
 
-  // The old version of the Schedule Settings card below was six toggles
-  // with fixed, made-up copy ("Sent every Monday 07:00 AM...") that weren't
-  // wired to anything \u2014 flipping one just showed a toast and forgot itself
-  // on reload. This is now driven by DATA.reportScheduleSettings
-  // (vsl_report_schedule_settings, one persisted row per subscription
-  // Frequency), and actually lets an admin set the day/time each frequency
-  // dispatches on. Declared here (before el.innerHTML below, which calls
-  // scheduleSettingsRowsHTML() immediately) since `const`/function-expression
-  // bindings inside this closure aren't available until this point is
-  // reached \u2014 a plain function *declaration* would hoist, but DOW_LABELS
-  // itself is a const and was tripping the temporal-dead-zone check.
+  // Fixed cadence per bundle (set in REPORT_GROUPS above) means this panel
+  // no longer needs a per-frequency on/off switch — day/time are the only
+  // admin-settable things left, and they're saved together with one button
+  // in the modal footer rather than one Save per row.
   const DOW_LABELS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   function scheduleSettingsRowsHTML() {
     const rows = ['Daily','Weekly','Monthly'].map(freq =>
-      DATA.reportScheduleSettings.find(r => r.frequency === freq) || { frequency: freq, enabled: true, dayOfWeek: 1, dayOfMonth: 1, timeOfDay: '07:00' });
-    return rows.map(r => `
-      <div class="settings-row" style="align-items:center;flex-wrap:wrap;gap:10px">
-        <div style="min-width:140px"><div class="settings-label">${r.frequency}</div>
-          <div class="settings-desc">Subscribers on "${r.frequency}" frequency</div></div>
+      DATA.reportScheduleSettings.find(r => r.frequency === freq) || { frequency: freq, dayOfWeek: 1, dayOfMonth: 1, timeOfDay: '07:00' });
+    return `<div class="sched-table">${rows.map(r => `
+      <div class="sched-row">
+        <div class="sched-cell-label">${r.frequency}</div>
         ${r.frequency === 'Weekly' ? `
-          <select class="form-input" style="width:130px" id="sched-${r.frequency}-day">
-            ${DOW_LABELS.map((d,i)=>`<option value="${i}" ${i===r.dayOfWeek?'selected':''}>${d}</option>`).join('')}
-          </select>` : r.frequency === 'Monthly' ? `
-          <select class="form-input" style="width:110px" id="sched-${r.frequency}-day">
-            ${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${d===r.dayOfMonth?'selected':''}>Day ${d}</option>`).join('')}
-          </select>` : `<div style="width:110px"></div>`}
-        <input class="form-input" style="width:110px" type="time" id="sched-${r.frequency}-time" value="${r.timeOfDay}">
-        <label class="toggle-switch">
-          <input type="checkbox" id="sched-${r.frequency}-enabled" ${r.enabled?'checked':''}>
-          <span class="toggle-slider"></span>
-        </label>
-        <button class="btn btn-outline btn-sm" onclick="saveReportSchedule('${r.frequency}')">Save</button>
-      </div>`).join('');
+        <select class="form-input sched-input" id="sched-${r.frequency}-day">
+          ${DOW_LABELS.map((d,i)=>`<option value="${i}" ${i===r.dayOfWeek?'selected':''}>${d}</option>`).join('')}
+        </select>` : r.frequency === 'Monthly' ? `
+        <select class="form-input sched-input" id="sched-${r.frequency}-day">
+          ${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${d===r.dayOfMonth?'selected':''}>Day ${d}</option>`).join('')}
+        </select>` : `<div></div>`}
+        <input class="form-input sched-input" type="time" id="sched-${r.frequency}-time" value="${r.timeOfDay}">
+      </div>`).join('')}</div>`;
   }
-  window.saveReportSchedule = async function(freq) {
-    const enabled = document.getElementById(`sched-${freq}-enabled`).checked;
-    const timeOfDay = document.getElementById(`sched-${freq}-time`).value || '07:00';
-    const dayEl = document.getElementById(`sched-${freq}-day`);
-    const dayVal = dayEl ? Number(dayEl.value) : null;
+  window.saveAllReportSchedules = async function() {
     try {
       const client = getSbClient();
       const uid = await getCurrentUserId();
-      const { error } = await client.from('vsl_report_schedule_settings').update({
-        enabled, time_of_day: timeOfDay,
-        day_of_week: freq === 'Weekly' ? dayVal : null,
-        day_of_month: freq === 'Monthly' ? dayVal : null,
-        updated_at: new Date().toISOString(), updated_by: uid,
-      }).eq('frequency', freq);
-      if (error) throw error;
-      showToast(`${freq} schedule updated`);
+      for (const freq of ['Daily','Weekly','Monthly']) {
+        const timeOfDay = document.getElementById(`sched-${freq}-time`).value || '07:00';
+        const dayEl = document.getElementById(`sched-${freq}-day`);
+        const dayVal = dayEl ? Number(dayEl.value) : null;
+        const { error } = await client.from('vsl_report_schedule_settings').update({
+          enabled: true, time_of_day: timeOfDay,
+          day_of_week: freq === 'Weekly' ? dayVal : null,
+          day_of_month: freq === 'Monthly' ? dayVal : null,
+          updated_at: new Date().toISOString(), updated_by: uid,
+        }).eq('frequency', freq);
+        if (error) throw error;
+      }
+      closeModal();
+      showToast('Schedule updated');
       await retryLiveDataLoad();
-      const wrap = document.getElementById('schedule-settings-rows');
-      if (wrap) wrap.innerHTML = scheduleSettingsRowsHTML();
     } catch (err) {
       console.error(err);
       showToast('Failed to update schedule: ' + err.message, 'red');
     }
   };
 
+  window.showScheduleSettingsModal = function() {
+    showModal(`
+      <div class="modal-title">Automated Schedule Settings</div>
+      <p class="modal-subtitle">When each subscription frequency actually goes out</p>
+      ${scheduleSettingsRowsHTML()}
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="saveAllReportSchedules()">Save Schedule</button>
+      </div>`, { size: 'md' });
+  };
+
   el.innerHTML = `
   <div class="page-header">
     <div><div class="page-header-title">Reports</div>
     <div class="page-header-sub">Manage automated report distribution</div></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="showAddSubscriberModal()">+ Add Subscriber</button>
-      <button class="btn btn-amber btn-sm" onclick="sendAllEmails()">\ud83d\udce4 Send Report to All</button>
+    <div class="header-actions">
+      <button class="btn btn-primary btn-xl btn-header-action" onclick="showAddSubscriberModal()">+ Add Subscriber</button>
+      <button class="btn btn-outline btn-sm btn-header-action" onclick="showScheduleSettingsModal()">⚙️ Settings</button>
     </div>
   </div>
 
-  <div class="grid-3" style="margin-bottom:20px">
+  <div class="grid-3">
     <div class="stat-card blue"><div class="stat-label">Subscribers</div>
       <div class="stat-value" id="sub-count">${subscribers.length}</div>
       <div class="stat-meta">Active recipients</div></div>
     <div class="stat-card green"><div class="stat-label">Last Batch Sent</div>
-      <div class="stat-value" style="font-size:18px">\u2014</div><div class="stat-meta">Not yet sent</div></div>
+      <div class="stat-value stat-value-sm">—</div><div class="stat-meta">Not yet sent</div></div>
     <div class="stat-card amber"><div class="stat-label">Next Scheduled</div>
-      <div class="stat-value" style="font-size:18px">\u2014</div><div class="stat-meta">Delivery backend coming soon</div></div>
+      <div class="stat-value stat-value-sm">—</div><div class="stat-meta">Delivery backend coming soon</div></div>
   </div>
 
   <!-- SUBSCRIBER LIST -->
-  <div class="card" style="margin-bottom:20px">
+  <div class="card">
     <div class="card-header">
       <div class="card-title">Subscriber List</div>
-      <div style="font-size:12px;color:var(--gray-500)">Click Send Now to dispatch a report immediately</div>
-    </div>
-    <div style="display:flex;padding:8px 12px;background:var(--gray-50);border-radius:var(--radius-sm);font-size:10px;font-weight:700;color:var(--gray-500);gap:10px;letter-spacing:.6px;margin-bottom:4px;flex-wrap:wrap">
-      <span style="width:32px"></span>
-      <span style="flex:1">RECIPIENT</span>
-      <span style="min-width:220px">REPORTS (TYPE @ ESTATE(S) — FREQUENCY)</span>
-      <span style="min-width:90px">LAST SENT</span>
-      <span style="min-width:130px">ACTIONS</span>
+      <button class="btn btn-amber btn-sm btn-header-action" onclick="sendAllEmails()">📤 Send Report to All</button>
     </div>
     <div id="subscribers-list">${renderSubList()}</div>
-  </div>
-
-  <!-- SCHEDULE SETTINGS -->
-  <div class="card">
-    <div class="card-header"><div class="card-title">Automated Schedule Settings</div>
-      <div style="font-size:12px;color:var(--gray-500)">When each subscription frequency actually goes out</div></div>
-    <div id="schedule-settings-rows">${scheduleSettingsRowsHTML()}</div>
   </div>`;
 
   window.addSubscriber = async function() {
@@ -4156,7 +4264,7 @@ function renderNotifications(el) {
       if (error) throw error;
       const recipientId = data[0].id;
       const { error: subErr } = await client.from('vsl_report_subscriptions').insert(
-        draftReports.map(r => ({ recipient_id: recipientId, report_type: r.reportType, enabled: r.enabled, estates: r.estates, frequencies: r.frequencies }))
+        expandDraftReportsToRows(recipientId)
       );
       if (subErr) throw subErr;
       closeModal();
@@ -4175,7 +4283,22 @@ function renderNotifications(el) {
     }
   };
 
+  window.confirmRemoveSubscriber = function(id) {
+    const s = subscribers.find(x => x.id === id);
+    if (!s) return;
+    const name = String(s.name || '').replace(/[<>&"]/g, '');
+    const email = String(s.email || '').replace(/[<>&"]/g, '');
+    showModal(`
+      <div class="modal-title">Remove Subscriber</div>
+      <p class="modal-text">Remove <strong>${name}</strong> (${email}) from the subscriber list? They will stop receiving all reports. This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="removeSubscriber('${s.id}')">Yes, Remove</button>
+      </div>`);
+  };
+
   window.removeSubscriber = async function(id) {
+    closeModal();
     try {
       const client = getSbClient();
       const { error } = await client.from('vsl_report_recipients').delete().eq('id', id);
@@ -4195,40 +4318,79 @@ function renderNotifications(el) {
     }
   };
 
-  window.sendEmailNow = function(id, email) {
-    showToast(`Report dispatched to ${email}`);
+  window.sendEmailNow = async function(id, email) {
+    try {
+      const client = getSbClient();
+      const { data, error } = await client.functions.invoke('vsl-report-now', { body: { recipient_id: id } });
+      if (error) throw error;
+      if (!data || data.success === false) throw new Error(data?.error || 'Unknown error');
+      const scopes = data.scopes || [];
+      const totals = data.totals || { sent: 0, failed: 0 };
+      if (!scopes.length) {
+        showToast(data.note || `${email} has no enabled report subscriptions`, 'amber');
+      } else if (totals.failed > 0) {
+        showToast(`Sent to ${email}, but ${totals.failed} dispatch(es) failed — check the log`, 'amber');
+      } else {
+        showToast(`Report sent to ${email} ✓`);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to send report: ' + (err.message || err), 'red');
+    }
   };
 
+  // A simple yes/no confirm, not a form — who gets it and with what
+  // estates/frequency is already decided per-subscriber, so the only real
+  // choice left here is which of the 3 report bundles to include in this
+  // one-off dispatch. Every bundle defaults to on.
   window.sendAllEmails = function() {
     showModal(`
       <div class="modal-title">Send Report to All Subscribers</div>
-      <p style="font-size:13px;color:var(--gray-700);margin-bottom:14px">
-        Dispatch a report to all <strong>${subscribers.length} subscribers</strong> now.
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="form-group"><label class="form-label">Report Type</label>
-          <select class="form-input">
-            <option>Season Summary Report</option>
-            <option>Weekly Field Update</option>
-            <option>Financial Dashboard</option>
-            <option>Harvest Log</option>
-            <option>Agronomic Scouting Report</option>
-            <option>Quarterly Investor Briefing</option>
-          </select></div>
-        <div class="form-group"><label class="form-label">Estate Filter</label>
-          <select class="form-input">
-            <option>All Estates</option>
-            ${DATA.estates.map(e=>`<option>${e.name}</option>`).join('')}
-          </select></div>
-      </div>
-      <div class="form-group" style="margin-bottom:14px">
-        <label class="form-label">Additional Note (Optional)</label>
-        <textarea class="form-input" rows="3" placeholder="Add a note to include in the email..."></textarea>
+      <p class="modal-intro-text">Dispatch a report to all <strong>${subscribers.length} subscribers</strong> now.</p>
+      <div class="form-group form-group-tight">
+        <label class="form-label">Reports to send</label>
+        <div class="reports-toggle-table">
+          ${REPORT_GROUPS.map(g => `
+          <div class="report-toggle-row">
+            <div class="rtcol-toggle">
+              <label class="toggle-switch">
+                <input type="checkbox" id="sendall-${g.key}" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="rtcol-type"><span class="rtr-type-text">${g.label}</span></div>
+          </div>`).join('')}
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-amber" onclick="closeModal();showToast('Report sent to ${subscribers.length} subscribers \u2713')">Send Now</button>
-      </div>`);
+        <button class="btn btn-primary" onclick="confirmSendAllEmails()">Send Now</button>
+      </div>`, { size: 'sm' });
+  };
+
+  window.confirmSendAllEmails = async function() {
+    const selected = REPORT_GROUPS.filter(g => document.getElementById(`sendall-${g.key}`).checked);
+    if (!selected.length) { showToast('Select at least one report to send', 'red'); return; }
+    closeModal();
+    showToast(`Sending ${selected.map(g => g.label).join(', ')}…`, 'amber');
+    try {
+      const client = getSbClient();
+      const { data, error } = await client.functions.invoke('vsl-report-now', { body: { bundles: selected.map(g => g.key) } });
+      if (error) throw error;
+      if (!data || data.success === false) throw new Error(data?.error || 'Unknown error');
+      const scopes = data.scopes || [];
+      const totals = data.totals || { sent: 0, failed: 0 };
+      if (!scopes.length) {
+        showToast(data.note || 'No enabled subscribers for the selected report(s)', 'amber');
+      } else if (totals.failed > 0) {
+        showToast(`Sent to ${totals.sent} recipient(s), ${totals.failed} failed — check the dispatch log`, 'amber');
+      } else {
+        showToast(`${selected.map(g => g.label).join(', ')} sent to ${totals.sent} recipient(s) ✓`);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to send reports: ' + (err.message || err), 'red');
+    }
   };
 }
 
@@ -4288,7 +4450,7 @@ function renderAlerts(el) {
   <div class="page-header">
     <div><div class="page-header-title">Alerts &amp; Notifications</div>
     <div class="page-header-sub">${DATA.alerts.filter(a=>a.type==='critical').length} critical \u00b7 ${DATA.alerts.filter(a=>a.type==='warning').length} warnings</div></div>
-    <button class="btn btn-primary btn-sm" onclick="showAddAlertModal()">+ New Alert</button>
+    <button class="btn btn-primary btn-xl btn-header-action" onclick="showAddAlertModal()">+ New Alert</button>
   </div>
   <div class="grid-3" style="margin-bottom:20px">
     <div class="stat-card red"><div class="stat-label">Critical</div><div class="stat-value">${DATA.alerts.filter(a=>a.type==='critical').length}</div></div>
@@ -4605,13 +4767,20 @@ function showModal(html, opts) {
   const overlay = document.getElementById('modalOverlay');
   if (!overlay) { console.error('dashboard/windows/modal-shell.html did not load'); return; }
 
-  // Every modal shares one box (#modalBox), so without this a wide modal
-  // would leave the box wide for whatever opens next. Toggling (not just
-  // adding) the class each call keeps them independent — pass {wide:true}
-  // for a modal that needs the extra width (e.g. Add/Edit Report, which
-  // sits two fields side by side); everything else stays the normal size.
+  // Every modal shares one box (#modalBox), so without this a differently
+  // sized modal would leave the box that size for whatever opens next.
+  // Removing every size class and re-adding at most one each call keeps
+  // them independent — pass {size:'sm'} for a narrower confirm-style
+  // modal (e.g. Send Report to All), {size:'md'} for one that just needs
+  // a bit more room (e.g. Add/Edit Subscriber, Schedule Settings), or
+  // {size:'wide'} for one with fields that want to sit side by side;
+  // everything else stays the normal (460px) size.
   const box = document.getElementById('modalBox');
-  if (box) box.classList.toggle('modal-wide', !!(opts && opts.wide));
+  if (box) {
+    box.classList.remove('modal-sm', 'modal-md', 'modal-wide');
+    const size = opts && opts.size;
+    if (size === 'sm' || size === 'md' || size === 'wide') box.classList.add(`modal-${size}`);
+  }
 
   const body = document.getElementById('modalBody');
   body.innerHTML = html;
@@ -4822,6 +4991,106 @@ function refreshTopbarAlertBadge() {
   if (badge) badge.textContent = (DATA.alerts || []).filter(a => !a.isReal || a.status !== 'resolved').length;
 }
 
+// ── Activity badge ──
+// Counts activities logged by someone else since this admin last looked at
+// the Activities page. "Last looked" is a timestamp kept per signed-in user
+// in localStorage; it moves forward when the Activities page opens (via the
+// badge or the sidebar), which is what resets the count to zero. The very
+// first time on a browser it starts at "now", so a long history doesn't
+// show up as hundreds of "new" items.
+function activitySeenKey() { return 'vsl_activity_seen_' + (window.CURRENT_USER_ID || 'anon'); }
+function getActivitySeenAt() {
+  try {
+    const raw = localStorage.getItem(activitySeenKey());
+    if (raw !== null && !isNaN(Number(raw))) return Number(raw);
+    const now = Date.now();
+    localStorage.setItem(activitySeenKey(), String(now));
+    return now;
+  } catch (e) { return Date.now(); }
+}
+function refreshTopbarActivityBadge() {
+  const badge = document.getElementById('topbar-activity-count');
+  if (!badge) return;
+  const seenAt = getActivitySeenAt();
+  const me = window.CURRENT_USER_ID;
+  const n = (DATA.activities || []).filter(a =>
+    a.createdAt && Date.parse(a.createdAt) > seenAt && !(me && a.createdById === me)
+  ).length;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.hidden = n === 0;
+}
+function markActivitiesSeen() {
+  try {
+    const newest = (DATA.activities || []).reduce((m, a) => Math.max(m, a.createdAt ? Date.parse(a.createdAt) || 0 : 0), 0);
+    localStorage.setItem(activitySeenKey(), String(Math.max(Date.now(), newest)));
+  } catch (e) { /* storage unavailable — badge just won't persist */ }
+  refreshTopbarActivityBadge();
+}
+
+// ── Own account ──
+function isSelf(userId) { return !!window.CURRENT_USER_ID && String(userId) === String(window.CURRENT_USER_ID); }
+
+function confirmLogout() {
+  showModal(`
+    <div class="modal-title">Log Out</div>
+    <p class="modal-text">Sign out of the dashboard?</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitLogout()">Log Out</button>
+    </div>`);
+}
+function showChangePasswordModal() {
+  showModal(`
+    <div class="modal-title">Change Password</div>
+    <div class="form-group form-group-tight"><label class="form-label" for="cp-current">Current Password</label>
+      <input class="form-input" id="cp-current" type="password" autocomplete="current-password"></div>
+    <div class="form-group form-group-tight"><label class="form-label" for="cp-new">New Password</label>
+      <input class="form-input" id="cp-new" type="password" autocomplete="new-password">
+      <div class="modal-hint">At least 8 characters.</div></div>
+    <div class="form-group form-group-tight"><label class="form-label" for="cp-confirm">Confirm New Password</label>
+      <input class="form-input" id="cp-confirm" type="password" autocomplete="new-password"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitChangePassword()">Update Password</button>
+    </div>`);
+}
+async function submitChangePassword() {
+  const current = document.getElementById('cp-current').value;
+  const next = document.getElementById('cp-new').value;
+  const confirm = document.getElementById('cp-confirm').value;
+  if (!current || !next || !confirm) { showToast('Please fill in all fields', 'red'); return; }
+  if (next.length < 8) { showToast('New password must be at least 8 characters', 'red'); return; }
+  if (next !== confirm) { showToast('New passwords do not match', 'red'); return; }
+  if (next === current) { showToast('New password must be different from the current one', 'red'); return; }
+  try {
+    const client = getSbClient();
+    const { data: sess } = await client.auth.getSession();
+    const email = sess?.session?.user?.email;
+    if (!email) throw new Error('No active session');
+    // Re-check the current password first so a left-open session can't be
+    // used to lock the real owner out.
+    const { error: verifyErr } = await client.auth.signInWithPassword({ email, password: current });
+    if (verifyErr) { showToast('Current password is incorrect', 'red'); return; }
+    const { error } = await client.auth.updateUser({ password: next });
+    if (error) throw error;
+    closeModal();
+    showToast('Password updated');
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to update password: ' + err.message, 'red');
+  }
+}
+async function submitLogout() {
+  try {
+    const { error } = await getSbClient().auth.signOut();
+    if (error) throw error;
+    // auth-gate.js's onAuthStateChange listener redirects to the login page.
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to log out: ' + err.message, 'red');
+  }
+}
+
 // ══════════════════════════════════════
 //  DATA SOURCE BANNER (shown if live load fails)
 // ══════════════════════════════════════
@@ -4863,7 +5132,7 @@ async function refreshTopbarAvatar() {
     const me = DATA.users.find(u => String(u.id) === String(uid));
     if (!me) return;
     topbarAvatarEl.innerHTML = avatarHTML(me.name, me.avatarUrl, 32);
-    topbarAvatarEl.title = me.name + ' — View my profile';
+    topbarAvatarEl.title = me.name + ' - My profile';
     topbarAvatarEl.onclick = () => { openPanel('users', null); if (typeof window.viewUserDetail === 'function') window.viewUserDetail(me.id); };
   } catch (err) {
     console.error('Failed to resolve current user for topbar avatar:', err);
@@ -4896,6 +5165,26 @@ async function loadWindowFragments() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // ── Admin-only gate ──
+  // dashboard/auth-gate.js has already asked the database for the signed-in
+  // user's role; nothing below runs until it says ADMIN. Anyone else has had
+  // the page replaced with an explanation by the time this resolves, so we
+  // just stop — no fragments fetched, no Supabase data loaded, no render.
+  //
+  // A missing gate script denies rather than defaults open: if the script
+  // tag in index.html were ever dropped, the dashboard should refuse to
+  // start, not quietly open itself to everyone.
+  if (typeof window.VSL_DASHBOARD_ACCESS === 'undefined') {
+    console.error('Dashboard access gate (auth-gate.js) did not load — refusing to boot.');
+    return;
+  }
+  if (!(await window.VSL_DASHBOARD_ACCESS)) return;
+
+  try {
+    const { data: sess } = await getSbClient().auth.getSession();
+    window.CURRENT_USER_ID = sess?.session?.user?.id || null;
+  } catch (e) { window.CURRENT_USER_ID = null; }
+
   await loadWindowFragments();
 
   // Remap the "Plots & Blocks" nav link to the renamed "estates" page
@@ -4919,6 +5208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (resolveCloseBtn) resolveCloseBtn.addEventListener('click', closeModal);
 
   refreshTopbarAlertBadge();
+  refreshTopbarActivityBadge();
 
   // Kick off live Supabase data load (defined in supabase-client.js)
   if (typeof initLiveData === 'function') {
@@ -4939,6 +5229,7 @@ document.addEventListener('sugarestate:data-ready', () => {
   if (overlay) overlay.classList.add('hidden');
   hideDataSourceBanner();
   refreshTopbarAlertBadge();
+  refreshTopbarActivityBadge();
   // Re-render whatever page is currently showing with the fresh live data
   if (currentPage) {
     const activeNav = document.querySelector('.nav-item.active');
@@ -4953,5 +5244,6 @@ document.addEventListener('sugarestate:data-error', () => {
   const overlay = document.getElementById('data-loading-overlay');
   if (overlay) overlay.classList.add('hidden');
   refreshTopbarAlertBadge();
+  refreshTopbarActivityBadge();
   showDataSourceBanner('Could not reach Supabase — showing placeholder data.');
 });

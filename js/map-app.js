@@ -306,8 +306,38 @@ let ACTIVITY_NAMES = [
   "Bush Clearing", "Ploughing", "Harrow", "Ripping", "Ridging", "Furrowing",
   "Lime Application", "Planting", "Manuring", "Fertilization", "Weeding",
   "Spraying", "Irrigation", "Harvesting", "Loading",
-  "Trash Lining", "Trash Collection"
+  "Trash Lining", "Trash Collection",
+  // Always last, and deliberately not a real kind of work: picking it
+  // reveals a text box for whatever the activity actually was.
+  "Other"
 ];
+
+/**
+ * The catch-all activity.
+ *
+ * It is a real row in vsl_activity_types (sort_order 999, so it stays at the
+ * bottom of the list however many activities are added above it) because
+ * vsl_activities.activity_name is a FOREIGN KEY to that table — a name
+ * somebody types cannot go there. The typed name goes to
+ * vsl_activities.custom_activity_name instead, where a check constraint
+ * requires it for 'Other' and forbids it for everything else. See
+ * sql/025_vsl_activity_other.sql for why the typed name isn't simply
+ * inserted into the catalogue.
+ *
+ * 'Other' has no rows in vsl_activity_type_properties, so the "Other
+ * Details" section renders empty and hides itself with no special-casing at
+ * all: a one-off gets the general details and nothing more, which is the
+ * whole point of it.
+ */
+const OTHER_ACTIVITY = "Other";
+
+/** What to call an activity row on screen: the typed name for a one-off,
+ *  the catalogue name for everything else. */
+function activityDisplayName(row) {
+  if (!row) return "";
+  const custom = (row.custom_activity_name || "").trim();
+  return row.activity_name === OTHER_ACTIVITY && custom ? custom : (row.activity_name || "");
+}
 
 // Shared across every activity that logs a weather condition (Planting,
 // Spraying, Harvesting) so the option list only lives in one place.
@@ -799,7 +829,10 @@ function humanizeKey(key) {
 
 // Raw ids/FKs that are internal plumbing, not something worth showing the
 // user spelled out in the drill-down view.
-const RECORD_DETAIL_SKIP_KEYS = new Set(["id", "parcel_id", "block_id", "target_id", "layer_type", "entity_type", "entity_id", "activity_properties"]);
+// custom_activity_name is folded into the "Activity" row by
+// buildRecordDetailRows rather than listed separately — "Activity: Other"
+// followed by "Custom activity name: Fence repair" says one thing twice.
+const RECORD_DETAIL_SKIP_KEYS = new Set(["id", "parcel_id", "block_id", "target_id", "layer_type", "entity_type", "entity_id", "activity_properties", "custom_activity_name"]);
 
 const RECORD_DETAIL_LABELS = {
   alert: { alert_name: "Alert name", note: "Description", status: "Status", severity: "Severity", created_at: "Logged", resolved_at: "Resolved at", created_by: "Logged by", resolved_by: "Resolved by" },
@@ -837,6 +870,11 @@ function buildRecordDetailRows(kind, record) {
     else if (key === "is_resolved") display = value ? "Resolved" : "Open";
     else if (key === "file_url" && value) display = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener">Open</a>`;
     else if (key === "completion_value" && value != null) display = `${escapeHtml(value)}%`;
+    // An "Other" activity is identified by the name that was typed for it,
+    // not by the word "Other" — see activityDisplayName. The raw
+    // custom_activity_name column is skipped below so it isn't also listed
+    // as a row of its own.
+    else if (kind === "activity" && key === "activity_name") display = fmt(activityDisplayName(record));
     else if (value != null && /(_at|_date)$/.test(key)) display = fmt(String(value).length > 10 ? String(value).slice(0, 16).replace("T", " ") : value);
     else display = fmt(value);
 
@@ -1696,7 +1734,7 @@ async function buildParcelInfoHtml(parcelId) {
   groups.push(buildCollapsibleGroup(`Activity History (${activities.length})`,
     buildKvTable([["Current activity", fmt(parcel.current_activity_name)]]) +
     buildListTable(["Activity", "Progress", "Date"], activities.map((a, i) => [
-      buildRecordLink("activity", i, fmt(a.activity_name)),
+      buildRecordLink("activity", i, fmt(activityDisplayName(a))),
       a.completion_value != null ? `${escapeHtml(a.completion_value)}%` : "—",
       fmt(a.activity_date)
     ]), "No activities logged yet.", THREE_COL_WIDTHS)));
@@ -1804,7 +1842,7 @@ function buildParcelExportSections({ parcel, blockRow, alerts, currentSeason, ac
   ] : [["Status", "No crop cycle recorded yet."]] });
 
   sections.push({ title: `Activity History (${activities.length})`, type: "table", headers: ["Activity", "Progress", "Date"], rows: activities.map((a) => [
-    fmtPlain(a.activity_name), a.completion_value != null ? `${a.completion_value}%` : "—", fmtPlain(a.activity_date)
+    fmtPlain(activityDisplayName(a)), a.completion_value != null ? `${a.completion_value}%` : "—", fmtPlain(a.activity_date)
   ]) });
 
   sections.push({ title: `Harvest History (${harvests.length})`, type: "table", headers: ["Date", "Gross weight", "Ratoon"], rows: harvests.map((h) => [
@@ -4389,15 +4427,42 @@ function setLogActivityStep(step) {
   syncLogActivityStepButtons();
 }
 
-/** Next needs both halves of step 1; Save needs step 2 to have rendered. */
+/** The name typed for an "Other" activity, trimmed. Empty string when
+ *  "Other" isn't the selected activity, so callers can treat "is there a
+ *  name?" and "is one needed?" as the same question. */
+function logActivityCustomName() {
+  const select = document.getElementById("logActivitySelect");
+  if (select?.value !== OTHER_ACTIVITY) return "";
+  return (document.getElementById("logActivityCustomName")?.value || "").trim();
+}
+
+/** Shows the custom-name box only while "Other" is the selected activity,
+ *  and clears it on the way out so a name typed for a one-off can't be
+ *  carried over onto a real activity picked afterwards. */
+function syncLogActivityCustomName() {
+  const select = document.getElementById("logActivitySelect");
+  const input = document.getElementById("logActivityCustomName");
+  if (!input) return;
+  const isOther = select?.value === OTHER_ACTIVITY;
+  if (!isOther && input.value) input.value = "";
+  input.hidden = !isOther;
+}
+
+/** Next needs both halves of step 1; Save needs step 2 to have rendered.
+ *  For "Other" there is a third half — the typed name, which is the only
+ *  thing identifying the activity at all, so it is as mandatory as the
+ *  activity and the location. */
 function syncLogActivityStepButtons() {
   const nextBtn = document.getElementById("logActivityNextBtn");
   const saveBtn = document.getElementById("logActivitySaveBtn");
-  const hasActivity = !!document.getElementById("logActivitySelect")?.value;
+  const select = document.getElementById("logActivitySelect");
+  const hasActivity = !!select?.value;
   const hasTarget = !!logActivityState.feature;
+  const namedIfOther = select?.value !== OTHER_ACTIVITY || !!logActivityCustomName();
+  const ready = hasActivity && hasTarget && namedIfOther;
 
-  if (nextBtn) nextBtn.disabled = !(hasActivity && hasTarget);
-  if (saveBtn) saveBtn.disabled = !(hasActivity && hasTarget);
+  if (nextBtn) nextBtn.disabled = !ready;
+  if (saveBtn) saveBtn.disabled = !ready;
 }
 
 /** Fills the collapsed location chip shown on step 2. */
@@ -4549,6 +4614,8 @@ async function openLogActivityModal(feature = null, layerType = null) {
       ACTIVITY_NAMES.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
     select.value = "";
   }
+  // Hides the box and clears any name left over from a previous one-off.
+  syncLogActivityCustomName();
   if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
 
   // Always starts at step 1. Arriving from a map click only prefills the
@@ -4898,6 +4965,16 @@ async function saveLogActivityForm(event) {
   }
   if (!activityName) return;
 
+  // "Other" is only ever as useful as the name typed beside it, and the
+  // database check constraint refuses the row without one — so it's caught
+  // here with something readable rather than as a constraint violation.
+  const customName = logActivityCustomName();
+  if (activityName === OTHER_ACTIVITY && !customName) {
+    if (errorEl) { errorEl.textContent = "Type a name for this activity."; errorEl.hidden = false; }
+    document.getElementById("logActivityCustomName")?.focus();
+    return;
+  }
+
   if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
     if (errorEl) { errorEl.textContent = "Sign in to log an activity."; errorEl.hidden = false; }
     return;
@@ -4972,6 +5049,9 @@ async function saveLogActivityForm(event) {
 
     const basePayload = {
       activity_name: activityName,
+      // Null for everything but 'Other' — the check constraint on
+      // vsl_activities enforces that pairing either way.
+      custom_activity_name: activityName === OTHER_ACTIVITY ? customName : null,
       team_size: numOrNull(common.team_size),
       number_of_machines: numOrNull(common.number_of_machines),
       completion_value: numOrNull(common.completion_value),
@@ -5050,7 +5130,15 @@ function setupLogActivityModal() {
   // The activity dropdown lives in the header and is reachable from BOTH
   // steps, so a change has to re-gate Next as well as redraw the fields.
   select?.addEventListener("change", () => {
+    syncLogActivityCustomName();
     renderLogActivityFields(select.value);
+    syncLogActivityStepButtons();
+  });
+
+  // "input", not "change": Next has to come alive as the name is typed, not
+  // only once the box loses focus.
+  document.getElementById("logActivityCustomName")?.addEventListener("input", () => {
+    setLogActivityError("");
     syncLogActivityStepButtons();
   });
   closeBtn?.addEventListener("click", () => closeLogActivityModal());

@@ -91,8 +91,10 @@
   <div class="panel-header">
     <div class="panel-title" id="panel-title">Dashboard</div>
     <div class="topbar-row">
-      <div class="topbar-season">Season: <strong>2024-B</strong></div>
-      <div class="topbar-alert-badge" onclick="openPanel('alerts',null)">
+      <div class="topbar-alert-badge topbar-activity-badge" id="topbar-activity-badge" title="New activities" onclick="openPanel('activities',null)">
+        <span><i class="fas fa-person-digging" aria-hidden="true"></i></span><span class="badge-count" id="topbar-activity-count" hidden>0</span>
+      </div>
+      <div class="topbar-alert-badge" title="Open alerts" onclick="openPanel('alerts',null)">
         <span><i class="fas fa-bullhorn" aria-hidden="true"></i></span><span class="badge-count" id="topbar-alert-count">0</span>
       </div>
       <div class="topbar-avatar" id="topbar-avatar" title="Account">AM</div>
@@ -109,6 +111,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="qrcode.js"></script>
 <script src="supabase-client.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<!-- Admin-only gate. Must load AFTER supabase-client.js (it uses
+     getSbClient) and BEFORE app.js, which waits on the verdict it publishes
+     as window.VSL_DASHBOARD_ACCESS before booting anything. -->
+<script src="auth-gate.js?v=1"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

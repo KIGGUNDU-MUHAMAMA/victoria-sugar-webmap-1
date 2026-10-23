@@ -3498,8 +3498,7 @@ function renderUsers(el) {
 
   el.innerHTML = `
   <div class="page-header">
-    <div><div class="page-header-title">User Management</div>
-    <div class="page-header-sub">${DATA.users.length} registered users · admin-only account creation${DATA.isLive ? '' : ' · placeholder data'}</div></div>
+    <div><div class="page-header-title">User Management</div></div>
     <button class="btn btn-primary btn-xl btn-header-action" onclick="showAddUserModal()">+ Add User</button>
   </div>
   <div class="grid-4">
@@ -3536,7 +3535,7 @@ function renderUsers(el) {
               <td>${pill(u.status==='active'?'Active':'Inactive',u.status==='active'?'green':'gray')}</td>
               <td style="font-size:12px;color:var(--gray-500)">${u.lastLogin === '—' ? '<span class="invite-pending">Not signed in yet</span>' : u.lastLogin}</td>
               <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px;flex-wrap:wrap">
-                ${!isSelf(u.id) && u.lastLogin === '—' ? `<button class="icon-btn" onclick="confirmResendInvite('${u.id}')" title="Resend Invitation" aria-label="Resend Invitation"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>` : ''}
+                ${!isSelf(u.id) ? `<button class="icon-btn" onclick="showEditEmailModal('${u.id}')" title="Edit Email / Resend Link" aria-label="Edit Email / Resend Link"><i class="fas fa-envelope" aria-hidden="true"></i></button>` : ''}
                 <button class="icon-btn" onclick="showEditUserModal('${u.id}')" title="Edit">✎</button>
                 ${isSelf(u.id) ? '' : u.status==='active'
                   ? `<button class="icon-btn" onclick="toggleUserActive('${u.id}',false)" title="Deactivate">⏸</button>`
@@ -3693,30 +3692,41 @@ function renderUsers(el) {
 
   // Resend the invitation (or, for someone who already set a password, a
   // "choose a new password" link) — both land on set-password.html.
-  window.confirmResendInvite = function(id) {
+  // Edit Email / Resend Link: one window for two jobs. Leave the email as it
+  // is to just resend the link; change it to move the account to a new
+  // address — either way a link to set-password.html is sent to that address.
+  window.showEditEmailModal = function(id) {
     const u = DATA.users.find(x => x.id === id); if (!u) return;
+    const safeName = String(u.name || '').replace(/[<>&"]/g, '');
     showModal(`
-      <div class="modal-title">Resend Invitation</div>
-      <p style="font-size:14px;color:var(--gray-700);margin-bottom:12px">Send <strong>${u.name}</strong> a new link to set their password?</p>
+      <div class="modal-title">Edit Email / Resend Link</div>
+      <p class="modal-text">Update <strong>${safeName}</strong>'s email address, or keep it and just resend the link.</p>
+      <div class="form-group form-group-tight"><label class="form-label" for="ee-email">Email</label>
+        <input class="form-input" id="ee-email" type="email" autocomplete="off"></div>
       <div class="modal-note info"><i class="fas fa-circle-info" aria-hidden="true"></i>
-        <span>It goes to <strong>${u.email}</strong>. Any earlier link stops working.</span></div>
+        <span>A link to set their password is sent to this address. Any earlier link stops working.</span></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" id="ri-submit" onclick="submitResendInvite('${u.id}')"><i class="fas fa-paper-plane" aria-hidden="true"></i> Resend Link</button>
+        <button class="btn btn-primary" id="ee-submit" onclick="submitEditEmail('${u.id}')"><i class="fas fa-paper-plane" aria-hidden="true"></i> Save &amp; Send Link</button>
       </div>`);
+    // Set via the DOM so odd characters in an address can't break the markup.
+    document.getElementById('ee-email').value = u.email || '';
   };
-  window.submitResendInvite = async function(id) {
+  window.submitEditEmail = async function(id) {
     const u = DATA.users.find(x => x.id === id); if (!u) return;
-    const btn = document.getElementById('ri-submit');
+    const email = document.getElementById('ee-email').value.trim();
+    if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { showToast('Please enter a valid email', 'red'); return; }
+    const btn = document.getElementById('ee-submit');
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     try {
-      await callAdminUsersFn('resend_invite', { email: u.email, redirect_to: setPasswordUrl() });
+      const res = await callAdminUsersFn('change_email', { id, email, redirect_to: setPasswordUrl() });
       closeModal();
-      showToast('Link sent to ' + u.email);
+      showToast(res.changed ? 'Email updated — link sent to ' + email : 'Link sent to ' + email);
+      if (res.changed) { await retryLiveDataLoad(); renderTabIfCurrent('users'); }
     } catch (err) {
       console.error(err);
-      closeModal();
-      showToast('Failed to resend: ' + err.message, 'red');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane" aria-hidden="true"></i> Save &amp; Send Link'; }
+      showToast('Failed: ' + err.message, 'red');
     }
   };
 
@@ -3725,23 +3735,52 @@ function renderUsers(el) {
     const self = isSelf(u.id);
     showModal(`
       <div class="modal-title">${self ? 'Edit Profile' : 'Edit User — ' + u.name}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      ${self ? `
+      <div class="profile-photo-edit">
+        <div class="profile-photo-edit__circle" id="eu-photo-circle">${avatarHTML(u.name, u.avatarUrl, 96)}</div>
+        <input class="form-input profile-photo-edit__input" id="eu-photo" type="file" accept="image/*" aria-label="Profile photo">
+      </div>` : ''}
+      <div class="form-row-2">
         <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="eu-name" value="${u.name}"></div>
         <div class="form-group"><label class="form-label">Role</label>
-          <select class="form-input" id="eu-role" ${self ? 'disabled title="You cannot change your own role"' : ''}>${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}" ${k===u.roleRaw?'selected':''}>${v}</option>`).join('')}</select>
-          ${self ? '<div style="font-size:11px;color:var(--gray-500);margin-top:4px">You can\'t change your own role.</div>' : ''}</div>
+          <div class="${self ? 'role-field role-field--locked' : 'role-field'}">
+            <select class="form-input" id="eu-role" ${self ? 'disabled' : ''}>${Object.entries(ROLE_LABEL_MAP).map(([k,v])=>`<option value="${k}" ${k===u.roleRaw?'selected':''}>${v}</option>`).join('')}</select>
+            ${self ? '<div class="role-lock-hint">You can\'t change your own role.</div>' : ''}
+          </div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="form-row-2">
         <div class="form-group"><label class="form-label">Title / Position</label><input class="form-input" id="eu-title" value="${u.title||''}"></div>
         <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="eu-phone" value="${u.phone||''}"></div>
       </div>
-      <div class="form-group" style="margin-bottom:12px"><label class="form-label">Home Estate</label>
+      <div class="form-group form-group-tight"><label class="form-label">Home Estate</label>
         <select class="form-input" id="eu-estate">${estateOptions(u.estateId)}</select></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="submitEditUser('${u.id}')">Save Changes</button>
       </div>`);
+    if (self) wireProfilePhotoPreview('eu-photo', 'eu-photo-circle');
   };
+
+  // Shows the picked image in the circle straight away (it's only uploaded
+  // when Save Changes is pressed).
+  function wireProfilePhotoPreview(inputId, circleId) {
+    const input = document.getElementById(inputId);
+    const circle = document.getElementById(circleId);
+    if (!input || !circle) return;
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = document.createElement('img');
+        img.className = 'profile-photo-edit__img';
+        img.alt = 'Selected profile photo';
+        img.src = reader.result;
+        circle.replaceChildren(img);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 
   window.submitEditUser = async function(id) {
     const full_name = document.getElementById('eu-name').value.trim();
@@ -3754,6 +3793,10 @@ function renderUsers(el) {
     const estate_id = document.getElementById('eu-estate').value || null;
     try {
       const payload = { id, full_name, role, title, phone, estate_id };
+      // Only your own profile has the photo picker.
+      const photoInput = document.getElementById('eu-photo');
+      const photoFile = photoInput && photoInput.files ? photoInput.files[0] : null;
+      if (photoFile) payload.avatar_url = await uploadAvatarFile(photoFile);
       await callAdminUsersFn('update', payload);
       closeModal();
       showToast('User updated successfully');
@@ -3826,7 +3869,7 @@ function renderUsers(el) {
         <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">&#9998; Edit Profile</button>
         <button class="btn btn-outline btn-sm" onclick="showChangePasswordModal()">&#128273; Change Password</button>
         <button class="btn btn-danger btn-sm" onclick="confirmLogout()">Log Out</button>` : `
-        <button class="btn btn-outline btn-sm" onclick="confirmResendInvite('${u.id}')"><i class="fas fa-paper-plane" aria-hidden="true"></i> ${u.lastLogin === '—' ? 'Resend Invitation' : 'Send Password Link'}</button>
+        <button class="btn btn-outline btn-sm" onclick="showEditEmailModal('${u.id}')"><i class="fas fa-envelope" aria-hidden="true"></i> Edit Email / Resend Link</button>
         <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">✏ Edit User</button>
         ${u.status==='active'
           ? `<button class="btn btn-outline btn-sm" onclick="toggleUserActive('${u.id}',false)">⏸ Deactivate</button>`

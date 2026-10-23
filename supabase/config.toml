@@ -1,5 +1,14 @@
 # https://supabase.com/docs/guides/cli/config
 
+# Invitation email (Users → Add User in the dashboard → inviteUserByEmail in
+# the vsl-admin-users edge function). The hosted project renders auth emails
+# from its own Authentication → Emails settings, so this block does NOT
+# deploy by itself — the HTML has to be pasted there, or pushed with
+# `supabase config push`. The template file carries the full note.
+[auth.email.template.invite]
+subject = "You're invited to Victoria Sugar"
+content_path = "./templates/invite.html"
+
 [functions.vsl-survey-import]
 verify_jwt = false
 

@@ -674,15 +674,24 @@ button:hover {
   justify-content: center;
   flex-shrink: 0;
 }
+/* Initials shown in place of a photo when the profile has none. Used only
+   by the account dropdown's header, where JS shows either this or the
+   <img> beside it by toggling the hidden attribute on both — so the
+   default here is the visible state, with [hidden] overriding it
+   (display: flex at this specificity would otherwise beat the browser's
+   own [hidden] rule and the element would never hide). */
 .vsl-profile-avatar-fallback {
   border-radius: 50%;
   background: var(--primary, #3f8f3f);
   color: #fff;
   font-size: 22px;
   font-weight: 700;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
+}
+.vsl-profile-avatar-fallback[hidden] {
+  display: none !important;
 }
 
 /* Account dropdown (windows/profile-modal.html) — small panel anchored under
@@ -702,6 +711,38 @@ button:hover {
 .vsl-profile-dropdown__header {
   padding: 12px 14px;
   border-bottom: 1px solid var(--border, #e5e7eb);
+}
+/* Avatar beside the identity lines. Was inline style attributes on the two
+   avatar elements (an <img> and an initials fallback) — same box either
+   way, so it is one class used by both; JS swaps which one is displayed. */
+.vsl-profile-dropdown__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.vsl-profile-dropdown__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+/* min-width: 0 is what lets the long lines below actually ellipsis instead
+   of stretching the panel. */
+.vsl-profile-dropdown__lines {
+  min-width: 0;
+}
+/* Title and phone — present only when the profile has them. */
+.vsl-profile-dropdown__meta {
+  font-size: 11.5px;
+  color: var(--muted, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vsl-profile-dropdown__meta[hidden] {
+  display: none;
 }
 .vsl-profile-dropdown__name {
   font-weight: 700;
@@ -738,18 +779,93 @@ button:hover {
 .vsl-profile-dropdown__item--danger i { color: #b91c1c; }
 .vsl-profile-dropdown__item--danger:hover { background: #fef2f2; }
 
-/* Manage Account form (windows/profile-modal.html) — visual separator
-   between the vsl_profiles fields and the auth.users (email/password)
-   fields, plus a small helper caption under the email field. */
-.vsl-modal-field-divider {
-  border-top: 1px solid var(--border, #e5e7eb);
-  margin: 4px 0 10px;
-}
+/* The three account windows (windows/profile-modal.html) — Edit Profile,
+   Change Email, Change Password.
+
+   .vsl-modal-field-divider used to separate the vsl_profiles fields from
+   the auth.users ones inside a single Manage Account form; the windows are
+   now split along that same line, so the rule went with it. */
 .vsl-modal-field-hint {
   font-size: 11px;
   color: var(--muted, #6b7280);
   margin: 4px 0 0;
   line-height: 1.4;
+}
+/* Photo picker: thumbnail beside the file input. The preview starts with no
+   src, so it is hidden until one is set (JS toggles the --on class) rather
+   than showing a broken-image icon. */
+.vsl-photo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vsl-photo-row__preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: none;
+}
+.vsl-photo-row__preview--on {
+  display: block;
+}
+/* Two short fields and a checklist — the shared 440px is too much room. */
+.vsl-modal-card--narrow {
+  max-width: 360px;
+}
+
+/* Password rules checklist — the live "at least 8 characters / contains a
+   letter / …" list, each line ticking as its rule is met. Shared by the
+   Change Password window (windows/profile-modal.html, ticked by
+   checkProfilePasswordRules in js/map-app.js) and the invitation page
+   (set-password.html, ticked by js/set-password.js): the two enforce the
+   same four rules, so they should not look different, and the styling
+   lived in set-password.html's own <style> block until the second user of
+   it turned up. The .ok class is what marks a rule as met. */
+.vsl-pwd-rules {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+.vsl-pwd-rules li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.2rem 0;
+}
+.vsl-pwd-rules li::before {
+  content: "";
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: #fff;
+}
+.vsl-pwd-rules li.ok {
+  color: var(--primary-2);
+}
+.vsl-pwd-rules li.ok::before {
+  border-color: var(--primary);
+  background: var(--primary)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/80% no-repeat;
+}
+
+/* A value shown for reference rather than edited — the current address in
+   Change Email. Framed like an input so the form reads evenly, but flat and
+   unfocusable. */
+.vsl-readonly-value {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: var(--text, #111827);
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 /* Parcel status panel: the old independently-floating shell (position:fixed

@@ -1,37 +1,62 @@
 <!-- Account dropdown — opened by clicking the account button in the top
-     controls (was a direct Sign Out button; see initProfileModal()/
-     updateProfileButtonAvatar()/positionProfileDropdown() in js/map-app.js).
-     A small panel anchored under that button (not a full-screen modal) shows
-     who's signed in and two actions: "Manage Account" (opens the edit form
-     below) and "Log Out". -->
+     controls (see initProfileModal()/updateProfileButtonAvatar()/
+     positionProfileDropdown() in js/map-app.js). A small panel anchored
+     under that button, not a full-screen modal.
+
+     It shows who is signed in — name, title, email, phone — and then the
+     three things a person can do to their own account, each in its own
+     window below:
+
+       Edit Profile     photo, name, title, phone   (vsl_profiles)
+       Change Email     sends a verification link   (auth.users)
+       Change Password  sets a new password         (auth.users)
+
+     They used to be one "Manage Account" form holding all of it. Email and
+     password are a different kind of change from a name or a phone number —
+     they alter how you sign in, one of them doesn't even take effect until
+     a link is clicked — and mixing them into the same Save button made that
+     impossible to tell. Hence three windows. -->
 <div id="profileDropdown" class="vsl-profile-dropdown" hidden>
   <div class="vsl-profile-dropdown__header">
-    <div style="display:flex;align-items:center;gap:10px">
-      <img id="profileDropdownAvatarImg" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:none;flex-shrink:0" alt="Profile photo">
-      <div id="profileDropdownAvatarFallback" class="vsl-profile-avatar-fallback" style="width:36px;height:36px;font-size:14px;flex-shrink:0"></div>
-      <div style="min-width:0">
+    <div class="vsl-profile-dropdown__identity">
+      <img id="profileDropdownAvatarImg" class="vsl-profile-dropdown__avatar" alt="Profile photo">
+      <div id="profileDropdownAvatarFallback" class="vsl-profile-avatar-fallback vsl-profile-dropdown__avatar"></div>
+      <div class="vsl-profile-dropdown__lines">
         <div id="profileDropdownName" class="vsl-profile-dropdown__name"></div>
+        <!-- Title and phone hide themselves when the profile has none, so
+             the panel never shows a blank line where a value should be. -->
+        <div id="profileDropdownTitle" class="vsl-profile-dropdown__meta" hidden></div>
         <div id="profileDropdownEmail" class="vsl-profile-dropdown__email"></div>
+        <div id="profileDropdownPhone" class="vsl-profile-dropdown__meta" hidden></div>
       </div>
     </div>
   </div>
   <button type="button" id="profileDropdownEditBtn" class="vsl-profile-dropdown__item">
-    <i class="fas fa-user-pen" aria-hidden="true"></i> Manage Account
+    <i class="fas fa-user-pen" aria-hidden="true"></i> Edit Profile
+  </button>
+  <button type="button" id="profileDropdownEmailBtn" class="vsl-profile-dropdown__item">
+    <i class="fas fa-envelope" aria-hidden="true"></i> Change Email
+  </button>
+  <button type="button" id="profileDropdownPasswordBtn" class="vsl-profile-dropdown__item">
+    <i class="fas fa-key" aria-hidden="true"></i> Change Password
   </button>
   <button type="button" id="profileDropdownLogoutBtn" class="vsl-profile-dropdown__item vsl-profile-dropdown__item--danger">
     <i class="fas fa-right-from-bracket" aria-hidden="true"></i> Log Out
   </button>
 </div>
 
-<!-- Manage Account form — opened from "Manage Account" above. Direct
-     client-side update (the "profiles self update" RLS policy already
-     allows id = auth.uid()), including an optional new profile photo. -->
+<!-- ── Edit Profile ──
+     Who you are, not how you sign in. A direct client-side update: the
+     "profiles update self or admin" RLS policy allows id = auth.uid(), and
+     a trigger keeps role/email/estate/active out of reach (see
+     sql/024_vsl_profiles_admin_only_writes.sql) — which is exactly why
+     email no longer belongs on this form. -->
 <div id="profileOverlay" class="vsl-modal-overlay" hidden>
-  <section id="profilePanel" class="vsl-modal-card popWinMain" role="region" aria-label="Manage account">
+  <section id="profilePanel" class="vsl-modal-card popWinMain" role="region" aria-label="Edit profile">
     <header class="popWinHead">
       <div class="popWinHead__inner">
         <span class="popWinIcon"><i class="fas fa-user-pen" aria-hidden="true"></i></span>
-        <h2 class="popWinTitle">Manage Account</h2>
+        <h2 class="popWinTitle">Edit Profile</h2>
       </div>
       <button type="button" class="popWinCloseBtn" id="profileCloseBtn" aria-label="Close">
         <i class="fas fa-times" aria-hidden="true"></i>
@@ -42,8 +67,8 @@
       <div class="popWinBody vsl-modal-form">
         <div class="vsl-modal-field">
           <label class="search-panel__label">Profile Photo</label>
-          <div style="display:flex;align-items:center;gap:12px">
-            <img id="profileEditPreview" style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:none;flex-shrink:0">
+          <div class="vsl-photo-row">
+            <img id="profileEditPreview" class="vsl-photo-row__preview" alt="">
             <input id="profileEditPhoto" type="file" accept="image/*" class="search-panel__input">
           </div>
         </div>
@@ -59,27 +84,120 @@
           <label class="search-panel__label" for="profileEditPhone">Phone</label>
           <input id="profileEditPhone" type="text" class="search-panel__input">
         </div>
-
-        <div class="vsl-modal-field-divider"></div>
-
-        <div class="vsl-modal-field">
-          <label class="search-panel__label" for="profileEditEmail">Email</label>
-          <input id="profileEditEmail" type="email" class="search-panel__input">
-          <p class="vsl-modal-field-hint">Changing this sends a confirmation link to the new address — it won't take effect until you click it.</p>
-        </div>
-        <div class="vsl-modal-field">
-          <label class="search-panel__label" for="profileEditPassword">New Password <span style="font-weight:400">(leave blank to keep current)</span></label>
-          <input id="profileEditPassword" type="password" class="search-panel__input" autocomplete="new-password" placeholder="At least 8 characters">
-        </div>
-        <div class="vsl-modal-field">
-          <label class="search-panel__label" for="profileEditPasswordConfirm">Confirm New Password</label>
-          <input id="profileEditPasswordConfirm" type="password" class="search-panel__input" autocomplete="new-password">
-        </div>
         <p id="profileEditError" class="search-panel__error" role="alert" hidden></p>
       </div>
       <div class="popWinActionBtns">
         <button type="button" id="profileEditCancelBtn" class="futuristic-icon-btn futuristic-icon-btn--modal-pad">Cancel</button>
         <button type="submit" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Save</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<!-- ── Change Email ──
+     Nothing is switched over here and now: Supabase emails a verification
+     link to the NEW address and the old one keeps working until it is
+     clicked. That is the whole point of the window — it is a request, not a
+     change — so the current address is shown beside the new one and the
+     button says Send.
+
+     No password step. Holding a live session is what proves it is you, and
+     the link going to the new address is what proves the address is real;
+     asking for a password on top of both would add a hurdle without adding
+     a check. -->
+<div id="profileEmailOverlay" class="vsl-modal-overlay" hidden>
+  <section class="vsl-modal-card popWinMain" role="region" aria-label="Change email">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-envelope" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Change Email</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="profileEmailCloseBtn" aria-label="Close">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <form id="profileEmailForm" novalidate class="popWin-formShell">
+      <div class="popWinBody vsl-modal-form">
+        <div class="vsl-modal-field">
+          <label class="search-panel__label">Current Email</label>
+          <div class="vsl-readonly-value" id="profileEmailCurrent">—</div>
+        </div>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profileEmailNew">New Email</label>
+          <input id="profileEmailNew" type="email" class="search-panel__input" autocomplete="email">
+          <p class="vsl-modal-field-hint">We'll send a verification link to the new address. Your email only changes once you click it, and you keep signing in with the current one until then.</p>
+        </div>
+        <p id="profileEmailError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+      <div class="popWinActionBtns">
+        <button type="button" id="profileEmailCancelBtn" class="futuristic-icon-btn futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="submit" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Send Verification Link</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<!-- ── Change Password ──
+     Takes effect immediately, unlike the email change above.
+
+     Same four rules as the invitation page (set-password.html), shown as a
+     live checklist rather than as an error after the fact: each one ticks
+     as it is met and the button stays disabled until all four do, so
+     nobody has to submit the form to find out what was wrong with it.
+     Narrower than the other windows — two short fields and a list don't
+     need the full width. -->
+<div id="profilePasswordOverlay" class="vsl-modal-overlay" hidden>
+  <section class="vsl-modal-card vsl-modal-card--narrow popWinMain" role="region" aria-label="Change password">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-key" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Change Password</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="profilePasswordCloseBtn" aria-label="Close">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <form id="profilePasswordForm" novalidate class="popWin-formShell">
+      <div class="popWinBody vsl-modal-form">
+        <!-- data-toggle-password carries the id of the input it reveals;
+             initProfileModal() wires every one of them. (The sign-in and
+             invitation pages do the same job with an inline onclick calling
+             togglePwd() from js/login-ui.js, but the map doesn't load that
+             script — and an inline handler is the one thing worse than an
+             inline style.) -->
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profilePasswordNew">New Password</label>
+          <div class="password-wrapper">
+            <input id="profilePasswordNew" type="password" class="search-panel__input"
+                   autocomplete="new-password" placeholder="At least 8 characters">
+            <button type="button" class="toggle-password" data-toggle-password="profilePasswordNew">Show</button>
+          </div>
+        </div>
+        <div class="vsl-modal-field">
+          <label class="search-panel__label" for="profilePasswordConfirm">Confirm New Password</label>
+          <div class="password-wrapper">
+            <input id="profilePasswordConfirm" type="password" class="search-panel__input" autocomplete="new-password">
+            <button type="button" class="toggle-password" data-toggle-password="profilePasswordConfirm">Show</button>
+          </div>
+        </div>
+
+        <!-- Ticked live by checkProfilePasswordRules() — data-rule keys
+             match the rule names it computes. -->
+        <ul class="vsl-pwd-rules" id="profilePasswordRules">
+          <li data-rule="len">At least 8 characters</li>
+          <li data-rule="letter">Contains a letter</li>
+          <li data-rule="number">Contains a number</li>
+          <li data-rule="match">Both passwords match</li>
+        </ul>
+
+        <p class="vsl-modal-field-hint">You'll stay signed in on this device. Use the new password next time you sign in.</p>
+        <p id="profilePasswordError" class="search-panel__error" role="alert" hidden></p>
+      </div>
+      <div class="popWinActionBtns">
+        <button type="button" id="profilePasswordCancelBtn" class="futuristic-icon-btn futuristic-icon-btn--modal-pad">Cancel</button>
+        <button type="submit" id="profilePasswordSubmitBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad" disabled>Change Password</button>
       </div>
     </form>
   </section>

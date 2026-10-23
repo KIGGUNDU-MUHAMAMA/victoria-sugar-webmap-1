@@ -201,8 +201,25 @@ body {
 .modal-warning-list { margin: 12px 0 12px 20px; font-size: 13px; color: var(--gray-700); line-height: 1.7; }
 /* Users tab filter row: role dropdown first, then search, one line */
 .users-filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
-.users-filter-role { width: 140px; flex-shrink: 0; }
-.users-filter-search { width: 200px; }
+/* Prefixed with .users-filter-row so these beat the generic
+   input.form-input / select.form-input width:100% rule further down. */
+.users-filter-row .users-filter-role { width: 140px; flex: 0 0 140px; }
+.users-filter-row .users-filter-search { width: 200px; flex: 0 1 200px; }
+
+/* Own-profile photo: centered circle with the file picker underneath */
+.profile-photo-edit { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 16px; }
+.profile-photo-edit__circle { width: 96px; height: 96px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.profile-photo-edit__img { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; }
+.profile-photo-edit .profile-photo-edit__input { max-width: 260px; }
+
+/* Role dropdown: when it's locked, the explanation only appears on hover */
+.role-field { position: relative; }
+.role-lock-hint {
+  display: none; position: absolute; top: 100%; left: 0; z-index: 5; margin-top: 4px;
+  padding: 4px 8px; border-radius: 6px; background: var(--gray-900); color: #fff;
+  font-size: 11px; white-space: nowrap;
+}
+.role-field--locked:hover .role-lock-hint { display: block; }
 .badge-count[hidden] { display: none; }
 .topbar-avatar {
   width: 32px; height: 32px; border-radius: 50%;

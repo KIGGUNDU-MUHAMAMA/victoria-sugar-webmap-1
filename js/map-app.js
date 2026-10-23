@@ -1157,16 +1157,32 @@ function renderProfileDropdownIdentity() {
   const p = currentProfile || {};
   const name = p.full_name || p.email || "Unknown";
   document.getElementById("profileDropdownName").textContent = name;
-  document.getElementById("profileDropdownEmail").textContent = p.email || "";
+  // The session's email, not the profile's copy: an email change only takes
+  // effect when the verification link is clicked, and auth.users is where
+  // that lands. vsl_profiles.email is a snapshot taken at creation.
+  document.getElementById("profileDropdownEmail").textContent = currentUser?.email || p.email || "";
+
+  // Title and phone are optional, so each row shows only when it has
+  // something to say rather than leaving a gap in the panel.
+  const optional = (id, value) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const text = (value || "").trim();
+    el.textContent = text;
+    el.hidden = !text;
+  };
+  optional("profileDropdownTitle", p.title);
+  optional("profileDropdownPhone", p.phone);
+
   const img = document.getElementById("profileDropdownAvatarImg");
   const fallback = document.getElementById("profileDropdownAvatarFallback");
   if (p.avatar_url) {
     img.src = p.avatar_url;
-    img.style.display = "";
-    fallback.style.display = "none";
+    img.hidden = false;
+    fallback.hidden = true;
   } else {
-    img.style.display = "none";
-    fallback.style.display = "flex";
+    img.hidden = true;
+    fallback.hidden = false;
     fallback.textContent = initialsFromName(name) || "?";
   }
 }
@@ -1181,6 +1197,11 @@ function initProfileModal() {
   const dropdownLogoutBtn = document.getElementById("profileDropdownLogoutBtn");
   const cancelBtn = document.getElementById("profileEditCancelBtn");
   const errorEl = document.getElementById("profileEditError");
+  // Change Email / Change Password — their own windows, since neither is a
+  // profile field: they change how you sign in. See the comments at the top
+  // of windows/profile-modal.html.
+  const emailOverlay = document.getElementById("profileEmailOverlay");
+  const passwordOverlay = document.getElementById("profilePasswordOverlay");
 
   function closeDropdown() {
     dropdown.hidden = true;
@@ -1208,6 +1229,8 @@ function initProfileModal() {
     if (ev.key === "Escape") {
       if (!dropdown.hidden) closeDropdown();
       if (!overlay.hidden) closeEditModal();
+      if (emailOverlay && !emailOverlay.hidden) emailOverlay.hidden = true;
+      if (passwordOverlay && !passwordOverlay.hidden) passwordOverlay.hidden = true;
     }
   });
   window.addEventListener("resize", () => {
@@ -1220,17 +1243,13 @@ function initProfileModal() {
     document.getElementById("profileEditName").value = p.full_name || "";
     document.getElementById("profileEditTitle").value = p.title || "";
     document.getElementById("profileEditPhone").value = p.phone || "";
-    // Email is the auth session's, not vsl_profiles' — that's the actual sign-in
-    // identity; vsl_profiles.email is just a denormalized copy set at creation.
-    document.getElementById("profileEditEmail").value = currentUser?.email || p.email || "";
-    document.getElementById("profileEditPassword").value = "";
-    document.getElementById("profileEditPasswordConfirm").value = "";
+    // No email or password fields here any more — each has its own window.
     const preview = document.getElementById("profileEditPreview");
     if (p.avatar_url) {
       preview.src = p.avatar_url;
-      preview.style.display = "";
+      preview.classList.add("vsl-photo-row__preview--on");
     } else {
-      preview.style.display = "none";
+      preview.classList.remove("vsl-photo-row__preview--on");
     }
     const photoInput = document.getElementById("profileEditPhoto");
     if (photoInput) photoInput.value = "";
@@ -1263,7 +1282,7 @@ function initProfileModal() {
     reader.onload = () => {
       const preview = document.getElementById("profileEditPreview");
       preview.src = reader.result;
-      preview.style.display = "";
+      preview.classList.add("vsl-photo-row__preview--on");
     };
     reader.readAsDataURL(file);
   });
@@ -1273,37 +1292,19 @@ function initProfileModal() {
     errorEl.hidden = true;
     const submitBtn = editForm.querySelector('button[type="submit"]');
 
-    // vsl_profiles fields (name/title/phone/photo) vs. auth.users fields
-    // (email/password) — two different tables, two different update calls.
+    // Only vsl_profiles fields now. Email and password live in auth.users
+    // and have their own windows below — this form can't lock anyone out of
+    // their account, which is the point of having separated them.
     const full_name = document.getElementById("profileEditName").value.trim();
     const title = document.getElementById("profileEditTitle").value.trim();
     const phone = document.getElementById("profileEditPhone").value.trim();
     const photoFile = document.getElementById("profileEditPhoto").files[0] || null;
-    const newEmail = document.getElementById("profileEditEmail").value.trim();
-    const newPassword = document.getElementById("profileEditPassword").value;
-    const confirmPassword = document.getElementById("profileEditPasswordConfirm").value;
-
-    if (!newEmail || !/^[^@]+@[^@]+\.[^@]+$/.test(newEmail)) {
-      errorEl.textContent = "Please enter a valid email.";
-      errorEl.hidden = false;
-      return;
-    }
-    if (newPassword || confirmPassword) {
-      if (newPassword.length < 8) {
-        errorEl.textContent = "New password must be at least 8 characters.";
-        errorEl.hidden = false;
-        return;
-      }
-      if (newPassword !== confirmPassword) {
-        errorEl.textContent = "New password and confirmation don't match.";
-        errorEl.hidden = false;
-        return;
-      }
-    }
 
     if (submitBtn) submitBtn.disabled = true;
     try {
-      // 1. public.vsl_profiles — direct self-update (RLS: id = auth.uid()).
+      // Direct self-update: the "profiles update self or admin" RLS policy
+      // allows id = auth.uid(), and the column guard trigger keeps the
+      // privileged columns (role, email, estate, active) out of reach.
       const patch = { full_name: full_name || null, title: title || null, phone: phone || null };
       if (photoFile) patch.avatar_url = await uploadOwnAvatarFile(photoFile);
 
@@ -1316,31 +1317,185 @@ function initProfileModal() {
       if (error) throw error;
       currentProfile = { ...currentProfile, ...data };
 
-      // 2. auth.users — email and/or password, via supabase-js's own auth API
-      // (not a table update). Email changes are NOT applied immediately: Supabase
-      // sends a confirmation link to the new address and the old email stays
-      // active until it's clicked.
-      const messages = ["Profile updated."];
-      const emailChanged = newEmail && newEmail.toLowerCase() !== (currentUser.email || "").toLowerCase();
-      if (emailChanged || newPassword) {
-        const authPatch = {};
-        if (emailChanged) authPatch.email = newEmail;
-        if (newPassword) authPatch.password = newPassword;
-        const { data: authData, error: authErr } = await supabase.auth.updateUser(authPatch);
-        if (authErr) throw authErr;
-        if (emailChanged) messages.push("Check your new email address for a confirmation link — the change won't take effect until you click it.");
-        if (newPassword) messages.push("Password changed.");
-        if (authData?.user) currentUser = authData.user;
-      }
-
+      // So the account button and the dropdown show the new photo/name
+      // without a reload.
+      cacheProfile(currentProfile);
       updateProfileButtonAvatar();
       closeEditModal();
-      setStatus(statusEl, messages.join(" "));
+      setStatus(statusEl, "Profile updated.");
     } catch (err) {
       errorEl.textContent = err?.message || "Failed to save changes.";
       errorEl.hidden = false;
     } finally {
       if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  // ── Change Email ──
+  // A request, not a change: auth.updateUser({ email }) makes Supabase send
+  // a verification link to the NEW address, and nothing moves until it is
+  // clicked. No password is asked for — the live session proves who is
+  // asking, and the link proves the address is reachable.
+  const emailForm = document.getElementById("profileEmailForm");
+  const emailErrorEl = document.getElementById("profileEmailError");
+
+  function openEmailModal() {
+    closeDropdown();
+    if (!emailOverlay) return;
+    document.getElementById("profileEmailCurrent").textContent =
+      currentUser?.email || currentProfile?.email || "—";
+    const input = document.getElementById("profileEmailNew");
+    if (input) input.value = "";
+    if (emailErrorEl) emailErrorEl.hidden = true;
+    emailOverlay.hidden = false;
+    input?.focus();
+  }
+  function closeEmailModal() {
+    if (emailOverlay) emailOverlay.hidden = true;
+  }
+
+  document.getElementById("profileDropdownEmailBtn")?.addEventListener("click", openEmailModal);
+  document.getElementById("profileEmailCloseBtn")?.addEventListener("click", closeEmailModal);
+  document.getElementById("profileEmailCancelBtn")?.addEventListener("click", closeEmailModal);
+  emailOverlay?.addEventListener("click", (ev) => {
+    if (ev.target === emailOverlay) closeEmailModal();
+  });
+
+  emailForm?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (emailErrorEl) emailErrorEl.hidden = true;
+    const submitBtn = emailForm.querySelector('button[type="submit"]');
+    const newEmail = document.getElementById("profileEmailNew").value.trim();
+    const currentEmail = (currentUser?.email || "").toLowerCase();
+
+    const showEmailError = (msg) => {
+      if (emailErrorEl) { emailErrorEl.textContent = msg; emailErrorEl.hidden = false; }
+    };
+    if (!newEmail || !/^[^@]+@[^@]+\.[^@]+$/.test(newEmail)) {
+      showEmailError("Enter a valid email address.");
+      return;
+    }
+    // Asking for the address already in use would send a pointless email and
+    // read as though something had happened.
+    if (newEmail.toLowerCase() === currentEmail) {
+      showEmailError("That's already your email address.");
+      return;
+    }
+
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const { error } = await supabase.auth.updateUser({ email: newEmail });
+      if (error) throw error;
+      closeEmailModal();
+      setStatus(statusEl, `Verification link sent to ${newEmail}. Your email changes once you click it — keep using your current address to sign in until then.`);
+    } catch (err) {
+      showEmailError(err?.message || "Could not send the verification link.");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  // ── Change Password ──
+  // Takes effect at once, so the rules match the invitation page's (see
+  // js/set-password.js): 8+ characters, a letter, a number, both matching.
+  const passwordForm = document.getElementById("profilePasswordForm");
+  const passwordErrorEl = document.getElementById("profilePasswordError");
+  const passwordSubmitBtn = document.getElementById("profilePasswordSubmitBtn");
+
+  /**
+   * Ticks the four rules and returns whether all of them pass.
+   *
+   * The same four as the invitation page's (js/set-password.js), computed
+   * the same way. Runs on every keystroke in either box: the checklist is
+   * how the rules are communicated, so it has to be right before the form
+   * is submitted rather than after.
+   */
+  function checkProfilePasswordRules() {
+    const value = document.getElementById("profilePasswordNew")?.value || "";
+    const confirmValue = document.getElementById("profilePasswordConfirm")?.value || "";
+    const rules = {
+      len: value.length >= 8,
+      letter: /[A-Za-z]/.test(value),
+      number: /\d/.test(value),
+      match: value.length > 0 && value === confirmValue
+    };
+    document.querySelectorAll("#profilePasswordRules li").forEach((li) => {
+      li.classList.toggle("ok", !!rules[li.dataset.rule]);
+    });
+    const allOk = Object.values(rules).every(Boolean);
+    if (passwordSubmitBtn) passwordSubmitBtn.disabled = !allOk;
+    return allOk;
+  }
+
+  document.getElementById("profilePasswordNew")?.addEventListener("input", checkProfilePasswordRules);
+  document.getElementById("profilePasswordConfirm")?.addEventListener("input", checkProfilePasswordRules);
+
+  // Show/hide for both boxes. Wired from data-toggle-password rather than
+  // inline onclick handlers — js/login-ui.js, which the sign-in and
+  // invitation pages use for this, isn't loaded by the map.
+  passwordForm?.querySelectorAll("[data-toggle-password]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.togglePassword);
+      if (!input) return;
+      const revealed = input.type === "text";
+      input.type = revealed ? "password" : "text";
+      btn.textContent = revealed ? "Show" : "Hide";
+    });
+  });
+
+  function openPasswordModal() {
+    closeDropdown();
+    if (!passwordOverlay) return;
+    const newInput = document.getElementById("profilePasswordNew");
+    const confirmInput = document.getElementById("profilePasswordConfirm");
+    if (newInput) newInput.value = "";
+    if (confirmInput) confirmInput.value = "";
+    // Both boxes back to hidden, and the buttons back to saying "Show" —
+    // reopening the window must not leave a previous password revealed.
+    passwordForm?.querySelectorAll("[data-toggle-password]").forEach((btn) => {
+      const input = document.getElementById(btn.dataset.togglePassword);
+      if (input) input.type = "password";
+      btn.textContent = "Show";
+    });
+    if (passwordErrorEl) passwordErrorEl.hidden = true;
+    checkProfilePasswordRules();
+    passwordOverlay.hidden = false;
+    newInput?.focus();
+  }
+  function closePasswordModal() {
+    if (passwordOverlay) passwordOverlay.hidden = true;
+  }
+
+  document.getElementById("profileDropdownPasswordBtn")?.addEventListener("click", openPasswordModal);
+  document.getElementById("profilePasswordCloseBtn")?.addEventListener("click", closePasswordModal);
+  document.getElementById("profilePasswordCancelBtn")?.addEventListener("click", closePasswordModal);
+  passwordOverlay?.addEventListener("click", (ev) => {
+    if (ev.target === passwordOverlay) closePasswordModal();
+  });
+
+  passwordForm?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (passwordErrorEl) passwordErrorEl.hidden = true;
+    // The button is disabled until every rule ticks, so this only catches
+    // the Enter key arriving before the checklist has caught up.
+    if (!checkProfilePasswordRules()) return;
+    const newPassword = document.getElementById("profilePasswordNew").value;
+
+    if (passwordSubmitBtn) passwordSubmitBtn.disabled = true;
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      closePasswordModal();
+      setStatus(statusEl, "Password changed. Use the new one next time you sign in.");
+    } catch (err) {
+      if (passwordErrorEl) {
+        passwordErrorEl.textContent = err?.message || "Could not change your password.";
+        passwordErrorEl.hidden = false;
+      }
+    } finally {
+      // Back to whatever the rules say, rather than unconditionally
+      // enabled — a failed attempt leaves the same values in the boxes.
+      checkProfilePasswordRules();
     }
   });
 }
@@ -2105,20 +2260,38 @@ function buildBlockExportSections({ block, totalPlots, totalArea, plotRows, stat
  *  picked, no Block/Plot — see setupFeatureInfoFilterBar). Mirrors
  *  buildParcelInfoHtml/buildBlockInfoHtml's { html, exportSections, title,
  *  estateId/blockId/parcelId, estateName/blockName/parcelName } shape so it
- *  slots into the same rendering/export pipeline. "Planted area" (per
- *  block and estate-wide) is the sum of vsl_parcels.area_acres
- *  for plots whose cultivation_status is
- *  anything other than "vacant" — there's no dedicated column for it. */
+ *  slots into the same rendering/export pipeline.
+ *
+ *  The estate-wide totals (Estate area, Total plots area, Total planted
+ *  area, and the block/plot counts) are read from vsl_estate_stats rather
+ *  than summed here — see sql/026_vsl_estate_area_stats.sql. The per-block
+ *  rows in the Blocks table are still assembled below, since those need the
+ *  individual block and plot rows anyway.
+ *
+ *  "Planted area" means plots whose cultivation_status is anything other
+ *  than "vacant"; there is no dedicated column for it, in the view or here. */
 async function buildEstateInfoHtml(estateId) {
-  const [estateRes, blocksRes] = await Promise.all([
+  const [estateRes, blocksRes, statsRes] = await Promise.all([
     supabase.from("vsl_estate").select("*, vsl_profiles!manager_id(email, full_name, phone, title)").eq("id", estateId).single(),
-    supabase.from("vsl_blocks").select("id, block_code, block_name, area_acres").eq("estate_id", estateId)
+    supabase.from("vsl_blocks").select("id, block_code, block_name, area_acres").eq("estate_id", estateId),
+    // The estate's own totals, summed in the database (vsl_estate_stats —
+    // see sql/026_vsl_estate_area_stats.sql). Estate area is the sum of its
+    // blocks' geometric areas; total plots area is the sum of its plots'.
+    // maybeSingle, not single: an estate with no row here is a missing view,
+    // not a missing estate, and the panel still has everything else to show.
+    supabase.from("vsl_estate_stats")
+      .select("total_blocks, block_area_acres, total_plots, plot_area_acres, planted_plots_area_acres")
+      .eq("estate_id", estateId).maybeSingle()
   ]);
 
   const estate = estateRes.data;
   if (!estate) throw new Error("Estate not found.");
   const blocks = blocksRes.data || [];
   const blockIds = blocks.map((b) => b.id);
+  const stats = statsRes.data || null;
+  if (statsRes.error) {
+    console.error("[Victoria] Estate totals could not be read from vsl_estate_stats — falling back to summing in the browser:", statsRes.error);
+  }
 
   const parcelRowsRes = blockIds.length
     ? await supabase.from("vsl_parcels").select("block_id, area_acres, cultivation_status").in("block_id", blockIds)
@@ -2152,9 +2325,19 @@ async function buildEstateInfoHtml(estateId) {
       };
     });
 
-  const totalArea = blockRows.reduce((s, r) => s + r.area, 0);
-  const totalPlots = blockRows.reduce((s, r) => s + r.plots, 0);
-  const totalPlantedArea = blockRows.reduce((s, r) => s + r.plantedArea, 0);
+  // Totals come from the view. The browser-side sums are kept only as a
+  // fallback for when it couldn't be read at all — they are the reason the
+  // view exists (every client computing its own answer), so they must not
+  // be what normally decides the number.
+  const num = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const totalBlocks = num(stats?.total_blocks, blockRows.length);
+  const totalArea = num(stats?.block_area_acres, blockRows.reduce((s, r) => s + r.area, 0));
+  const totalPlots = num(stats?.total_plots, blockRows.reduce((s, r) => s + r.plots, 0));
+  const totalPlotArea = num(stats?.plot_area_acres, parcelRows.reduce((s, p) => s + (Number(p.area_acres) || 0), 0));
+  const totalPlantedArea = num(stats?.planted_plots_area_acres, blockRows.reduce((s, r) => s + r.plantedArea, 0));
 
   const groups = [];
 
@@ -2165,9 +2348,14 @@ async function buildEstateInfoHtml(estateId) {
     ["District", fmt(estate.district)],
     ["Country", fmt(estate.country)],
     ["Address", fmt(estate.address)],
-    ["Number of blocks", String(blockRows.length)],
-    ["Total area", `${totalArea.toFixed(2)} ac`],
+    ["Number of blocks", String(totalBlocks)],
+    // Two different measures, deliberately next to each other: the estate's
+    // area is its blocks added up, the plots area is its plots added up, and
+    // the gap between them is everything inside a block that isn't a plot
+    // (roads, headlands, waterways).
+    ["Estate area", `${totalArea.toFixed(2)} ac`],
     ["Number of plots", String(totalPlots)],
+    ["Total plots area", `${totalPlotArea.toFixed(2)} ac`],
     ["Total planted area", `${totalPlantedArea.toFixed(2)} ac`],
     ["Primary soil type", fmt(estate.primary_soil_type)],
     ["Average rainfall", estate.average_rainfall_mm != null ? `${estate.average_rainfall_mm} mm` : "—"],
@@ -2202,7 +2390,7 @@ async function buildEstateInfoHtml(estateId) {
   // reset it anyway so a stale parcel's records can't linger.
   infoPanelRecords = {};
 
-  const exportSections = buildEstateExportSections({ estate, blockRows, totalArea, totalPlots, totalPlantedArea });
+  const exportSections = buildEstateExportSections({ estate, blockRows, totalBlocks, totalArea, totalPlots, totalPlotArea, totalPlantedArea });
 
   return {
     html: groups.join(""),
@@ -2219,7 +2407,7 @@ async function buildEstateInfoHtml(estateId) {
 
 /** Plain-text mirror of buildEstateInfoHtml's groups — see
  *  buildParcelExportSections above for why this is a separate function. */
-function buildEstateExportSections({ estate, blockRows, totalArea, totalPlots, totalPlantedArea }) {
+function buildEstateExportSections({ estate, blockRows, totalBlocks, totalArea, totalPlots, totalPlotArea, totalPlantedArea }) {
   const sections = [];
 
   sections.push({ title: "Details", type: "kv", rows: [
@@ -2229,9 +2417,10 @@ function buildEstateExportSections({ estate, blockRows, totalArea, totalPlots, t
     ["District", fmtPlain(estate.district)],
     ["Country", fmtPlain(estate.country)],
     ["Address", fmtPlain(estate.address)],
-    ["Number of blocks", String(blockRows.length)],
-    ["Total area", `${totalArea.toFixed(2)} ac`],
+    ["Number of blocks", String(totalBlocks)],
+    ["Estate area", `${totalArea.toFixed(2)} ac`],
     ["Number of plots", String(totalPlots)],
+    ["Total plots area", `${totalPlotArea.toFixed(2)} ac`],
     ["Total planted area", `${totalPlantedArea.toFixed(2)} ac`],
     ["Primary soil type", fmtPlain(estate.primary_soil_type)],
     ["Average rainfall", estate.average_rainfall_mm != null ? `${estate.average_rainfall_mm} mm` : "—"],

@@ -13,6 +13,8 @@
  *                    "create" is kept as an alias of "invite" for older clients.
  *  - "resend_invite" -> re-sends the invitation; if the person already set a password,
  *                    sends a "choose a new password" link to the same page instead
+ *  - "change_email" -> changes a user's sign-in email (or keeps it) and sends a link to it:
+ *                    a fresh invitation if they never accepted, else a password link
  *  - "update"     -> updates role/full_name/phone/title/estate_id/is_active on an existing user
  *  - "deactivate" -> bans sign-in (auth) and sets is_active=false, without deleting the account
  *  - "reactivate" -> lifts the ban and sets is_active=true
@@ -148,6 +150,45 @@ Deno.serve(async (req: Request) => {
       const { error: resetErr } = await admin.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : {});
       if (resetErr) throw resetErr;
       return ok({ sent: "reset" });
+    }
+
+    if (action === "change_email") {
+      const id = String(body.id || "");
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!id) return fail(400, "id is required.");
+      if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) return fail(400, "Valid email is required.");
+      if (id === callerId) return fail(400, "You cannot change your own email here.");
+      const redirectTo = safeRedirect(body.redirect_to);
+
+      const { data: cur, error: curErr } = await admin.auth.admin.getUserById(id);
+      if (curErr || !cur?.user) return fail(404, "User not found.");
+      const accepted = !!cur.user.email_confirmed_at; // false = invited but never opened the link
+      const changed = (cur.user.email || "").toLowerCase() !== email;
+
+      if (changed) {
+        // Someone who already set a password stays confirmed; an invitee stays
+        // unconfirmed so the fresh invitation below still applies to them.
+        const { error: updErr } = await admin.auth.admin.updateUserById(id, { email, email_confirm: accepted });
+        if (updErr) {
+          if (/already been registered|already exists/i.test(updErr.message)) return fail(409, "A user with this email already exists.");
+          throw updErr;
+        }
+        const { error: profUpdErr } = await admin.from("vsl_profiles").update({ email }).eq("id", id);
+        if (profUpdErr) throw profUpdErr;
+      }
+
+      // Always send a link to the (possibly new) address — it lands on set-password.html.
+      let sent = "reset";
+      if (!accepted) {
+        const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, redirectTo ? { redirectTo } : {});
+        if (!inviteErr) sent = "invite";
+        else if (!/already been registered|already exists/i.test(inviteErr.message)) throw inviteErr;
+      }
+      if (sent === "reset") {
+        const { error: resetErr } = await admin.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : {});
+        if (resetErr) throw resetErr;
+      }
+      return ok({ sent, changed });
     }
 
     if (action === "update") {

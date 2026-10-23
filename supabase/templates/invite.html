@@ -1,0 +1,102 @@
+<!--
+  Invitation email — sent when an admin adds a user from the dashboard
+  (Users → Add User), which calls the vsl-admin-users edge function and
+  inviteUserByEmail(). The link lands on set-password.html, where the person
+  verifies the address by opening it and then chooses their own password.
+
+  ── Where this file has to be pasted ──
+  Supabase renders auth emails from templates held in the project's own auth
+  settings, NOT from this repository. Nothing is deployed by committing this
+  file. To make it live:
+
+      Supabase dashboard → Authentication → Emails → "Invite user"
+      → paste the HTML below, and set the subject to:
+        You're invited to Victoria Sugar
+
+  It is kept here so the wording is reviewable and version-controlled, and
+  because `supabase config push` can apply it from the config.toml block
+  that points at this path.
+
+  ── Template variables (Go templates, provided by Supabase Auth) ──
+    {{ .ConfirmationURL }}  the one-time invitation link
+    {{ .Data.full_name }}   user_metadata passed by the invite call — the
+                            name the admin typed into the Add User form (see
+                            supabase/functions/vsl-admin-users/index.ts).
+                            Absent on a resent invitation, which is why the
+                            greeting falls back to "Hello".
+    {{ .Email }}            the invited address
+
+  ── Why the CSS is inline here ──
+  The project rule is no inline styles — this file is the exception, and has
+  to be. Mail clients (Gmail above all) strip <style> blocks, so a
+  stylesheet would render as unstyled text. Tables and inline attributes are
+  what email HTML is.
+-->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f4;margin:0;padding:24px 0;font-family:Helvetica,Arial,sans-serif">
+  <tr>
+    <td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e3e8e3">
+
+        <!-- Brand bar -->
+        <tr>
+          <td style="background-color:#285f28;padding:20px 28px">
+            <span style="color:#ffffff;font-size:17px;font-weight:bold;letter-spacing:0.3px">Victoria Sugar Limited</span>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:30px 28px 8px">
+            <p style="margin:0 0 16px;font-size:16px;color:#16301f">
+              Dear {{ if .Data.full_name }}{{ .Data.full_name }}{{ else }}Colleague{{ end }},
+            </p>
+            <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#4a5750">
+              You have been invited to join Victoria Sugar.
+            </p>
+            <p style="margin:0 0 26px;font-size:15px;line-height:1.6;color:#4a5750">
+              Please verify your email and set a password to login.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Button. Built as a table rather than a styled <a> so Outlook
+             renders the background colour; the link text itself stays a
+             real anchor for clients that ignore the table. -->
+        <tr>
+          <td align="center" style="padding:0 28px 28px">
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" bgcolor="#285f28" style="border-radius:8px">
+                  <a href="{{ .ConfirmationURL }}"
+                     style="display:inline-block;padding:13px 34px;font-size:15px;font-weight:bold;
+                            color:#ffffff;text-decoration:none;border-radius:8px">
+                    Verify
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Fallback for clients that strip the button -->
+        <tr>
+          <td style="padding:0 28px 26px">
+            <p style="margin:0;font-size:12px;line-height:1.6;color:#8a948e">
+              If the button doesn't work, copy and paste this link into your browser:<br>
+              <a href="{{ .ConfirmationURL }}" style="color:#285f28;word-break:break-all">{{ .ConfirmationURL }}</a>
+            </p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="background-color:#f7f9f7;padding:16px 28px;border-top:1px solid #e3e8e3">
+            <p style="margin:0;font-size:11.5px;line-height:1.6;color:#8a948e">
+              This invitation was sent to {{ .Email }}. If you weren't expecting it, you can ignore this email.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>

@@ -126,8 +126,15 @@ async function init() {
     el("spTitle").textContent = "Choose a new password";
     el("spSub").textContent = "Enter a new password for your account.";
   } else {
-    el("spTitle").textContent = "Welcome — create your password";
-    el("spSub").textContent = "You've been invited to Victoria Sugar. Choose the password you'll use to sign in. Only you will know it.";
+    // Greet them by name. It comes from the invitation itself: the admin
+    // types it into the dashboard's Add User form, which passes it as user
+    // metadata to inviteUserByEmail (see supabase/functions/vsl-admin-users)
+    // — so it is already on the session this link just created, with no
+    // profile fetch needed. An invitation resent without it falls back to
+    // the plain greeting rather than printing "Welcome undefined".
+    const fullName = (data.session.user?.user_metadata?.full_name || "").trim();
+    el("spTitle").textContent = fullName ? `Welcome ${fullName}` : "Welcome — create your password";
+    el("spSub").textContent = "You've been invited to Victoria Sugar. Choose the password you'll use to sign in.";
   }
   show("spForm");
   pwd.focus();

@@ -107,7 +107,7 @@ export function initPrintTool({
     // Map details
     details: {
       title: true, legend: true, northArrow: true, qr: true,
-      counts: true, comments: true, date: true, source: true, scale: true, printedBy: false
+      counts: true, date: true, source: true, scale: true, printedBy: false
     }
   };
 
@@ -158,8 +158,16 @@ export function initPrintTool({
   const PAGE_GAP_PT = 10;
 
   /** Landscape: side column down the right. The legend fills it from the
-   *  top; summary and then a QR + north-arrow row sit at the bottom. */
-  const SIDE_COLUMN_PT = 110;
+   *  top, with a QR + north-arrow row at the bottom.
+   *
+   *  Was 110, which left no room for the area column — the labels wrapped
+   *  onto a second line. 150 is sized to the widest row the data actually
+   *  produces: an icon, a 16-character feature-type name ("Residential
+   *  Area" is the longest in the catalogue), a count and a five-figure
+   *  area, measured at the legend's own font. Wider than that and the
+   *  column is mostly empty paper taken off the map; narrower and the
+   *  labels start wrapping again. */
+  const SIDE_COLUMN_PT = 150;
 
   /** Portrait: a legend bar across the bottom with a square north-arrow
    *  cell at its right end. */
@@ -182,15 +190,21 @@ export function initPrintTool({
    *  separates the map from the column, where a bigger gap reads better. */
   const SIDE_CELL_GAP_PT = 4;
 
-  /** Selection summary cell — a fixed block in landscape (it holds four
-   *  label/value rows), a fixed width in the portrait bottom bar. */
-  const SUMMARY_BOX_PT = 60;
-  /** Comments box width in the portrait bar — kept narrow so the legend
-   *  gets the width instead; it's reserved blank space, not content. */
-  const SUMMARY_BAR_W_PT = 80;
-
-  /** Width reserved for the right-aligned count column on a legend row. */
+  /** Width reserved for the right-aligned count column on a legend row —
+   *  a floor, not the final width: the column is measured from its own
+   *  longest figures (see countColW in drawLegendCell), because "500
+   *  (9,147 ac)" is a good deal wider than the bare count this was sized
+   *  for. */
   const COUNT_COL_PT = 22;
+
+  /** One line of the description printed under the map title. The title
+   *  band grows by this much per line, so the map frame below it moves
+   *  down rather than the description overlapping the map. */
+  const PAGE_DESC_LINE_PT = 11;
+
+  /** Most lines of description that will be printed. A description is a
+   *  caption, not a report — past two lines it starts eating the map. */
+  const PAGE_DESC_MAX_LINES = 2;
 
   /** Gutter between legend columns — the vertical separator rule is drawn
    *  down its middle, so this is the space around that line too. */
@@ -213,20 +227,27 @@ export function initPrintTool({
     const showLegend = !!opts.legend;
     const showNorthArrow = !!opts.northArrow;
     const showQr = !!opts.qr;
-    const showSummary = !!opts.summary;
     const showStamp = !!opts.stamp;
     const landscape = orientation === "landscape";
     const pageW = landscape ? A4_LONG_PT : A4_SHORT_PT;
     const pageH = landscape ? A4_SHORT_PT : A4_LONG_PT;
 
     const m = PAGE_MARGIN_PT;
-    const mapTop = m + PAGE_TITLE_BAND_PT;
+    // The title band carries the title and, under it, the description. It
+    // grows per description line so the map frame moves down instead of
+    // being written over — and because the map frame's shape is what the
+    // on-screen selection lock snaps to, the number of lines has to be
+    // decided here rather than at drawing time, or a locked selection
+    // would letterbox inside its own frame.
+    const descLines = Math.max(0, Math.min(PAGE_DESC_MAX_LINES, Number(opts.descLines) || 0));
+    const titleBandH = PAGE_TITLE_BAND_PT + descLines * PAGE_DESC_LINE_PT;
+    const mapTop = m + titleBandH;
     const stampH = showStamp ? PAGE_STAMP_BAND_PT : 0;
-    const hasExtras = showLegend || showNorthArrow || showQr || showSummary;
+    const hasExtras = showLegend || showNorthArrow || showQr;
 
     const layout = {
-      pageW, pageH, margin: m, mapTop, stampH, landscape,
-      showLegend, showNorthArrow, showQr, showSummary
+      pageW, pageH, margin: m, mapTop, stampH, landscape, titleBandH, descLines,
+      showLegend, showNorthArrow, showQr
     };
 
     if (landscape) {
@@ -241,37 +262,32 @@ export function initPrintTool({
 
       const frameBottom = mapTop + layout.mapAreaH;
 
-      // Bottom row: QR and north arrow sit SIDE BY SIDE as two squares,
-      // rather than the arrow taking a full-width cell at the top of the
-      // column. That frees the whole top of the column for the legend,
-      // which is what needed the room. Each is half the column, or the
-      // full column when only one of them is switched on.
-      const bothBottom = showQr && showNorthArrow;
-      const bottomCellW = bothBottom ? (sideColW - SIDE_CELL_GAP_PT) / 2 : sideColW;
+      // Bottom row: QR and north arrow as two squares, each pushed to its
+      // own END of the column — QR flush left, arrow flush right, with the
+      // slack between them. That lines them up with the legend's borders
+      // above, which splitting the column between them would not: at
+      // 170pt, half the column is an 83pt square, far larger than either
+      // needs, and it would also eat into the legend's height (the squares
+      // set the bottom row's height).
       const bottomRowH = (showQr || showNorthArrow)
-        ? Math.min(bottomCellW, BOTTOM_SQUARE_MAX_PT)
+        ? Math.min(sideColW, BOTTOM_SQUARE_MAX_PT)
         : 0;
       layout.bottomRowH = bottomRowH;
       layout.bottomRowY = frameBottom - bottomRowH;
-      layout.bottomCellW = Math.min(bottomCellW, BOTTOM_SQUARE_MAX_PT);
-      // QR on the left, arrow on the right (see the reference layout).
+      layout.bottomCellW = bottomRowH; // square
       layout.qrSize = showQr ? layout.bottomCellW : 0;
       layout.qrX = layout.sideX;
       layout.qrY = layout.bottomRowY;
       layout.arrowW = showNorthArrow ? layout.bottomCellW : 0;
+      // Right-aligned to the column when the QR is there to be left of it;
+      // on its own it takes the left end like any single cell.
       layout.arrowX = showQr
-        ? layout.sideX + layout.bottomCellW + SIDE_CELL_GAP_PT
+        ? layout.sideX + sideColW - layout.bottomCellW
         : layout.sideX;
       layout.arrowY = layout.bottomRowY;
-
-      // Summary sits directly above that row.
-      layout.summaryH = showSummary ? SUMMARY_BOX_PT : 0;
-      layout.summaryY = layout.bottomRowY
-        - (bottomRowH && showSummary ? SIDE_CELL_GAP_PT : 0)
-        - layout.summaryH;
     } else {
-      // Extras live in a bar across the bottom: legend, summary, QR, then
-      // the north arrow at the right end.
+      // Extras live in a bar across the bottom: the legend, then the QR and
+      // north arrow stacked at its right end.
       const barH = hasExtras ? BOTTOM_BAR_PT : 0;
       const barGap = barH ? PAGE_GAP_PT : 0;
       layout.mapAreaW = pageW - m * 2;
@@ -290,17 +306,17 @@ export function initPrintTool({
       layout.stackW = (showQr || showNorthArrow) ? stackSquare : 0;
       layout.qrSize = showQr ? stackSquare : 0;
       layout.barArrowW = showNorthArrow ? stackSquare : 0;
-      layout.summaryW = showSummary ? SUMMARY_BAR_W_PT : 0;
 
-      // One gap between each pair of cells present — legend | comments |
-      // stack (the stack counts once, however many squares are in it).
-      const cells = [showLegend, showSummary, !!layout.stackW].filter(Boolean).length;
+      // One gap between each pair of cells present — legend | stack (the
+      // stack counts once, however many squares are in it). The Comments
+      // box used to sit between them and took 80pt of the bar's width;
+      // dropping it hands all of that to the legend, which is what needed
+      // it once its rows started carrying areas.
+      const cells = [showLegend, !!layout.stackW].filter(Boolean).length;
       const gaps = PAGE_GAP_PT * Math.max(0, cells - 1);
-      layout.barLegendW = layout.mapAreaW - layout.stackW - layout.summaryW - gaps;
+      layout.barLegendW = layout.mapAreaW - layout.stackW - gaps;
 
-      let x = m + (showLegend ? layout.barLegendW + PAGE_GAP_PT : 0);
-      layout.summaryX = x;
-      if (showSummary) x += layout.summaryW + PAGE_GAP_PT;
+      const x = m + (showLegend ? layout.barLegendW + PAGE_GAP_PT : 0);
       layout.stackX = x;
       layout.qrX = x;
       layout.qrY = layout.barY;
@@ -311,16 +327,33 @@ export function initPrintTool({
     return layout;
   }
 
-  /** Whether the printed page will carry a Comments box.
+  /**
+   * How many lines the description will take under the title.
    *
-   *  The setting reserves an EMPTY box; a comment that was actually typed
-   *  forces one regardless, so a note can't silently vanish because the box
-   *  is switched off. Shared by targetAspectRatio() and generatePdf()
-   *  because the box takes real space in the layout — if the on-screen
-   *  aspect lock and the PDF disagreed about it, a locked selection would
-   *  letterbox inside its own frame. */
-  function willShowComments() {
-    return !!settings.details.comments || !!(commentInput?.value || "").trim();
+   * There used to be a Comments box reserved in the side column (landscape)
+   * or the bottom bar (portrait). It took real space away from the legend
+   * for what was usually an empty rectangle, so it is gone: the text is now
+   * a description printed under the map title, where it costs a line or two
+   * of the title band instead of a whole cell.
+   *
+   * Estimated from the character count rather than measured with jsPDF,
+   * because this has to give the same answer in two places that don't both
+   * have a jsPDF document: the on-screen aspect lock and the PDF itself. If
+   * they disagreed about the band's height, a locked selection would
+   * letterbox inside its own frame.
+   */
+  function descriptionLineCount(orientation) {
+    const text = (descriptionInput?.value || "").trim();
+    if (!text) return 0;
+    const pageW = orientation === "landscape" ? A4_LONG_PT : A4_SHORT_PT;
+    // ~0.46pt per character at the 9pt the description prints at, over the
+    // page's printable width.
+    const charsPerLine = Math.max(20, Math.floor((pageW - PAGE_MARGIN_PT * 2) / (9 * 0.46)));
+    const lines = text.split(/\r?\n/).reduce(
+      (sum, para) => sum + Math.max(1, Math.ceil(para.length / charsPerLine)),
+      0
+    );
+    return Math.min(PAGE_DESC_MAX_LINES, lines);
   }
 
   /** Width:height the selection must hold to fill the printed map frame
@@ -330,7 +363,7 @@ export function initPrintTool({
       legend: settings.details.legend,
       northArrow: settings.details.northArrow,
       qr: settings.details.qr,
-      summary: willShowComments(),
+      descLines: descriptionLineCount(orientation),
       stamp: settings.details.date || settings.details.source || settings.details.printedBy
     });
     return l.mapAreaW / l.mapAreaH;
@@ -491,17 +524,19 @@ export function initPrintTool({
   const titleCard = document.createElement("div");
   titleCard.className = "vsl-print-title-card";
   titleCard.hidden = true;
-  // Two fields: the map's title, and a free-text comment printed into the
-  // PDF's reserved COMMENTS box (see drawCommentsCell in generatePdf). The
-  // comment is a <textarea> because it's a note rather than a caption — it
-  // wraps, and the printed box is several lines tall.
+  // Two fields: the map's title, and a description printed directly under
+  // it on the page (see the title band in generatePdf). This was a comment
+  // destined for a reserved COMMENTS box in the side column; that box spent
+  // a whole cell on what was usually nothing, so the text moved under the
+  // title and the cell went to the legend. Still a <textarea> because it
+  // wraps over more than one line.
   titleCard.innerHTML = `
     <input type="text" class="vsl-print-title-card__title" placeholder="Untitled Map" maxlength="90">
-    <textarea class="vsl-print-title-card__comment" rows="2" maxlength="400"
-              placeholder="Add a comment"></textarea>
+    <textarea class="vsl-print-title-card__description" rows="2" maxlength="400"
+              placeholder="Add a description"></textarea>
   `;
   const titleInput = titleCard.querySelector(".vsl-print-title-card__title");
-  const commentInput = titleCard.querySelector(".vsl-print-title-card__comment");
+  const descriptionInput = titleCard.querySelector(".vsl-print-title-card__description");
 
   /** The card has two states. Editing: full size, both fields focusable and
    *  the comment box visible. Resting (after focus leaves the whole card):
@@ -513,7 +548,7 @@ export function initPrintTool({
     // Read-only at rest, so the caret can't land in either field without
     // going through the click handler that restores editing.
     titleInput.readOnly = !editing;
-    commentInput.readOnly = !editing;
+    descriptionInput.readOnly = !editing;
   }
 
   function enterTitleEditing() {
@@ -526,9 +561,9 @@ export function initPrintTool({
   function leaveTitleEditing() {
     // Nothing typed in EITHER field — fold the card back into the button so
     // print mode looks as clean as it did before the user opened it. A
-    // comment on its own is still worth keeping: it prints even when the
-    // map is untitled.
-    if (!titleInput.value.trim() && !commentInput.value.trim()) {
+    // description on its own is still worth keeping: it prints even when
+    // the map is untitled.
+    if (!titleInput.value.trim() && !descriptionInput.value.trim()) {
       titleCard.hidden = true;
       addTitleBtn.hidden = false;
       return;
@@ -536,16 +571,22 @@ export function initPrintTool({
     setTitleEditing(false);
   }
 
-  // A comment forces the Comments box on (willShowComments), and that box
-  // takes real space — so the first character typed, and the last one
-  // deleted, change the page's map frame and therefore the aspect ratio a
-  // locked selection has to hold. Only the empty <-> non-empty transition
-  // matters, so the reflow is gated on that rather than fired per keystroke.
-  let commentWasEmpty = true;
-  commentInput.addEventListener("input", () => {
-    const isEmpty = !commentInput.value.trim();
-    if (isEmpty === commentWasEmpty) return;
-    commentWasEmpty = isEmpty;
+  // The description grows the title band (descriptionLineCount), and that
+  // band takes real space off the map frame — so the aspect ratio a locked
+  // selection has to hold changes with it. Gated on the LINE COUNT rather
+  // than fired per keystroke: typing within one line changes nothing about
+  // the layout, crossing onto a second line does.
+  let descriptionLines = 0;
+  descriptionInput.addEventListener("input", () => {
+    // Orientation comes from the selection's own shape, the same way every
+    // other caller of targetAspectRatio decides it; portrait when there is
+    // no selection yet, which is the narrower page and so the safer guess.
+    const orientation = selectionRect && selectionRect.width >= selectionRect.height
+      ? "landscape"
+      : "portrait";
+    const lines = descriptionLineCount(orientation);
+    if (lines === descriptionLines) return;
+    descriptionLines = lines;
     // No-op unless the lock is on and a selection exists.
     reflowLockedSelection();
   });
@@ -743,7 +784,6 @@ export function initPrintTool({
         { kind: "check", group: "details", key: "legend", label: "Legend", reflow: true },
         { kind: "check", group: "details", key: "northArrow", label: "North arrow", reflow: true },
         { kind: "check", group: "details", key: "counts", label: "Show counts in legend" },
-        { kind: "check", group: "details", key: "comments", label: "Comments box", reflow: true },
         { kind: "check", group: "details", key: "qr", label: "Location QR", reflow: true },
         { kind: "check", group: "details", key: "date", label: "Date", reflow: true },
         { kind: "check", group: "details", key: "source", label: "Source", reflow: true },
@@ -1200,32 +1240,32 @@ export function initPrintTool({
   }
 
   /**
-   * How a legend row's figures read: the count, then its area in brackets.
-   *
-   *     BLOCKS      12 (9,000 ac)
-   *     VACANT     500 (2,000 ac)
+   * A legend row's area, for its own column. Blank when there is none —
+   * alerts, and point and line feature types, have no area to give, and an
+   * empty cell says that better than "0" does.
    *
    * Thousands separators because these run into five digits on a whole
-   * estate, and no decimals above 10 acres — a printed legend is read at a
-   * glance, and "9,000" carries the same meaning as "8,997.34" without
-   * three characters of noise. Under 10 acres keeps one decimal, where
-   * rounding to a whole number would lose most of the value.
+   * estate, and no decimals above 10 acres: a printed legend is read at a
+   * glance, and "9,147" carries the same meaning as "9,147.34" without the
+   * noise. Under 10 acres keeps one decimal, where rounding to a whole
+   * number would lose most of the value; under a tenth of an acre says
+   * "<0.1" rather than rounding to a flat "0", which would read as a
+   * measurement failure rather than as a very small feature.
    *
-   * Rows with no meaningful area (alerts, point and line feature types)
-   * pass area 0/null and show the bare count, as before.
+   * No unit per row — the heading carries it once (see "LEGEND (acres)").
    */
-  function legendCountText(count, areaAcres) {
-    const n = Number(count) || 0;
+  function legendAreaText(areaAcres) {
     const a = Number(areaAcres);
-    if (!Number.isFinite(a) || a <= 0) return String(n);
-    // Something smaller than a tenth of an acre is still something. Left to
-    // the rounding below it would print "(0 ac)" beside a count of 1, which
-    // reads as a measurement failure rather than as a very small feature.
-    if (a < 0.05) return `${n} (<0.1 ac)`;
-    const acres = a >= 10
+    if (!Number.isFinite(a) || a <= 0) return "";
+    if (a < 0.05) return "<0.1";
+    return a >= 10
       ? Math.round(a).toLocaleString("en-US")
       : (Math.round(a * 10) / 10).toLocaleString("en-US");
-    return `${n} (${acres} ac)`;
+  }
+
+  /** A legend row's count, for its own column. */
+  function legendCountText(count) {
+    return String(Number(count) || 0);
   }
 
   function buildLegendGroups(extent) {
@@ -1247,7 +1287,19 @@ export function initPrintTool({
     // a block only half on the page contributes its whole area, since what
     // is being answered is "what is here", not "how much ink".
     if (settings.layers.estate) {
-      land.push({ label: "Estate", count: estateFeatures.length, area: sumAreaAcres(estateFeatures),
+      // An estate's area is the sum of its BLOCKS, never its own polygon.
+      // That outline is a bounding envelope recomputed from the blocks by a
+      // database trigger (vsl_recompute_estate_geometry), so measuring it
+      // returns the area of the box around the estate — 27,136 acres for an
+      // estate holding 10,611 acres of blocks, most of it the gaps between
+      // them. Summing the blocks is also what the Info window's "Estate
+      // area" row shows, so the printed sheet and the screen agree.
+      //
+      // Restricted to blocks belonging to the estates on this page, so the
+      // row counts the same population as every other row in the legend.
+      const estateIds = new Set(estateFeatures.map((f) => String(f.getId())));
+      const estateBlocks = blockFeatures.filter((b) => estateIds.has(String(b.get("estate_id"))));
+      land.push({ label: "Estate", count: estateFeatures.length, area: sumAreaAcres(estateBlocks),
         sym: { kind: "poly", fill: null, stroke: ESTATE_STROKE_RGB, dash: true } });
     }
     if (settings.layers.block) {
@@ -3344,22 +3396,21 @@ export function initPrintTool({
       const showNorthArrow = !!settings.details.northArrow;
       const showQr = !!qrDataUrl;
       const showCounts = !!settings.details.counts;
-      const showSummary = willShowComments(); // see that function's note
       const showStamp = !!(
         settings.details.date || settings.details.source ||
         (settings.details.printedBy && currentUserName())
       );
       const L = computePageLayout(orientation, {
         legend: showLegend, northArrow: showNorthArrow, qr: showQr,
-        summary: showSummary, stamp: showStamp
+        descLines: descriptionLineCount(orientation), stamp: showStamp
       });
       const margin = L.margin;
       const mapTop = L.mapTop;
       const mapAreaW = L.mapAreaW;
       const mapAreaH = L.mapAreaH;
       const title = (titleInput.value || "").trim();
-      // Printed into the COMMENTS box below — see drawCommentsCell.
-      const comment = (commentInput.value || "").trim();
+      // Printed under the title, inside the title band — see below.
+      const description = (descriptionInput.value || "").trim();
 
       // Letterbox into the map frame without distorting. With the aspect
       // lock on this is a no-op (the ratios match); with it off, this is
@@ -3407,6 +3458,42 @@ export function initPrintTool({
         doc.setFontSize(16);
         doc.setTextColor(30, 42, 30);
         doc.text(title, margin + mapAreaW / 2, margin + 15, { align: "center" });
+      }
+
+      // Description, centred under the title. This replaced the COMMENTS
+      // box that used to sit in the side column (landscape) or the bottom
+      // bar (portrait) — a whole reserved cell, usually holding nothing,
+      // taken out of the legend's space.
+      //
+      // Capped at PAGE_DESC_MAX_LINES, and the band was already sized for
+      // exactly that many by computePageLayout, so this can never run into
+      // the map frame below it. Wrapped at the map frame's width rather
+      // than the page's, so it sits over the map it describes rather than
+      // under the legend as well.
+      if (description) {
+        const descFont = 9;
+        const descLineH = PAGE_DESC_LINE_PT;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(descFont);
+        doc.setTextColor(70, 80, 70);
+        let lines = [];
+        for (const para of description.split(/\r?\n/)) {
+          lines = lines.concat(para.trim() ? doc.splitTextToSize(para, mapAreaW) : []);
+        }
+        if (lines.length > L.descLines) {
+          lines = lines.slice(0, L.descLines);
+          const last = lines[lines.length - 1];
+          // Ellipsised so a cut description reads as cut rather than as
+          // one that simply ended there.
+          lines[lines.length - 1] = last.length > 1 ? `${last.slice(0, -1).trimEnd()}…` : "…";
+        }
+        // Sits under the title when there is one, otherwise takes the
+        // title's own baseline so a description-only print isn't floating
+        // below an empty gap.
+        const firstBaseline = (title && settings.details.title) ? margin + 15 + 12 : margin + 13;
+        lines.forEach((line, i) => {
+          doc.text(line, margin + mapAreaW / 2, firstBaseline + i * descLineH, { align: "center" });
+        });
       }
 
       /** North arrow drawn to fill a given cell. */
@@ -3510,7 +3597,10 @@ export function initPrintTool({
         doc.setFont("helvetica", "bold");
         doc.setFontSize(9);
         doc.setTextColor(30, 42, 30);
-        doc.text("LEGEND", x + 8, y + 14);
+        // The unit is stated once here rather than repeated on every row —
+        // the area column holds bare numbers, which keeps the rows narrow
+        // enough for the labels beside them.
+        doc.text("LEGEND (acres)", x + 8, y + 14);
 
         // Flatten groups into a single stream of heading/item rows, then
         // deal it into columns.
@@ -3521,7 +3611,9 @@ export function initPrintTool({
         legendGroups.forEach((g, gi) => {
           if (gi > 0) stream.push({ type: "gap" });
           stream.push({ type: "head", label: g.title });
-          g.items.forEach((it) => stream.push({ type: "item", ...it }));
+          // `group` travels with the row so the figure columns can be
+          // aligned per group rather than per legend — see labelWByGroup.
+          g.items.forEach((it) => stream.push({ type: "item", group: gi, ...it }));
         });
 
         const rowsTop = y + 26;
@@ -3573,36 +3665,57 @@ export function initPrintTool({
         // fixed gutter. Whatever's left over collects at the right of the
         // box rather than being spread through every row.
         const colContentW = [];
-        // Per column, because one column may hold "1 (10,000 ac)" while
-        // another holds bare alert counts.
+        // Per column, because one column may hold five-digit areas while
+        // another holds nothing but single-digit alert counts.
         const countColW = [];
+        const areaColW = [];
+        /** "<column>:<group>" -> widest label inside that group, in that
+         *  column. The figure columns are positioned from this. */
+        const labelWByGroup = new Map();
         for (let c = 0; c < columns; c++) {
           const rows = cols[c];
           doc.setFont("helvetica", "normal");
           doc.setFontSize(itemFont);
           let widestLabel = 0;
           let widestCount = 0;
+          let widestArea = 0;
           rows.forEach((r) => {
             if (r.type !== "item") return;
             widestLabel = Math.max(widestLabel, doc.getTextWidth(r.label));
-            // Measured, not a fixed slot: the figures used to be a bare
-            // count that always fitted COUNT_COL_PT, and now read
-            // "500 (2,000 ac)". Measuring means the column grows to fit
-            // whatever the numbers come out as instead of overlapping the
-            // label beside them.
+            // ...and the widest label within this row's own GROUP, which is
+            // what its figures are aligned against. Aligning the whole
+            // column to one width means a four-letter label like "Plot"
+            // sits a long way from its count purely because a feature type
+            // further down is called "Residential Area". Per group, the
+            // numbers in LAND PROPERTIES tuck in behind "Land Title" and
+            // only FEATURES pays for its own long names — and the digits
+            // still line up within each group, which is where they are
+            // actually compared.
+            const gKey = `${c}:${r.group}`;
+            labelWByGroup.set(gKey, Math.max(labelWByGroup.get(gKey) || 0, doc.getTextWidth(r.label)));
+            // Count and area are two separate columns, each measured from
+            // its own longest entry rather than given a fixed slot — "519"
+            // and "9,147" are nothing like the same width, and a guess that
+            // fits one starves the other or the label beside them.
             if (showCounts && r.count != null) {
-              widestCount = Math.max(widestCount, doc.getTextWidth(legendCountText(r.count, r.area)));
+              widestCount = Math.max(widestCount, doc.getTextWidth(legendCountText(r.count)));
+              widestArea = Math.max(widestArea, doc.getTextWidth(legendAreaText(r.area)));
             }
           });
           const anyCount = widestCount > 0;
           countColW[c] = Math.max(COUNT_COL_PT, widestCount);
+          // No floor on the area column: a group with no areas at all
+          // (Alerts) shouldn't reserve a strip of empty page for one.
+          areaColW[c] = widestArea;
           doc.setFont("helvetica", "bold");
           doc.setFontSize(headFont);
           let widestHead = 0;
           rows.forEach((r) => {
             if (r.type === "head") widestHead = Math.max(widestHead, doc.getTextWidth(r.label));
           });
-          const itemW = swatch + 5 + widestLabel + (anyCount ? 8 + countColW[c] : 0);
+          const itemW = swatch + 5 + widestLabel
+            + (anyCount ? 8 + countColW[c] : 0)
+            + (areaColW[c] > 0 ? 6 + areaColW[c] : 0);
           colContentW[c] = rows.length ? Math.max(itemW, widestHead) : 0;
         }
 
@@ -3627,12 +3740,33 @@ export function initPrintTool({
           }
         }
 
-        // Counts sit at the right edge of their own column's content, so
-        // they stay close to the labels instead of at the box edge.
-        const countX = [];
-        for (let c = 0; c < columns; c++) {
-          countX[c] = colX[c] + colContentW[c] - (countColW[c] || COUNT_COL_PT);
-        }
+        // The column keeps its MEASURED width — it is deliberately not
+        // stretched to fill the cell. Stretching it pushed the count and
+        // area out to the cell's right edge, which left a long empty run
+        // between a short label like "Plot" and its figures. Measured, the
+        // figures sit just past the widest label in the column, so the
+        // numbers stay next to the words they belong to. The column is
+        // sized (SIDE_COLUMN_PT) so that measured width nearly fills the
+        // cell anyway, which is what keeps the box from looking padded.
+
+        /**
+         * Right edges of the two figure columns, for one group in one
+         * column: area outermost, count just inside it, both right-aligned
+         * so their digits line up.
+         *
+         * Measured from the group's own widest label, so the figures sit
+         * immediately past the words rather than out at the cell's edge.
+         * Clamped to the column's content width so a group with unusually
+         * long labels still can't push its numbers off the box.
+         */
+        const figureEdges = (col, group) => {
+          const labelW = labelWByGroup.get(`${col}:${group}`) || 0;
+          const rightLimit = colX[col] + colContentW[col];
+          const natural = colX[col] + swatch + 5 + labelW + 8
+            + countColW[col] + (areaColW[col] > 0 ? 6 + areaColW[col] : 0);
+          const areaR = Math.min(natural, rightLimit);
+          return { areaR, countR: areaR - (areaColW[col] > 0 ? areaColW[col] + 6 : 0) };
+        };
 
         // ── Vertical separators between the columns ───────────────────
         doc.setDrawColor(200);
@@ -3661,21 +3795,21 @@ export function initPrintTool({
             doc.setFontSize(itemFont);
             doc.setTextColor(60, 60, 60);
 
-            // symbol | label | count, packed left. Counts within a column
-            // share an x (see countX above) so the numbers still line up,
-            // and are right-aligned within their own narrow slot so the
-            // digits do too.
+            // symbol | label | count | area. The label takes whatever is
+            // left after the two figure columns; both of those are
+            // right-aligned at their own edge so the digits line up down
+            // the page. An area of 0 leaves its cell empty rather than
+            // printing a nought.
             const showCount = showCounts && row.count != null;
             const lx = cx + swatch + 5;
-            doc.text(row.label, lx, cy, { maxWidth: countX[col] - lx - 4 });
+            const { areaR, countR } = figureEdges(col, row.group);
+            const labelMax = (showCount ? countR - countColW[col] : areaR) - lx - 4;
+            doc.text(row.label, lx, cy, { maxWidth: Math.max(10, labelMax) });
             if (showCount) {
               doc.setTextColor(30, 42, 30);
-              doc.text(
-                legendCountText(row.count, row.area),
-                countX[col] + (countColW[col] || COUNT_COL_PT),
-                cy,
-                { align: "right" }
-              );
+              doc.text(legendCountText(row.count), countR, cy, { align: "right" });
+              const areaText = legendAreaText(row.area);
+              if (areaText) doc.text(areaText, areaR, cy, { align: "right" });
             }
           });
         });
@@ -3696,86 +3830,52 @@ export function initPrintTool({
         doc.addImage(qrDataUrl, "PNG", x + pad, y + pad, size - pad * 2, size - pad * 2);
       };
 
-      /** "Comments" box — the counts it used to hold moved into the legend
-       *  itself (a count column per row), which puts each number next to
-       *  the symbol it belongs to.
+      /**
+       * The empty cell between the QR and the north arrow.
        *
-       *  It now prints whatever was typed into the title card's comment
-       *  field (windows-less UI built in this file; see commentInput).
-       *  Left blank — as deliberate space for a handwritten note — when
-       *  nothing was typed, which is what it always was.
-       *
-       *  jsPDF's splitTextToSize does the wrapping at the box's real width;
-       *  lines past the box's height are dropped rather than spilling over
-       *  the border, with the last surviving line ellipsised so it's
-       *  obvious the note was cut rather than finished. */
-      const drawCommentsCell = (x, y, w, h) => {
+       * Those two are pinned to opposite ends of the side column so they
+       * line up with the legend's borders, which leaves a gap between them.
+       * Reserved space reads as a deliberate box; the same space with
+       * nothing drawn in it reads as a mistake. Same frame as every other
+       * cell on the page, and left blank — somewhere to write on the
+       * printed sheet, which is what the Comments box used to be for.
+       */
+      const drawPlaceholderCell = (x, y, w, h) => {
+        if (w < 8 || h < 8) return; // not enough room to be anything
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
         doc.setLineWidth(1);
         doc.rect(x, y, w, h, "FD");
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8);
-        doc.setTextColor(30, 42, 30);
-        doc.text("COMMENTS", x + 8, y + 13);
-
-        if (!comment) return;
-
-        const padX = 8;
-        const fontSize = 7.5;
-        const lineH = fontSize * 1.25;
-        const textTop = y + 13 + 9;             // under the heading
-        const avail = h - (textTop - y) - 6;    // minus a bottom margin
-        const maxLines = Math.floor(avail / lineH);
-        if (maxLines < 1) return;               // box too short for any text
-
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(fontSize);
-        doc.setTextColor(55, 65, 55);
-
-        // Honour the person's own line breaks, then wrap each paragraph.
-        let lines = [];
-        for (const para of String(comment).split(/\r?\n/)) {
-          lines = lines.concat(
-            para.trim() ? doc.splitTextToSize(para, w - padX * 2) : [""]
-          );
-        }
-
-        if (lines.length > maxLines) {
-          lines = lines.slice(0, maxLines);
-          const last = lines[maxLines - 1];
-          lines[maxLines - 1] = last.length > 1 ? `${last.slice(0, -1).trimEnd()}…` : "…";
-        }
-
-        lines.forEach((line, i) => {
-          doc.text(line, x + padX, textTop + i * lineH);
-        });
       };
 
       if (L.landscape) {
-        // Extras stack down the right-hand column: arrow on top, then the
-        // legend filling what's left, with summary and QR pinned bottom.
-        // Legend runs from the very top of the column down to whatever
-        // sits below it; summary next, then the QR + north arrow row.
-        const stackTop = showSummary
-          ? L.summaryY
-          : (L.bottomRowH ? L.bottomRowY : mapTop + mapAreaH);
-        const legendBottom = stackTop - (showSummary || L.bottomRowH ? SIDE_CELL_GAP_PT : 0);
+        // Extras stack down the right-hand column: the legend fills it
+        // from the top, with the QR and north arrow in a row pinned to the
+        // bottom.
+        // The legend now runs from the top of the column all the way down
+        // to the QR/arrow row — the Comments box used to sit between them
+        // and take 60pt of that height.
+        const stackTop = L.bottomRowH ? L.bottomRowY : mapTop + mapAreaH;
+        const legendBottom = stackTop - (L.bottomRowH ? SIDE_CELL_GAP_PT : 0);
         if (showLegend && legendBottom - mapTop > 30) {
           drawLegendCell(L.sideX, mapTop, L.sideColW, legendBottom - mapTop, 1);
         }
-        if (showSummary) drawCommentsCell(L.sideX, L.summaryY, L.sideColW, L.summaryH);
         if (showQr) drawQrCell(L.qrX, L.qrY, L.qrSize);
+        // Between the two, when both are present and there is a gap to
+        // fill (SIDE_CELL_GAP_PT of breathing room either side).
+        if (showQr && showNorthArrow) {
+          const gapX = L.qrX + L.qrSize + SIDE_CELL_GAP_PT;
+          const gapW = L.arrowX - SIDE_CELL_GAP_PT - gapX;
+          drawPlaceholderCell(gapX, L.bottomRowY, gapW, L.bottomRowH);
+        }
         if (showNorthArrow) drawNorthArrowCell(L.arrowX, L.arrowY, L.arrowW, L.bottomRowH);
       } else {
-        // Extras sit in a bar under the map: legend, comments, QR, then
-        // the arrow at the right end. The legend spans the bar's full
-        // height with its rows flowing across several columns; the QR and
-        // arrow are fixed squares centred vertically in it.
+        // Extras sit in a bar under the map: the legend, then the QR and
+        // arrow stacked at its right end. The legend spans the bar's full
+        // height with its rows flowing across several columns.
         if (showLegend) {
           drawLegendCell(margin, L.barY, L.barLegendW, L.barH, PORTRAIT_LEGEND_COLUMNS);
         }
-        if (showSummary) drawCommentsCell(L.summaryX, L.barY, L.summaryW, L.barH);
         if (showQr) drawQrCell(L.qrX, L.qrY, L.qrSize);
         if (showNorthArrow) {
           drawNorthArrowCell(L.arrowX, L.arrowY, L.barArrowW, L.stackSquare);

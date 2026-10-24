@@ -6044,7 +6044,7 @@ select.search-panel__input {
    size down and in normal weight so the two read as heading + note rather
    than two competing inputs. Printed into the PDF's COMMENTS box; see
    drawCommentsCell in js/print-tool.js. */
-.vsl-print-title-card__comment {
+.vsl-print-title-card__description {
   display: block;
   width: 100%;
   /* margin: 0.4rem 0 0; */
@@ -6064,12 +6064,12 @@ select.search-panel__input {
   overflow-y: auto;
 }
 
-.vsl-print-title-card__comment::placeholder {
+.vsl-print-title-card__description::placeholder {
   color: #9aa39a;
   font-weight: 400;
 }
 
-.vsl-print-title-card__comment:focus {
+.vsl-print-title-card__description:focus {
   outline: none;
 }
 
@@ -6095,11 +6095,11 @@ select.search-panel__input {
    outright rather than shrunk, since a note is working detail that only
    matters while it's being written. It's still there (and still prints);
    clicking the card brings it back. */
-.vsl-print-title-card--resting .vsl-print-title-card__comment {
+.vsl-print-title-card--resting .vsl-print-title-card__description {
   display: none;
 }
 
-/* An untitled map with only a comment would otherwise rest as an empty
+/* An untitled map with only a description would otherwise rest as an empty
    caption with nothing in it — the placeholder keeps it clickable and
    explains why the card is still on screen. */
 .vsl-print-title-card--resting .vsl-print-title-card__title::placeholder {

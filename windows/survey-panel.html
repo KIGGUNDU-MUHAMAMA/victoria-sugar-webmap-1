@@ -293,21 +293,76 @@
         </div>
 
         <!-- ── EDIT TAB ──
-             editSelectFeatureBtn is a Start/Stop toggle (see
-             js/survey-edit.js setToggleButtonState). editHintList replaces
-             the old #editToolsFeedback status line — it's just a static
-             how-to, shown only while a session is active (toggled via its
-             [hidden] attribute in survey-edit.js). -->
+             Three things you can do to an object that already exists, one
+             button each, and only ever one of them running at a time:
+
+               Edit Nodes       reshape the boundary (was "Start Editing")
+               Edit Properties  open its Modify form — name, parent, status
+               Delete Object    pick objects, then Delete
+
+             Each button is its own Start/Stop toggle: whichever mode is
+             running turns red and says Stop, and the other two disable so
+             there is no way to be in two modes at once (see setModeButtons
+             in js/survey-edit.js). The hint list below is filled per mode by
+             the same module — it is the only instruction shown, so it has to
+             match the mode you are actually in. -->
         <div class="uam-tab" id="uamTabEdit" data-uam-panel="edit" hidden>
+          <!-- What a click on the map is allowed to pick, for whichever mode
+               is running. Does the same job as the Select window's
+               Parcels/Blocks/Feature tabs.
+
+               Radios, one at a time, defaulting to Any (= no filtering).
+               Briefly tried as multi-select checkboxes, which needed a rule
+               to stop every box being switched off — a rule not worth
+               having when radios make the empty state impossible by
+               construction.
+
+               "Apply to" rather than "Filter": it reads as a sentence with
+               the buttons under it ("apply to blocks… delete object"), and
+               it is not filtering what is drawn, only what can be chosen.
+
+               Narrowing it also lets you reach something underneath — with
+               Block chosen, clicking inside a plot picks the block below it
+               instead of the plot, which is the only way to get at a block
+               whose middle is covered in plots. Live: changing it mid-session
+               takes effect on the next click (see layerAllowedForFilter in
+               js/survey-edit.js, passed to the Select interaction as a
+               filter function rather than a fixed layer list). -->
+          <fieldset class="uam-fieldset" id="editPickFilter">
+            <legend class="uam-fieldset__legend">Apply to</legend>
+            <div class="uam-chip-row">
+              <label class="uam-chip">
+                <input type="radio" name="editPickFilter" value="any" checked>
+                <span>Any</span>
+              </label>
+              <label class="uam-chip">
+                <input type="radio" name="editPickFilter" value="parcel">
+                <span>Plot</span>
+              </label>
+              <label class="uam-chip">
+                <input type="radio" name="editPickFilter" value="block">
+                <span>Block</span>
+              </label>
+              <label class="uam-chip">
+                <input type="radio" name="editPickFilter" value="feature">
+                <span>Feature</span>
+              </label>
+            </div>
+          </fieldset>
+
           <button type="button" id="editSelectFeatureBtn" class="uam-btn uam-btn--primary u-w-100">
-            <i class="fas fa-circle-play"></i> Start Editing
+            <i class="fas fa-circle-play"></i> Edit Nodes
           </button>
-          <ul id="editHintList" class="uam-hint uam-hint--blue uam-hint--box" hidden>
-            <li>Select object to edit</li>
-            <li>Drag the nodes to shift the nodes</li>
-            <li>Click the edges to add a node</li>
-            <li>Click a node to delete or move the node</li>
-          </ul>
+          <button type="button" id="editPropertiesBtn" class="uam-btn uam-btn--primary u-w-100">
+            <i class="fas fa-pen-to-square"></i> Edit Properties
+          </button>
+          <!-- Orange, not the green the other two use: it is the one mode
+               that destroys something, and it should not look like the two
+               that don't. Red is saved for the confirmation itself. -->
+          <button type="button" id="editDeleteObjectBtn" class="uam-btn uam-btn--warn u-w-100">
+            <i class="fas fa-trash-can"></i> Delete Object
+          </button>
+          <ul id="editHintList" class="uam-hint uam-hint--blue uam-hint--box" hidden></ul>
         </div>
 
         <!-- ── ESTATES TAB ──

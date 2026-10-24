@@ -309,6 +309,105 @@ export function promptFields({ title, message, fields, icon, confirmLabel = "Sav
   });
 }
 
+/**
+ * Puts the popup shell up IMMEDIATELY, showing a spinner, for a dialog
+ * whose contents still have to be fetched.
+ *
+ * The Select window's and the Survey window's Modify forms have to read the
+ * record (and its estate/block option lists) before they can show anything,
+ * which meant a click produced nothing at all for as long as that took —
+ * indistinguishable from a click that missed. This fills the gap with the
+ * same card the real form is about to appear in.
+ *
+ * The returned handle has two ways out, and callers should use try/finally
+ * so that neither is missed:
+ *
+ *   handOver()  the real popup is about to be shown. Drops this one's key/
+ *               backdrop handlers but LEAVES THE CARD UP, so showPopup()
+ *               repopulates the same shell with no flicker between them.
+ *   close()     nothing more is coming (the fetch failed, or the caller
+ *               bailed out) — take the card down. Idempotent, and a no-op
+ *               once handed over.
+ *
+ * `dismissed` goes true if the person pressed Escape or clicked the
+ * backdrop while waiting. A caller that has already started fetching
+ * should check it before showing the form, rather than popping one open
+ * over a dialog the person just dismissed.
+ *
+ * @param {{title?: string, icon?: string}} opts
+ */
+export function showPopupLoading({ title = "", icon } = {}) {
+  const overlay = document.getElementById("vslPopupOverlay");
+  const card = document.getElementById("vslPopupCard");
+  const iconEl = document.getElementById("vslPopupIcon");
+  const titleEl = document.getElementById("vslPopupTitle");
+  const messageEl = document.getElementById("vslPopupMessage");
+  const fieldEl = document.getElementById("vslPopupField");
+  const actionsEl = document.getElementById("vslPopupActions");
+
+  const handle = { dismissed: false, handOver() {}, close() {} };
+  if (!overlay || !card) {
+    console.error("[Victoria Survey] Popup shell not found in DOM.");
+    return handle;
+  }
+
+  let settled = false;
+
+  card.dataset.theme = "default";
+  iconEl.innerHTML = `<i class="fas ${icon || "fa-circle-info"}" aria-hidden="true"></i>`;
+  titleEl.textContent = title;
+  messageEl.textContent = "";
+  messageEl.hidden = true;
+  // Spinner only — no "Loading…" caption. The card, its title and a moving
+  // spinner already say everything a caption would.
+  fieldEl.innerHTML = '<div class="vsl-popup-loading"><div class="vsl-popup-loading__spinner" role="status" aria-label="Loading"></div></div>';
+  fieldEl.hidden = false;
+  actionsEl.innerHTML = "";
+
+  function teardownListeners() {
+    document.removeEventListener("keydown", onKey);
+    overlay.removeEventListener("click", onBackdrop);
+  }
+  function dismiss() {
+    if (settled) return;
+    settled = true;
+    handle.dismissed = true;
+    teardownListeners();
+    fieldEl.innerHTML = "";
+    overlay.hidden = true;
+  }
+  function onKey(e) {
+    // Without this a slow or hung fetch would leave a spinner with no
+    // buttons on it and no way to get out of it.
+    if (e.key === "Escape") dismiss();
+  }
+  function onBackdrop(e) {
+    if (e.target === overlay) dismiss();
+  }
+
+  document.addEventListener("keydown", onKey);
+  overlay.addEventListener("click", onBackdrop);
+  overlay.hidden = false;
+
+  handle.handOver = () => {
+    if (settled) return;
+    settled = true;
+    teardownListeners();
+    // Card deliberately left visible for showPopup() to take over.
+  };
+  handle.close = () => {
+    if (settled) {
+      // Already handed over to a real popup, which owns the card now.
+      return;
+    }
+    settled = true;
+    teardownListeners();
+    fieldEl.innerHTML = "";
+    overlay.hidden = true;
+  };
+  return handle;
+}
+
 // escapeHtml isn't currently needed outside this module (all content is
 // set via textContent, not innerHTML), but exported in case a future
 // caller wants it for a custom field/message.

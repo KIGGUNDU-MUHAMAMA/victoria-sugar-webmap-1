@@ -42,6 +42,7 @@
 // hour/day of when it was generated) per the user's spec.
 
 import { fillOpacityOf } from "./feature-type-editor.js";
+import { computeUtmCartesianAreaAcres } from "./utils.js";
 
 export function initPrintTool({
   map, setStatus, statusEl, closeOtherPanels,
@@ -1150,6 +1151,83 @@ export function initPrintTool({
    * its layer/labels are switched off, so the legend never advertises
    * something that wasn't printed.
    */
+  /**
+   * A polygon's area in acres, measured the one way this project measures
+   * area: UTM-cartesian via computeUtmCartesianAreaAcres (the same function
+   * behind vsl_geom_area_acres in the database and the map's own labels).
+   * Deliberately not ol.sphere.getArea, which is spheroid-based and would
+   * put a different definition of "area" in the same legend as the stored
+   * figures below. Non-polygons have no area: 0.
+   */
+  function polygonAreaAcres(geometry) {
+    if (!geometry) return 0;
+    const ringAcres = (ring) => {
+      if (!ring) return 0;
+      const lonLats = ring.getCoordinates().map((pt) => ol.proj.transform(pt, "EPSG:3857", "EPSG:4326"));
+      return computeUtmCartesianAreaAcres(lonLats) || 0;
+    };
+    try {
+      const type = geometry.getType();
+      if (type === "Polygon") return ringAcres(geometry.getLinearRing(0));
+      if (type === "MultiPolygon") {
+        return geometry.getPolygons().reduce((sum, poly) => sum + ringAcres(poly.getLinearRing(0)), 0);
+      }
+    } catch {
+      return 0;
+    }
+    return 0;
+  }
+
+  /**
+   * One feature's area in acres.
+   *
+   * Prefers the figure already stored on the record — vsl_blocks /
+   * vsl_parcels / vsl_title keep area_acres, and drawn features keep
+   * _areaAc — so the legend agrees to the decimal with the Info window and
+   * the on-map labels. Only falls back to measuring when there is nothing
+   * stored, which is the case for estates (their outline is derived from
+   * their blocks and carries no area column of its own).
+   */
+  function featureAreaAcres(feature) {
+    const stored = Number(feature.get("area_acres") ?? feature.get("_areaAc"));
+    if (Number.isFinite(stored) && stored > 0) return stored;
+    return polygonAreaAcres(feature.getGeometry());
+  }
+
+  /** Total acres over a list of features. */
+  function sumAreaAcres(features) {
+    return (features || []).reduce((sum, f) => sum + featureAreaAcres(f), 0);
+  }
+
+  /**
+   * How a legend row's figures read: the count, then its area in brackets.
+   *
+   *     BLOCKS      12 (9,000 ac)
+   *     VACANT     500 (2,000 ac)
+   *
+   * Thousands separators because these run into five digits on a whole
+   * estate, and no decimals above 10 acres — a printed legend is read at a
+   * glance, and "9,000" carries the same meaning as "8,997.34" without
+   * three characters of noise. Under 10 acres keeps one decimal, where
+   * rounding to a whole number would lose most of the value.
+   *
+   * Rows with no meaningful area (alerts, point and line feature types)
+   * pass area 0/null and show the bare count, as before.
+   */
+  function legendCountText(count, areaAcres) {
+    const n = Number(count) || 0;
+    const a = Number(areaAcres);
+    if (!Number.isFinite(a) || a <= 0) return String(n);
+    // Something smaller than a tenth of an acre is still something. Left to
+    // the rounding below it would print "(0 ac)" beside a count of 1, which
+    // reads as a measurement failure rather than as a very small feature.
+    if (a < 0.05) return `${n} (<0.1 ac)`;
+    const acres = a >= 10
+      ? Math.round(a).toLocaleString("en-US")
+      : (Math.round(a * 10) / 10).toLocaleString("en-US");
+    return `${n} (${acres} ac)`;
+  }
+
   function buildLegendGroups(extent) {
     const groups = [];
     // Every row can carry a `count` — how many of that thing fall inside
@@ -1163,30 +1241,39 @@ export function initPrintTool({
 
     // 1. Land properties — how each land layer is drawn.
     const land = [];
+    // Each land row carries its total area alongside the count — "12
+    // (9,000 ac)". Summed over the features that fall inside the printed
+    // area, which is the same population the counts have always described;
+    // a block only half on the page contributes its whole area, since what
+    // is being answered is "what is here", not "how much ink".
     if (settings.layers.estate) {
-      land.push({ label: "Estate", count: estateFeatures.length,
+      land.push({ label: "Estate", count: estateFeatures.length, area: sumAreaAcres(estateFeatures),
         sym: { kind: "poly", fill: null, stroke: ESTATE_STROKE_RGB, dash: true } });
     }
     if (settings.layers.block) {
-      land.push({ label: "Block", count: blockFeatures.length,
+      land.push({ label: "Block", count: blockFeatures.length, area: sumAreaAcres(blockFeatures),
         sym: { kind: "poly", fill: null, stroke: BLOCK_STROKE_RGB } });
     }
     if (settings.layers.plot) {
-      land.push({ label: "Plot", count: plotFeatures.length,
+      land.push({ label: "Plot", count: plotFeatures.length, area: sumAreaAcres(plotFeatures),
         sym: { kind: "poly", fill: null, stroke: PARCEL_STROKE_RGB } });
     }
     if (settings.layers.titleBoundary) {
-      land.push({ label: "Land Title", count: titleFeatures.length,
+      land.push({ label: "Land Title", count: titleFeatures.length, area: sumAreaAcres(titleFeatures),
         sym: { kind: "poly", fill: null, stroke: TITLE_BOUNDARY_RGB, dash: true } });
     }
     if (land.length) groups.push({ title: "LAND PROPERTIES", items: land });
 
     // 2. Plot status — only meaningful when the fills are actually drawn.
     if (settings.layers.plot && settings.hatching && CULTIVATION_PALETTE) {
+      // Area per status as well as the count — how much of the land is
+      // vacant matters more than how many plots happen to be.
       const statusCounts = {};
+      const statusArea = {};
       plotFeatures.forEach((f) => {
         const k = f.get("cultivation_status") || "vacant";
         statusCounts[k] = (statusCounts[k] || 0) + 1;
+        statusArea[k] = (statusArea[k] || 0) + featureAreaAcres(f);
       });
       const status = Object.keys(CULTIVATION_PALETTE).map((key) => {
         const parsed = parseRgba(CULTIVATION_PALETTE[key].fill);
@@ -1195,6 +1282,7 @@ export function initPrintTool({
         return {
           label: CULTIVATION_STATUS_LABELS?.[key] || key,
           count: statusCounts[key] || 0,
+          area: statusArea[key] || 0,
           sym: { kind: "poly", fill, stroke: parseRgba(CULTIVATION_PALETTE[key].stroke).rgb }
         };
       });
@@ -1231,13 +1319,23 @@ export function initPrintTool({
         if (!featureTypeEnabled(f)) return;
         const id = f.get("_typeId");
         const key = id == null ? f.get("_typeName") || "?" : id;
-        if (byId.has(key)) { byId.get(key).count += 1; return; }
-        const kind = (f.getGeometry()?.getType() || "").toLowerCase();
+        const kindNow = (f.getGeometry()?.getType() || "").toLowerCase();
+        // Polygon types get an area total too ("Parking 3 (200 ac)"); point
+        // and line types have none to give, and keep the bare count.
+        const rowArea = kindNow.includes("polygon") ? featureAreaAcres(f) : 0;
+        if (byId.has(key)) {
+          const row = byId.get(key);
+          row.count += 1;
+          row.area = (row.area || 0) + rowArea;
+          return;
+        }
+        const kind = kindNow;
         const rgb = parseRgba(f.get("_color") || "#3f8f3f").rgb;
         const dash = dashPatternFor(f.get("_linetype"), 1.2);
         byId.set(key, {
           label: f.get("_typeName") || "Feature",
           count: 1,
+          area: rowArea,
           sym: kind.includes("point")
             // Its real icon, in the type's own colour.
             ? { kind: "point", fill: rgb, icon: f.get("_icon") || "" }
@@ -2994,10 +3092,6 @@ export function initPrintTool({
       estatesLayer?.getSource()?.getFeaturesInExtent(extent)
         .forEach((f) => drawEstateVector(doc, f, project, sizes, frame));
     }
-    if (settings.layers.block) {
-      blocksLayer?.getSource()?.getFeaturesInExtent(extent)
-        .forEach((f) => drawBlockVector(doc, f, project, sizes, frame));
-    }
     if (settings.layers.plot) {
       parcelsLayer?.getSource()?.getFeaturesInExtent(extent)
         .forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
@@ -3014,6 +3108,17 @@ export function initPrintTool({
       .map((f) => planCustomFeature(f, project, sizes, frame))
       .filter(Boolean);
     drawFeaturePlans(doc, featurePlans, sizes);
+
+    // Blocks LAST, so their boundaries are on top of the plot fills and the
+    // drawn features — the same reason the map has a separate
+    // blockOutlinesLayer above both (see LAYER_Z.BLOCK_OUTLINES in
+    // js/map-app.js). Drawn in the middle of the stack, as they were, a
+    // block line vanishes under the plots that tile over it, and where a
+    // block boundary runs is often the one thing a printed map is for.
+    if (settings.layers.block) {
+      blocksLayer?.getSource()?.getFeaturesInExtent(extent)
+        .forEach((f) => drawBlockVector(doc, f, project, sizes, frame));
+    }
   }
 
   /** Plain pixel-accurate crop — `rect` must already be in the same pixel
@@ -3468,24 +3573,36 @@ export function initPrintTool({
         // fixed gutter. Whatever's left over collects at the right of the
         // box rather than being spread through every row.
         const colContentW = [];
+        // Per column, because one column may hold "1 (10,000 ac)" while
+        // another holds bare alert counts.
+        const countColW = [];
         for (let c = 0; c < columns; c++) {
           const rows = cols[c];
           doc.setFont("helvetica", "normal");
           doc.setFontSize(itemFont);
           let widestLabel = 0;
-          let anyCount = false;
+          let widestCount = 0;
           rows.forEach((r) => {
             if (r.type !== "item") return;
             widestLabel = Math.max(widestLabel, doc.getTextWidth(r.label));
-            if (showCounts && r.count != null) anyCount = true;
+            // Measured, not a fixed slot: the figures used to be a bare
+            // count that always fitted COUNT_COL_PT, and now read
+            // "500 (2,000 ac)". Measuring means the column grows to fit
+            // whatever the numbers come out as instead of overlapping the
+            // label beside them.
+            if (showCounts && r.count != null) {
+              widestCount = Math.max(widestCount, doc.getTextWidth(legendCountText(r.count, r.area)));
+            }
           });
+          const anyCount = widestCount > 0;
+          countColW[c] = Math.max(COUNT_COL_PT, widestCount);
           doc.setFont("helvetica", "bold");
           doc.setFontSize(headFont);
           let widestHead = 0;
           rows.forEach((r) => {
             if (r.type === "head") widestHead = Math.max(widestHead, doc.getTextWidth(r.label));
           });
-          const itemW = swatch + 5 + widestLabel + (anyCount ? 8 + COUNT_COL_PT : 0);
+          const itemW = swatch + 5 + widestLabel + (anyCount ? 8 + countColW[c] : 0);
           colContentW[c] = rows.length ? Math.max(itemW, widestHead) : 0;
         }
 
@@ -3514,7 +3631,7 @@ export function initPrintTool({
         // they stay close to the labels instead of at the box edge.
         const countX = [];
         for (let c = 0; c < columns; c++) {
-          countX[c] = colX[c] + colContentW[c] - COUNT_COL_PT;
+          countX[c] = colX[c] + colContentW[c] - (countColW[c] || COUNT_COL_PT);
         }
 
         // ── Vertical separators between the columns ───────────────────
@@ -3553,7 +3670,12 @@ export function initPrintTool({
             doc.text(row.label, lx, cy, { maxWidth: countX[col] - lx - 4 });
             if (showCount) {
               doc.setTextColor(30, 42, 30);
-              doc.text(String(row.count), countX[col] + COUNT_COL_PT, cy, { align: "right" });
+              doc.text(
+                legendCountText(row.count, row.area),
+                countX[col] + (countColW[col] || COUNT_COL_PT),
+                cy,
+                { align: "right" }
+              );
             }
           });
         });

@@ -98,6 +98,39 @@
   display: none !important;
 }
 
+/* The waiting state — see showPopupLoading() in popup.js. The card goes up
+   the instant something is clicked and holds this until the record and its
+   option lists have been fetched, at which point the real form replaces it
+   in the same card.
+
+   A spinner and nothing else: no caption. The title above it already says
+   what is being opened, and "Loading…" next to a moving spinner is a word
+   doing no work. Sized to roughly one form row so the card doesn't visibly
+   resize when the fields arrive. */
+.vsl-popup-loading {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+}
+.vsl-popup-loading__spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--primary, #3f8f3f);
+  border-radius: 50%;
+  /* `spin` is declared once in css/styles.css and shared by every spinner
+     in the app (map loader, print overlay, drone list). */
+  animation: spin 0.8s linear infinite;
+}
+/* Respect a reduced-motion preference: keep the ring, drop the rotation. */
+@media (prefers-reduced-motion: reduce) {
+  .vsl-popup-loading__spinner {
+    animation: none;
+  }
+}
+
 .vsl-popup-input,
 .vsl-popup-select {
   width: 100%;

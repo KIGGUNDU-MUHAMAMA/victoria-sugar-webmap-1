@@ -29,7 +29,7 @@ import {
   readCachedProfile, cacheProfile, clearCachedProfiles,
   applyToolVisibility, isLandEditor
 } from "./role-store.js";
-import { confirmDanger, promptFields } from "../popups/popup.js";
+import { confirmDanger, promptFields, showPopupLoading } from "../popups/popup.js";
 
 const supabase = createSupabaseClient();
 const cfg = getConfig();
@@ -51,13 +51,30 @@ const LAYER_Z = Object.freeze({
   SENTINEL:        20,
   TITLES:          30,
   ESTATES:         40,
-  BLOCKS:          50,
+  BLOCKS:          50,   // the clickable body + label; the OUTLINE is separate
   PLOTS:           60,
   OVERLAYS:        70,   // only reaches a future child that sets no zIndex
   ANNOTATIONS:     80,
   SKETCH:         110,
   MEASURE:        120,
-  USER_LOCATION:  200
+  USER_LOCATION:  200,
+  /**
+   * Block boundary lines, drawn over everything they would otherwise hide
+   * under. See blockOutlinesLayer: the blocks layer at 50 keeps the
+   * clickable body and the label, this draws only the red boundary.
+   *
+   * 915, not something in the tens, because js/survey-draw.js puts the
+   * drawn features layer at 910 and its labels at 911 — that module
+   * predates LAYER_Z and sets its own numbers — and a block boundary has to
+   * clear those as well as the plots. It stays below survey-draw's
+   * pendingLayer (945) and sketchLayer (950) and survey-edit.js's highlight
+   * layer (960), so anything actively being drawn or reshaped still draws
+   * on top of it.
+   *
+   * (Those 900s also sit above USER_LOCATION, which is pre-existing: the
+   * survey layers were never renumbered into this scale.)
+   */
+  BLOCK_OUTLINES: 915
 });
 
 
@@ -2946,6 +2963,29 @@ async function loadEstateBoundaries() {
   }
 }
 
+/**
+ * A block's boundary stroke — colour and width — for whatever state it's in.
+ *
+ * Shared by blocksLayer (which no longer draws it) and blockOutlinesLayer
+ * (which does, from on top of everything), so the two can't drift into
+ * disagreeing about what a highlighted block looks like.
+ */
+function blockStrokeFor(feature, resolution) {
+  const bid = feature.getId();
+  const isSearchHi = searchHighlight.blockId != null && bid != null && String(bid) === String(searchHighlight.blockId);
+  const isStatusHi = parcelStatusState.selectedLayerType === "BLOCKS" && parcelStatusState.selectedFeatures.some((f) => String(f.getId()) === String(bid));
+  const hi = isSearchHi || isStatusHi;
+  const zoom = zoomFromResolution(map?.getView?.(), resolution);
+  return {
+    hi,
+    color: hi ? "#e65100" : "#d32f2f",
+    // Thinner outline until the block's own name appears — before that a
+    // block is context rather than the subject, and a heavy outline at that
+    // zoom just crowds the estate boundaries.
+    width: zoom < MAP_ZOOM.BLOCK_LABEL && !hi ? 1.5 : (hi ? 5 : 3)
+  };
+}
+
 const blocksLayer = new ol.layer.Vector({
   title: "Blocks",
   visible: true,
@@ -2956,23 +2996,22 @@ const blocksLayer = new ol.layer.Vector({
   // able to click a block you can't see.
   minZoom: layerMinZoom(MAP_ZOOM.BLOCK),
   source: blocksSource,
+  // NOTE: no stroke here. The boundary line is drawn by blockOutlinesLayer
+  // below, from above the plots and the drawn features — a block line
+  // painted at this zIndex disappears under the plot fills that cover it,
+  // which is no use when what you need to know is where the block boundary
+  // runs. This layer keeps the body (clicks) and the label.
   style: (feature, resolution) => {
-    const bid = feature.getId();
-    const isSearchHi = searchHighlight.blockId != null && bid != null && String(bid) === String(searchHighlight.blockId);
-    const isStatusHi = parcelStatusState.selectedLayerType === "BLOCKS" && parcelStatusState.selectedFeatures.some(f => String(f.getId()) === String(bid));
-    const hi = isSearchHi || isStatusHi;
+    const { hi } = blockStrokeFor(feature, resolution);
     const zoom = zoomFromResolution(map?.getView?.(), resolution);
 
     // Blocks (like estates) carry no status fill — a block's state is the
     // mix of its plots', which draw their own colours. This near-invisible
-    // fill only exists so clicks inside a block still hit it.
+    // fill only exists so clicks inside a block still hit it, and is also
+    // why this layer stays BELOW the plots: hit-testing takes the topmost
+    // layer, so a block body on top would swallow every click meant for a
+    // plot inside it (see the click handler's blocks/parcels pass).
     const fillColor = "rgba(255, 255, 255, 0.05)";
-    let strokeColor = "#d32f2f";
-    // Thinner outline until the block's own name appears — before that a
-    // block is context rather than the subject, and a heavy outline at that
-    // zoom just crowds the estate boundaries.
-    let strokeWidth = zoom < MAP_ZOOM.BLOCK_LABEL && !hi ? 1.5 : (hi ? 5 : 3);
-    let textColor = "#d32f2f";
 
     let textStyle = null;
     // A highlighted block keeps its name at any zoom — if something has been
@@ -2982,19 +3021,49 @@ const blocksLayer = new ol.layer.Vector({
       textStyle = new ol.style.Text({
         text: name,
         font: hi ? "700 13px Inter, sans-serif" : "600 12px Inter, sans-serif",
-        fill: new ol.style.Fill({ color: hi ? "#bf360c" : textColor }),
+        fill: new ol.style.Fill({ color: hi ? "#bf360c" : "#d32f2f" }),
         stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 }),
         overflow: true
       });
     }
 
     return new ol.style.Style({
-      stroke: new ol.style.Stroke({ color: hi ? "#e65100" : strokeColor, width: strokeWidth }),
       fill: new ol.style.Fill({ color: hi ? "rgba(230, 81, 0, 0.14)" : fillColor }),
       text: textStyle
     });
   }
 });
+
+/**
+ * The block boundary lines, and nothing else.
+ *
+ * Same source as blocksLayer — the same ol.Feature objects, so this needs no
+ * syncing of any kind and follows a block being reshaped in the Edit tab
+ * node by node.
+ *
+ * Stroke only: no fill and no label, so there is nothing here to obscure the
+ * plots and features it now draws over. It is also deliberately absent from
+ * every layerFilter in the app's hit-testing (the click handler,
+ * tryParcelStatusMapClick, coord-extract-drawer, and the Edit tab's Select
+ * interaction all name the layers they accept), so putting a block line on
+ * top changes what you SEE without changing what you can CLICK.
+ *
+ * Not offered in the layer switcher: it is part of "Blocks" as far as anyone
+ * using the map is concerned, so it follows blocksLayer's own visibility
+ * rather than being a second checkbox that could contradict it.
+ */
+const blockOutlinesLayer = new ol.layer.Vector({
+  source: blocksSource,
+  visible: blocksLayer.getVisible(),
+  zIndex: LAYER_Z.BLOCK_OUTLINES,
+  minZoom: layerMinZoom(MAP_ZOOM.BLOCK),
+  style: (feature, resolution) => {
+    const { color, width } = blockStrokeFor(feature, resolution);
+    return new ol.style.Style({ stroke: new ol.style.Stroke({ color, width }) });
+  }
+});
+blockOutlinesLayer.set("displayInLayerSwitcher", false);
+blocksLayer.on("change:visible", () => blockOutlinesLayer.setVisible(blocksLayer.getVisible()));
 
 const parcelsLayer = new ol.layer.Vector({
   title: "Parcels",
@@ -3404,9 +3473,17 @@ function buildLayerTree() {
   // property didn't work. The layers themselves stay active on the map; the
   // Draw/Measure tools work exactly as before, they just don't show up as
   // toggleable rows in the switcher.
+  // blockOutlinesLayer rides along in here for exactly one reason: this
+  // group has no title, and an untitled group is the only thing this version
+  // of ol-layerswitcher reliably keeps out of the Layers panel (its
+  // `displayInLayerSwitcher` property doesn't work — see the note above).
+  // The block boundary is part of "Blocks" as far as the panel is concerned
+  // and follows that layer's own checkbox, so it must not appear as a second
+  // row. Its own zIndex (LAYER_Z.BLOCK_OUTLINES) decides where it stacks;
+  // this group's ANNOTATIONS zIndex only reaches children that set none.
   const annotationsGroup = new ol.layer.Group({
     fold: "open",
-    layers: [sketchLayer, measureLayer]
+    layers: [sketchLayer, measureLayer, blockOutlinesLayer]
   });
   annotationsGroup.setZIndex(LAYER_Z.ANNOTATIONS);
   annotationsGroupRef = annotationsGroup;
@@ -3916,16 +3993,31 @@ function sharedValue(rows, key) {
  * name is per-record by definition, so it's disabled (and skipped) as soon
  * as more than one row is selected.
  */
-async function openModifySelectedPopup() {
-  const features = parcelStatusState.selectedFeatures;
-  const lt = parcelStatusState.selectedLayerType;
+async function openModifySelectedPopup(featuresArg = null, layerTypeArg = null) {
+  // Called two ways. With no arguments it works on the Select window's own
+  // selection, as it always did. With explicit arguments it is the Survey
+  // window's Edit tab > Edit Properties mode handing over whichever feature
+  // was just clicked on the map (see window.vslOpenModifyPopup below) —
+  // same form, same writes, but there is no Select panel on screen to put
+  // an error message into, and nothing of its to clear afterwards.
+  const external = !!(featuresArg?.length && layerTypeArg);
+  const features = external ? featuresArg : parcelStatusState.selectedFeatures;
+  const lt = external ? layerTypeArg : parcelStatusState.selectedLayerType;
   if (!features?.length || !lt) return;
 
+  const reportError = (msg) => {
+    if (external) setStatus(statusEl, msg, true);
+    else setParcelStatusFormError(msg);
+  };
+  const clearSelectionIfOwned = () => {
+    if (!external) clearParcelStatusSelection();
+  };
+
   if (!canModifyLand()) {
-    setParcelStatusFormError("Only Admin or Surveyor can modify records.");
+    reportError("Only Admin or Surveyor can modify records.");
     return;
   }
-  setParcelStatusFormError("");
+  if (!external) setParcelStatusFormError("");
 
   const ids = features.map((f) => f.getId());
   const many = ids.length > 1;
@@ -3945,6 +4037,36 @@ async function openModifySelectedPopup() {
     return patch;
   };
 
+  // Every branch below has to read the record — and usually the estate and
+  // block option lists too — before it can show a single field. That left a
+  // click producing nothing at all for as long as the round trip took,
+  // which is impossible to tell from a click that missed. So the card goes
+  // up now, with a spinner, and the form replaces its contents in place.
+  //
+  // Titled per record type, because the title is up before anything else is
+  // and is what tells you the right thing is opening.
+  const loadingTitle = (() => {
+    const n = ids.length;
+    if (lt === "TITLES") return many ? `Modify ${n} Land Titles` : "Modify Land Title";
+    if (lt === "FEATURES") return many ? `Modify ${n} Features` : "Modify Feature";
+    if (lt === "BLOCKS") return many ? `Modify ${n} Blocks` : "Modify Block";
+    return many ? `Modify ${n} Plots` : "Modify Plot";
+  })();
+  const loader = showPopupLoading({ title: loadingTitle, icon: "fa-pen" });
+
+  /**
+   * Shows the real form in the card the spinner is already holding.
+   *
+   * handOver() leaves that card up, so there is no flicker between the two.
+   * A dismissal while loading (Escape or a backdrop click) is honoured
+   * here rather than reopening over a dialog just waved away.
+   */
+  const ask = (opts) => {
+    if (loader.dismissed) return Promise.resolve(null);
+    loader.handOver();
+    return promptFields(opts);
+  };
+
   try {
     if (lt === "TITLES") {
       // A title carries only its name and the acreage the deed states —
@@ -3957,7 +4079,7 @@ async function openModifySelectedPopup() {
         title_name: many ? NAME_MULTI : String(list[0]?.title_name ?? ""),
         area_acres: many ? "" : String(list[0]?.area_acres ?? "")
       };
-      const result = await promptFields({
+      const result = await ask({
         title: many ? `Modify ${ids.length} Land Titles` : "Modify Land Title",
         icon: "fa-pen",
         fields: [
@@ -3975,7 +4097,7 @@ async function openModifySelectedPopup() {
       if (patch.area_acres !== undefined && patch.area_acres !== null) {
         const acres = Number(patch.area_acres);
         if (!Number.isFinite(acres) || acres < 0) {
-          setParcelStatusFormError("Titled area must be a positive number.");
+          reportError("Titled area must be a positive number.");
           return;
         }
         patch.area_acres = acres;
@@ -3984,7 +4106,7 @@ async function openModifySelectedPopup() {
       const { error } = await supabase.from("vsl_title").update(patch).in("id", ids);
       if (error) throw error;
       setStatus(statusEl, `Updated ${ids.length} land title(s).`);
-      clearParcelStatusSelection();
+      clearSelectionIfOwned();
       await loadLayersFromDb();
       return;
     }
@@ -4021,7 +4143,7 @@ async function openModifySelectedPopup() {
         });
       }
 
-      const result = await promptFields({
+      const result = await ask({
         title: many ? `Modify ${ids.length} Features` : "Modify Feature",
         message: oneKind ? undefined : "Mixed point/line/polygon selection — select one kind at a time to change the type.",
         icon: "fa-pen",
@@ -4061,7 +4183,7 @@ async function openModifySelectedPopup() {
         block_name: many ? NAME_MULTI : String(list[0]?.block_name ?? ""),
         estate_id: sharedValue(list, "estate_id")
       };
-      const result = await promptFields({
+      const result = await ask({
         title: many ? `Modify ${ids.length} Blocks` : "Modify Block",
         icon: "fa-pen",
         fields: [
@@ -4103,7 +4225,7 @@ async function openModifySelectedPopup() {
         ratoon_number: sharedValue(list, "ratoon_number")
       };
 
-      const result = await promptFields({
+      const result = await ask({
         title: many ? `Modify ${ids.length} Plots` : "Modify Plot",
         icon: "fa-pen",
         fields: [
@@ -4141,26 +4263,48 @@ async function openModifySelectedPopup() {
       setStatus(statusEl, `Updated ${ids.length} plot(s).`);
     }
 
-    clearParcelStatusSelection();
+    clearSelectionIfOwned();
     await loadLayersFromDb();
   } catch (err) {
-    setParcelStatusFormError(err?.message || "Couldn't save the change.");
+    reportError(err?.message || "Couldn't save the change.");
+  } finally {
+    // Covers every way out of the branches above that never reached ask():
+    // a failed fetch, an early return, a thrown error. No-op once the form
+    // has taken the card over, so a normal open is unaffected.
+    loader.close();
   }
 }
+
+/**
+ * The Modify form, for one feature, opened from outside the Select window.
+ *
+ * Used by the Survey window's Edit tab > Edit Properties mode: it puts the
+ * map into drafting mode, and whatever you click is passed straight here.
+ * `kind` is survey-edit.js's own vocabulary ("block" | "parcel" |
+ * "feature"), translated to the layer-type names this popup speaks.
+ */
+window.vslOpenModifyPopup = function (feature, kind) {
+  if (!feature) return;
+  const layerType = kind === "block" ? "BLOCKS" : kind === "parcel" ? "PARCELS" : "FEATURES";
+  return openModifySelectedPopup([feature], layerType);
+};
 
 /** Deletes the selected drawn features (vsl_feature). Unlike a block, a
  *  feature has nothing hanging off it, so there's no linked-records guard —
  *  just the confirmation. */
-async function deleteSelectedFeatures() {
-  const features = parcelStatusState.selectedFeatures;
-  if (!features?.length) return;
+async function deleteSelectedFeatures(featuresArg = null, opts = {}) {
+  const reportError = opts.reportError || ((msg) => setParcelStatusFormError(msg));
+  const setBusy = opts.setBusy || ((on, text) => setParcelStatusBusy(on, text));
+  const clearSelection = opts.clearSelection || (() => clearParcelStatusSelection());
+  const features = featuresArg?.length ? featuresArg : parcelStatusState.selectedFeatures;
+  if (!features?.length) return false;
   if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
-    setParcelStatusFormError("Sign in to delete features.");
-    return;
+    reportError("Sign in to delete features.");
+    return false;
   }
   if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
-    setParcelStatusFormError("Only Admin or Surveyor can delete features.");
-    return;
+    reportError("Only Admin or Surveyor can delete features.");
+    return false;
   }
 
   const confirmed = await confirmDanger({
@@ -4168,41 +4312,155 @@ async function deleteSelectedFeatures() {
     message: `You are about to permanently delete ${features.length} drawn feature(s). This action cannot be undone.`,
     confirmLabel: "Delete"
   });
-  if (!confirmed) return;
+  if (!confirmed) return false;
 
-  setParcelStatusFormError("");
-  setParcelStatusBusy(true, `Deleting ${features.length} feature(s)…`);
+  reportError("");
+  setBusy(true, `Deleting ${features.length} feature(s)…`);
   let errorCount = 0;
   for (const f of features) {
     const { error } = await supabase.from("vsl_feature").delete().eq("id", f.getId());
     if (error) errorCount++;
   }
-  setParcelStatusBusy(false);
+  setBusy(false);
 
   if (errorCount) {
-    setParcelStatusFormError(`Failed to delete ${errorCount} of ${features.length} feature(s).`);
-    return;
+    reportError(`Failed to delete ${errorCount} of ${features.length} feature(s).`);
+    return false;
   }
   setStatus(statusEl, `Deleted ${features.length} feature(s).`);
-  clearParcelStatusSelection();
+  clearSelection();
   await surveyDrawApi?.refreshFeaturesLayer?.();
   window.dispatchEvent(new CustomEvent("vsl-features-changed"));
+  return true;
 }
+
+/**
+ * Deletes blocks, plots, drawn features or land titles — the one place that
+ * does it, whichever window asked.
+ *
+ * Shared by the Select window's Delete button and by the Survey window's
+ * Edit tab > Delete Object mode (window.vslDeleteLandFeatures below). The
+ * guards are the point of having one copy: a block with plots still in it is
+ * refused rather than cascaded, and that rule should not depend on which
+ * window you happened to delete from.
+ *
+ * `opts.reportError` / `opts.setBusy` let the caller put messages and the
+ * busy state where its own user can see them (the Select panel's inline
+ * error vs. the Survey window's overlay). Returns true only if everything
+ * asked for was deleted.
+ */
+async function deleteLandFeatures(features, lt, opts = {}) {
+  const reportError = opts.reportError || ((msg) => setParcelStatusFormError(msg));
+  const setBusy = opts.setBusy || ((on, text) => setParcelStatusBusy(on, text));
+  const clearSelection = opts.clearSelection || (() => clearParcelStatusSelection());
+
+  if (!features?.length || !lt) return false;
+
+  // Drawn features and titles live in their own tables with their own
+  // guards — and their own confirmation wording.
+  if (lt === "FEATURES") return await deleteSelectedFeatures(features, opts) !== false;
+  if (lt === "TITLES") return await deleteSelectedTitles(features, opts) !== false;
+
+  if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
+    reportError("Sign in to delete features.");
+    return false;
+  }
+  if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
+    reportError("Only Admin or Surveyor can delete features.");
+    return false;
+  }
+
+  const modeName = lt === "BLOCKS" ? "block" : "parcel";
+  const ids = features.map((f) => f.getId());
+
+  // A block with linked plots can't be deleted (FK constraint) — same
+  // guard/message as Survey > Estates deleting an estate with linked
+  // blocks (see manage-estates.js's confirmDanger call).
+  if (lt === "BLOCKS") {
+    const { count, error: countError } = await supabase
+      .from("vsl_parcels")
+      .select("id", { count: "exact", head: true })
+      .in("block_id", ids);
+    if (!countError && count > 0) {
+      await confirmDanger({
+        title: "Can't Delete Block",
+        message: `${count} plot${count === 1 ? " is" : "s are"} still linked to ${ids.length === 1 ? "this block" : "these blocks"}. Delete the plots first — a block is never deleted together with the plots inside it.`
+      });
+      return false;
+    }
+  }
+
+  const confirmed = await confirmDanger({
+    title: `Delete ${features.length} ${modeName}${features.length > 1 ? "s" : ""}`,
+    message: `You are about to permanently delete ${features.length} ${modeName}(s). This action cannot be undone.`,
+    confirmLabel: "Delete"
+  });
+  if (!confirmed) return false;
+
+  reportError("");
+  setBusy(true, `Deleting ${features.length} ${modeName}(s)…`);
+
+  const tableName = lt === "BLOCKS" ? "vsl_blocks" : "vsl_parcels";
+
+  let errorCount = 0;
+  let lastError = null;
+  for (const id of ids) {
+    const { error } = await supabase.from(tableName).delete().eq("id", id);
+    if (error) { errorCount++; lastError = error; }
+  }
+
+  setBusy(false);
+
+  if (errorCount > 0) {
+    // A stale linked-plots count (a plot added concurrently since this
+    // panel's selection was made) hits the same FK constraint
+    // server-side — same message either way, since the cause is identical.
+    reportError(
+      lt === "BLOCKS" && /foreign key|violates/i.test(lastError?.message || "")
+        ? "You can not delete a block with linked Plots, manually delete the linked plots first."
+        : `Failed to delete ${errorCount} of ${features.length} item(s).`
+    );
+    return false;
+  }
+
+  setStatus(statusEl, `Successfully deleted ${features.length} ${modeName}(s).`);
+  clearSelection();
+  await loadLayersFromDb();
+  return true;
+}
+
+/**
+ * Deleting from outside the Select window — the Survey window's Edit tab >
+ * Delete Object mode. `kind` is survey-edit.js's vocabulary ("block" |
+ * "parcel" | "feature"); messages and the busy state are routed back into
+ * the Survey window.
+ */
+window.vslDeleteLandFeatures = function (features, kind) {
+  const lt = kind === "block" ? "BLOCKS" : kind === "parcel" ? "PARCELS" : "FEATURES";
+  return deleteLandFeatures(features, lt, {
+    reportError: (msg) => { if (msg) setStatus(statusEl, msg, true); },
+    setBusy: (on, text) => window.vslSurveyBusy?.(on, text),
+    clearSelection: () => {}
+  });
+};
 
 /** Deletes the selected Land Titles (vsl_title). Titles are standalone legal
  *  boundaries — nothing is keyed to them the way plots are keyed to a block —
  *  so, like a drawn feature, there's no linked-records guard, just the
  *  confirmation. */
-async function deleteSelectedTitles() {
-  const features = parcelStatusState.selectedFeatures;
-  if (!features?.length) return;
+async function deleteSelectedTitles(featuresArg = null, opts = {}) {
+  const reportError = opts.reportError || ((msg) => setParcelStatusFormError(msg));
+  const setBusy = opts.setBusy || ((on, text) => setParcelStatusBusy(on, text));
+  const clearSelection = opts.clearSelection || (() => clearParcelStatusSelection());
+  const features = featuresArg?.length ? featuresArg : parcelStatusState.selectedFeatures;
+  if (!features?.length) return false;
   if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
-    setParcelStatusFormError("Sign in to delete land titles.");
-    return;
+    reportError("Sign in to delete land titles.");
+    return false;
   }
   if (!canModifyLand()) {
-    setParcelStatusFormError("Only Admin or Surveyor can delete land titles.");
-    return;
+    reportError("Only Admin or Surveyor can delete land titles.");
+    return false;
   }
 
   const confirmed = await confirmDanger({
@@ -4210,25 +4468,26 @@ async function deleteSelectedTitles() {
     message: `You are about to permanently delete ${features.length} land title(s). This action cannot be undone.`,
     confirmLabel: "Delete"
   });
-  if (!confirmed) return;
+  if (!confirmed) return false;
 
-  setParcelStatusFormError("");
-  setParcelStatusBusy(true, `Deleting ${features.length} land title(s)…`);
+  reportError("");
+  setBusy(true, `Deleting ${features.length} land title(s)…`);
   const ids = features.map((f) => f.getId());
   let errorCount = 0;
   for (const id of ids) {
     const { error } = await supabase.from("vsl_title").delete().eq("id", id);
     if (error) errorCount++;
   }
-  setParcelStatusBusy(false);
+  setBusy(false);
 
   if (errorCount) {
-    setParcelStatusFormError(`Failed to delete ${errorCount} of ${features.length} land title(s).`);
-    return;
+    reportError(`Failed to delete ${errorCount} of ${features.length} land title(s).`);
+    return false;
   }
   setStatus(statusEl, `Deleted ${features.length} land title(s).`);
-  clearParcelStatusSelection();
+  clearSelection();
   await loadLayersFromDb();
+  return true;
 }
 
 function clearParcelStatusSelection() {
@@ -4425,85 +4684,11 @@ function setupParcelStatusPanel() {
   const tabFeature = document.getElementById("modifyTabFeature");
 
   deleteBtn?.addEventListener("click", async () => {
-    const features = parcelStatusState.selectedFeatures;
-    const lt = parcelStatusState.selectedLayerType;
-    if (!features || features.length === 0 || !lt) return;
-
-    // Drawn features live in their own table with their own guards.
-    if (lt === "FEATURES") {
-      await deleteSelectedFeatures();
-      return;
-    }
-    if (lt === "TITLES") {
-      await deleteSelectedTitles();
-      return;
-    }
-
-    if (!isAuthenticated || !currentUser?.id || currentUser.id === "guest") {
-      setParcelStatusFormError("Sign in to delete features.");
-      return;
-    }
-    if (currentProfile?.role !== "ADMIN" && currentProfile?.role !== "SURVEYOR") {
-      setParcelStatusFormError("Only Admin or Surveyor can delete features.");
-      return;
-    }
-
-    const modeName = lt === "BLOCKS" ? "block" : "parcel";
-    const ids = features.map(f => f.getId());
-
-    // A block with linked plots can't be deleted (FK constraint) — same
-    // guard/message as Survey > Estates deleting an estate with linked
-    // blocks (see manage-estates.js's confirmDanger call).
-    if (lt === "BLOCKS") {
-      const { count, error: countError } = await supabase
-        .from("vsl_parcels")
-        .select("id", { count: "exact", head: true })
-        .in("block_id", ids);
-      if (!countError && count > 0) {
-        await confirmDanger({
-          title: "Can't Delete Block",
-          message: "You can not delete a block with linked Plots, manually delete the linked plots first."
-        });
-        return;
-      }
-    }
-
-    const confirmed = await confirmDanger({
-      title: `Delete ${features.length} ${modeName}${features.length > 1 ? "s" : ""}`,
-      message: `You are about to permanently delete ${features.length} ${modeName}(s). This action cannot be undone.`,
-      confirmLabel: "Delete"
-    });
-    if (!confirmed) return;
-
     deleteBtn.disabled = true;
-    setParcelStatusFormError("");
-    setParcelStatusBusy(true, `Deleting ${features.length} ${modeName}(s)…`);
-
-    const tableName = lt === "BLOCKS" ? "vsl_blocks" : "vsl_parcels";
-
-    let errorCount = 0;
-    let lastError = null;
-    for (const id of ids) {
-      const { error } = await supabase.from(tableName).delete().eq("id", id);
-      if (error) { errorCount++; lastError = error; }
-    }
-
-    deleteBtn.disabled = false;
-    setParcelStatusBusy(false);
-
-    if (errorCount > 0) {
-      // A stale linked-plots count (a plot added concurrently since this
-      // panel's selection was made) hits the same FK constraint
-      // server-side — same message either way, since the cause is identical.
-      setParcelStatusFormError(
-        lt === "BLOCKS" && /foreign key|violates/i.test(lastError?.message || "")
-          ? "You can not delete a block with linked Plots, manually delete the linked plots first."
-          : `Failed to delete ${errorCount} of ${features.length} item(s).`
-      );
-    } else {
-      setStatus(statusEl, `Successfully deleted ${features.length} ${modeName}(s).`);
-      clearParcelStatusSelection();
-      await loadLayersFromDb();
+    try {
+      await deleteLandFeatures(parcelStatusState.selectedFeatures, parcelStatusState.selectedLayerType);
+    } finally {
+      deleteBtn.disabled = false;
     }
   });
 
@@ -6764,7 +6949,45 @@ function setupLandCacheSync() {
  * vsl_get_features_bbox over the whole world — and both must draw it the
  * same way. Returns how many features were actually rendered.
  */
+/**
+ * Blocks every wholesale redraw of the land layers while something holds
+ * unsaved geometry.
+ *
+ * drawLandRows() below clears all three sources and builds brand-new
+ * ol.Feature objects. That is fine as a refresh — and ruinous in the middle
+ * of an edit: the Survey window's Edit tab holds direct references to the
+ * feature objects it is reshaping, so replacing them silently detaches
+ * every pending edit from the map. What the person sees is the shape they
+ * just dragged snapping back to its old position, which reads as "it threw
+ * my edits away".
+ *
+ * It took almost nothing to trigger. The land layers are bbox-loaded and
+ * reloaded on `moveend` (see the handler near the bottom of this file), so
+ * any pan or zoom did it — including the pan you make to get to the second
+ * block you wanted to edit, which is exactly the case that was reported.
+ * Tabbing away and back could do it too, through the land-cache sync.
+ *
+ * So the Edit tab suspends reloading for the length of its session (see
+ * startSession/stopSession in js/survey-edit.js) and lifts it again right
+ * before it refreshes after a successful save. The cost is that blocks
+ * panned into view mid-session don't load until the session ends; that is
+ * plainly the better side of the trade against losing unsaved work.
+ */
+let landReloadSuspended = false;
+window.vslSuspendLandReload = function () {
+  landReloadSuspended = true;
+};
+window.vslResumeLandReload = function () {
+  landReloadSuspended = false;
+};
+
 function drawLandRows(rows) {
+  if (landReloadSuspended) {
+    if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
+      console.debug("[Victoria map] Land redraw suspended (unsaved geometry edits in progress) — keeping what's drawn.");
+    }
+    return 0;
+  }
   blocksSource.clear(true);
   parcelsSource.clear(true);
   titlesSource.clear(true);

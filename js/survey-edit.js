@@ -1,9 +1,20 @@
 /**
- * Survey "Edit" tab — toggle an editing session on ("Start Editing"), click
- * any number of plots/blocks/drawn features to reshape them (drag their
- * nodes, click an edge to add a node, click a node to delete it), then Save
- * writes every one of them back to the right table (vsl_parcels /
- * vsl_blocks / vsl_feature) in one go.
+ * Survey "Edit" tab — the three things you can do to an object that already
+ * exists on the map, one mode each (see MODE below):
+ *
+ *   Edit Nodes       reshape the boundary. Click any number of plots,
+ *                    blocks or drawn features, drag their nodes, then Save
+ *                    writes every one of them back to the right table
+ *                    (vsl_parcels / vsl_blocks / vsl_feature) in one go.
+ *   Edit Properties  click an object to open the same Modify form the
+ *                    Select window uses — name, parent, status.
+ *   Delete Object    click objects to mark them, then the footer's Delete
+ *                    (the Save button, relabelled) removes them.
+ *
+ * Only one mode runs at a time; the other two buttons disable while one is
+ * active. All three select from the same three layers and all three put the
+ * map into drafting mode. The rest of this file is mostly about Edit Nodes,
+ * which is the only one holding unsaved state.
  *
  * Only ONE feature is actively "focused" (highlighted + draggable) at a
  * time, but selecting a different feature does NOT discard the one you
@@ -11,6 +22,18 @@
  * un-draggable until re-selected) as a *pending* edit, so several features
  * can be reshaped across a session and saved together. Only Cancel/Stop/
  * leave-with-discard reverts everything back to its true original shape.
+ *
+ * That was always the intent, but it did not hold in practice: the land
+ * layers are bbox-loaded and reload on every `moveend`, and that reload
+ * REPLACES the ol.Feature objects this module is holding. Panning to the
+ * next block — the ordinary way to reach it — therefore detached the edit
+ * just made to the previous one, and what you saw was the old shape back
+ * where it started. A session now suspends that reload for its duration
+ * (window.vslSuspendLandReload, map-app.js) and lifts it after a save.
+ *
+ * While a feature is pending, its pre-session shape is also drawn as a
+ * dashed blue outline (originalLayer below) so the new position can be read
+ * against the old one rather than the two being the same colour.
  */
 
 import { confirmDanger } from "../popups/popup.js";
@@ -28,6 +51,12 @@ const DELETE_VERTEX_COLOR = "#c62828";
 // language as blocksLayer/parcelsLayer's own `hi` search/status styling
 // elsewhere in this app.
 const OUTLINE_COLOR = "#ff8f00";
+// Blue, dashed — where the shape was BEFORE this session touched it. Drawn
+// for every pending edit, so a dragged boundary can be read against where it
+// used to run instead of the two being indistinguishable. Deliberately not
+// any colour a real layer uses (blocks are red, plots take status colours,
+// titles purple, the focused outline amber).
+const ORIGINAL_COLOR = "#1565c0";
 
 // How many past geometry states each pending edit keeps, for the Snap
 // widget's Undo button (see performEditUndo/MAX_UNDO_STEPS usage below).
@@ -35,6 +64,57 @@ const OUTLINE_COLOR = "#ff8f00";
 // times in one session — undo depth is bounded to keep memory sane on a
 // long editing session, not because 10 is otherwise meaningful.
 const MAX_UNDO_STEPS = 10;
+
+// Amber — "this object is selected", the same colour the Select window uses
+// for its own picks (HIGHLIGHT_COLOR in js/survey-draw.js). Shared by both
+// of the modes below that select rather than reshape:
+//
+//   Delete Object    the objects marked for deletion
+//   Edit Properties  the object whose form is open
+//
+// Deliberately NOT red. Being selected is the same state whichever window
+// you are in, so it should look the same; red would also be the only colour
+// on the map claiming "danger" for something that is still just a selection
+// and still cancellable.
+const SELECTION_COLOR = "#ffb300";
+
+/**
+ * The three things this tab can be doing. Exactly one at a time, or none.
+ *
+ *   NODES       reshape geometry (what this tab did when it was the only
+ *               mode and the button said "Start Editing")
+ *   PROPERTIES  click an object, open its Modify form
+ *   DELETE      mark objects, then delete them
+ *
+ * All three put the map into drafting mode and select from the same three
+ * layers; they differ in what a click DOES, what the footer's Save button
+ * means, and whether there is unsaved work to protect on the way out.
+ */
+const MODE = Object.freeze({ NODES: "nodes", PROPERTIES: "properties", DELETE: "delete" });
+
+/** What the hint box says per mode. It is the only instruction on screen,
+ *  so each list has to describe the mode actually running. */
+const MODE_HINTS = Object.freeze({
+  [MODE.NODES]: [
+    "Click an object to start editing it",
+    "Drag a node to move it",
+    "Click an edge to add a node",
+    "Click a node to delete it",
+    "Edits are kept as you move between objects — Save writes them all"
+  ],
+  [MODE.PROPERTIES]: [
+    "Click an object to open its details",
+    "Change what you need, then Save in that popup",
+    "Click another object to edit that one too",
+    "Press Stop when you're finished"
+  ],
+  [MODE.DELETE]: [
+    "Click the objects you want to delete",
+    "Click one again to take it off the list",
+    "Press Delete to remove them permanently",
+    "Cancel leaves everything as it is"
+  ]
+});
 
 export function initSurveyEdit({
   map,
@@ -54,6 +134,8 @@ export function initSurveyEdit({
   detachSnap
 }) {
   const selectBtn = document.getElementById("editSelectFeatureBtn");
+  const propertiesBtn = document.getElementById("editPropertiesBtn");
+  const deleteObjectBtn = document.getElementById("editDeleteObjectBtn");
   const hintList = document.getElementById("editHintList");
   const saveBtn = document.getElementById("editSaveBtn");
   const cancelBtn = document.getElementById("editCancelBtn");
@@ -189,13 +271,87 @@ export function initSurveyEdit({
   highlightLayer.set("displayInLayerSwitcher", false);
   map.addLayer(highlightLayer);
 
+  // ── "Where it was" layer ──
+  // One CLONE of each pending edit's pre-session geometry, dashed and blue.
+  // Clones, not references: this has to stay still while the real feature
+  // moves under the cursor — that contrast is the entire point of it.
+  //
+  // Every pending edit gets one, not just the focused feature, so after
+  // reshaping three blocks you can still see what each of the three
+  // originally looked like.
+  //
+  // zIndex 958 puts it above the land layers and the block outlines (915 in
+  // map-app.js) so it reads over the plot fills, and just below the
+  // highlight layer (960) so the live nodes you are dragging are never
+  // covered by the ghost of where they used to be.
+  const originalSource = new ol.source.Vector();
+  const originalLayer = new ol.layer.Vector({
+    source: originalSource,
+    style: new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: ORIGINAL_COLOR, width: 2.5, lineDash: [7, 6] }),
+      // Points have no outline to dash, so they get a hollow blue ring in
+      // the old position instead.
+      image: new ol.style.Circle({
+        radius: 7,
+        stroke: new ol.style.Stroke({ color: ORIGINAL_COLOR, width: 2.5 }),
+        fill: null
+      })
+    }),
+    zIndex: 958
+  });
+  originalLayer.set("displayInLayerSwitcher", false);
+  map.addLayer(originalLayer);
+
+  // ── "Selected" layer ──
+  // Holds whatever the current mode has picked, by reference (so it tracks
+  // the real feature), in the app's standard selection amber:
+  //
+  //   Delete Object    every object marked for deletion — several at once
+  //   Edit Properties  the one object whose form is open
+  //
+  // 959: above the ghost outlines, below the node-editing highlight.
+  const selectionSource = new ol.source.Vector();
+  const selectionLayer = new ol.layer.Vector({
+    source: selectionSource,
+    style: (feature) => {
+      const type = feature.getGeometry()?.getType();
+      // A point has no outline to thicken, so it gets a filled halo behind
+      // it instead — same approach as survey-draw.js's highlightStyle.
+      if (type === "Point" || type === "MultiPoint") {
+        return new ol.style.Style({
+          image: new ol.style.Circle({
+            radius: 14,
+            fill: new ol.style.Fill({ color: "rgba(255, 179, 0, 0.35)" }),
+            stroke: new ol.style.Stroke({ color: SELECTION_COLOR, width: 3 })
+          })
+        });
+      }
+      return new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: SELECTION_COLOR, width: 5 }),
+        fill: new ol.style.Fill({ color: "rgba(255, 179, 0, 0.25)" })
+      });
+    },
+    zIndex: 959
+  });
+  selectionLayer.set("displayInLayerSwitcher", false);
+  map.addLayer(selectionLayer);
+
+  // Which mode is running, or null for none. Replaces the old boolean —
+  // sessionActive is now simply "is sessionMode set".
+  let sessionMode = null;
   let selectInteraction = null;
   let modifyInteraction = null;
   // Snaps a dragged/inserted node onto other already-drawn custom features
   // (trees, roads, walls, …) — separate from attachSnap/detachSnap (map-
   // app.js), which cover snapping onto existing blocks/parcels.
   let featuresSnapInteraction = null;
-  let sessionActive = false;
+  const sessionActive = () => sessionMode !== null;
+
+  // Objects marked for deletion in Delete Object mode, keyed the same
+  // "kind:id" way as pendingEdits. Nothing is written until the footer's
+  // Delete is pressed, so this is only a selection — abandoning it costs
+  // nothing, which is why leaving Delete mode needs no "discard?" prompt.
+  const pendingDeletes = new Map();
 
   // One entry per feature touched this session, keyed by "kind:id" (ids are
   // UUIDs per table, but the prefix keeps this collision-proof regardless).
@@ -218,6 +374,70 @@ export function initSurveyEdit({
   // specific check (only the existing/insert distinction is internal —
   // see the snappedToVertex_ note further down).
   let hoveredVertexCoord = null;
+
+  // ── "Apply to" — what a map click may pick ──
+  // The chip group above the three mode buttons (see the Edit tab in
+  // windows/survey-panel.html). Same job as the Select window's
+  // Parcels/Blocks/Feature tabs, except several can be on at once.
+
+  const FILTER_LABELS = { parcel: "plots", block: "blocks", feature: "features" };
+  const pickFilterRadios = Array.from(
+    document.querySelectorAll('#editPickFilter input[name="editPickFilter"]')
+  );
+
+  /**
+   * The chosen filter: "any" | "parcel" | "block" | "feature".
+   *
+   * Radios, so there is always exactly one — the "nothing selected" state
+   * that multi-select chips made possible cannot occur here.
+   */
+  function currentPickFilter() {
+    return pickFilterRadios.find((r) => r.checked)?.value || "any";
+  }
+
+  /** The filter as a kind, or null for "any" (pick whatever is clicked). */
+  function filterKind() {
+    const value = currentPickFilter();
+    return value === "any" ? null : value;
+  }
+
+  /**
+   * Whether the Select interaction should consider a layer, read fresh on
+   * every click.
+   *
+   * Handed to ol.interaction.Select as its `layers` FUNCTION rather than as
+   * an array, which is what makes the chips live: changing one applies to
+   * the very next click with no interaction to tear down and rebuild.
+   *
+   * Narrowing is not only about avoiding mistakes — it is how you reach
+   * something underneath. Plots cover their block almost completely, so on
+   * Any a click inside one can only ever pick the plot; choose Block and
+   * the same click reaches the block.
+   */
+  function layerAllowedForFilter(layer) {
+    const featuresLayer = getFeaturesLayer?.();
+    switch (currentPickFilter()) {
+      case "parcel": return layer === parcelsLayer;
+      case "block": return layer === blocksLayer;
+      case "feature": return !!featuresLayer && layer === featuresLayer;
+      default:
+        return layer === blocksLayer || layer === parcelsLayer || (!!featuresLayer && layer === featuresLayer);
+    }
+  }
+
+  // Changing the filter mid-session is allowed and affects the next click.
+  // Nothing already picked is thrown away by it: pending reshapes and
+  // delete marks are about objects, not about how they were chosen.
+  pickFilterRadios.forEach((radio) => {
+    radio.addEventListener("change", () => {
+      if (!sessionActive()) return;
+      const kind = filterKind();
+      feedback(
+        kind ? `Now picking ${FILTER_LABELS[kind]} only.` : "Now picking plots, blocks or features.",
+        false
+      );
+    });
+  });
 
   function sourceKindFor(feature) {
     if (feature.get("_source") === "vsl_feature") return "feature";
@@ -255,10 +475,17 @@ export function initSurveyEdit({
     }
 
     if (!pendingEdits.has(key)) {
+      const originalGeom = feature.getGeometry().clone();
+      // The dashed blue "this is where it was" outline. Added the moment a
+      // feature becomes pending — before it has been dragged at all, so it
+      // sits exactly under the real one until the first node moves.
+      const ghost = new ol.Feature({ geometry: originalGeom.clone() });
+      originalSource.addFeature(ghost);
       pendingEdits.set(key, {
         feature,
         kind,
-        originalGeom: feature.getGeometry().clone(),
+        ghost,
+        originalGeom,
         // Only meaningful for block/parcel (see liveAreaAcres/modifyend
         // below) — snapshotted so Cancel/discard can put the true original
         // value back, not whatever it got live-recomputed to mid-edit.
@@ -279,7 +506,7 @@ export function initSurveyEdit({
     highlightSource.addFeature(feature);
     focusedKey = key;
     hoveredVertexCoord = null;
-    saveBtn.disabled = false;
+    syncSaveEnabled();
   }
 
   function clearPending({ restore }) {
@@ -297,21 +524,78 @@ export function initSurveyEdit({
     pendingEdits.clear();
     modifyFeatures.clear();
     highlightSource.clear();
+    originalSource.clear();
     focusedKey = null;
     hoveredVertexCoord = null;
-    saveBtn.disabled = true;
+    syncSaveEnabled();
   }
 
+  // The three mode buttons. Whichever mode is running turns red and offers
+  // to stop; the other two go disabled, which is what enforces "one mode at
+  // a time" — there is no state in which two of these are armed.
+  //
   // .uam-btn--active and .uam-btn--danger both set `background` at equal
-  // specificity — combining them wouldn't give the red "Stop Editing"
-  // look (whichever is declared later in styles.css wins the whole
-  // property), so this swaps --primary/--danger only, not --active.
-  function setToggleButtonState(active) {
-    selectBtn.classList.toggle("uam-btn--danger", active);
-    selectBtn.classList.toggle("uam-btn--primary", !active);
-    selectBtn.innerHTML = active
-      ? '<i class="fas fa-stop-circle" aria-hidden="true"></i> Stop Editing'
-      : '<i class="fas fa-circle-play" aria-hidden="true"></i> Start Editing';
+  // specificity — combining them wouldn't give the red "Stop" look
+  // (whichever is declared later in styles.css wins the whole property), so
+  // this swaps --primary/--danger only, not --active.
+  // `idleClass` is each button's own resting colour: green for the two
+  // modes that change things, orange for the one that destroys them.
+  const MODE_BUTTONS = [
+    { btn: selectBtn, mode: MODE.NODES, idleClass: "uam-btn--primary",
+      idle: '<i class="fas fa-circle-play" aria-hidden="true"></i> Edit Nodes',
+      stop: '<i class="fas fa-stop-circle" aria-hidden="true"></i> Stop Editing' },
+    { btn: propertiesBtn, mode: MODE.PROPERTIES, idleClass: "uam-btn--primary",
+      idle: '<i class="fas fa-pen-to-square" aria-hidden="true"></i> Edit Properties',
+      stop: '<i class="fas fa-stop-circle" aria-hidden="true"></i> Stop Editing' },
+    { btn: deleteObjectBtn, mode: MODE.DELETE, idleClass: "uam-btn--warn",
+      idle: '<i class="fas fa-trash-can" aria-hidden="true"></i> Delete Object',
+      stop: '<i class="fas fa-stop-circle" aria-hidden="true"></i> Stop Deleting' }
+  ];
+
+  function setModeButtons(mode) {
+    for (const { btn, mode: own, idle, stop, idleClass } of MODE_BUTTONS) {
+      if (!btn) continue;
+      const active = mode === own;
+      btn.classList.toggle("uam-btn--danger", active);
+      btn.classList.toggle(idleClass, !active);
+      btn.innerHTML = active ? stop : idle;
+      btn.disabled = mode !== null && !active;
+    }
+  }
+
+  /**
+   * The footer's Save button, which is a different action per mode.
+   *
+   * Delete Object turns it into a red "Delete" — the one button that
+   * destroys something should not look like the one that saves. Cancel is
+   * left exactly as it is in every mode: it ends the session and keeps
+   * nothing, which is the same meaning throughout.
+   */
+  function setFooterForMode(mode) {
+    if (!saveBtn) return;
+    const deleting = mode === MODE.DELETE;
+    saveBtn.classList.toggle("btn-add", !deleting);
+    saveBtn.classList.toggle("btn-clear", deleting);
+    saveBtn.classList.toggle("futuristic-icon-btn--danger", deleting);
+    saveBtn.innerHTML = deleting
+      ? '<i class="fas fa-trash-can" aria-hidden="true"></i>Delete'
+      : '<i class="fas fa-floppy-disk" aria-hidden="true"></i>Save';
+  }
+
+  /** Save/Delete is enabled only when its mode has something to act on.
+   *  Edit Properties never uses it — that mode saves through the popup. */
+  function syncSaveEnabled() {
+    if (!saveBtn) return;
+    if (sessionMode === MODE.NODES) saveBtn.disabled = pendingEdits.size === 0;
+    else if (sessionMode === MODE.DELETE) saveBtn.disabled = pendingDeletes.size === 0;
+    else saveBtn.disabled = true;
+  }
+
+  function renderHints(mode) {
+    if (!hintList) return;
+    const lines = MODE_HINTS[mode] || [];
+    hintList.innerHTML = lines.map((line) => `<li>${line}</li>`).join("");
+    hintList.hidden = lines.length === 0;
   }
 
   // Arms/disarms this tab's own custom-feature snap target (already-saved
@@ -336,21 +620,76 @@ export function initSurveyEdit({
     }
   }
 
-  function startSession() {
-    if (sessionActive) return;
-    sessionActive = true;
-    setToggleButtonState(true);
-    if (hintList) hintList.hidden = false;
+  function startSession(mode) {
+    if (sessionActive()) return;
+    sessionMode = mode;
+    setModeButtons(mode);
+    setFooterForMode(mode);
+    renderHints(mode);
+    syncSaveEnabled();
     // Suppress the plain-click parcel/block selection toolbar for the
     // whole session — see window.vslSetParcelClickEnabled (map-app.js).
     // Otherwise clicking a plot to edit it would also pop that up.
     window.vslSetParcelClickEnabled?.(false);
-    window.vslEnterDraftingMode?.(performEditUndo, syncFeatureSnap);
-    feedback("Click a plot, block, or feature on the map to edit it…", false);
+    // Stop the land layers being rebuilt under us. They reload on every
+    // `moveend`, and that rebuild replaces the very ol.Feature objects this
+    // session is holding and reshaping — so panning to the next block you
+    // wanted to edit threw away the edit you had just made to the last one.
+    // See window.vslSuspendLandReload in map-app.js for the full account.
+    //
+    // Nodes mode only. The other two hold no unsaved geometry, and both end
+    // in a write that has to be followed by exactly that reload to show its
+    // result — suspending it there would leave a renamed or deleted object
+    // looking untouched until something else refreshed the map.
+    if (mode === MODE.NODES) window.vslSuspendLandReload?.();
+    // Undo belongs to node dragging; there is nothing to undo in the other
+    // two modes, so the Snap widget's Undo button gets a no-op rather than
+    // a button that silently does nothing recognisable.
+    window.vslEnterDraftingMode?.(mode === MODE.NODES ? performEditUndo : () => {}, syncFeatureSnap);
+    feedback(
+      mode === MODE.DELETE
+        ? "Click the objects to delete, then press Delete…"
+        : mode === MODE.PROPERTIES
+          ? "Click a plot, block, or feature to edit its details…"
+          : "Click a plot, block, or feature on the map to edit it…",
+      false
+    );
 
-    const layers = [blocksLayer, parcelsLayer, getFeaturesLayer?.()].filter(Boolean);
-    selectInteraction = new ol.interaction.Select({ layers });
+    // A filter function, not a fixed list — see layerAllowedForFilter: it
+    // is consulted per click, so the "Apply to" radios work mid-session.
+    selectInteraction = new ol.interaction.Select({ layers: layerAllowedForFilter });
     map.addInteraction(selectInteraction);
+
+    selectInteraction.on("select", (evt) => {
+      const feature = evt.selected?.[0];
+      // We render our own highlight/vertex styling on our own layers — no
+      // need for (and don't want to fight with) ol.interaction.Select's own
+      // default styling, so immediately clear its internal selection.
+      selectInteraction.getFeatures().clear();
+      if (!feature) return;
+      const kind = sourceKindFor(feature);
+      if (!kind) {
+        feedback("That object can't be edited here.", true);
+        return;
+      }
+      // The layer filter above should already have made this impossible;
+      // kept because sourceKindFor decides a kind from the feature itself,
+      // and the two disagreeing should fail loudly rather than quietly act
+      // on something "Apply to" says is off limits.
+      const wanted = filterKind();
+      if (wanted && wanted !== kind) {
+        feedback(`"Apply to" is set to ${FILTER_LABELS[wanted]} — that is a ${kind}.`, true);
+        return;
+      }
+      if (sessionMode === MODE.PROPERTIES) onPickForProperties(feature, kind);
+      else if (sessionMode === MODE.DELETE) onPickForDelete(feature, kind);
+      else onPickForNodes(feature, kind);
+    });
+
+    // Everything below belongs to node editing: the Modify interaction, its
+    // snapping, and the undo snapshots. Edit Properties and Delete Object
+    // only need the Select interaction above.
+    if (mode !== MODE.NODES) return;
 
     modifyInteraction = new ol.interaction.Modify({
       features: modifyFeatures,
@@ -444,25 +783,67 @@ export function initSurveyEdit({
     // apply the snap while a node is being dragged.
     attachSnap?.();
     syncFeatureSnap(window.vslIsSnapMasterOn?.() !== false);
+  }
 
-    selectInteraction.on("select", (evt) => {
-      const feature = evt.selected?.[0];
-      // We render our own highlight/vertex styling on highlightLayer — no
-      // need for (and don't want to fight with) ol.interaction.Select's
-      // own default styling, so immediately clear its internal selection.
-      selectInteraction.getFeatures().clear();
-      if (!feature) return;
-      const kind = sourceKindFor(feature);
-      if (!kind) {
-        feedback("That feature can't be edited here.", true);
-        return;
-      }
-      focusFeature(feature, kind);
-      feedback(
-        `Editing ${labelFor(feature, kind)} (${pendingEdits.size} pending). Drag its nodes, click another feature, or Save.`,
-        false
-      );
-    });
+  /** Edit Nodes — make this the focused feature and leave every other
+   *  pending edit exactly as it is. */
+  function onPickForNodes(feature, kind) {
+    focusFeature(feature, kind);
+    feedback(
+      `Editing ${labelFor(feature, kind)} (${pendingEdits.size} pending). Drag its nodes, click another object, or Save.`,
+      false
+    );
+  }
+
+  /**
+   * Edit Properties — hand the clicked object to the same Modify form the
+   * Select window uses (window.vslOpenModifyPopup in map-app.js), rather
+   * than this module growing its own copy of a form that already exists in
+   * two flavours per record type.
+   *
+   * The popup does its own writing and its own map refresh, so there is
+   * nothing pending here and nothing for the footer's Save to do — the
+   * session just stays armed for the next object.
+   */
+  async function onPickForProperties(feature, kind) {
+    if (typeof window.vslOpenModifyPopup !== "function") {
+      feedback("The details form isn't available.", true);
+      return;
+    }
+    // Show it as picked for as long as its form is open — one object at a
+    // time here, unlike Delete Object, so the previous pick comes off
+    // first. Without this the popup appears with nothing on the map saying
+    // which object it belongs to.
+    selectionSource.clear();
+    selectionSource.addFeature(feature);
+    feedback(`Editing the details of ${labelFor(feature, kind)}…`, false);
+    try {
+      await window.vslOpenModifyPopup(feature, kind);
+    } finally {
+      // Whether it was saved or cancelled, the form is closed and the
+      // highlight has nothing left to explain. Guarded because the session
+      // may have been stopped while the popup was open.
+      if (sessionMode === MODE.PROPERTIES) selectionSource.clear();
+    }
+    if (sessionActive()) {
+      feedback("Click another object to edit its details, or press Stop.", false);
+    }
+  }
+
+  /** Delete Object — add to (or take off) the list of objects to delete.
+   *  Nothing is written until the footer's Delete is pressed. */
+  function onPickForDelete(feature, kind) {
+    const key = pendingKey(feature, kind);
+    if (pendingDeletes.has(key)) {
+      pendingDeletes.delete(key);
+      selectionSource.removeFeature(feature);
+      feedback(`${labelFor(feature, kind)} taken off the list (${pendingDeletes.size} marked).`, false);
+    } else {
+      pendingDeletes.set(key, { feature, kind });
+      selectionSource.addFeature(feature);
+      feedback(`${labelFor(feature, kind)} marked for deletion (${pendingDeletes.size} marked).`, false);
+    }
+    syncSaveEnabled();
   }
 
   // Tears down the session's interactions and toolbar suppression.
@@ -471,7 +852,7 @@ export function initSurveyEdit({
   // work); `restore: false` just clears the tracking (used right after a
   // successful Save, where the new geometry should stick).
   async function stopSession({ restore }) {
-    if (!sessionActive) return;
+    if (!sessionActive()) return;
     if (selectInteraction) {
       map.removeInteraction(selectInteraction);
       selectInteraction = null;
@@ -486,9 +867,21 @@ export function initSurveyEdit({
     }
     detachSnap?.();
     clearPending({ restore });
-    sessionActive = false;
-    setToggleButtonState(false);
-    if (hintList) hintList.hidden = true;
+    // Marks are only a selection — nothing was written, so there is nothing
+    // to restore, just the red highlighting to take off the map.
+    pendingDeletes.clear();
+    selectionSource.clear();
+    // Nothing unsaved left to protect. Idempotent, so the save path having
+    // already lifted this (it must, to refresh) is not a problem.
+    window.vslResumeLandReload?.();
+    sessionMode = null;
+    setModeButtons(null);
+    setFooterForMode(null);
+    if (hintList) {
+      hintList.hidden = true;
+      hintList.innerHTML = "";
+    }
+    syncSaveEnabled();
     feedback("", false);
     window.vslSetParcelClickEnabled?.(true);
     window.vslExitDraftingMode?.();
@@ -498,7 +891,7 @@ export function initSurveyEdit({
   // by enterDraftingMode() above). Pops the focused feature's most recent
   // pre-drag snapshot and restores it — one step per click, up to
   // MAX_UNDO_STEPS steps deep. No-op if nothing's focused yet or its
-  // history is empty (e.g. right after Start Editing, before any drag).
+  // history is empty (e.g. right after Edit Nodes starts, before any drag).
   function performEditUndo() {
     if (!focusedKey) return;
     const entry = pendingEdits.get(focusedKey);
@@ -521,18 +914,32 @@ export function initSurveyEdit({
     });
   }
 
-  // Start/Stop toggle.
-  selectBtn.addEventListener("click", async () => {
-    if (!sessionActive) {
-      startSession();
-      return;
-    }
-    if (pendingEdits.size > 0) {
-      const discard = await confirmDiscardChanges();
-      if (!discard) return;
-    }
-    await stopSession({ restore: true });
-  });
+  /**
+   * One handler for all three mode buttons: press to start that mode, press
+   * the same button again to stop it.
+   *
+   * The other two buttons are disabled while a mode runs, so this can only
+   * ever be called for the running mode or from a standing start — there is
+   * no "switch straight from one mode to another" path to get wrong.
+   */
+  function wireModeButton(btn, mode) {
+    btn?.addEventListener("click", async () => {
+      if (!sessionActive()) {
+        startSession(mode);
+        return;
+      }
+      if (sessionMode !== mode) return; // disabled anyway; belt and braces
+      // Only node editing holds unsaved work worth warning about.
+      if (sessionMode === MODE.NODES && pendingEdits.size > 0) {
+        const discard = await confirmDiscardChanges();
+        if (!discard) return;
+      }
+      await stopSession({ restore: true });
+    });
+  }
+  wireModeButton(selectBtn, MODE.NODES);
+  wireModeButton(propertiesBtn, MODE.PROPERTIES);
+  wireModeButton(deleteObjectBtn, MODE.DELETE);
 
   // Explicit Cancel (footer button) — confirms first, same as the
   // Start/Stop toggle's stop branch, since this discards every pending
@@ -545,7 +952,69 @@ export function initSurveyEdit({
     await stopSession({ restore: true });
   });
 
+  /**
+   * Delete Object's footer button (the same button, relabelled — see
+   * setFooterForMode).
+   *
+   * The deleting itself goes through window.vslDeleteLandFeatures
+   * (map-app.js), the same code path the Select window's Delete uses, so
+   * both honour the same guard: a block that still has plots in it is
+   * refused with a message naming how many, never cascaded.
+   *
+   * One call per kind, because that guard is per-kind — a mixed bag of two
+   * blocks and a plot is two calls, and each is confirmed on its own.
+   */
+  async function runPendingDeletes() {
+    if (!pendingDeletes.size) return;
+    if (typeof window.vslDeleteLandFeatures !== "function") {
+      feedback("Deleting isn't available.", true);
+      return;
+    }
+
+    const byKind = new Map();
+    for (const { feature, kind } of pendingDeletes.values()) {
+      if (!byKind.has(kind)) byKind.set(kind, []);
+      byKind.get(kind).push(feature);
+    }
+
+    let allDone = true;
+    for (const [kind, features] of byKind) {
+      const ok = await window.vslDeleteLandFeatures(features, kind);
+      if (!ok) allDone = false;
+    }
+
+    if (!allDone) {
+      // Something was refused or failed. The marks stay on whatever is
+      // still there, so what didn't go is exactly what is still red, and
+      // the session stays open to deal with it.
+      //
+      // Checked against the live sources by id — not by the feature's own
+      // properties, which survive deletion perfectly well on a detached
+      // object and would keep a gone-but-marked shape on the map.
+      const stillOnMap = (feature, kind) => {
+        const id = feature.getId();
+        if (kind === "block") return !!blocksSource?.getFeatureById?.(id);
+        if (kind === "parcel") return !!parcelsSource?.getFeatureById?.(id);
+        return !!getFeaturesLayer?.()?.getSource?.()?.getFeatureById?.(id);
+      };
+      for (const [key, entry] of [...pendingDeletes.entries()]) {
+        if (stillOnMap(entry.feature, entry.kind)) continue;
+        selectionSource.removeFeature(entry.feature);
+        pendingDeletes.delete(key);
+      }
+      syncSaveEnabled();
+      return;
+    }
+
+    await stopSession({ restore: false });
+  }
+
   saveBtn?.addEventListener("click", async () => {
+    // One button, two meanings — Delete Object relabels it (setFooterForMode).
+    if (sessionMode === MODE.DELETE) {
+      await runPendingDeletes();
+      return;
+    }
     if (!pendingEdits.size) return;
     if (!supabase) {
       feedback("Can't save — Supabase client not available.", true);
@@ -612,6 +1081,11 @@ export function initSurveyEdit({
         }
       }
 
+      // Every write is done, so the layers may be rebuilt again — and they
+      // have to be, since that rebuild is what pulls the saved geometry
+      // back. Lifted here rather than in stopSession because stopSession
+      // runs after this refresh.
+      window.vslResumeLandReload?.();
       await loadLayersFromDb?.();
       await refreshFeaturesLayer?.();
       // A block's geom/estate_id feeds a DB trigger that recomputes the
@@ -627,6 +1101,10 @@ export function initSurveyEdit({
     } catch (e) {
       console.error("[Victoria Survey] Edit save failed:", e);
       feedback(`Save failed: ${e.message}`, true);
+      // The session and its pending edits live on, so they need protecting
+      // again — this covers the window between resuming above and the
+      // refresh that follows it throwing.
+      window.vslSuspendLandReload?.();
       return; // keep the session + pending edits — nothing was confirmed lost
     } finally {
       window.vslSurveyBusy?.(false);
@@ -654,7 +1132,7 @@ export function initSurveyEdit({
     if (typeof previousConfirmSurveyClose === "function") {
       if (!(await previousConfirmSurveyClose())) return false;
     }
-    if (!sessionActive) return true;
+    if (!sessionActive()) return true;
     if (pendingEdits.size > 0) {
       const discard = await confirmDiscardChanges();
       if (!discard) return false;
@@ -668,7 +1146,7 @@ export function initSurveyEdit({
   // hidden) sessionActive should already be false. Covers any path that
   // hides the tab without going through unified-menu.js's switchTab.
   const observer = new MutationObserver(() => {
-    if (tabPanel.hidden && sessionActive) stopSession({ restore: true });
+    if (tabPanel.hidden && sessionActive()) stopSession({ restore: true });
   });
   observer.observe(tabPanel, { attributes: true, attributeFilter: ["hidden"] });
 

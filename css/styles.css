@@ -3626,6 +3626,24 @@ select.search-panel__input {
   border-color: var(--primary);
 }
 
+/* Orange, filled — a mode that will destroy something once you confirm it
+   (the Edit tab's Delete Object). Sits deliberately between the green
+   "normal action" buttons and the red of .uam-btn--danger, which is kept
+   for the Stop state and the confirmation itself: at the point of pressing
+   this, nothing has been deleted yet. */
+.uam-btn--warn {
+  background: #e65100;
+  color: #fff;
+}
+.uam-btn--warn:hover {
+  background: #bf360c;
+}
+.uam-btn--warn:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 /* Destructive actions (e.g. Import tab's Clear, next to Preview) — same
    ghost shape as .uam-btn--ghost, red instead of neutral so it doesn't
    read as just another equal-weight option. */
@@ -3638,6 +3656,107 @@ select.search-panel__input {
 .uam-btn--danger:hover {
   background: #fbdcdc;
   border-color: var(--danger);
+}
+
+/* ── Framed option group ──
+   A real <fieldset> with a <legend>, which is what gives the border its
+   notch with a word sitting in it for free — no faked background-coloured
+   span needed, and the label stays attached to the group for a screen
+   reader. Used by the Edit tab's "Apply to" picker.
+
+   The legend's own background has to stay transparent: the notch works by
+   the legend occupying a gap in the border, not by covering it. */
+.uam-fieldset {
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 0 7px 7px;
+  margin: 0 0 8px;
+  min-width: 0; /* fieldsets default to min-content; this lets it shrink */
+}
+.uam-fieldset__legend {
+  padding: 0 5px;
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Option chips inside a .uam-fieldset — the Edit tab's "Apply to". Radios,
+   so exactly one is on and the "nothing selected" state cannot happen; the
+   native input is kept (focus, arrow-key navigation within the group, and
+   the :checked state all come from it) but visually replaced by its own
+   <span>. Positioned off rather than display:none, which would take it out
+   of the tab order and break keyboard use, and which also opts it out of
+   the app-wide `input, select, button, textarea { width: 100% }` reset near
+   the top of this file — at 100% wide a radio would shove the chips apart.
+
+   Deliberately tight: four chips have to sit on one line in a panel this
+   narrow, and the radius is a plain rounded corner rather than the pill
+   shape this started as — at 999px four short words read as lozenges
+   instead of a set of options. */
+.uam-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.uam-chip {
+  position: relative;
+  display: inline-flex;
+  margin: 0; /* the global `label` rule adds margin-top: 0.7rem */
+}
+.uam-chip input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.uam-chip span {
+  display: inline-block;
+  padding: 3px 9px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.uam-chip:hover span {
+  border-color: var(--primary);
+}
+/* Chosen — the window green (--primary-2, the same one .popWinHead uses),
+   so "this is the active option" matches the rest of the window chrome. */
+.uam-chip input:checked + span {
+  background: var(--primary-2);
+  border-color: var(--primary-2);
+  color: #fff;
+}
+.uam-chip input:focus-visible + span {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* A mode button that can't be used right now. The Edit tab's three modes
+   (Edit Nodes / Edit Properties / Delete Object) disable the other two
+   while one of them is running — that is what makes "one mode at a time"
+   true — so they have to LOOK unavailable, or it reads as a dead button.
+   :hover is neutralised too; a hover lift on something that won't respond
+   is a worse lie than no cue at all. */
+.uam-btn:disabled,
+.uam-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+.uam-btn:disabled:hover,
+.uam-btn[disabled]:hover {
+  background: inherit;
+  border-color: inherit;
 }
 
 /* Toggled on while a tool (e.g. Edit tab's "Select Feature") is armed and

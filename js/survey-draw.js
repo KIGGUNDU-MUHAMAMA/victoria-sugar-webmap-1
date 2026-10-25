@@ -846,22 +846,18 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     }
   }
 
-  async function refreshFeaturesLayer() {
-    try {
-      // Plain table reads return PostGIS geometry as hex EWKB, not GeoJSON —
-      // this RPC does the ST_AsGeoJSON() conversion server-side (same
-      // pattern as vsl_get_features_bbox for blocks/parcels).
-      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/vsl_list_features`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { ...restHeaders(), "Content-Type": "application/json" },
-        body: "{}"
-      });
-      if (!res.ok) throw new Error("Failed to load features");
-      const rows = await res.json();
+  /**
+   * Puts vsl_list_features rows onto the features layer, replacing whatever
+   * was there.
+   *
+   * Separate from the fetch below so the offline cache can draw the same
+   * rows without a network call — map-app.js hands its cached copy straight
+   * to this through window.vslDrawCachedFeatures.
+   */
+  function drawFeatureRows(rows) {
       const gj = new ol.format.GeoJSON();
       featuresSource.clear(true);
-      for (const row of rows) {
+      for (const row of rows || []) {
         if (!row.geom) continue;
         const olFeature = gj.readFeature(
           { type: "Feature", geometry: row.geom, properties: {} },
@@ -906,8 +902,26 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         olFeature.set("_display", Array.isArray(row.display_params) ? row.display_params : []);
         featuresSource.addFeature(olFeature);
       }
+  }
+
+  async function refreshFeaturesLayer() {
+    try {
+      // Plain table reads return PostGIS geometry as hex EWKB, not GeoJSON —
+      // this RPC does the ST_AsGeoJSON() conversion server-side (same
+      // pattern as vsl_get_features_bbox for blocks/parcels).
+      const url = `${cfg.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/vsl_list_features`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { ...restHeaders(), "Content-Type": "application/json" },
+        body: "{}"
+      });
+      if (!res.ok) throw new Error("Failed to load features");
+      drawFeatureRows(await res.json());
     } catch (e) {
-      console.error("[Victoria Survey] Error loading features layer:", e);
+      // Offline or a flaky link. Whatever the cache already drew is left
+      // alone — an empty features layer would read as "there are no trees
+      // here", which is worse than slightly old data.
+      console.warn("[Victoria Survey] Features load failed, keeping what's drawn:", e);
     }
     // The set of used types (or their names/colors/icons) may have changed —
     // lets map-app.js rebuild the FEATURES group in the layer switcher from
@@ -918,6 +932,23 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   }
 
   window.addEventListener("vsl-features-changed", refreshFeaturesLayer);
+
+  /**
+   * Draws features straight from map-app.js's offline cache, before any
+   * network call. Exposed as a global for the same reason the other hooks in
+   * this app are: it keeps survey-draw and map-app independently loadable
+   * rather than having one import the other.
+   */
+  window.vslDrawCachedFeatures = (rows) => {
+    if (!Array.isArray(rows) || !rows.length) return;
+    // Only ever fills an empty layer. This module's own startup refresh is
+    // async, so on a fast connection it can land BEFORE the cache is read —
+    // and painting the cached rows over fresher ones would leave the map
+    // showing yesterday's features until something else triggered a reload.
+    // Nothing drawn yet is exactly the case the cache is for.
+    if (featuresSource.getFeatures().length) return;
+    drawFeatureRows(rows);
+  };
 
   function isSystemEntity() {
     return SYSTEM_ENTITY_VALUES.includes(entitySelect.value);

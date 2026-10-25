@@ -6,6 +6,7 @@ import {
   MAP_ZOOM, zoomFromResolution, layerMinZoom
 } from "./utils.js";
 import { readLandCache, writeLandCache, clearLandCache } from "./land-cache.js";
+import { clearTileCache } from "./tile-cache.js";
 import { initSurveyImport } from "./survey-import.js";
 import { initSurveyDraw } from "./survey-draw.js";
 import { initManageFeatures } from "./manage-features.js";
@@ -1284,7 +1285,7 @@ function initProfileModal() {
     // cache's case, a readable copy of the boundaries. Row-level security
     // protects the database, not a local copy of it.
     clearCachedProfiles();
-    await clearLandCache();
+    await Promise.all([clearLandCache(), clearTileCache()]);
     await supabase.auth.signOut();
     window.location.href = "./login.html";
   });
@@ -2939,16 +2940,17 @@ const titlesLayer = new ol.layer.Vector({
   }
 });
 
-async function loadEstateBoundaries() {
-  const { data, error } = await supabase.from("v_estate_boundaries").select("id, estate_name, geojson");
-  if (error) {
-    if (cfg.DEBUG_MAP_RPC && window.console?.debug) console.debug("[Victoria map] Estate boundary load failed:", error.message);
-    return;
-  }
+/**
+ * Puts v_estate_boundaries rows onto the estates layer, replacing whatever
+ * was there. Split out of loadEstateBoundaries so the offline cache can
+ * render the same rows without going through the network.
+ */
+function drawEstateRows(rows) {
   estatesSource.clear(true);
   const geojsonFmt = new ol.format.GeoJSON();
   const projOpts = { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" };
-  for (const row of data || []) {
+  let n = 0;
+  for (const row of rows || []) {
     if (!row.geojson) continue;
     let geom;
     try {
@@ -2960,7 +2962,20 @@ async function loadEstateBoundaries() {
     feature.setId(row.id);
     feature.set("estate_name", row.estate_name, true);
     estatesSource.addFeature(feature);
+    n += 1;
   }
+  return n;
+}
+
+async function loadEstateBoundaries() {
+  const { data, error } = await supabase.from("v_estate_boundaries").select("id, estate_name, geojson");
+  if (error) {
+    // Offline or flaky: whatever the cache already drew stays put rather
+    // than being cleared to nothing.
+    if (cfg.DEBUG_MAP_RPC && window.console?.debug) console.debug("[Victoria map] Estate boundary load failed:", error.message);
+    return;
+  }
+  drawEstateRows(data);
 }
 
 /**
@@ -3369,6 +3384,10 @@ const measureLayer = new ol.layer.Vector({
 });
 measureLayer.setZIndex(LAYER_Z.MEASURE);
 
+/** Decoded basemap tiles held in memory per source — see the note where the
+ *  basemaps are built. */
+const BASEMAP_TILE_CACHE = 600;
+
 function createBasemapLayer(title, source, visible = false) {
   return new ol.layer.Tile({
     title,
@@ -3379,13 +3398,22 @@ function createBasemapLayer(title, source, visible = false) {
 }
 
 function buildLayerTree() {
+  // cacheSize: OpenLayers otherwise sizes a tile cache to the current
+  // viewport and evicts everything else, so zooming in discards the wider
+  // levels and zooming back out refetches them — unnoticeable on a fast
+  // link, a blank map on a slow one. Holding a few hundred keeps recent zoom
+  // levels instant. These stay memory-only: unlike the drone imagery, which
+  // is ours, the terms for these providers' tiles make storing them on the
+  // device a question worth settling first.
   const googleHybrid = createBasemapLayer("Google Satellite", new ol.source.XYZ({
     url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-    crossOrigin: "anonymous"
+    crossOrigin: "anonymous",
+    cacheSize: BASEMAP_TILE_CACHE
   }), false);
   const esriImagery = createBasemapLayer("Esri Imagery", new ol.source.XYZ({
     url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    crossOrigin: "anonymous"
+    crossOrigin: "anonymous",
+    cacheSize: BASEMAP_TILE_CACHE
   }), true);
   const noBasemap = createBasemapLayer("No Basemap", new ol.source.XYZ({
     url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
@@ -6873,9 +6901,18 @@ async function drawLandFromCache() {
   if (!cached) return false;
   landCacheState.savedAt = cached.savedAt;
   landCacheState.version = cached.version;
-  const n = drawLandRows(cached.rows);
+
+  const n = drawLandRows(cached.land);
+  drawEstateRows(cached.estates);
+  // The drawn features (trees, roads, walls) live on survey-draw's own
+  // layer, so they're handed back to the module that owns them.
+  window.vslDrawCachedFeatures?.(cached.features);
+
   if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
-    console.debug(`[Victoria map] Drew ${n} feature(s) from the land cache (version ${cached.version}).`);
+    console.debug(
+      `[Victoria map] From cache (version ${cached.version}): ${n} boundary, ` +
+      `${cached.estates.length} estate, ${cached.features.length} feature row(s).`
+    );
   }
   return n > 0;
 }
@@ -6901,19 +6938,46 @@ async function syncLandCache({ force = false } = {}) {
     if (serverVersion === null) return; // offline or blocked; cache stands
     if (!force && serverVersion === landCacheState.version) return;
 
-    const { data, error } = await supabase.rpc("vsl_land_snapshot");
-    if (error || !Array.isArray(data)) {
-      console.warn("[Victoria map] Land snapshot failed:", error?.message);
+    // Everything the map draws as vectors, in parallel: the boundaries, the
+    // drawn features, and the estate outlines. One version covers all three
+    // because the trigger behind it fires for all three.
+    const [snapshot, features, estates] = await Promise.all([
+      supabase.rpc("vsl_land_snapshot"),
+      supabase.rpc("vsl_list_features"),
+      supabase.from("v_estate_boundaries").select("id, estate_name, geojson")
+    ]);
+
+    if (snapshot.error || !Array.isArray(snapshot.data)) {
+      console.warn("[Victoria map] Land snapshot failed:", snapshot.error?.message);
+      return;
+    }
+    // The other two are allowed to come back empty — a deployment with
+    // nothing drawn yet is a normal state — but not to be silently dropped
+    // if they actually errored, which would cache an empty layer as though
+    // it were the truth.
+    if (features.error || estates.error) {
+      console.warn(
+        "[Victoria map] Land sync incomplete, cache left alone:",
+        features.error?.message || estates.error?.message
+      );
       return;
     }
 
-    // Only written once every row is in hand — a partial cache would look
+    // Only written once everything is in hand — a partial cache would look
     // authoritative and hide plots that exist.
-    await writeLandCache(serverVersion, data);
+    await writeLandCache(serverVersion, {
+      land: snapshot.data,
+      features: features.data || [],
+      estates: estates.data || []
+    });
     landCacheState.version = serverVersion;
     landCacheState.savedAt = new Date().toISOString();
     if (cfg.DEBUG_MAP_RPC && window.console?.debug) {
-      console.debug(`[Victoria map] Land cache updated to version ${serverVersion} (${data.length} rows).`);
+      console.debug(
+        `[Victoria map] Land cache updated to version ${serverVersion}: ` +
+        `${snapshot.data.length} boundary, ${(estates.data || []).length} estate, ` +
+        `${(features.data || []).length} feature row(s).`
+      );
     }
     // The visible layers are bbox-filtered, so they're refreshed from the
     // network rather than redrawn wholesale from what was just cached.
@@ -8609,7 +8673,7 @@ async function initUser() {
   const profile = await fetchProfile();
   if (!profile) {
     clearCachedProfiles();
-    await clearLandCache();
+    await Promise.all([clearLandCache(), clearTileCache()]);
     await supabase.auth.signOut();
     window.location.href = "./login.html";
     return false;

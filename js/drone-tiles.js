@@ -17,6 +17,17 @@
  */
 
 import { promptFields, confirmDanger } from "../popups/popup.js";
+import { readTile, writeTile, tileKey } from "./tile-cache.js";
+
+/**
+ * Tiles OpenLayers keeps decoded in memory per drone source.
+ *
+ * The default is effectively "one viewport", which is why zooming in used to
+ * throw away the wider levels. A few hundred holds several zoom levels of a
+ * working area, so panning and zooming within a site stays instant without
+ * going back to disk, let alone the network.
+ */
+const IN_MEMORY_TILE_CACHE = 600;
 
 // A tile that isn't in the archive. Handed to OpenLayers instead of leaving
 // the <img> unset, which would otherwise log a network error per miss.
@@ -227,12 +238,20 @@ function createApi({ cfg, supabase }) {
  * single tile from a layer whose box does not overlap the screen, so panning
  * around Kaaya never touches Kaleile's archive.
  */
-function buildArchiveLayer({ title, archive, info, opacity }) {
+function buildArchiveLayer({ title, archive, info, opacity, cacheKey }) {
   const extent = ol.proj.transformExtent(
     [info.minLon, info.minLat, info.maxLon, info.maxLat],
     "EPSG:4326",
     "EPSG:3857"
   );
+
+  /** Puts raw tile bytes on screen. Shared by the cached and fetched paths
+   *  so both render identically. */
+  const paint = (image, bytes) => {
+    const url = URL.createObjectURL(new Blob([bytes]));
+    image.onload = image.onerror = () => URL.revokeObjectURL(url);
+    image.src = url;
+  };
 
   const source = new ol.source.XYZ({
     // Never fetched — tileLoadFunction below replaces the URL entirely — but
@@ -242,18 +261,38 @@ function buildArchiveLayer({ title, archive, info, opacity }) {
     maxZoom: info.maxZoom,
     tileSize: info.tileSize,
     crossOrigin: "anonymous",
+    // Without this, OpenLayers builds the cache with a high-water mark of
+    // zero and only ever raises it to what the current viewport needs — so
+    // zooming in evicts the wider levels, and zooming back out has to refetch
+    // them. That is invisible on a fast link and a blank screen on a slow
+    // one. This keeps a few screenfuls across zoom levels in memory; the
+    // IndexedDB cache below is what survives a reload.
+    cacheSize: IN_MEMORY_TILE_CACHE,
     tileLoadFunction: async (tile) => {
       const image = tile.getImage();
       const [z, x, y] = tile.getTileCoord();
+      const key = cacheKey ? tileKey(cacheKey, z, x, y) : null;
+
+      // Disk first. A tile already looked at renders without touching the
+      // network at all, which is the whole point on a weak connection.
+      if (key) {
+        const cached = await readTile(key);
+        if (cached) {
+          paint(image, cached);
+          return;
+        }
+      }
+
       try {
         const result = await archive.getZxy(z, x, y);
         if (!result || !result.data) {
           image.src = BLANK_TILE;
           return;
         }
-        const url = URL.createObjectURL(new Blob([result.data]));
-        image.onload = image.onerror = () => URL.revokeObjectURL(url);
-        image.src = url;
+        paint(image, result.data);
+        // Not awaited: the tile is already on screen and a slow write
+        // shouldn't delay the next one.
+        if (key) writeTile(key, result.data);
       } catch (error) {
         console.warn("[Victoria Drone] tile failed", z, x, y, error);
         image.src = BLANK_TILE;
@@ -811,7 +850,18 @@ export function initDroneTiles({ cfg, supabase, map, droneGroup, setStatus, stat
             new WorkerSource(api.tileUrl(layer.key), api.token)
           );
           const info = await describeArchive(archive);
-          layers.push(buildArchiveLayer({ title: layer.site_name, archive, info }));
+          layers.push(
+            buildArchiveLayer({
+              title: layer.site_name,
+              archive,
+              info,
+              // The archive's own storage key — stable across sessions and
+              // unique per survey, so cached tiles can never be served for
+              // the wrong imagery. Re-uploading a survey under a new key
+              // simply misses the cache rather than showing stale tiles.
+              cacheKey: layer.key
+            })
+          );
         } catch (error) {
           console.warn("[Victoria Drone] could not open", layer.key, error);
         }

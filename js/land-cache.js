@@ -30,8 +30,21 @@ const STORE = "land";
 /** Single record key — the cache is all-or-nothing, not per-feature. */
 const RECORD_KEY = "current";
 
-/** Shape stored under RECORD_KEY:
- *  { version: number, savedAt: string (ISO), rows: Array<bbox-RPC row> } */
+/**
+ * Shape stored under RECORD_KEY:
+ *   {
+ *     version:  number,        // vsl_sync_version.version this was taken at
+ *     savedAt:  string,        // ISO
+ *     land:     Array,         // vsl_land_snapshot rows (blocks/plots/titles)
+ *     features: Array,         // vsl_list_features rows (trees, roads, walls)
+ *     estates:  Array          // v_estate_boundaries rows
+ *   }
+ *
+ * All three are written together, under the one version, because the trigger
+ * behind that version fires for all of them. A record missing `land` is from
+ * an older build that only cached the boundaries; it's treated as no cache at
+ * all, so the next sync simply writes a complete one.
+ */
 
 let dbPromise = null;
 
@@ -90,8 +103,14 @@ function runTx(mode, fn) {
 export async function readLandCache() {
   try {
     const record = await runTx("readonly", (store) => store.get(RECORD_KEY));
-    if (!record || !Array.isArray(record.rows)) return null;
-    return record;
+    if (!record || !Array.isArray(record.land)) return null;
+    // Older builds didn't store these two; default them rather than making
+    // every caller check.
+    return {
+      ...record,
+      features: Array.isArray(record.features) ? record.features : [],
+      estates: Array.isArray(record.estates) ? record.estates : []
+    };
   } catch (e) {
     console.warn("[Victoria map] Land cache unreadable:", e);
     return null;
@@ -101,7 +120,7 @@ export async function readLandCache() {
 /**
  * Replaces the cache with a complete set of rows.
  *
- * Call this only once every row is in hand. A half-finished download must
+ * Call this only once everything is in hand. A half-finished download must
  * never be written — a partial cache looks authoritative and would hide
  * plots that actually exist. There's no staging copy here because there
  * doesn't need to be one: an IndexedDB transaction either commits whole or
@@ -111,9 +130,17 @@ export async function readLandCache() {
  * Returns true when stored. Failure is logged, not thrown — a device that
  * can't cache should still be able to use the map online.
  */
-export async function writeLandCache(version, rows) {
-  if (!Array.isArray(rows)) return false;
-  const record = { version, savedAt: new Date().toISOString(), rows };
+export async function writeLandCache(version, { land, features, estates } = {}) {
+  // `land` is the one that must be there; the other two are legitimately
+  // empty on a new deployment with nothing drawn yet.
+  if (!Array.isArray(land)) return false;
+  const record = {
+    version,
+    savedAt: new Date().toISOString(),
+    land,
+    features: Array.isArray(features) ? features : [],
+    estates: Array.isArray(estates) ? estates : []
+  };
   try {
     await runTx("readwrite", (store) => store.put(record, RECORD_KEY));
     return true;

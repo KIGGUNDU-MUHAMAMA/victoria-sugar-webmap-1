@@ -4231,7 +4231,9 @@ async function openModifySelectedPopup(featuresArg = null, layerTypeArg = null) 
     } else {
       const { data: rows } = await supabase
         .from("vsl_parcels")
-        .select("id, parcel_name, block_id, cultivation_status, ratoon_number")
+        // parcel_code isn't editable here, but it's read so a move between
+        // blocks can report the renumbering it causes — see below.
+        .select("id, parcel_name, parcel_code, block_id, cultivation_status, ratoon_number")
         .in("id", ids);
       const list = rows || [];
 
@@ -4288,7 +4290,33 @@ async function openModifySelectedPopup(featuresArg = null, layerTypeArg = null) 
 
       const { error } = await supabase.from("vsl_parcels").update(patch).in("id", ids);
       if (error) throw error;
-      setStatus(statusEl, `Updated ${ids.length} plot(s).`);
+
+      // Moving a plot to another block can change its plot code. A code only
+      // has to be unique WITHIN a block (the idx_vsl_parcels_block_parcel_
+      // code_unique index), and plot codes are per-block numbers that start
+      // again at 1 in every block — so the number a plot arrives with is
+      // usually already taken. A database trigger gives it the next free
+      // number in its new block instead of refusing the move
+      // (vsl_parcels_renumber_on_block_change, sql/027).
+      //
+      // Which means the code can change under the person who moved it, so
+      // it is read back and reported rather than left to be discovered on a
+      // printout later.
+      let renumbered = [];
+      if (patch.block_id) {
+        const beforeByCode = new Map(list.map((r) => [String(r.id), r.parcel_code]));
+        const { data: after } = await supabase
+          .from("vsl_parcels").select("id, parcel_code").in("id", ids);
+        renumbered = (after || [])
+          .filter((r) => String(r.parcel_code) !== String(beforeByCode.get(String(r.id))))
+          .map((r) => `${beforeByCode.get(String(r.id))} → ${r.parcel_code}`);
+      }
+      setStatus(
+        statusEl,
+        renumbered.length
+          ? `Updated ${ids.length} plot(s). Renumbered in the new block: ${renumbered.join(", ")}.`
+          : `Updated ${ids.length} plot(s).`
+      );
     }
 
     clearSelectionIfOwned();

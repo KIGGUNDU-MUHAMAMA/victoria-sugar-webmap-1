@@ -93,7 +93,10 @@ export function initPrintTool({
     iconSize: ICON_SIZE_DEFAULT,
     labels: {
       estate: true, block: true, plot: true, area: true,
-      ratoon: true, feature: true, distance: false, alerts: true,
+      // Ratoon off by default — it's a crop-cycle detail that most sheets
+      // don't need, and it competes with the plot name and area for room in
+      // the same label block. Tick it in Setup when a print is about cycles.
+      ratoon: false, feature: true, distance: false, alerts: true,
       // Land Title name + area — its own toggle, mirroring the plot area one.
       titleDetails: true
     },
@@ -2268,7 +2271,7 @@ export function initPrintTool({
   // boundaries they run between, so the features read as the subject of the
   // map rather than the land. The plot boundary is the thing being printed;
   // a road is context.
-  const BASE_PARCEL_STROKE_PT = 2;   // plot line thickness
+  const BASE_PARCEL_STROKE_PT = 1.5;   // plot line thickness
   const BASE_BLOCK_STROKE_PT = 2;    // block outline
   const BASE_ESTATE_STROKE_PT = 3;   // estate boundary (dashed)
   const BASE_ESTATE_DASH_PT = 6;     // estate dash length
@@ -2277,7 +2280,7 @@ export function initPrintTool({
   // See BASE_PARCEL_STROKE_PT above — these two were swapped.
   const BASE_FEATURE_STROKE_PT = 1;  // custom feature line / polygon outline
   const BASE_FEATURE_POINT_PT = 20;   // point feature dot radius (icon fallback)
-  const BASE_FEATURE_ICON_PT = 50;   // point feature ICON box (width = height)
+  const BASE_FEATURE_ICON_PT = 25;   // point feature ICON box (width = height)
 
   //---------- TEXT CONSTANTS (per 1km of selection) --------------------\\
   const BASE_BLOCK_LABEL_PT = 40;   // block name

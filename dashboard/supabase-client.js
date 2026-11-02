@@ -609,7 +609,6 @@ async function loadLiveData() {
       createdByName: logger ? (logger.full_name || logger.email) : null,
       teamSize: a.team_size,
       machines: a.number_of_machines,
-      completionValue: a.completion_value,
       areaCoveredAcres: a.area_covered_acres,
       comments: a.comments,
       properties: a.activity_properties || {},

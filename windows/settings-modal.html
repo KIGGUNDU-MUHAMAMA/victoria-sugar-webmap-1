@@ -1,0 +1,45 @@
+<!-- Settings — opened from the Settings item in the account dropdown
+     (windows/profile-modal.html; see js/settings-window.js).
+
+     The app remembers how you left it: the map position and zoom, the
+     basemap and which land layers were on, feature types switched off, the
+     print setup, and the last search. That is all kept on this device (see
+     js/user-settings.js) — nothing here is account data and nothing leaves
+     the browser. The one action is Restore Default Settings, which forgets
+     all of it and reloads the map as a first-time visitor would see it. -->
+<div id="settingsOverlay" class="vsl-modal-overlay" hidden>
+  <section class="vsl-modal-card vsl-modal-card--narrow popWinMain" role="region" aria-label="Settings">
+    <header class="popWinHead">
+      <div class="popWinHead__inner">
+        <span class="popWinIcon"><i class="fas fa-gear" aria-hidden="true"></i></span>
+        <h2 class="popWinTitle">Settings</h2>
+      </div>
+      <button type="button" class="popWinCloseBtn" id="settingsCloseBtn" aria-label="Close">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="popWinBody vsl-modal-form">
+      <div class="vsl-modal-field">
+        <label class="search-panel__label">Remembered on this device</label>
+        <ul class="vsl-settings-list">
+          <li>Map position and zoom</li>
+          <li>Basemap and visible layers</li>
+          <li>Feature types switched off</li>
+          <li>Print settings</li>
+          <li>Last search</li>
+        </ul>
+        <p id="settingsStatus" class="vsl-modal-field-hint"></p>
+      </div>
+      <div class="vsl-modal-field">
+        <button type="button" id="settingsRestoreBtn" class="futuristic-icon-btn futuristic-icon-btn--modal-pad vsl-settings-restore">
+          <i class="fas fa-rotate-left" aria-hidden="true"></i> Restore Default Settings
+        </button>
+        <p class="vsl-modal-field-hint">Clears everything above and reloads the map with the original site settings. Your account is not affected.</p>
+      </div>
+    </div>
+    <div class="popWinActionBtns">
+      <button type="button" id="settingsDoneBtn" class="futuristic-icon-btn btn-add futuristic-icon-btn--modal-pad">Close</button>
+    </div>
+  </section>
+</div>

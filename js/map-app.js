@@ -22,6 +22,8 @@ import { initUnifiedMenu } from "./unified-menu.js?v=1.7";
 import { initExportTools } from "./export-tools.js";
 import { initFeatureExport, setFeatureExportContext, clearFeatureExportContext } from "./feature-export.js";
 import { initPrintTool } from "./print-tool.js";
+import { readSettings, patchSettings, debounce } from "./user-settings.js";
+import { initSettingsWindow } from "./settings-window.js";
 import { attachMediaToRecords, mediaFileError } from "./media-store.js";
 // Role → which tools are reachable, plus the local profile cache that keeps
 // boot from refetching vsl_profiles. See role-store.js for why the cache is
@@ -370,27 +372,21 @@ const WEATHER_CONDITION_FIELD = {
 // X" properties) were removed from this form entirely — costs are now
 // admin-only, logged against an activity later from the dashboard into
 // vsl_activity_costs (see that table's migration). Team size/number of
-// machines/progress/area covered/comments are the only fields shown for every
-// activity regardless of which one is picked.
+// machines/area covered/comments are the only fields shown for every activity
+// regardless of which one is picked.
 //
-// Progress is an enum (0%, 20%, 50%, 75%, 100%), not free numeric input.
-// When it's anything other than 100%, an extra "Area covered" field appears
-// (see showWhen below) so a partially-done activity can record how much of
-// the plot's area was actually covered so far; that value is capped
-// client-side at the plot's own expected area + 5 (see
-// renderLogActivityFields / saveLogActivityForm) and is written to its own
+// There used to be a "Progress (%)" enum (0/20/50/75/100) alongside Area
+// covered. It's gone, from the form and from vsl_activities: the two said the
+// same thing twice, and a percentage of a plot is just its area covered
+// expressed less usefully. Area covered is now the only measure of how far an
+// activity got, with a "Whole plot" toggle for the common case (see
+// renderLogActivityFields). It is capped client-side at the plot's own
+// expected area + 5 (see saveLogActivityForm) and written to its own
 // vsl_activities.area_covered_acres column (promoted out of
 // activity_properties so it can actually be queried/reported on).
-let PROGRESS_OPTIONS = ["0", "20", "50", "75", "100"];
-let PROGRESS_OPTION_LABELS = PROGRESS_OPTIONS.map((v) => `${v}%`);
-
 let LOG_ACTIVITY_COMMON_FIELDS = [
   { key: "team_size", label: "Team size", type: "number" },
   { key: "number_of_machines", label: "Number of machines", type: "number" },
-  { key: "completion_value", label: "Progress (%)", type: "select", options: PROGRESS_OPTIONS, optionLabels: PROGRESS_OPTION_LABELS },
-  // Always visible now (used to hide at 100% via showWhen) — at 100% it's
-  // auto-filled with the selected plot/block's own area and locked instead;
-  // see applyAreaCoveredLock() in renderLogActivityFields.
   { key: "area_covered_acres", label: "Area covered (ac)", type: "number" },
   // One free-text box only. There used to be a second ("Challenges"); it was
   // dropped from the form AND from vsl_activities, since in practice whatever
@@ -854,7 +850,7 @@ const RECORD_DETAIL_SKIP_KEYS = new Set(["id", "parcel_id", "block_id", "target_
 
 const RECORD_DETAIL_LABELS = {
   alert: { alert_name: "Alert name", note: "Description", status: "Status", severity: "Severity", created_at: "Logged", resolved_at: "Resolved at", created_by: "Logged by", resolved_by: "Resolved by" },
-  activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", completion_value: "Progress (%)", area_covered_acres: "Area covered (ac)", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
+  activity: { activity_name: "Activity", activity_date: "Date", team_size: "Team size", number_of_machines: "Number of machines", area_covered_acres: "Area covered (ac)", comments: "Comments", created_at: "Logged at", created_by: "Logged by" },
   harvest: { harvest_date: "Harvest date", gross_weight_tonnes: "Yield (tonnes)", ratoon_at_harvest: "Ratoon", created_at: "Logged at", created_by: "Logged by" },
   // media/comment's real "who" columns are captured_by/user_id, not
   // created_by — see RECORD_WHO_COLUMNS above.
@@ -887,7 +883,6 @@ function buildRecordDetailRows(kind, record) {
     else if (kind === "alert" && key === "severity") display = fmt(SEVERITY_LABELS[value] || value);
     else if (key === "is_resolved") display = value ? "Resolved" : "Open";
     else if (key === "file_url" && value) display = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener">Open</a>`;
-    else if (key === "completion_value" && value != null) display = `${escapeHtml(value)}%`;
     // An "Other" activity is identified by the name that was typed for it,
     // not by the word "Other" — see activityDisplayName. The raw
     // custom_activity_name column is skipped below so it isn't also listed
@@ -1011,7 +1006,6 @@ async function saveRecordDetailEdit() {
     const payload = {
       team_size: numOrNull(common.team_size),
       number_of_machines: numOrNull(common.number_of_machines),
-      completion_value: numOrNull(common.completion_value),
       area_covered_acres: common.area_covered_acres !== "" ? numOrNull(common.area_covered_acres) : null,
       comments: common.comments || null,
       activity_properties: properties
@@ -1906,9 +1900,9 @@ async function buildParcelInfoHtml(parcelId) {
 
   groups.push(buildCollapsibleGroup(`Activity History (${activities.length})`,
     buildKvTable([["Current activity", fmt(parcel.current_activity_name)]]) +
-    buildListTable(["Activity", "Progress", "Date"], activities.map((a, i) => [
+    buildListTable(["Activity", "Area (ac)", "Date"], activities.map((a, i) => [
       buildRecordLink("activity", i, fmt(activityDisplayName(a))),
-      a.completion_value != null ? `${escapeHtml(a.completion_value)}%` : "—",
+      a.area_covered_acres != null ? escapeHtml(String(a.area_covered_acres)) : "—",
       fmt(a.activity_date)
     ]), "No activities logged yet.", THREE_COL_WIDTHS)));
 
@@ -2014,8 +2008,8 @@ function buildParcelExportSections({ parcel, blockRow, alerts, currentSeason, ac
     ["Yield per hectare", fmtPlain(currentSeason.yield_per_hectare)]
   ] : [["Status", "No crop cycle recorded yet."]] });
 
-  sections.push({ title: `Activity History (${activities.length})`, type: "table", headers: ["Activity", "Progress", "Date"], rows: activities.map((a) => [
-    fmtPlain(activityDisplayName(a)), a.completion_value != null ? `${a.completion_value}%` : "—", fmtPlain(a.activity_date)
+  sections.push({ title: `Activity History (${activities.length})`, type: "table", headers: ["Activity", "Area (ac)", "Date"], rows: activities.map((a) => [
+    fmtPlain(activityDisplayName(a)), a.area_covered_acres != null ? String(a.area_covered_acres) : "—", fmtPlain(a.activity_date)
   ]) });
 
   sections.push({ title: `Harvest History (${harvests.length})`, type: "table", headers: ["Date", "Gross weight", "Ratoon"], rows: harvests.map((h) => [
@@ -3532,6 +3526,54 @@ function buildLayerTree() {
   return stack;
 }
 
+/** Restores what the person left on screen — basemap, which land layers were
+ *  on, the map position — and keeps saving it as it changes. Everything goes
+ *  through js/user-settings.js; "Restore default settings" wipes it there.
+ *
+ *  Only changes the person makes are saved. The layer switcher is the one
+ *  place those layers get toggled (the print tool flips them for a moment
+ *  during capture, but always puts them back, so the last write is right). */
+function setupSettingsPersistence() {
+  const saved = readSettings().layers;
+  const overlays = [estatesLayer, blocksLayer, parcelsLayer, titlesLayer];
+  const basemaps = baseGroupRef ? baseGroupRef.getLayers().getArray() : [];
+
+  if (saved.basemap && basemaps.some((l) => l.get("title") === saved.basemap)) {
+    setBasemapByTitle(saved.basemap);
+  }
+  for (const layer of overlays) {
+    const title = layer.get("title");
+    if (Object.prototype.hasOwnProperty.call(saved.visible, title)) layer.setVisible(!!saved.visible[title]);
+    layer.on("change:visible", () => {
+      const current = readSettings().layers.visible;
+      patchSettings("layers", { visible: { ...current, [title]: layer.getVisible() } });
+    });
+  }
+  for (const layer of basemaps) {
+    layer.on("change:visible", () => {
+      if (layer.getVisible()) patchSettings("layers", { basemap: layer.get("title") });
+    });
+  }
+
+  // Position. Not saved until the initial fit/boot moves are over, or the
+  // first thing written after "Restore default settings" would be the very
+  // view it just restored.
+  let viewSaveArmed = false;
+  window.setTimeout(() => { viewSaveArmed = true; }, 1500);
+  const saveView = debounce(() => {
+    const view = map?.getView();
+    const center = view?.getCenter();
+    if (!center) return;
+    patchSettings("view", { center: [center[0], center[1]], zoom: view.getZoom() });
+  }, 500);
+  map.on("moveend", () => { if (viewSaveArmed) saveView(); });
+
+  // The last place searched for is waiting in the box next time.
+  const placeInput = document.getElementById("placeSearchInput");
+  const lastPlace = readSettings().search.placeQuery;
+  if (placeInput && lastPlace && !placeInput.value) placeInput.value = lastPlace;
+}
+
 /** Repopulates the FEATURES group with one proxy row per feature type
  *  currently used on the map, reading from survey-draw.js's
  *  getUsedFeatureTypes(). Called via onFeaturesRefreshed, so it always runs
@@ -3547,14 +3589,22 @@ function rebuildFeaturesSwitcherGroup() {
   const types = surveyDrawApi?.getUsedFeatureTypes?.() || [];
   const collection = featuresGroupRef.getLayers();
   collection.clear();
+  // Types the person switched off in an earlier visit stay off.
+  const hiddenTypes = new Set(readSettings().layers.hiddenFeatureTypes);
   types.forEach((t) => {
+    const startsHidden = hiddenTypes.has(t.id);
     const proxyLayer = new ol.layer.Vector({
       title: t.name,
-      visible: true,
+      visible: !startsHidden,
       source: new ol.source.Vector()
     });
+    if (startsHidden) surveyDrawApi?.setFeatureTypeVisible?.(t.id, false);
     proxyLayer.on("change:visible", () => {
-      surveyDrawApi?.setFeatureTypeVisible?.(t.id, proxyLayer.getVisible());
+      const on = proxyLayer.getVisible();
+      surveyDrawApi?.setFeatureTypeVisible?.(t.id, on);
+      const hidden = new Set(readSettings().layers.hiddenFeatureTypes);
+      if (on) hidden.delete(t.id); else hidden.add(t.id);
+      patchSettings("layers", { hiddenFeatureTypes: [...hidden] });
     });
     collection.push(proxyLayer);
   });
@@ -4980,32 +5030,63 @@ function renderLogActivityFields(activityName) {
       }
     });
 
-    // At 100% complete, the whole plot/block was covered — auto-fill Area
-    // covered with its own area and lock it instead of leaving it for
-    // manual entry (a completed job can't have covered anything less than
-    // the full area). Any other progress value releases the lock again.
-    const completionSelect = commonBody.querySelector('[data-key="completion_value"]');
-    const applyAreaCoveredLock = () => {
-      clearAreaCoveredWarning();
-      if (completionSelect?.value === "100") {
-        areaCoveredInput.value = Number.isFinite(ownArea) ? String(Math.round(ownArea * 100) / 100) : "";
-        areaCoveredInput.disabled = true;
-      } else if (areaCoveredInput.disabled) {
-        // Was locked at 100% — clear the auto-filled value now that it's
-        // editable again rather than leaving a stale number behind.
-        areaCoveredInput.value = "";
-        areaCoveredInput.disabled = false;
+    // "Whole plot" — the common case, and what the old Progress = 100% used
+    // to imply. Ticking it fills Area covered with the plot's (or block's)
+    // own area and disables the field, so the figure can't drift from the
+    // geometry; unticking clears it and hands the field back.
+    //
+    // Only offered when the feature's area is actually known. With no area
+    // to fill in, the toggle would disable the input and leave it empty,
+    // which is strictly worse than typing a number.
+    const areaCell = areaCoveredInput.parentElement;
+    if (areaCell && Number.isFinite(ownArea) && ownArea > 0) {
+      // Rebuilt on every render, so reuse an existing one rather than
+      // stacking a second checkbox each time the activity changes.
+      let wholeWrap = areaCell.querySelector(".vsl-whole-plot");
+      let wholeBox = wholeWrap?.querySelector("input");
+      if (!wholeWrap) {
+        wholeWrap = document.createElement("label");
+        wholeWrap.className = "vsl-whole-plot";
+        wholeBox = document.createElement("input");
+        wholeBox.type = "checkbox";
+        wholeWrap.appendChild(wholeBox);
+        wholeWrap.appendChild(document.createElement("span"));
+        areaCell.appendChild(wholeWrap);
       }
-    };
-    completionSelect?.addEventListener("change", applyAreaCoveredLock);
-    applyAreaCoveredLock();
+      // Areas are shown to 1dp everywhere (see migration 031), so the
+      // figure on the label matches what the field will be filled with.
+      const ownAreaText = String(Math.round(ownArea * 10) / 10);
+      wholeWrap.querySelector("span").textContent = `Whole plot (${ownAreaText} ac)`;
+
+      const applyWholePlot = () => {
+        clearAreaCoveredWarning();
+        if (wholeBox.checked) {
+          areaCoveredInput.value = ownAreaText;
+          areaCoveredInput.disabled = true;
+        } else {
+          // Clear rather than leave the auto-filled figure behind — a stale
+          // number that looks typed is worse than an empty field.
+          areaCoveredInput.value = "";
+          areaCoveredInput.disabled = false;
+        }
+      };
+      wholeBox.addEventListener("change", applyWholePlot);
+      applyWholePlot();
+    }
   }
 
   // "Other Details" — the per-activity extras (Bush Clearing's vegetation
   // density, Harvesting's yield, etc). Label + table are toggled together
   // via the shared #logActivityPropsSection wrapper so the section heading
   // never shows with nothing under it.
-  const extra = ACTIVITY_PROPERTY_DEFS[activityName] || [];
+  //
+  // "Other" never shows them, even if the catalogue happens to define some:
+  // the activity is whatever the user typed, so there is no way to know
+  // which extras would apply. The common fields plus Comments are all it
+  // gets.
+  const extra = activityName === OTHER_ACTIVITY
+    ? []
+    : (ACTIVITY_PROPERTY_DEFS[activityName] || []);
   if (extra.length) {
     propsBody.innerHTML = extra.map(buildPropFieldRow).join("");
     wireConditionalFieldVisibility(propsBody);
@@ -5485,7 +5566,6 @@ async function saveLogActivityForm(event) {
       custom_activity_name: activityName === OTHER_ACTIVITY ? customName : null,
       team_size: numOrNull(common.team_size),
       number_of_machines: numOrNull(common.number_of_machines),
-      completion_value: numOrNull(common.completion_value),
       area_covered_acres: areaCoveredAcres,
       comments: common.comments || null,
       activity_date: new Date().toISOString().slice(0, 10),
@@ -6847,6 +6927,7 @@ async function runPlaceSearchQuery() {
     return;
   }
   lastNominatimRequestAt = now;
+  patchSettings("search", { placeQuery: q });
 
   if (goBtn) goBtn.disabled = true;
   try {
@@ -7358,6 +7439,7 @@ function activateSearchTab(tab) {
     if (bodyEl) bodyEl.hidden = !active;
   });
   activeSearchTabId = tab;
+  if (tabs.includes(tab)) patchSettings("search", { tab });
   // The Feature tab's options come from what's currently drawn on the map,
   // so rebuild them each time it's shown rather than trusting a snapshot
   // taken at startup.
@@ -7809,7 +7891,28 @@ function setupParcelSearchPopover() {
         const o = document.createElement("option"); o.value = e.id; o.textContent = e.estate_name;
         estateSelect.appendChild(o);
       });
+      await restoreLastParcelSearch();
     } catch(e) { console.warn("[VSL Search] estates:", e); }
+  }
+
+  // Puts the Estate / Block / Plot boxes back to the last picks without
+  // zooming anywhere — the map keeps the saved position, the boxes just
+  // remember what was chosen. Anything that no longer exists is skipped.
+  async function restoreLastParcelSearch() {
+    const last = readSettings().search;
+    const has = (select, value) => value != null && [...select.options].some((o) => o.value === String(value));
+    if (!has(estateSelect, last.estateId)) return;
+    estateSelect.value = String(last.estateId);
+    await loadSearchBlocks(estateSelect.value);
+    if (!has(blockSelect, last.blockId)) return;
+    blockSelect.value = String(last.blockId);
+    const opt = blockSelect.options[blockSelect.selectedIndex];
+    await loadSearchParcels(opt.dataset.code, blockSelect.value, estateSelect.value, { locate: false });
+    if (has(parcelSelect, last.parcelCode)) {
+      parcelSelect.value = String(last.parcelCode);
+      const noInput = document.getElementById("parcelSearchNoInput");
+      if (noInput) noInput.value = parcelSelect.value;
+    }
   }
 
   async function loadSearchBlocks(estate) {
@@ -7839,7 +7942,7 @@ function setupParcelSearchPopover() {
     } catch(e) { blockSelect.innerHTML = '<option value="">Error loading blocks</option>'; console.warn("[VSL Search] blocks:", e); }
   }
 
-  async function loadSearchParcels(blockCode, blockId, estate) {
+  async function loadSearchParcels(blockCode, blockId, estate, { locate = true } = {}) {
     if (!parcelSelect) return;
     parcelSelect.innerHTML = '<option value="">Loading…</option>';
     parcelSelect.disabled = true;
@@ -7868,11 +7971,12 @@ function setupParcelSearchPopover() {
       if (blockInput) blockInput.value = String(blockCode);
       const noInput   = document.getElementById("parcelSearchNoInput");
       if (noInput) noInput.value = "";
-      runLocateParcelFromPopover();
+      if (locate) runLocateParcelFromPopover();
     } catch(e) { parcelSelect.innerHTML = '<option value="">Error loading parcels</option>'; console.warn("[VSL Search] parcels:", e); }
   }
 
   estateSelect?.addEventListener("change", () => {
+    patchSettings("search", { estateId: estateSelect.value || null, blockId: null, parcelCode: null });
     loadSearchBlocks(estateSelect.value);
     // Block and Plot already zoom on selection (loadSearchParcels and the
     // parcelSelect handler both call runLocateParcelFromPopover); Estate was
@@ -7880,11 +7984,13 @@ function setupParcelSearchPopover() {
     zoomToSearchEstate(estateSelect.value);
   });
   blockSelect?.addEventListener("change", () => {
+    patchSettings("search", { blockId: blockSelect.value || null, parcelCode: null });
     const opt = blockSelect.options[blockSelect.selectedIndex];
     if (blockSelect.value) loadSearchParcels(opt.dataset.code, blockSelect.value, estateSelect?.value);
     else { parcelSelect.innerHTML = '<option value="">— Select Block first —</option>'; parcelSelect.disabled = true; }
   });
   parcelSelect?.addEventListener("change", () => {
+    patchSettings("search", { parcelCode: parcelSelect.value || null });
     const blockInput = document.getElementById("parcelSearchBlockInput");
     const noInput   = document.getElementById("parcelSearchNoInput");
     if (blockInput) blockInput.value = blockSelect?.value || "";
@@ -7909,7 +8015,8 @@ function setupParcelSearchPopover() {
       // tool's way, which keep the highlight as context.)
       closeSearchPanel({ clearHighlight: true });
     } else {
-      openSearchPanel("parcel");
+      const savedTab = readSettings().search.tab;
+      openSearchPanel(["parcel", "feature", "place", "coords"].includes(savedTab) ? savedTab : "parcel");
       loadSearchEstates();
     }
   });
@@ -8854,12 +8961,20 @@ function applyRoleGating(role) {
 }
 
 async function initMap() {
+  // Where the map was left last time (see js/user-settings.js). Anything
+  // malformed is ignored and the app's own startup view is used instead.
+  const savedView = readSettings().view;
+  const hasSavedView = Array.isArray(savedView?.center)
+    && savedView.center.length === 2
+    && savedView.center.every(Number.isFinite)
+    && Number.isFinite(savedView.zoom);
+
   map = new ol.Map({
     target: "map",
     layers: buildLayerTree(),
     view: new ol.View({
-      center: ol.proj.fromLonLat(cfg.DEFAULT_CENTER || [32.59, 0.35]),
-      zoom: cfg.DEFAULT_ZOOM || 11
+      center: hasSavedView ? savedView.center : ol.proj.fromLonLat(cfg.DEFAULT_CENTER || [32.59, 0.35]),
+      zoom: hasSavedView ? savedView.zoom : (cfg.DEFAULT_ZOOM || 11)
     }),
     controls: []
   });
@@ -8886,8 +9001,10 @@ async function initMap() {
   );
   setTimeout(() => {
     map.updateSize();
-    map.getView().fit(luweeroExtent, { padding: [10, 10, 10, 10], maxZoom: 16 });
+    // The Luwero fit is only the first-visit view; a saved one wins.
+    if (!hasSavedView) map.getView().fit(luweeroExtent, { padding: [10, 10, 10, 10], maxZoom: 16 });
   }, 400);
+  setupSettingsPersistence();
 
   const LayerSwitcherClass = ol.control.LayerSwitcher || window.LayerSwitcher;
   if (LayerSwitcherClass) {
@@ -8949,6 +9066,7 @@ async function initMap() {
   setupAlertsListModal();
   setupResolveAlertModal();
   initProfileModal();
+  initSettingsWindow({ confirmDanger });
   updateProfileButtonAvatar();
   bindEvents();
   startBackgroundLocationTracking();
@@ -9043,6 +9161,11 @@ async function initMap() {
     estatesLayer,
     titlesLayer,
     getFeaturesLayer: () => surveyDrawHandles?.getFeaturesLayer?.() || null,
+    // The features layer is three layers now (casing / erase / repaint — see
+    // FEATURES_CANVAS_CLASS in js/survey-draw.js). The print tool hides them
+    // all while capturing the basemap raster; hiding only the first would
+    // leave the repaint pass drawing into the image.
+    getFeatureRenderLayers: () => surveyDrawHandles?.getFeatureRenderLayers?.() || [],
     // Feature names sit on their own decluttered layer; the print tool needs
     // it only so it can hide it while capturing the basemap raster.
     getFeatureLabelsLayer: () => surveyDrawHandles?.getFeatureLabelsLayer?.() || null,

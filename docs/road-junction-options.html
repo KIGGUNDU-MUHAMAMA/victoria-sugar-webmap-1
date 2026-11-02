@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Road junction rendering — option comparison</title>
+<title>Road junction rendering — implemented approach</title>
 <style>
   body {
     margin: 0;
@@ -28,11 +28,11 @@
 </style>
 </head>
 <body>
-<h1>Road junction — how option 1 looks over imagery</h1>
+<h1>Road junction — option 1, as implemented</h1>
 <p class="sub">
   Same geometry in all three. The background is a stand-in for satellite imagery, not a real tile.
-  Panel 3 uses the actual <code>destination-out</code> technique on a separate canvas — the erase is
-  real, not a drawing of one.
+  The first panel runs the same three passes the map now runs — MAIN, ERASE with
+  <code>destination-out</code>, then FILL — so the erase is real, not a drawing of one.
 </p>
 
 <div class="note" id="report"></div>
@@ -236,10 +236,14 @@
     drawPlots(ctx);
     var roads = [ROAD_A, ROAD_B];
     var i;
+    // PASS.MAIN  — every casing, in the road colour.
     for (i = 0; i < roads.length; i++) strokeLine(ctx, roads[i], ROAD, 3 * W + 2 * S);
+    // PASS.ERASE — every corridor, destination-out. One continuous erase
+    // across the junction, which is what clears the inner edges.
     for (i = 0; i < roads.length; i++) {
       strokeLine(ctx, roads[i], "#000000", W + 2 * S, null, "destination-out");
     }
+    // PASS.FILL  — centrelines repainted over the cleared corridor.
     for (i = 0; i < roads.length; i++) strokeLine(ctx, roads[i], ROAD, W, [W, W * 2]);
   }
 

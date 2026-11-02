@@ -43,12 +43,14 @@
 
 import { fillOpacityOf } from "./feature-type-editor.js";
 import { computeUtmCartesianAreaAcres } from "./utils.js";
+import { readSettings as readSavedSettings, setSetting } from "./user-settings.js";
 
 export function initPrintTool({
   map, setStatus, statusEl, closeOtherPanels,
   // Layer refs + styling data — every one of these is redrawn as real PDF
   // vectors rather than rasterized. See drawMapVectors below.
-  blocksLayer, parcelsLayer, estatesLayer, titlesLayer, getFeaturesLayer, getFeatureLabelsLayer,
+  blocksLayer, parcelsLayer, estatesLayer, titlesLayer, getFeaturesLayer, getFeatureRenderLayers,
+  getFeatureLabelsLayer,
   CULTIVATION_PALETTE, CULTIVATION_STATUS_LABELS, ALERT_SEVERITY_FILL,
   ALERT_SEVERITY_COLORS, getFeatureInteriorPoint, surveyFeatureAreaAcresText
 }) {
@@ -76,7 +78,7 @@ export function initPrintTool({
    *  chosen value over 5 becomes the multiplier on BASE_FEATURE_ICON_PT
    *  (and the dot fallback). Independent of text size so icons can be
    *  dialled up without inflating every label with them. */
-  const ICON_SIZE_DEFAULT = 5;
+  const ICON_SIZE_DEFAULT = 3;
 
   /**
    * Print settings, grouped the same way the settings window's tabs are.
@@ -96,7 +98,10 @@ export function initPrintTool({
       titleDetails: true
     },
     // Layers
-    layers: { estate: true, block: true, plot: true, titleBoundary: true },
+    // Land Titles off by default, matching the map (titlesLayer starts
+    // hidden too) — a title boundary is a legal overlay, not part of the
+    // normal farm sheet. Tick it in Setup when a print needs it.
+    layers: { estate: true, block: true, plot: true, titleBoundary: false },
     hatching: true,
     // Basemaps — off by default: the vectors are the point of the print,
     // and skipping the imagery also skips the slow tile capture.
@@ -110,6 +115,47 @@ export function initPrintTool({
       counts: true, date: true, source: true, scale: true, printedBy: false
     }
   };
+
+  // The setup the person left last time (js/user-settings.js). Every value
+  // is checked against what this version actually has, so a stale or
+  // hand-edited save can add nothing and break nothing.
+  (function restoreSavedPrintSettings(saved) {
+    if (!saved || typeof saved !== "object") return;
+    for (const k of ["textSize", "iconSize"]) {
+      const n = Number(saved[k]);
+      if (Number.isFinite(n) && n >= 1 && n <= 10) settings[k] = n;
+    }
+    for (const k of ["hatching", "basemap", "boostQuality"]) {
+      if (typeof saved[k] === "boolean") settings[k] = saved[k];
+    }
+    for (const group of ["labels", "layers", "details"]) {
+      if (!saved[group] || typeof saved[group] !== "object") continue;
+      for (const k of Object.keys(settings[group])) {
+        if (typeof saved[group][k] === "boolean") settings[group][k] = saved[group][k];
+      }
+    }
+    if (Array.isArray(saved.featureTypes)) {
+      settings.featureTypes = new Set(saved.featureTypes.map(Number).filter(Number.isFinite));
+    }
+  })(readSavedSettings().print);
+
+  /** Saves the current setup. featureTypes is a Set in memory, an array on
+   *  disk; basemap is saved as the box's own state rather than the derived
+   *  "wanted AND a basemap is showing" value, so it survives a visit with
+   *  the basemap switched off. */
+  function savePrintSettings() {
+    setSetting("print", {
+      textSize: settings.textSize,
+      iconSize: settings.iconSize,
+      labels: { ...settings.labels },
+      layers: { ...settings.layers },
+      hatching: settings.hatching,
+      basemap: !!basemapCb?.checked,
+      boostQuality: settings.boostQuality,
+      featureTypes: settings.featureTypes ? [...settings.featureTypes] : null,
+      details: { ...settings.details }
+    });
+  }
 
   /** When on (the default), the selection can only be drawn/resized at the
    *  exact aspect ratio the printed map area will have, so the imagery
@@ -906,6 +952,7 @@ export function initPrintTool({
     if (!el.matches("input[type=checkbox][data-key], select[data-key]")) return;
     readSettings();
     syncBasemapAvailability();
+    savePrintSettings();
     if (el.dataset.reflow) reflowLockedSelection();
   });
 
@@ -992,6 +1039,7 @@ export function initPrintTool({
         const id = Number(cb.dataset.featureType);
         if (cb.checked) settings.featureTypes.add(id);
         else settings.featureTypes.delete(id);
+        savePrintSettings();
       });
     });
   }
@@ -1801,7 +1849,15 @@ export function initPrintTool({
       // capture, so the raster underneath carries only the imagery.
       const vectorLayers = [
         estatesLayer, blocksLayer, parcelsLayer, titlesLayer,
-        getFeaturesLayer?.(),
+        // All three feature passes (casing / erase / repaint — see
+        // FEATURES_CANVAS_CLASS in js/survey-draw.js). Hiding only the first
+        // would leave the repaint pass drawing single lines and road
+        // centrelines straight into the captured raster, where they'd then
+        // be drawn a second time as PDF vectors. Falls back to the single
+        // layer so an older handle without this getter still works.
+        ...(getFeatureRenderLayers?.()?.length
+          ? getFeatureRenderLayers()
+          : [getFeaturesLayer?.()]),
         // Feature names live on their own decluttered layer (see
         // featureLabelsLayer in js/survey-draw.js) and are redrawn as PDF
         // text further down, so they have to be hidden here too.
@@ -2207,13 +2263,19 @@ export function initPrintTool({
 
   //---------- LINE CONSTANTS (per 1km of selection) --------------------\\
   const BASE_PARCEL_HALO_PT = 2;     // white casing under the plot outline
-  const BASE_PARCEL_STROKE_PT = 1;   // plot line thickness
+  // Plot and feature strokes are swapped from what they were (plot 1 /
+  // feature 2): on paper the roads were drawing heavier than the plot
+  // boundaries they run between, so the features read as the subject of the
+  // map rather than the land. The plot boundary is the thing being printed;
+  // a road is context.
+  const BASE_PARCEL_STROKE_PT = 2;   // plot line thickness
   const BASE_BLOCK_STROKE_PT = 2;    // block outline
   const BASE_ESTATE_STROKE_PT = 3;   // estate boundary (dashed)
   const BASE_ESTATE_DASH_PT = 6;     // estate dash length
   const BASE_TITLE_STROKE_PT = 2;    // land title boundary (dashed)
   const BASE_TITLE_DASH_PT = 5;      // land title dash length
-  const BASE_FEATURE_STROKE_PT = 2;  // custom feature line / polygon outline
+  // See BASE_PARCEL_STROKE_PT above — these two were swapped.
+  const BASE_FEATURE_STROKE_PT = 1;  // custom feature line / polygon outline
   const BASE_FEATURE_POINT_PT = 20;   // point feature dot radius (icon fallback)
   const BASE_FEATURE_ICON_PT = 50;   // point feature ICON box (width = height)
 

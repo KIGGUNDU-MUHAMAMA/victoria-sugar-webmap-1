@@ -65,6 +65,9 @@ const WINDOW_FRAGMENTS = [
   { parent: "body", url: "./windows/resolve-alert-modal.html" },
   // Opened by clicking the account button in the top controls (was a direct Sign Out button).
   { parent: "body", url: "./windows/profile-modal.html" },
+  // Opened from the Settings item in that dropdown — what the app remembers
+  // on this device, and Restore Default Settings (js/settings-window.js).
+  { parent: "body", url: "./windows/settings-modal.html" },
   // NOTE: windows/manage-features-panel.html is no longer loaded — the
   // feature-type list moved out of its own modal and into the Survey
   // window's Features tab (windows/survey-panel.html #uamTabFeatures,

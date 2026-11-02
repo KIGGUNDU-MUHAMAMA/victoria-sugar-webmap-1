@@ -785,6 +785,24 @@ button:hover {
    .vsl-modal-field-divider used to separate the vsl_profiles fields from
    the auth.users ones inside a single Manage Account form; the windows are
    now split along that same line, so the rule went with it. */
+/* Settings window: plain list of what the app remembers, and the one
+   action button, which sits full width under it. */
+.vsl-settings-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink, #222);
+}
+.vsl-settings-restore {
+  width: 100%;
+  justify-content: center;
+  color: #b91c1c;
+}
+.vsl-settings-restore:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .vsl-modal-field-hint {
   font-size: 11px;
   color: var(--muted, #6b7280);
@@ -7414,6 +7432,32 @@ select.search-panel__input {
   border-color: #d97706;
   box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
   margin-top: 14px;
+}
+
+/* "Whole plot (12.4 ac)" under Area covered — ticking it fills the field
+   with the plot's own area and disables it (renderLogActivityFields). The
+   checkbox needs its width back: the app-wide reset at the top of this file
+   stretches every input to 100%, which would turn it into a huge box. */
+#logActivityModal .vsl-whole-plot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #4a5551;
+  cursor: pointer;
+  user-select: none;
+}
+#logActivityModal .vsl-field-grid .vsl-whole-plot input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 0;
+  margin: 0;
+  accent-color: #4a9e6e;
+  cursor: pointer;
 }
 
 /* Section headings — "General Details" / "Other Details" (see

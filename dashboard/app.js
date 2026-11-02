@@ -419,7 +419,7 @@ function renderAnalytics(el) {
             <tr>
               <td>${a.date || '—'}</td><td><strong>${a.name}</strong></td><td>${a.estate}</td>
               <td>${a.block}</td><td>${a.parcel || '—'}</td><td>${a.assignedTo || '—'}</td>
-              <td>${a.completionValue != null ? a.completionValue : '—'}</td>
+              <td>${a.areaCoveredAcres != null ? a.areaCoveredAcres : '—'}</td>
             </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--gray-500);padding:24px">No activities logged yet</td></tr>`}
         </tbody>
       </table>
@@ -829,7 +829,7 @@ function renderEstatesPage(el) {
                 <td><strong>${a.name}</strong></td>
                 <td>${a.createdByName || '—'}</td>
                 <td>${a.teamSize ?? '—'}</td>
-                <td>${a.completionValue != null ? a.completionValue + '%' : '—'}</td>
+                <td>${a.areaCoveredAcres != null ? a.areaCoveredAcres : '—'}</td>
               </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--gray-500);padding:20px">No activities logged for this plot yet</td></tr>`}
           </tbody>
         </table>
@@ -1955,7 +1955,7 @@ function renderProduction(el) {
       const { error: aErr } = await client.from('vsl_activities').insert([{
         activity_name: 'Harvesting', activity_date: dateVal,
         parcel_id: plotUuid, block_id: plot._blockUuid, estate_id: estateRow ? estateRow._id : null,
-        completion_value: 100, comments: comments || null, created_by: uid,
+        comments: comments || null, created_by: uid,
       }]);
       if (aErr) throw aErr;
 
@@ -2490,14 +2490,6 @@ function renderSeasons(el) {
 // there). ACTIVITY_TYPES() below always reflects whatever's live in DATA.
 function ACTIVITY_TYPES() { return DATA.activityTypes && DATA.activityTypes.length ? DATA.activityTypes : ['Bush Clearing','Ploughing','Harrow','Ripping','Ridging','Furrowing','Lime Application','Planting','Manuring','Fertilization','Weeding','Spraying','Irrigation','Harvesting','Loading','Trash Lining','Trash Collection']; }
 
-// Completion enum + labels — falls back to this if vsl_activity_common_fields
-// hasn't been seeded yet (see DATA.activityCommonFields).
-const COMPLETION_OPTIONS_FALLBACK = { options: ['0','20','50','75','100'], optionLabels: ['0%','20%','50%','75%','100%'] };
-function completionOptions() {
-  const f = (DATA.activityCommonFields || []).find(f => f.key === 'completion_value');
-  return f && f.options ? { options: f.options, optionLabels: f.optionLabels || f.options.map(o => o + '%') } : COMPLETION_OPTIONS_FALLBACK;
-}
-
 function renderActivities(el) {
   let estFilter = '';
   // Latest first — activity_date desc, falling back to logged-at (createdAt) desc
@@ -2519,7 +2511,7 @@ function renderActivities(el) {
     <div class="table-wrap">
       <table>
         <thead><tr><th>Date</th><th>Activity</th><th>Estate</th><th>Block</th><th>Plot</th>
-        <th>Logged By</th><th>Team</th><th>Completion</th><th>Actions</th></tr></thead>
+        <th>Logged By</th><th>Team</th><th>Area (ac)</th><th>Actions</th></tr></thead>
         <tbody>
           ${rows.length ? rows.map(a=>`
             <tr style="cursor:pointer" onclick="viewActivityDetail('${a.id}')">
@@ -2530,14 +2522,7 @@ function renderActivities(el) {
               <td>${a.parcel || '—'}</td>
               <td>${a.createdByName || '—'}</td>
               <td>${a.teamSize ?? '—'}</td>
-              <td>${a.completionValue != null ? `
-                <div style="display:flex;align-items:center;gap:6px">
-                  <div class="progress-bar-wrap" style="width:70px">
-                    <div class="progress-bar ${a.completionValue>75?'green':a.completionValue>50?'amber':'red'}"
-                         style="width:${Math.min(100,a.completionValue)}%"></div>
-                  </div>
-                  <span style="font-size:11px;font-weight:700">${a.completionValue}%</span>
-                </div>` : '—'}</td>
+              <td>${a.areaCoveredAcres != null ? a.areaCoveredAcres : '—'}</td>
               <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px">
                 <button class="icon-btn" onclick="showEditActivityModal('${a.id}')" title="Edit">✎</button>
                 <button class="icon-btn danger" onclick="confirmDeleteActivity('${a.id}')" title="Delete">🗑</button>
@@ -2583,7 +2568,7 @@ function renderActivities(el) {
       ['Assigned To', a.assignedTo || '—'],
       ['Team Size', a.teamSize ?? '—'],
       ['Machines', a.machines ?? '—'],
-      ['Completion', a.completionValue != null ? a.completionValue + '%' : '—'],
+      ['Area covered (ac)', a.areaCoveredAcres != null ? String(a.areaCoveredAcres) : '—'],
       ['Area Covered (ac)', a.areaCoveredAcres ?? '—'],
       ['Comments', a.comments || '—'],
       ['Logged By', a.createdByName || '—'],
@@ -2687,28 +2672,20 @@ function renderActivities(el) {
     }
   };
 
-  // Completion + Area Covered share the same enum/behaviour as the webmap's
-  // Log Activity form: Progress is picked from the fixed 0/20/50/75/100
-  // options (DATA.activityCommonFields / completionOptions() above), and
-  // Area Covered only makes sense — so is only shown — while Progress isn't
-  // 100%. `prefix` is 'aa' (add) or 'ea' (edit).
-  function completionFieldHTML(prefix, completionVal, areaVal) {
-    const { options, optionLabels } = completionOptions();
+  // Area Covered, matching the webmap's Log Activity form. The Completion
+  // (%) select that used to sit beside it is gone, along with
+  // vsl_activities.completion_value — a percentage of a plot is just its
+  // area covered, said less usefully. `prefix` is 'aa' (add) or 'ea' (edit).
+  //
+  // No "whole plot" toggle here, unlike the webmap: this form can be opened
+  // without a plot selected at all, so there is not always an area to fill
+  // in. Step 0.1 because areas are stored to 1dp (see migration 031).
+  function areaCoveredFieldHTML(prefix, areaVal) {
     return `
-        <div class="form-group"><label class="form-label">Completion (%)</label>
-          <select class="form-input" id="${prefix}-completion" onchange="onActivityCompletionChange('${prefix}')">
-            <option value="">—</option>
-            ${options.map((o,i)=>`<option value="${o}" ${String(completionVal ?? '')===o?'selected':''}>${optionLabels[i]}</option>`).join('')}
-          </select></div>
-        <div class="form-group" id="${prefix}-area-wrap" ${String(completionVal ?? '')==='100'?'hidden':''}>
+        <div class="form-group">
           <label class="form-label">Area Covered (ac)</label>
-          <input class="form-input" id="${prefix}-area" type="number" min="0" step="0.01" value="${areaVal ?? ''}"></div>`;
+          <input class="form-input" id="${prefix}-area" type="number" min="0" step="0.1" value="${areaVal ?? ''}"></div>`;
   }
-  window.onActivityCompletionChange = function(prefix) {
-    const val = document.getElementById(`${prefix}-completion`).value;
-    const wrap = document.getElementById(`${prefix}-area-wrap`);
-    if (wrap) wrap.hidden = (val === '100');
-  };
 
   // ── Activity-specific property fields ──
   // Log/Edit Activity used to only ever show the columns every activity
@@ -2840,7 +2817,7 @@ function renderActivities(el) {
       ${plot ? lockedScopeHTML('aa', plot) : scopePickerHTML('aa','','','')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="aa-team" type="number" min="0"></div>
-        ${completionFieldHTML('aa', null, null)}
+        ${areaCoveredFieldHTML('aa', null)}
       </div>
       ${activityPropsSectionHTML('aa', firstType, null)}
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="aa-comments" rows="2"></textarea></div>
@@ -2857,8 +2834,7 @@ function renderActivities(el) {
     const blockId = document.getElementById('aa-block').value || null;
     const parcelId = document.getElementById('aa-parcel').value || null;
     const team = document.getElementById('aa-team').value;
-    const completion = document.getElementById('aa-completion').value;
-    const areaCovered = completion !== '100' ? document.getElementById('aa-area').value : '';
+    const areaCovered = document.getElementById('aa-area').value;
     const comments = document.getElementById('aa-comments').value.trim();
     const customName = readCustomActivityName('aa');
     const properties = readActivityPropsFromForm('aa');
@@ -2881,8 +2857,7 @@ function renderActivities(el) {
         activity_name: name, activity_date: date,
         custom_activity_name: name === OTHER_ACTIVITY ? customName : null,
         block_id: blockId, parcel_id: parcelId, estate_id: estateRow ? estateRow._id : null,
-        team_size: team || null, completion_value: completion || null,
-        area_covered_acres: areaCovered || null,
+        team_size: team || null, area_covered_acres: areaCovered || null,
         comments: comments || null,
         activity_properties: properties,
         created_by: uid,
@@ -2913,7 +2888,7 @@ function renderActivities(el) {
       ${customActivityNameHTML('ea', a.customName || '')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="form-group"><label class="form-label">Team Size</label><input class="form-input" id="ea-team" type="number" value="${a.teamSize ?? ''}"></div>
-        ${completionFieldHTML('ea', a.completionValue, a.areaCoveredAcres)}
+        ${areaCoveredFieldHTML('ea', a.areaCoveredAcres)}
       </div>
       ${activityPropsSectionHTML('ea', a.typeName || a.name, a.properties)}
       <div class="form-group" style="margin-bottom:12px"><label class="form-label">Comments</label><textarea class="form-input" id="ea-comments" rows="2">${a.comments||''}</textarea></div>
@@ -2928,8 +2903,7 @@ function renderActivities(el) {
     const name = document.getElementById('ea-name').value;
     const date = document.getElementById('ea-date').value || null;
     const team = document.getElementById('ea-team').value;
-    const completion = document.getElementById('ea-completion').value;
-    const areaCovered = completion !== '100' ? document.getElementById('ea-area').value : '';
+    const areaCovered = document.getElementById('ea-area').value;
     const comments = document.getElementById('ea-comments').value.trim();
     const customName = readCustomActivityName('ea');
     if (name === OTHER_ACTIVITY && !customName) {
@@ -2955,7 +2929,7 @@ function renderActivities(el) {
         // clears the stale one-off name instead of leaving the pair
         // contradicting each other (the check constraint would refuse it).
         custom_activity_name: name === OTHER_ACTIVITY ? customName : null,
-        completion_value: completion || null, area_covered_acres: areaCovered || null,
+        area_covered_acres: areaCovered || null,
         comments: comments || null,
         activity_properties: properties,
       }).eq('id', id);

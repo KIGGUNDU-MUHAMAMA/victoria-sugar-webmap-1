@@ -58,139 +58,72 @@ const LINE_LABEL_ALLOW_OVERFLOW = false;
 // all polygons under all lines under all points under all labels, regardless
 // of the order features happen to arrive in.
 //
-// There used to be two more rounds here, Z_LINE_CASING and Z_LINE_KNOCKOUT,
-// because a double/triple line was drawn as a wide coloured stroke with its
-// middle painted back out in white; grouping by role stopped one road's
-// white core slicing through another road at a crossing. That technique is
-// gone — the parallel lines are real offset geometry now (see
-// offsetLineCoords) — so every line is a plain stroke in one round.
+// The casing/erase/repaint rounds a double or triple line needs are NOT
+// zIndex rounds any more — they are three separate layers sharing one canvas
+// (see PASS and FEATURES_CANVAS_CLASS below), because the erase has to change
+// the canvas compositing mode, and OpenLayers fires its render hooks per
+// layer rather than per zIndex group. Within any one of those layers, a line
+// is a single stroke, so Z_LINE_FILL is the only line rung left.
 const Z_HIGHLIGHT = 0; // search/selection halo, under everything it marks
 const Z_POLYGON = 10;
 const Z_LINE_FILL = 40; // every line stroke, single or one of a bundle
 const Z_POINT = 50;
 const Z_LABEL = 60; // all text on top of all geometry
 
-// ── Parallel lines by real offset geometry ──────────────────────────────
-// A double/triple line used to be faked: paint a wide stroke in the road
-// colour, then knock its middle back out with a narrower stroke in white.
-// The white was the problem — on satellite imagery it reads as the brightest
-// thing on the map, and roads end up shouting over everything else. Making
-// it transparent is not a fix: paint cannot erase, so a transparent inner
-// stroke just leaves the wide casing showing as one solid band.
+// ── Parallel lines by erasing, not painting ─────────────────────────────
+// A double/triple line is a wide stroke in the road colour with its middle
+// taken back out, leaving two or three parallel bands. What takes the middle
+// out used to be a white stroke, and the white was the problem: over
+// satellite imagery it reads as the brightest thing on the map.
 //
-// So the lines are now genuinely parallel: the centreline is offset sideways
-// to ±spacing/2 (or ±spacing for a triple's outer pair) and each result is
-// stroked at the type's own weight. Nothing is painted between them, so the
-// basemap shows through — and crossings now read as crossings, since there
-// is no longer an opaque core hiding the overlap.
-
-/** Offset geometries are rebuilt only when the shape or the zoom changes —
- *  keyed per feature so a long road isn't re-offset on every frame. */
-const OFFSET_CACHE = new WeakMap();
-
-/** Cosine floor for a mitre join: below this the bisector is clamped, so a
- *  hairpin bend can't throw a spike four times the offset distance. */
-const MITRE_COS_FLOOR = 0.25;
-
-/**
- * Offsets a line's coordinates sideways by `d` map units (positive = left of
- * travel), by moving each vertex along the angle bisector of its two
- * segments. The bisector is extended by 1/cos(half-angle) so the offset
- * segments actually meet at the corner instead of leaving a notch — the
- * standard mitre join, clamped by MITRE_COS_FLOOR.
- *
- * @param {Array<Array<number>>} coords
- * @param {number} d
- * @returns {Array<Array<number>>|null} null if there aren't two distinct points
- */
-function offsetLineCoords(coords, d) {
-  // Zero-length segments have no direction, so they'd produce a NaN normal
-  // and poison every vertex downstream.
-  const pts = [];
-  for (const c of coords || []) {
-    const prev = pts[pts.length - 1];
-    if (!prev || prev[0] !== c[0] || prev[1] !== c[1]) pts.push(c);
-  }
-  const n = pts.length;
-  if (n < 2) return null;
-  if (!d) return pts;
-
-  // Unit left-normal of each segment.
-  const normals = [];
-  for (let i = 0; i < n - 1; i += 1) {
-    const dx = pts[i + 1][0] - pts[i][0];
-    const dy = pts[i + 1][1] - pts[i][1];
-    const len = Math.hypot(dx, dy) || 1;
-    normals.push([-dy / len, dx / len]);
-  }
-
-  const out = [];
-  for (let i = 0; i < n; i += 1) {
-    let nx;
-    let ny;
-    let scale = 1;
-    if (i === 0) {
-      [nx, ny] = normals[0];
-    } else if (i === n - 1) {
-      [nx, ny] = normals[n - 2];
-    } else {
-      const a = normals[i - 1];
-      const b = normals[i];
-      let mx = a[0] + b[0];
-      let my = a[1] + b[1];
-      const mlen = Math.hypot(mx, my);
-      if (mlen < 1e-9) {
-        // The line doubles back on itself: the two normals cancel, so there
-        // is no bisector. Carry the incoming normal through.
-        [nx, ny] = a;
-      } else {
-        mx /= mlen;
-        my /= mlen;
-        const cos = Math.abs(mx * a[0] + my * a[1]);
-        scale = 1 / Math.max(MITRE_COS_FLOOR, cos);
-        nx = mx;
-        ny = my;
-      }
-    }
-    out.push([pts[i][0] + nx * d * scale, pts[i][1] + ny * d * scale]);
-  }
-  return out;
-}
+// Painting that stroke in any colour is wrong, and painting it transparent
+// does nothing at all (paint cannot erase — a transparent stroke just leaves
+// the wide casing showing as one solid band). Drawing the real parallel
+// lines as offset geometry removed the white but left every crossing boxed
+// in, because nothing covered the overlap any more.
+//
+// So the middle stroke is drawn with the canvas operation `destination-out`,
+// which REMOVES pixels instead of adding them. The result is a genuinely
+// transparent corridor — imagery shows through — and because OpenLayers
+// paints all of one layer before the next, the erase is one continuous
+// corridor across a junction and clears every road's inner edges at once.
+// That is exactly what the white used to do, minus the white.
+//
+// Three layers make it work, and they MUST stay adjacent in zIndex order
+// with the same className — see FEATURES_CANVAS_CLASS.
+const PASS = Object.freeze({
+  /** Everything as normally drawn, with double/triple lines as a solid
+   *  casing. Also the layer everything hit-tests against. */
+  MAIN: "main",
+  /** The corridor to remove from the casing. Drawn destination-out. */
+  ERASE: "erase",
+  /** Repainted over the erased corridor: single lines and a triple's centre
+   *  line, which the erase would otherwise have taken with it. */
+  FILL: "fill"
+});
 
 /**
- * One offset geometry per entry in `offsetsPx`. An offset of 0 yields null,
- * meaning "use the feature's own geometry" — a triple's centre line needs no
- * copy.
+ * One shared canvas for the three feature passes.
  *
- * @returns {Array<ol.geom.Geometry|null>|null} null if the geometry can't be
- *   offset at all, so the caller can fall back to a single plain stroke.
+ * OpenLayers sorts layers by zIndex and hands each renderer the previous
+ * layer's container; a renderer reuses that container when the className
+ * matches and the transform agrees (ol/renderer/canvas/Layer.js,
+ * useContainer), and critically does NOT clear a container it reused. So
+ * three consecutive layers sharing this class name draw onto one canvas, and
+ * the ERASE pass can cut into what the MAIN pass just drew.
+ *
+ * The basemap and the block/plot layers keep the default 'ol-layer', so they
+ * are on a different canvas and the erase cannot touch them — which is the
+ * whole point: what shows through the erased corridor is the imagery.
+ *
+ * Anything inserted between these three layers' zIndexes with a different
+ * className breaks the chain and the erase silently stops working.
  */
-function offsetLineGeometries(feature, geometry, offsetsPx, resolution) {
-  const type = geometry?.getType?.();
-  if (!resolution || (type !== "LineString" && type !== "MultiLineString")) return null;
+const FEATURES_CANVAS_CLASS = "vsl-features-canvas";
 
-  const key = `${geometry.getRevision()}|${resolution}|${offsetsPx.join(",")}`;
-  const cached = OFFSET_CACHE.get(feature);
-  if (cached && cached.key === key) return cached.geoms;
-
-  const lines = type === "LineString" ? [geometry.getCoordinates()] : geometry.getCoordinates();
-  const geoms = [];
-  for (const px of offsetsPx) {
-    if (!px) {
-      geoms.push(null);
-      continue;
-    }
-    // px is a screen measurement; resolution converts it to map units so the
-    // spacing holds its ground distance as the map zooms.
-    const parts = lines.map((c) => offsetLineCoords(c, px * resolution)).filter(Boolean);
-    if (!parts.length) return null;
-    geoms.push(parts.length === 1
-      ? new ol.geom.LineString(parts[0])
-      : new ol.geom.MultiLineString(parts));
-  }
-  OFFSET_CACHE.set(feature, { key, geoms });
-  return geoms;
-}
+/** Colour is irrelevant under destination-out — only alpha is read — but it
+ *  must be fully opaque to erase completely. */
+const ERASE_PAINT = "#000000";
 
 const OL_TYPE_BY_ENTITY = { point: "Point", line: "LineString", polygon: "Polygon", block: "Polygon", plot: "Polygon" };
 // "block"/"plot" are direct drawEntityTypeSelect values — see
@@ -376,14 +309,89 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   // ever holds the shape currently being drawn. Styled per-row from its
   // feature type's color; also what the Edit tab selects from.
   const featuresSource = new ol.source.Vector();
+  // Features are the finest-grained thing on the map after plots, so they
+  // only come on once a plot is comfortably readable — below that, a
+  // scattering of tree and borehole icons is noise over the block layout.
+  //
+  // All three passes share this, and they must: OpenLayers skips a layer
+  // that is out of view, which would break the adjacency the shared canvas
+  // depends on. If MAIN were drawn at a zoom where ERASE is skipped, every
+  // road would show as one solid band.
+  const featuresMinZoom = layerMinZoom(MAP_ZOOM.FEATURE);
   const featuresLayer = new ol.layer.Vector({
     source: featuresSource,
-    style: (feature, resolution) => styleForFeature(feature, resolution),
+    style: (feature, resolution) => styleForFeature(feature, resolution, PASS.MAIN),
     zIndex: 910,
-    // Features are the finest-grained thing on the map after plots, so they
-    // only come on once a plot is comfortably readable — below that, a
-    // scattering of tree and borehole icons is noise over the block layout.
-    minZoom: layerMinZoom(MAP_ZOOM.FEATURE)
+    className: FEATURES_CANVAS_CLASS,
+    minZoom: featuresMinZoom
+  });
+
+  // ── The erase pass ────────────────────────────────────────────────────
+  // Same source, same geometry, but it draws only the corridor to remove
+  // from the casing featuresLayer just painted — with destination-out, so it
+  // removes pixels rather than adding them. zIndex 911 keeps it immediately
+  // after 910 and immediately before 912: nothing may be inserted between
+  // them (see FEATURES_CANVAS_CLASS).
+  const featuresEraseLayer = new ol.layer.Vector({
+    source: featuresSource,
+    style: (feature, resolution) => styleForFeature(feature, resolution, PASS.ERASE),
+    zIndex: 911,
+    className: FEATURES_CANVAS_CLASS,
+    minZoom: featuresMinZoom
+  });
+  // The canvas the MAIN pass last drew into, so the erase can confirm it is
+  // about to cut into the same one.
+  let mainPassCanvas = null;
+  featuresLayer.on("postrender", (evt) => {
+    mainPassCanvas = evt.context?.canvas || null;
+  });
+
+  // This technique fails SILENTLY — a broken chain just means roads render
+  // as solid bands with no error anywhere — so both ways it can break are
+  // checked, once, rather than left to be discovered on a map.
+  let eraseWarned = false;
+  function warnOnce(message) {
+    if (eraseWarned) return;
+    eraseWarned = true;
+    console.warn(`[VSL survey-draw] ${message} Double/triple lines will draw as solid bands.`);
+  }
+
+  featuresEraseLayer.on("prerender", (evt) => {
+    // 1. Is this the same canvas the casing went onto? If a layer with a
+    //    different className got inserted at a zIndex between 910 and 912,
+    //    OpenLayers ends the container chain and hands this pass a fresh
+    //    canvas, where erasing achieves nothing.
+    if (mainPassCanvas && evt.context?.canvas !== mainPassCanvas) {
+      warnOnce("The erase pass is on a different canvas from the casing pass — "
+        + "something with another className was inserted between zIndex 910 and 912.");
+    }
+    // 2. At opacity < 1 OpenLayers renders the layer to a scratch canvas and
+    //    composites it afterwards, so destination-out would erase that empty
+    //    scratch instead of the casing.
+    if (featuresEraseLayer.getOpacity() !== 1) {
+      warnOnce("The erase pass has opacity < 1, so OpenLayers renders it off-screen first.");
+    }
+
+    // Saved rather than assumed to be "source-over": another layer sharing
+    // this canvas could have left something else set, and guessing would
+    // silently corrupt the restore.
+    evt.context.save();
+    evt.context.globalCompositeOperation = "destination-out";
+  });
+  featuresEraseLayer.on("postrender", (evt) => {
+    evt.context.restore();
+  });
+
+  // ── The repaint pass ──────────────────────────────────────────────────
+  // Single lines and a triple's centre line, put back over the corridor the
+  // erase just cleared. Without this a road crossing another road would have
+  // a slice bitten out of it.
+  const featuresFillLayer = new ol.layer.Vector({
+    source: featuresSource,
+    style: (feature, resolution) => styleForFeature(feature, resolution, PASS.FILL),
+    zIndex: 912,
+    className: FEATURES_CANVAS_CLASS,
+    minZoom: featuresMinZoom
   });
 
   // Labels live on their own layer over the SAME source, purely so they can
@@ -402,24 +410,36 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   //
   // Everything else keeps pointing at featuresLayer (snapping, the Select
   // window's hit-testing, the print tool), which still carries the geometry.
+  // zIndex 913, not 911: 911 and 912 are now the erase and repaint passes,
+  // and this layer sitting between them would break their shared canvas (its
+  // className differs, which ends the container chain). Left on the default
+  // className deliberately — labels get their own canvas, composited above,
+  // so the erase can never bite into a road name.
   const featureLabelsLayer = new ol.layer.Vector({
     source: featuresSource,
     style: (feature) => labelStyleForFeature(feature),
     declutter: true,
-    zIndex: 911,
+    zIndex: 913,
     // Same rung as the geometry it labels: a name floating where its icon
     // isn't drawn would be worse than no name at all.
     minZoom: layerMinZoom(MAP_ZOOM.FEATURE_LABEL)
   });
 
-  /** Both feature layers read the same source and the same feature
-   *  properties, so anything that invalidates one invalidates the other. */
+  /** Every feature layer reads the same source and the same feature
+   *  properties, so anything that invalidates one invalidates them all. Miss
+   *  one and a road's casing updates while its erased corridor does not. */
+  const featureLayerPasses = [featuresLayer, featuresEraseLayer, featuresFillLayer];
   function redrawFeatureLayers() {
-    featuresLayer.changed();
+    for (const layer of featureLayerPasses) layer.changed();
     featureLabelsLayer.changed();
   }
-  featuresLayer.set("displayInLayerSwitcher", false);
-  map.addLayer(featuresLayer);
+  // Added in zIndex order. OpenLayers sorts by zIndex before rendering, so
+  // insertion order isn't what decides the canvas chain — but keeping them
+  // together here is what makes the chain obvious to the next reader.
+  for (const layer of featureLayerPasses) {
+    layer.set("displayInLayerSwitcher", false);
+    map.addLayer(layer);
+  }
   featureLabelsLayer.set("displayInLayerSwitcher", false);
   map.addLayer(featureLabelsLayer);
 
@@ -691,19 +711,22 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
   }
 
   // vsl_feature_type.line_style -> the strokes that draw one, two or three
-  // parallel lines, `spacingPx` apart, each `weight` px thick.
+  // parallel lines, `spacingPx` apart, each `weight` px thick, for one pass.
   //
-  // Each line in a bundle is a real stroke on its own offset geometry (see
-  // offsetLineGeometries), so the space between them is genuinely empty and
-  // the basemap shows through. Where the centres sit, for w = weight and
+  // The arithmetic is just the total across the bundle, for w = weight and
   // s = spacing:
-  //   double: two lines, centres (w + s) apart  -> offsets ±(w + s)/2
-  //   triple: three lines, same pitch           -> offsets ±(w + s) and 0
-  // which leaves exactly `weight`-thick lines with `spacingPx` of clear
-  // ground between their edges. The triple's centre line is dotted, the
-  // usual road-centreline convention, regardless of the type's own line
-  // type.
-  function lineStrokeStyles(color, weight, dash, lineStyle, spacingPx, feature, geometry, resolution) {
+  //   double: 2 strokes + 1 gap  -> casing 2w + s, erase s
+  //   triple: 3 strokes + 2 gaps -> casing 3w + 2s, erase w + 2s, then the
+  //           centre stroke repainted over the erased corridor
+  // which leaves exactly `weight`-thick lines with `spacingPx` of cleared
+  // ground between them. The triple's centre line is dotted, the usual
+  // road-centreline convention, regardless of the type's own line type.
+  //
+  // A single line has no erase of its own, but a NEIGHBOURING road's erase
+  // would cut straight through it where the two cross — so it is repainted
+  // in the FILL pass as well as drawn in MAIN. (MAIN still draws it because
+  // MAIN is what hit-testing reads.)
+  function lineStrokeStyles(color, weight, dash, lineStyle, spacingPx, pass) {
     const w = Math.max(1, Number(weight) || 2);
     // A sub-pixel gap would render as one blurred thick line, so never let
     // the bundle collapse below something visibly separated.
@@ -735,26 +758,19 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         zIndex
       });
 
-    const single = () => [stroke(color, w, dash, Z_LINE_FILL)];
-    if (lineStyle !== "double" && lineStyle !== "triple") return single();
-
-    const pitch = w + s;
-    const offsetsPx = lineStyle === "double"
-      ? [-pitch / 2, pitch / 2]
-      : [-pitch, 0, pitch];
-    const geoms = offsetLineGeometries(feature, geometry, offsetsPx, resolution);
-    // Degenerate geometry (a single point, or every vertex identical) can't
-    // be offset. One plain stroke is a better answer than nothing drawn.
-    if (!geoms) return single();
-
-    return geoms.map((geom, i) => {
-      const isCentre = lineStyle === "triple" && i === 1;
-      const style = stroke(color, w, isCentre ? lineDashFor("dotted", w) : dash, Z_LINE_FILL);
-      // A null geom means offset 0 — the feature's own geometry already is
-      // that line, so leaving it unset avoids copying the coordinates.
-      if (geom) style.setGeometry(geom);
-      return style;
-    });
+    if (lineStyle === "double") {
+      if (pass === PASS.ERASE) return [stroke(ERASE_PAINT, s, undefined, Z_LINE_FILL)];
+      if (pass === PASS.FILL) return [];
+      return [stroke(color, 2 * w + s, dash, Z_LINE_FILL)];
+    }
+    if (lineStyle === "triple") {
+      if (pass === PASS.ERASE) return [stroke(ERASE_PAINT, w + 2 * s, undefined, Z_LINE_FILL)];
+      if (pass === PASS.FILL) return [stroke(color, w, lineDashFor("dotted", w), Z_LINE_FILL)];
+      return [stroke(color, 3 * w + 2 * s, dash, Z_LINE_FILL)];
+    }
+    // Single line: nothing to erase, drawn in both the other passes.
+    if (pass === PASS.ERASE) return [];
+    return [stroke(color, w, dash, Z_LINE_FILL)];
   }
 
   // Feature TYPE ids the user has switched off from the FEATURES group in
@@ -770,22 +786,33 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
 
   // `resolution` is handed in by OL (see featuresLayer's style option) and is
   // needed to turn line_spacing_m's ground metres into pixels.
-  function styleForFeature(feature, resolution) {
+  function styleForFeature(feature, resolution, pass = PASS.MAIN) {
     if (isFeatureTypeHidden(feature)) return undefined;
-    const halo = highlightedIds.has(String(feature.getId())) ? highlightStyle(feature) : null;
+    // The halo belongs to the MAIN pass only. Repeating it in FILL would
+    // paint it over the road it is supposed to sit under, and erasing it is
+    // meaningless.
+    const halo = pass === PASS.MAIN && highlightedIds.has(String(feature.getId()))
+      ? highlightStyle(feature)
+      : null;
     if (halo) {
       // Prepend the halo so it paints under the feature's own style — the
       // per-kind branches below each return their own array, so this wraps
       // whichever one applies rather than duplicating all three.
-      const base = styleWithoutHighlight(feature, resolution);
+      const base = styleWithoutHighlight(feature, resolution, pass);
       return [halo, ...(Array.isArray(base) ? base : [base])];
     }
-    return styleWithoutHighlight(feature, resolution);
+    return styleWithoutHighlight(feature, resolution, pass);
   }
 
-  function styleWithoutHighlight(feature, resolution) {
+  function styleWithoutHighlight(feature, resolution, pass = PASS.MAIN) {
     const color = feature.get("_color") || "#3f8f3f";
     const geomType = feature.getGeometry()?.getType();
+    // Points and polygons take part in MAIN only. They are not erased
+    // deliberately: a road corridor crossing a tree icon clips it, exactly
+    // as the old white core painted over it.
+    if (pass !== PASS.MAIN && geomType !== "LineString" && geomType !== "MultiLineString") {
+      return [];
+    }
     if (geomType === "Point" || geomType === "MultiPoint") {
       const radius = Math.max(3, Number(feature.get("_iconSize")) || 10);
       const rotationDeg = Number(feature.get("_iconRotation")) || 0;
@@ -814,10 +841,7 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       const spacingPx = metersToPixels(feature.get("_lineSpacingM"), resolution, feature);
       return linetype === "none"
         ? []
-        : lineStrokeStyles(
-          color, weight, dash, feature.get("_lineStyle"), spacingPx,
-          feature, feature.getGeometry(), resolution
-        );
+        : lineStrokeStyles(color, weight, dash, feature.get("_lineStyle"), spacingPx, pass);
     }
 
     const styles = [
@@ -1788,11 +1812,24 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       await fetchFeatureTypes();
       populateFeatureSelect();
     },
+    // The MAIN pass, and the one everything hit-tests, snaps and filters
+    // against. It draws every feature's full footprint (a double/triple road
+    // as its solid casing), so a pick on any part of a road still lands.
     getFeaturesLayer: () => featuresLayer,
-    // The decluttered text-only companion to the layer above. Only the print
-    // tool needs it, to hide it along with every other vector layer while it
-    // captures the basemap raster — left visible, feature names would be
-    // baked into that image AND drawn again as PDF text on top.
+    /**
+     * All three geometry passes — MAIN, ERASE and the repaint (see
+     * FEATURES_CANVAS_CLASS). Anything that SHOWS OR HIDES the features
+     * layer has to act on all of them, not just the one above: hiding MAIN
+     * alone leaves the repaint pass still drawing single lines and
+     * centrelines. That is exactly the print tool's basemap capture, which
+     * would otherwise bake those strokes into the raster and draw them again
+     * as PDF vectors on top.
+     */
+    getFeatureRenderLayers: () => featureLayerPasses.slice(),
+    // The decluttered text-only companion to the layers above. Only the
+    // print tool needs it, to hide it along with every other vector layer
+    // while it captures the basemap raster — left visible, feature names
+    // would be baked into that image AND drawn again as PDF text on top.
     getFeatureLabelsLayer: () => featureLabelsLayer,
     getFeaturesSource: () => featuresSource,
     refreshFeaturesLayer,

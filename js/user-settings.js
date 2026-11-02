@@ -57,6 +57,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   search: {
     /** Which tab the Search window was last on. */
     tab: null,
+    /** The last place name searched for (Search → Place tab). */
+    placeQuery: "",
     /** The Estate/Block/Plot tab's last picks, by id. */
     estateId: null,
     blockId: null,
@@ -133,7 +135,17 @@ export function readSettings() {
   return cache;
 }
 
+/** Set while "Restore default settings" is wiping the store and reloading,
+ *  so a debounced write that was already queued (the map's last moveend, a
+ *  half-finished print tick) can't put something back in the instant after. */
+let savingSuspended = false;
+
+export function suspendSaving() {
+  savingSuspended = true;
+}
+
 function persist() {
+  if (savingSuspended) return;
   try {
     window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(cache));
   } catch {

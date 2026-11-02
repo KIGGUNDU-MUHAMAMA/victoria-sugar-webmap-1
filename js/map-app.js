@@ -1875,7 +1875,7 @@ async function buildParcelInfoHtml(parcelId) {
     ["Estate name", fmt(blockRow?.vsl_estate?.estate_name)],
     ["Current activity", fmt(parcel.current_activity_name)],
     ["Cultivation status", fmt(CULTIVATION_STATUS_LABELS[parcel.cultivation_status] || parcel.cultivation_status)],
-    ["Area", parcel.area_acres != null ? `${Number(parcel.area_acres).toFixed(2)} ac` : "—"],
+    ["Area", parcel.area_acres != null ? `${Number(parcel.area_acres).toFixed(1)} ac` : "—"],
     ["Geometry status", fmt(parcel.geometry_status)],
     ["Notes", fmt(parcel.cultivation_notes)],
     ["Last updated", fmt(parcel.cultivation_updated_at ? String(parcel.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
@@ -1990,7 +1990,7 @@ function buildParcelExportSections({ parcel, blockRow, alerts, currentSeason, ac
     ["Estate name", fmtPlain(blockRow?.vsl_estate?.estate_name)],
     ["Current activity", fmtPlain(parcel.current_activity_name)],
     ["Cultivation status", fmtPlain(CULTIVATION_STATUS_LABELS[parcel.cultivation_status] || parcel.cultivation_status)],
-    ["Area", parcel.area_acres != null ? `${Number(parcel.area_acres).toFixed(2)} ac` : "—"],
+    ["Area", parcel.area_acres != null ? `${Number(parcel.area_acres).toFixed(1)} ac` : "—"],
     ["Geometry status", fmtPlain(parcel.geometry_status)],
     ["Notes", fmtPlain(parcel.cultivation_notes)],
     ["Last updated", fmtPlain(parcel.cultivation_updated_at ? String(parcel.cultivation_updated_at).slice(0, 16).replace("T", " ") : null)]
@@ -2124,7 +2124,7 @@ async function buildBlockInfoHtml(blockId) {
     .sort((a, b) => String(a.parcel_name ?? "").localeCompare(String(b.parcel_name ?? ""), undefined, { numeric: true }))
     .map((p) => [
       p.parcel_name || "Plot",
-      p.area_acres != null ? `${Number(p.area_acres).toFixed(2)} ac` : "—",
+      p.area_acres != null ? `${Number(p.area_acres).toFixed(1)} ac` : "—",
       p.ratoon_number != null ? String(p.ratoon_number) : "0",
       latestSeasonByParcel.get(p.id)?.cane_variety || "—"
     ]);
@@ -2145,8 +2145,8 @@ async function buildBlockInfoHtml(blockId) {
     ["Block name", fmt(block.block_name)],
     ["Estate name", fmt(block.vsl_estate?.estate_name)],
     ["Number of plots", String(totalPlots)],
-    ["Block area", block.area_acres != null ? `${Number(block.area_acres).toFixed(2)} ac` : "—"],
-    ["Total plot area", `${totalArea.toFixed(2)} ac`],
+    ["Block area", block.area_acres != null ? `${Number(block.area_acres).toFixed(1)} ac` : "—"],
+    ["Total plot area", `${totalArea.toFixed(1)} ac`],
     ["Dominant soil type", fmt(block.soil_type)],
     ["Soil pH", fmt(block.soil_ph)],
     ["Irrigation type", fmt(block.irrigation_type)],
@@ -2227,8 +2227,8 @@ function buildBlockExportSections({ block, totalPlots, totalArea, plotRows, stat
     ["Block name", fmtPlain(block.block_name)],
     ["Estate name", fmtPlain(block.vsl_estate?.estate_name)],
     ["Number of plots", String(totalPlots)],
-    ["Block area", block.area_acres != null ? `${Number(block.area_acres).toFixed(2)} ac` : "—"],
-    ["Total plot area", `${totalArea.toFixed(2)} ac`],
+    ["Block area", block.area_acres != null ? `${Number(block.area_acres).toFixed(1)} ac` : "—"],
+    ["Total plot area", `${totalArea.toFixed(1)} ac`],
     ["Dominant soil type", fmtPlain(block.soil_type)],
     ["Soil pH", fmtPlain(block.soil_ph)],
     ["Irrigation type", fmtPlain(block.irrigation_type)],
@@ -2371,10 +2371,10 @@ async function buildEstateInfoHtml(estateId) {
     // area is its blocks added up, the plots area is its plots added up, and
     // the gap between them is everything inside a block that isn't a plot
     // (roads, headlands, waterways).
-    ["Estate area", `${totalArea.toFixed(2)} ac`],
+    ["Estate area", `${totalArea.toFixed(1)} ac`],
     ["Number of plots", String(totalPlots)],
-    ["Total plots area", `${totalPlotArea.toFixed(2)} ac`],
-    ["Total planted area", `${totalPlantedArea.toFixed(2)} ac`],
+    ["Total plots area", `${totalPlotArea.toFixed(1)} ac`],
+    ["Total planted area", `${totalPlantedArea.toFixed(1)} ac`],
     ["Primary soil type", fmt(estate.primary_soil_type)],
     ["Average rainfall", estate.average_rainfall_mm != null ? `${estate.average_rainfall_mm} mm` : "—"],
     ["Elevation range", (estate.elevation_min_m != null || estate.elevation_max_m != null) ? `${fmt(estate.elevation_min_m)}–${fmt(estate.elevation_max_m)} m` : "—"],
@@ -2390,7 +2390,7 @@ async function buildEstateInfoHtml(estateId) {
 
   groups.push(buildCollapsibleGroup(`Blocks (${blockRows.length})`, buildListTable(
     ["Block", "Area", "Plots", "Planted area"],
-    blockRows.map((r) => [r.name, `${r.area.toFixed(2)} ac`, String(r.plots), `${r.plantedArea.toFixed(2)} ac`]),
+    blockRows.map((r) => [r.name, `${r.area.toFixed(1)} ac`, String(r.plots), `${r.plantedArea.toFixed(1)} ac`]),
     "No blocks in this estate yet.",
     FOUR_COL_EQUAL_WIDTHS
   )));
@@ -2436,10 +2436,10 @@ function buildEstateExportSections({ estate, blockRows, totalBlocks, totalArea, 
     ["Country", fmtPlain(estate.country)],
     ["Address", fmtPlain(estate.address)],
     ["Number of blocks", String(totalBlocks)],
-    ["Estate area", `${totalArea.toFixed(2)} ac`],
+    ["Estate area", `${totalArea.toFixed(1)} ac`],
     ["Number of plots", String(totalPlots)],
-    ["Total plots area", `${totalPlotArea.toFixed(2)} ac`],
-    ["Total planted area", `${totalPlantedArea.toFixed(2)} ac`],
+    ["Total plots area", `${totalPlotArea.toFixed(1)} ac`],
+    ["Total planted area", `${totalPlantedArea.toFixed(1)} ac`],
     ["Primary soil type", fmtPlain(estate.primary_soil_type)],
     ["Average rainfall", estate.average_rainfall_mm != null ? `${estate.average_rainfall_mm} mm` : "—"],
     ["Elevation range", (estate.elevation_min_m != null || estate.elevation_max_m != null) ? `${fmtPlain(estate.elevation_min_m)}-${fmtPlain(estate.elevation_max_m)} m` : "—"],
@@ -2454,7 +2454,7 @@ function buildEstateExportSections({ estate, blockRows, totalBlocks, totalArea, 
   ] });
 
   sections.push({ title: `Blocks (${blockRows.length})`, type: "table", headers: ["Block", "Area", "Plots", "Planted area"], rows: blockRows.map((r) => [
-    r.name, `${r.area.toFixed(2)} ac`, String(r.plots), `${r.plantedArea.toFixed(2)} ac`
+    r.name, `${r.area.toFixed(1)} ac`, String(r.plots), `${r.plantedArea.toFixed(1)} ac`
   ]) });
 
   sections.push({ title: "Manager", type: "kv", rows: estate.vsl_profiles ? [
@@ -2810,7 +2810,7 @@ function setupFeatureInfoActionFooter() {
 function surveyFeatureAreaAcresText(feature) {
   let areaAcres = feature.get("_computed_utm_area_acres");
   if (areaAcres !== undefined) {
-    return areaAcres > 0 ? `${areaAcres.toFixed(2)} ac` : "";
+    return areaAcres > 0 ? `${areaAcres.toFixed(1)} ac` : "";
   }
   const g = feature.getGeometry();
   if (!g) return "";
@@ -2834,7 +2834,7 @@ function surveyFeatureAreaAcresText(feature) {
     }
   } catch {}
   feature.set("_computed_utm_area_acres", areaAcres, true);
-  return areaAcres > 0 ? `${areaAcres.toFixed(2)} ac` : "";
+  return areaAcres > 0 ? `${areaAcres.toFixed(1)} ac` : "";
 }
 
 // Estate boundary — a computed rectangular bbox (vsl_estate.geom, see
@@ -2892,7 +2892,8 @@ const estatesLayer = new ol.layer.Vector({
 // corner collides with whatever Block/Plot label already occupies that spot.
 const titlesLayer = new ol.layer.Vector({
   title: "Land Titles",
-  visible: true,
+  // Off by default — turn it on from the layer switcher when needed.
+  visible: false,
   declutter: false,
   zIndex: LAYER_Z.TITLES,
   source: titlesSource,
@@ -2919,7 +2920,7 @@ const titlesLayer = new ol.layer.Vector({
     const name = String(feature.get("title_name") ?? "").trim();
     if (interiorPoint) {
       const expArea = feature.get("area_acres");
-      const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
+      const area = expArea ? `${Number(expArea).toFixed(1)} ac` : surveyFeatureAreaAcresText(feature);
       const text = name && area ? `${name}\n${area}` : (name || area || "");
       if (text) {
         styles.push(new ol.style.Style({
@@ -3147,7 +3148,7 @@ const parcelsLayer = new ol.layer.Vector({
     // A highlighted plot keeps its label at any zoom, same as a block.
     if (hi || zoom >= MAP_ZOOM.PLOT_LABEL) {
       const expArea = feature.get("area_acres");
-      const area = expArea ? `${Number(expArea).toFixed(2)} ac` : surveyFeatureAreaAcresText(feature);
+      const area = expArea ? `${Number(expArea).toFixed(1)} ac` : surveyFeatureAreaAcresText(feature);
       const text = area ? `${label}\n${area}` : label;
 
       const fontPx = hi ? 12 : 11;
@@ -3335,7 +3336,7 @@ function buildAreaMeasureStyles(feature) {
     new ol.style.Style({
       geometry: ip,
       text: new ol.style.Text({
-        text: `${areaAcres.toFixed(2)} ac`,
+        text: `${areaAcres.toFixed(1)} ac`,
         font: "700 12px Inter, system-ui, sans-serif",
         fill: new ol.style.Fill({ color: "#3e2723" }),
         stroke: new ol.style.Stroke({ color: "#fff", width: 4 })
@@ -3409,12 +3410,12 @@ function buildLayerTree() {
     url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     crossOrigin: "anonymous",
     cacheSize: BASEMAP_TILE_CACHE
-  }), false);
+  }), true);
   const esriImagery = createBasemapLayer("Esri Imagery", new ol.source.XYZ({
     url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     crossOrigin: "anonymous",
     cacheSize: BASEMAP_TILE_CACHE
-  }), true);
+  }), false);
   const noBasemap = createBasemapLayer("No Basemap", new ol.source.XYZ({
     url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
   }));
@@ -5441,7 +5442,7 @@ async function saveLogActivityForm(event) {
       if (areaCovered != null) {
         const ownArea = Number(feature.get("area_acres"));
         if (Number.isFinite(ownArea) && areaCovered > ownArea + 5) {
-          throw new Error(`Area covered can't exceed the plot's area + 5 (max ${(ownArea + 5).toFixed(2)} ac).`);
+          throw new Error(`Area covered can't exceed the plot's area + 5 (max ${(ownArea + 5).toFixed(1)} ac).`);
         }
         areaCoveredAcres = areaCovered;
       }
@@ -5873,7 +5874,7 @@ function renderParcelActionInfo(feature, layerType) {
     // vsl_blocks and vsl_parcels, and the old name silently yields undefined
     // here, which is why this row went missing entirely.
     const area = Number(feature.get("area_acres"));
-    if (Number.isFinite(area)) addRow("Block area", `${area.toFixed(2)} ac`);
+    if (Number.isFinite(area)) addRow("Block area", `${area.toFixed(1)} ac`);
 
     const plots = feature.get("total_plots");
     if (plots !== null && plots !== undefined && plots !== "") addRow("Plots", plots);
@@ -6019,7 +6020,11 @@ function hideParcelActionToolbar() {
  * Both fall back to computing from geometry when there's no stored value —
  * an unsaved shape, or one mid-drag in the Edit tab.
  */
-function showFeatureInfoToolbar(feature) {
+/**
+ * @param {ol.Coordinate} [clickedAt] Map coordinate of the click that
+ *   selected this feature, used to anchor the card for line features.
+ */
+function showFeatureInfoToolbar(feature, clickedAt) {
   const el = document.getElementById("featureInfoToolbar");
   const geometry = feature?.getGeometry?.();
   if (!el || !featureInfoOverlay || !geometry) return;
@@ -6052,10 +6057,10 @@ function showFeatureInfoToolbar(feature) {
     const stored = feature.get("_areaAc");
     const storedNum = stored === null || stored === undefined || stored === "" ? NaN : Number(stored);
     if (Number.isFinite(storedNum)) {
-      measure = `${storedNum.toFixed(2)} ac`;
+      measure = `${storedNum.toFixed(1)} ac`;
     } else {
       const m2 = ol.sphere.getArea(geometry, { projection: "EPSG:3857" });
-      if (Number.isFinite(m2)) measure = `${(m2 / 4046.8564224).toFixed(2)} ac`;
+      if (Number.isFinite(m2)) measure = `${(m2 / 4046.8564224).toFixed(1)} ac`;
     }
   }
   measureEl.textContent = measure;
@@ -6063,11 +6068,22 @@ function showFeatureInfoToolbar(feature) {
 
   // Anchored the same way the plot toolbar is: a point sits on its own
   // coordinate, anything else on a point guaranteed to be inside the shape.
-  const anchor =
-    kind === "point"
-      ? geometry.getClosestPoint(ol.extent.getCenter(geometry.getExtent()))
-      : getFeatureInteriorPoint(geometry)?.getCoordinates()
-        || ol.extent.getCenter(geometry.getExtent());
+  //
+  // EXCEPT lines. A line's interior point is its midpoint, which on a 6km
+  // road zoomed in far enough to work on is kilometres off screen — click
+  // the road at 1km and the card opens at 3km, out of view. Snapped to the
+  // line with getClosestPoint rather than placed on the raw click, since a
+  // click lands up to hitTolerance (12px) off the line and the card should
+  // still sit on it.
+  let anchor;
+  if (kind === "point") {
+    anchor = geometry.getClosestPoint(ol.extent.getCenter(geometry.getExtent()));
+  } else if (kind === "line" && clickedAt) {
+    anchor = geometry.getClosestPoint(clickedAt);
+  } else {
+    anchor = getFeatureInteriorPoint(geometry)?.getCoordinates()
+      || ol.extent.getCenter(geometry.getExtent());
+  }
 
   el.hidden = false;
   featureInfoOverlay.setPosition(anchor);
@@ -6587,7 +6603,7 @@ function setupInfoPopup() {
         { layerFilter: (layer) => layer === drawnFeaturesLayer, hitTolerance: 12 }
       );
       if (drawnHit) {
-        showFeatureInfoToolbar(drawnHit);
+        showFeatureInfoToolbar(drawnHit, evt.coordinate);
         return;
       }
     }
@@ -6737,7 +6753,7 @@ function togglePlaceSearchCard() {
     // If panel already open on place tab, close it
     const placeTab = document.getElementById("tabPlace");
     if (placeTab?.getAttribute("aria-selected") === "true") {
-      closeSearchPanel({ clearHighlight: false });
+      closeSearchPanel({ clearHighlight: true });
       return;
     }
   }
@@ -7277,10 +7293,15 @@ function openSearchPanel(tab = "parcel") {
   activateSearchTab(tab);
 
   // Keyboard close
+  // Closing the window ends the selection, the same as Clear does — leaving
+  // a highlight behind with no window to clear it from stranded it on the
+  // map. Applies to Escape, clicking away and the X alike; the
+  // clearHighlight: false callers elsewhere are the deliberate exceptions
+  // (zoom to a plot, then close, keeping it highlighted).
   searchPanelEscapeHandler = (ev) => {
     if (ev.key === "Escape" && searchPanelOpen) {
       ev.preventDefault();
-      closeSearchPanel({ clearHighlight: false });
+      closeSearchPanel({ clearHighlight: true });
     }
   };
   document.addEventListener("keydown", searchPanelEscapeHandler, true);
@@ -7288,7 +7309,7 @@ function openSearchPanel(tab = "parcel") {
   searchPanelOutsideHandler = (ev) => {
     if (!searchPanelOpen) return;
     if (panel.contains(ev.target) || btn.contains(ev.target)) return;
-    closeSearchPanel({ clearHighlight: false });
+    closeSearchPanel({ clearHighlight: true });
   };
   document.addEventListener("pointerdown", searchPanelOutsideHandler, true);
 
@@ -7496,25 +7517,41 @@ function setupFeatureSearch() {
     typeSelect.value = "";
     nameSelect.value = "";
     refreshAll();
-    setFeatureSearchError("");
+    runFeatureSearch({ quiet: true });
   });
   typeSelect.addEventListener("change", () => {
     nameSelect.value = "";
     refreshNameOptions();
-    setFeatureSearchError("");
+    runFeatureSearch({ quiet: true });
   });
-  nameSelect.addEventListener("change", () => setFeatureSearchError(""));
+  nameSelect.addEventListener("change", () => runFeatureSearch({ quiet: true }));
 
   // Drawing, editing or deleting a feature changes what's searchable.
   window.addEventListener("vsl-features-changed", () => refreshAll());
 
-  goBtn?.addEventListener("click", () => {
+  /**
+   * Selects and zooms to everything matching the current three dropdowns.
+   *
+   * Runs on every dropdown change, not just on Go: picking a Kind and Type
+   * selects every object of that type, and adding a Name narrows it to that
+   * one — which is what the filters already describe, so waiting for Go made
+   * the dropdowns feel inert.
+   *
+   * @param {{quiet?: boolean}} [opts] quiet suppresses the "nothing matched"
+   *   message. A live run hits that state constantly on the way to a real
+   *   selection (and whenever a dropdown is set back to Any), so the error
+   *   is only worth showing when Go was pressed deliberately.
+   */
+  function runFeatureSearch({ quiet = false } = {}) {
     setFeatureSearchError("");
     const hits = matching();
     if (!hits.length) {
-      setFeatureSearchError(
-        allEntries().length ? "No features match those filters." : "No features have been drawn yet."
-      );
+      if (!quiet) {
+        setFeatureSearchError(
+          allEntries().length ? "No features match those filters." : "No features have been drawn yet."
+        );
+      }
+      surveyDrawApi?.setHighlightedFeatures?.([]);
       return;
     }
 
@@ -7524,23 +7561,12 @@ function setupFeatureSearch() {
       if (geom) ol.extent.extend(combined, geom.getExtent());
     }
     if (ol.extent.isEmpty(combined)) {
-      setFeatureSearchError("Those features have no geometry to zoom to.");
+      if (!quiet) setFeatureSearchError("Those features have no geometry to zoom to.");
       return;
     }
 
     surveyDrawApi?.setHighlightedFeatures?.(hits.map((h) => h.id));
-
-    // Same framing as the Block/Plot tab's fit — keep the panel itself from
-    // covering what was just zoomed to.
-    const dockEl = document.getElementById("searchPanel");
-    let leftPad = 96;
-    if (dockEl && !dockEl.hidden) {
-      const w = dockEl.getBoundingClientRect().width;
-      if (w > 0) leftPad = Math.min(360, Math.round(w + 24));
-    }
-    const fitOpts = { padding: [88, 96, 96, leftPad], maxZoom: 19, duration: 1350 };
-    if (ol.easing && typeof ol.easing.easeOut === "function") fitOpts.easing = ol.easing.easeOut;
-    map.getView().fit(combined, fitOpts);
+    map.getView().fit(combined, searchFitOptions());
 
     const one = hits.length === 1 ? hits[0] : null;
     setStatus(
@@ -7549,7 +7575,9 @@ function setupFeatureSearch() {
         ? `${one.name || one.typeName || "Feature"} — highlighted on the map.`
         : `${hits.length} features highlighted on the map.`
     );
-  });
+  }
+
+  goBtn?.addEventListener("click", () => runFeatureSearch());
 
   clearBtn?.addEventListener("click", () => {
     kindSelect.value = "";
@@ -7726,6 +7754,36 @@ async function runLocateParcelFromPopover() {
   window.setTimeout(() => safeFinish(), 2200);
 }
 
+/** Shared fit options for every search zoom — keeps the panel itself from
+ *  covering whatever was just zoomed to. */
+function searchFitOptions(extra = {}) {
+  const dockEl = document.getElementById("searchPanel");
+  let leftPad = 96;
+  if (dockEl && !dockEl.hidden) {
+    const w = dockEl.getBoundingClientRect().width;
+    if (w > 0) leftPad = Math.min(360, Math.round(w + 24));
+  }
+  const opts = { padding: [88, 96, 96, leftPad], maxZoom: 19, duration: 1350, ...extra };
+  if (ol.easing && typeof ol.easing.easeOut === "function") opts.easing = ol.easing.easeOut;
+  return opts;
+}
+
+/** Zooms to an estate boundary picked in the Search window's Estate
+ *  dropdown. estatesSource is loaded in full at boot (loadEstateBoundaries),
+ *  so no server round-trip is needed — and if the boundary genuinely isn't
+ *  there this does nothing rather than erroring, since the dropdown has
+ *  still populated the Block list either way. */
+function zoomToSearchEstate(estateId) {
+  if (!estateId) return;
+  // The dropdown holds a string id while drawEstateRows sets a numeric one;
+  // OL's id index is keyed by object property, so both coerce to the same
+  // key and one lookup covers it.
+  const feature = estatesSource.getFeatureById(estateId);
+  const extent = feature?.getGeometry?.()?.getExtent?.();
+  if (!extent || ol.extent.isEmpty(extent)) return;
+  map.getView().fit(extent, searchFitOptions());
+}
+
 function setupParcelSearchPopover() {
   const searchBtn = document.getElementById("searchPanelBtn");
   const form = document.getElementById("parcelSearchForm");
@@ -7814,7 +7872,13 @@ function setupParcelSearchPopover() {
     } catch(e) { parcelSelect.innerHTML = '<option value="">Error loading parcels</option>'; console.warn("[VSL Search] parcels:", e); }
   }
 
-  estateSelect?.addEventListener("change", () => loadSearchBlocks(estateSelect.value));
+  estateSelect?.addEventListener("change", () => {
+    loadSearchBlocks(estateSelect.value);
+    // Block and Plot already zoom on selection (loadSearchParcels and the
+    // parcelSelect handler both call runLocateParcelFromPopover); Estate was
+    // the only level that just populated the next dropdown.
+    zoomToSearchEstate(estateSelect.value);
+  });
   blockSelect?.addEventListener("change", () => {
     const opt = blockSelect.options[blockSelect.selectedIndex];
     if (blockSelect.value) loadSearchParcels(opt.dataset.code, blockSelect.value, estateSelect?.value);
@@ -7839,7 +7903,11 @@ function setupParcelSearchPopover() {
   searchBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (searchPanelOpen) {
-      closeSearchPanel({ clearHighlight: false });
+      // Toggling the toolbar button shut is the user closing the window,
+      // same as the X — so it ends the selection too. (Unlike the
+      // closeSearchPanel calls that merely get the panel out of another
+      // tool's way, which keep the highlight as context.)
+      closeSearchPanel({ clearHighlight: true });
     } else {
       openSearchPanel("parcel");
       loadSearchEstates();
@@ -8047,7 +8115,7 @@ function startMeasure(type, isDrawOnly = false) {
       }
       
       measureSource.addFeature(feat);
-      const msg = `Area: ${areaAcres.toFixed(2)} ac`;
+      const msg = `Area: ${areaAcres.toFixed(1)} ac`;
       setDrawToolsFeedback(msg, false);
       setStatus(statusEl, msg);
     }
@@ -8170,7 +8238,7 @@ function startSmartMeasure() {
                   const areaM2 = ol.sphere.getArea(tempPoly, { projection: MAP_DRAW_PROJ });
                   areaAcres = (areaM2 / 10000) * 2.47105;
                 }
-                if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+                if (areaEl) areaEl.textContent = `${areaAcres.toFixed(1)} ac`;
               } else {
                 if (areaEl) areaEl.textContent = "0.00 ac";
               }
@@ -8247,9 +8315,9 @@ function startSmartMeasure() {
           const totalM = ol.sphere.getLength(polyGeom, { projection: MAP_DRAW_PROJ });
           
           if (distEl) distEl.textContent = formatGroundLengthM(totalM);
-          if (areaEl) areaEl.textContent = `${areaAcres.toFixed(2)} ac`;
+          if (areaEl) areaEl.textContent = `${areaAcres.toFixed(1)} ac`;
           
-          const msg = `Area: ${areaAcres.toFixed(2)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
+          const msg = `Area: ${areaAcres.toFixed(1)} ac (Perimeter: ${formatGroundLengthM(totalM)})`;
           setStatus(statusEl, msg);
           if (measureFeedback) measureFeedback.textContent = msg;
         } else {
@@ -8525,7 +8593,7 @@ function redrawWalkMode() {
       areaAcres = (areaM2 / 10000) * 2.47105;
     }
     
-    if (areaEl) areaEl.textContent = areaAcres.toFixed(2) + " ac";
+    if (areaEl) areaEl.textContent = areaAcres.toFixed(1) + " ac";
   } else {
     if (areaEl) areaEl.textContent = "0.00 ac";
   }
@@ -8542,7 +8610,7 @@ function bindEvents() {
   setupUnifiedSearchActionButtons();
 
   const searchCloseBtn = document.getElementById("searchPanelCloseBtn");
-  searchCloseBtn?.addEventListener("click", () => closeSearchPanel({ clearHighlight: false }));
+  searchCloseBtn?.addEventListener("click", () => closeSearchPanel({ clearHighlight: true }));
 
   drawLineBtn?.addEventListener("click", () => startMeasure("LineString", true));
   drawPolygonBtn?.addEventListener("click", () => startMeasure("Polygon", true));

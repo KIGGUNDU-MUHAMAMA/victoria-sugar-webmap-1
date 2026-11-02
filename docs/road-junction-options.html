@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Road junction rendering — option comparison</title>
+<style>
+  body {
+    margin: 0;
+    padding: 18px;
+    background: #f4f1ea;
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #2a2a28;
+  }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .sub { color: #6b6b64; margin: 0 0 16px; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .panel { flex: 1 1 300px; min-width: 280px; }
+  .panel h2 { font-size: 13px; margin: 0 0 2px; }
+  .panel p { margin: 0 0 8px; color: #6b6b64; font-size: 12px; min-height: 48px; }
+  .stage { position: relative; width: 100%; aspect-ratio: 1 / 1; border: 1px solid #c9c4b8; border-radius: 6px; overflow: hidden; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .tag--bad { background: #f6d6d2; color: #8a2b1f; }
+  .tag--now { background: #fbe9c8; color: #8a5a1f; }
+  .tag--good { background: #d4ecd8; color: #1f6b33; }
+  .note { margin: 0 0 14px; padding: 8px 11px; background: #fff; border: 1px solid #ddd8cc; border-radius: 6px; font-size: 12px; }
+  .note code { background: #f0ede4; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Road junction — how option 1 looks over imagery</h1>
+<p class="sub">
+  Same geometry in all three. The background is a stand-in for satellite imagery, not a real tile.
+  Panel 3 uses the actual <code>destination-out</code> technique on a separate canvas — the erase is
+  real, not a drawing of one.
+</p>
+
+<div class="note" id="report"></div>
+
+<div class="row">
+  <div class="panel">
+    <h2><span class="tag tag--good">option 1</span> Erase instead of paint</h2>
+    <p>Casing painted, then the inner corridor <em>erased</em> rather than filled white. Edges vanish
+      inside the junction, the gap is fully transparent, centrelines still cross.</p>
+    <div class="stage"><canvas id="c3base"></canvas><canvas id="c3road"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="tag tag--now">now</span> Real offset lines</h2>
+    <p>What's on your map today. No white anywhere and the imagery shows through — but nothing hides
+      the overlap, so the outer edges cross and box the junction.</p>
+    <div class="stage"><canvas id="c2base"></canvas><canvas id="c2road"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="tag tag--bad">before</span> White knockout</h2>
+    <p>The old version. Junctions are clean, but over imagery the white gap is the brightest thing on
+      the map — your "white dog among 100 black dogs".</p>
+    <div class="stage"><canvas id="c1base"></canvas><canvas id="c1road"></canvas></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SIZE = 760;                 // internal resolution; CSS scales it down
+  var ROAD = "#8a5a2b";           // the brown from your screenshot
+  var BOUNDARY = "#1f7a3f";       // plot/block green
+  var W = 4;                      // stroke weight, px
+  var S = 13;                     // gap between the lines, px
+
+  // Two roads crossing at an angle, like your screenshot. Slight bends so the
+  // mitre joins get exercised rather than only straight runs.
+  var ROAD_A = [[-40, 230], [250, 300], [470, 345], [800, 430]];
+  var ROAD_B = [[430, -40], [470, 210], [360, 470], [250, 800]];
+
+  // Plot boundaries, to show roads against other linework.
+  var PLOTS = [
+    [[-40, 120], [300, 200], [392, 150], [392, -40]],
+    [[520, -40], [520, 250], [660, 300], [800, 290]],
+    [[-40, 420], [230, 470], [300, 560], [250, 800]],
+    [[420, 800], [540, 540], [800, 600]]
+  ];
+
+  // ── A stand-in for satellite imagery ────────────────────────────────
+  // Irregular field patches in varied greens and earth tones, plus noise, so
+  // the panels are judged against something with real tonal range rather than
+  // a flat colour. A flat background would flatter every option equally.
+  function drawImagery(ctx) {
+    var rnd = mulberry(20260501);
+    ctx.fillStyle = "#4a5c32";
+    ctx.fillRect(0, 0, SIZE, SIZE);
+
+    var tones = ["#54682f", "#6b7a3a", "#3f5228", "#7d8445", "#8a7f4a",
+                 "#5d6b35", "#46562b", "#726b3c", "#637038"];
+    for (var i = 0; i < 46; i++) {
+      var cx = rnd() * SIZE, cy = rnd() * SIZE;
+      var rx = 50 + rnd() * 150, ry = 40 + rnd() * 130;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rnd() * Math.PI);
+      ctx.beginPath();
+      // Wobbly blob rather than a clean ellipse — field edges aren't smooth.
+      for (var a = 0; a <= 32; a++) {
+        var t = (a / 32) * Math.PI * 2;
+        var w = 0.78 + rnd() * 0.44;
+        var x = Math.cos(t) * rx * w, y = Math.sin(t) * ry * w;
+        if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.globalAlpha = 0.5 + rnd() * 0.4;
+      ctx.fillStyle = tones[(rnd() * tones.length) | 0];
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Cane-row striping inside some patches, and fine grain overall.
+    ctx.globalAlpha = 0.10;
+    ctx.strokeStyle = "#2f3d1e";
+    ctx.lineWidth = 2;
+    for (var r = -SIZE; r < SIZE * 2; r += 9) {
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(r + SIZE * 0.4, SIZE);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    var img = ctx.getImageData(0, 0, SIZE, SIZE);
+    var d = img.data;
+    for (var p = 0; p < d.length; p += 4) {
+      var n = (rnd() - 0.5) * 34;
+      d[p] = clamp(d[p] + n); d[p + 1] = clamp(d[p + 1] + n); d[p + 2] = clamp(d[p + 2] + n);
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  function clamp(v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+  function mulberry(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function path(ctx, pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  }
+
+  function strokeLine(ctx, pts, color, width, dash, composite) {
+    ctx.save();
+    ctx.globalCompositeOperation = composite || "source-over";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "round";
+    ctx.setLineDash(dash || []);
+    path(ctx, pts);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // The offset maths from js/survey-draw.js, verbatim in behaviour.
+  function offsetLineCoords(coords, d) {
+    var pts = [];
+    for (var k = 0; k < coords.length; k++) {
+      var prev = pts[pts.length - 1];
+      if (!prev || prev[0] !== coords[k][0] || prev[1] !== coords[k][1]) pts.push(coords[k]);
+    }
+    var n = pts.length;
+    if (n < 2) return null;
+    if (!d) return pts;
+    var normals = [];
+    for (var i = 0; i < n - 1; i++) {
+      var dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1];
+      var len = Math.hypot(dx, dy) || 1;
+      normals.push([-dy / len, dx / len]);
+    }
+    var out = [];
+    for (var j = 0; j < n; j++) {
+      var nx, ny, scale = 1;
+      if (j === 0) { nx = normals[0][0]; ny = normals[0][1]; }
+      else if (j === n - 1) { nx = normals[n - 2][0]; ny = normals[n - 2][1]; }
+      else {
+        var a = normals[j - 1], b = normals[j];
+        var mx = a[0] + b[0], my = a[1] + b[1];
+        var ml = Math.hypot(mx, my);
+        if (ml < 1e-9) { nx = a[0]; ny = a[1]; }
+        else {
+          mx /= ml; my /= ml;
+          scale = 1 / Math.max(0.25, Math.abs(mx * a[0] + my * a[1]));
+          nx = mx; ny = my;
+        }
+      }
+      out.push([pts[j][0] + nx * d * scale, pts[j][1] + ny * d * scale]);
+    }
+    return out;
+  }
+
+  function drawPlots(ctx) {
+    for (var i = 0; i < PLOTS.length; i++) strokeLine(ctx, PLOTS[i], BOUNDARY, 2.5);
+  }
+
+  // ── 1. White knockout (the old version) ─────────────────────────────
+  function renderWhite(ctx) {
+    drawPlots(ctx);
+    var roads = [ROAD_A, ROAD_B];
+    var i;
+    for (i = 0; i < roads.length; i++) strokeLine(ctx, roads[i], ROAD, 3 * W + 2 * S);
+    for (i = 0; i < roads.length; i++) strokeLine(ctx, roads[i], "#ffffff", W + 2 * S);
+    for (i = 0; i < roads.length; i++) strokeLine(ctx, roads[i], ROAD, W, [W, W * 2]);
+  }
+
+  // ── 2. Real offset lines (what you have now) ────────────────────────
+  function renderOffset(ctx) {
+    drawPlots(ctx);
+    var roads = [ROAD_A, ROAD_B];
+    var pitch = W + S;
+    for (var i = 0; i < roads.length; i++) {
+      strokeLine(ctx, offsetLineCoords(roads[i], pitch), ROAD, W);
+      strokeLine(ctx, offsetLineCoords(roads[i], -pitch), ROAD, W);
+      strokeLine(ctx, roads[i], ROAD, W, [W, W * 2]);
+    }
+  }
+
+  // ── 3. Option 1: erase instead of paint ─────────────────────────────
+  // Identical to panel 1 except the middle pass uses destination-out, which
+  // removes pixels from this canvas instead of adding white ones. The canvas
+  // is separate from the imagery canvas, so what shows through the erased
+  // corridor is the imagery, not the page.
+  function renderErase(ctx) {
+    drawPlots(ctx);
+    var roads = [ROAD_A, ROAD_B];
+    var i;
+    for (i = 0; i < roads.length; i++) strokeLine(ctx, roads[i], ROAD, 3 * W + 2 * S);
+    for (i = 0; i < roads.length; i++) {
+      strokeLine(ctx, roads[i], "#000000", W + 2 * S, null, "destination-out");
+    }
+    for (i = 0; i < roads.length; i++) strokeLine(ctx, roads[i], ROAD, W, [W, W * 2]);
+  }
+
+  function setup(baseId, roadId, render) {
+    var base = document.getElementById(baseId);
+    var road = document.getElementById(roadId);
+    base.width = base.height = road.width = road.height = SIZE;
+    drawImagery(base.getContext("2d"));
+    render(road.getContext("2d", { willReadFrequently: false }));
+    return road;
+  }
+
+  setup("c1base", "c1road", renderWhite);
+  var p2 = setup("c2base", "c2road", renderOffset);
+  var p3 = setup("c3base", "c3road", renderErase);
+
+  // ── Prove the erase actually produced transparency ──────────────────
+  // Sample the centre of the gap on the roads canvas. If destination-out
+  // worked, alpha is 0 there and the imagery below is what you see.
+  function alphaAt(canvas, x, y) {
+    return canvas.getContext("2d").getImageData(x, y, 1, 1).data[3];
+  }
+  // A point inside road A's gap, clear of the junction and of the centreline.
+  var gx = 120, gy = 262;
+  var a2 = alphaAt(p2, gx, gy);
+  var a3 = alphaAt(p3, gx, gy);
+  document.getElementById("report").innerHTML =
+    "<strong>Transparency check</strong> — alpha sampled inside the road gap at (" + gx + "," + gy + "), " +
+    "where 0 means fully see-through:<br>" +
+    "panel 2 (offset lines): <code>alpha = " + a2 + "</code> &nbsp;·&nbsp; " +
+    "panel 3 (erase): <code>alpha = " + a3 + "</code><br>" +
+    (a3 === 0
+      ? "Both are 0 — the erased corridor is genuinely transparent, so panel 3 gives a clear gap <em>and</em> clean junctions."
+      : "Panel 3 is not transparent (alpha " + a3 + ") — destination-out did not take effect here.");
+})();
+</script>
+</body>
+</html>

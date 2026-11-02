@@ -9,6 +9,7 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
   const fabBtn   = document.getElementById("toolsTopBtn") || document.getElementById("toolsFabBtn");
   const overlay  = document.getElementById("unifiedActionMenu");
   const closeBtn = document.getElementById("uamCloseBtn");
+  const minBtn   = document.getElementById("uamMinimizeBtn");
   // Selected by [data-uam-tab]/[data-uam-panel]/[data-uam-actions] attributes
   // rather than a dedicated class, since the nav buttons now just use the
   // shared .search-tab look (same as Modify/Select's vertical tabs).
@@ -58,6 +59,8 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
 
     overlay.hidden = false;
     overlay.setAttribute("aria-hidden", "false");
+    // Never reopen collapsed — that would look like an empty title bar.
+    setMinimized(false);
     // Restore the width for whichever tab is still selected from last time
     // (closeMenu clears it so the other windows aren't affected).
     syncPanelWidth(overlay.dataset.activeTab || null);
@@ -103,6 +106,26 @@ export function initUnifiedMenu({ map, supabase, cfg, setStatus, statusEl, block
   });
 
   closeBtn?.addEventListener("click", closeMenu);
+
+  // ── Minimise / restore ────────────────────────────────────────
+  // Collapses the window to its title bar so the map underneath is usable.
+  // Not a close: the active tab, any half-filled form and any armed map
+  // interaction all stay exactly as they are.
+  const MINIMIZED_CLASS = "popWinMain--minimized";
+
+  function setMinimized(on) {
+    overlay.classList.toggle(MINIMIZED_CLASS, on);
+    if (!minBtn) return;
+    minBtn.setAttribute("aria-expanded", on ? "false" : "true");
+    minBtn.setAttribute("aria-label", on ? "Restore survey panel" : "Minimise survey panel");
+    minBtn.title = on ? "Restore" : "Minimise";
+    const icon = minBtn.querySelector("i");
+    if (icon) icon.className = on ? "fas fa-window-maximize" : "fas fa-window-minimize";
+  }
+
+  minBtn?.addEventListener("click", () => {
+    setMinimized(!overlay.classList.contains(MINIMIZED_CLASS));
+  });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !overlay.hidden) closeMenu();

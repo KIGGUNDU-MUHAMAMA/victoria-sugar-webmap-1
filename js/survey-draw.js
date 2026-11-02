@@ -53,25 +53,144 @@ const LINE_LABEL_MAX_ANGLE_DEG = 40;
 const LINE_LABEL_ALLOW_OVERFLOW = false;
 
 // ── Paint order inside the features layer ───────────────────────────────
-// OpenLayers doesn't draw a layer feature-by-feature. It collects every
-// style returned for every feature, groups them by zIndex, and paints the
-// groups in ascending order. That's what lets a road's casing be drawn with
-// EVERY other road's casing, before any road's white core goes down.
+// OpenLayers collects every style returned for every feature, groups them by
+// zIndex, and paints the groups in ascending order — so these constants put
+// all polygons under all lines under all points under all labels, regardless
+// of the order features happen to arrive in.
 //
-// It matters because of how a double/triple line is made: a wide coloured
-// stroke with its middle knocked back out in white. Drawn one road at a
-// time, the second road's white core lands on top of the first road's
-// finished pixels and cuts a white slice straight through it at the
-// crossing. Grouped by role, the casings merge into one continuous layer and
-// the cores into another, so junctions join up the way they do in QGIS or on
-// Google Maps.
+// There used to be two more rounds here, Z_LINE_CASING and Z_LINE_KNOCKOUT,
+// because a double/triple line was drawn as a wide coloured stroke with its
+// middle painted back out in white; grouping by role stopped one road's
+// white core slicing through another road at a crossing. That technique is
+// gone — the parallel lines are real offset geometry now (see
+// offsetLineCoords) — so every line is a plain stroke in one round.
 const Z_HIGHLIGHT = 0; // search/selection halo, under everything it marks
 const Z_POLYGON = 10;
-const Z_LINE_CASING = 20;
-const Z_LINE_KNOCKOUT = 30;
-const Z_LINE_FILL = 40; // single lines and the centre line of a triple
+const Z_LINE_FILL = 40; // every line stroke, single or one of a bundle
 const Z_POINT = 50;
 const Z_LABEL = 60; // all text on top of all geometry
+
+// ── Parallel lines by real offset geometry ──────────────────────────────
+// A double/triple line used to be faked: paint a wide stroke in the road
+// colour, then knock its middle back out with a narrower stroke in white.
+// The white was the problem — on satellite imagery it reads as the brightest
+// thing on the map, and roads end up shouting over everything else. Making
+// it transparent is not a fix: paint cannot erase, so a transparent inner
+// stroke just leaves the wide casing showing as one solid band.
+//
+// So the lines are now genuinely parallel: the centreline is offset sideways
+// to ±spacing/2 (or ±spacing for a triple's outer pair) and each result is
+// stroked at the type's own weight. Nothing is painted between them, so the
+// basemap shows through — and crossings now read as crossings, since there
+// is no longer an opaque core hiding the overlap.
+
+/** Offset geometries are rebuilt only when the shape or the zoom changes —
+ *  keyed per feature so a long road isn't re-offset on every frame. */
+const OFFSET_CACHE = new WeakMap();
+
+/** Cosine floor for a mitre join: below this the bisector is clamped, so a
+ *  hairpin bend can't throw a spike four times the offset distance. */
+const MITRE_COS_FLOOR = 0.25;
+
+/**
+ * Offsets a line's coordinates sideways by `d` map units (positive = left of
+ * travel), by moving each vertex along the angle bisector of its two
+ * segments. The bisector is extended by 1/cos(half-angle) so the offset
+ * segments actually meet at the corner instead of leaving a notch — the
+ * standard mitre join, clamped by MITRE_COS_FLOOR.
+ *
+ * @param {Array<Array<number>>} coords
+ * @param {number} d
+ * @returns {Array<Array<number>>|null} null if there aren't two distinct points
+ */
+function offsetLineCoords(coords, d) {
+  // Zero-length segments have no direction, so they'd produce a NaN normal
+  // and poison every vertex downstream.
+  const pts = [];
+  for (const c of coords || []) {
+    const prev = pts[pts.length - 1];
+    if (!prev || prev[0] !== c[0] || prev[1] !== c[1]) pts.push(c);
+  }
+  const n = pts.length;
+  if (n < 2) return null;
+  if (!d) return pts;
+
+  // Unit left-normal of each segment.
+  const normals = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const dx = pts[i + 1][0] - pts[i][0];
+    const dy = pts[i + 1][1] - pts[i][1];
+    const len = Math.hypot(dx, dy) || 1;
+    normals.push([-dy / len, dx / len]);
+  }
+
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    let nx;
+    let ny;
+    let scale = 1;
+    if (i === 0) {
+      [nx, ny] = normals[0];
+    } else if (i === n - 1) {
+      [nx, ny] = normals[n - 2];
+    } else {
+      const a = normals[i - 1];
+      const b = normals[i];
+      let mx = a[0] + b[0];
+      let my = a[1] + b[1];
+      const mlen = Math.hypot(mx, my);
+      if (mlen < 1e-9) {
+        // The line doubles back on itself: the two normals cancel, so there
+        // is no bisector. Carry the incoming normal through.
+        [nx, ny] = a;
+      } else {
+        mx /= mlen;
+        my /= mlen;
+        const cos = Math.abs(mx * a[0] + my * a[1]);
+        scale = 1 / Math.max(MITRE_COS_FLOOR, cos);
+        nx = mx;
+        ny = my;
+      }
+    }
+    out.push([pts[i][0] + nx * d * scale, pts[i][1] + ny * d * scale]);
+  }
+  return out;
+}
+
+/**
+ * One offset geometry per entry in `offsetsPx`. An offset of 0 yields null,
+ * meaning "use the feature's own geometry" — a triple's centre line needs no
+ * copy.
+ *
+ * @returns {Array<ol.geom.Geometry|null>|null} null if the geometry can't be
+ *   offset at all, so the caller can fall back to a single plain stroke.
+ */
+function offsetLineGeometries(feature, geometry, offsetsPx, resolution) {
+  const type = geometry?.getType?.();
+  if (!resolution || (type !== "LineString" && type !== "MultiLineString")) return null;
+
+  const key = `${geometry.getRevision()}|${resolution}|${offsetsPx.join(",")}`;
+  const cached = OFFSET_CACHE.get(feature);
+  if (cached && cached.key === key) return cached.geoms;
+
+  const lines = type === "LineString" ? [geometry.getCoordinates()] : geometry.getCoordinates();
+  const geoms = [];
+  for (const px of offsetsPx) {
+    if (!px) {
+      geoms.push(null);
+      continue;
+    }
+    // px is a screen measurement; resolution converts it to map units so the
+    // spacing holds its ground distance as the map zooms.
+    const parts = lines.map((c) => offsetLineCoords(c, px * resolution)).filter(Boolean);
+    if (!parts.length) return null;
+    geoms.push(parts.length === 1
+      ? new ol.geom.LineString(parts[0])
+      : new ol.geom.MultiLineString(parts));
+  }
+  OFFSET_CACHE.set(feature, { key, geoms });
+  return geoms;
+}
 
 const OL_TYPE_BY_ENTITY = { point: "Point", line: "LineString", polygon: "Polygon", block: "Polygon", plot: "Polygon" };
 // "block"/"plot" are direct drawEntityTypeSelect values — see
@@ -417,11 +536,11 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     const stored = feature?.get("_areaAc");
     if (stored !== null && stored !== undefined && stored !== "") {
       const n = Number(stored);
-      if (Number.isFinite(n)) return n.toFixed(2);
+      if (Number.isFinite(n)) return n.toFixed(1);
     }
     const m2 = ol.sphere.getArea(geometry, { projection: "EPSG:3857" });
     if (!Number.isFinite(m2)) return "";
-    return (m2 / M2_PER_ACRE).toFixed(2);
+    return (m2 / M2_PER_ACRE).toFixed(1);
   }
 
   // Live ground length for a line feature, in meters/km — the "Length"
@@ -571,22 +690,20 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
     return m / cosLat / resolution;
   }
 
-  // vsl_feature_type.line_style -> the stroke stack that draws one, two or
-  // three parallel lines, `spacingPx` apart, each `weight` px thick.
+  // vsl_feature_type.line_style -> the strokes that draw one, two or three
+  // parallel lines, `spacingPx` apart, each `weight` px thick.
   //
-  // OpenLayers can't offset a stroke from its geometry, so parallel lines
-  // are done the way cartographers have always drawn cased roads: paint one
-  // wide stroke in the feature's color, then knock the middle back out with
-  // a narrower stroke in the "paper" color. The arithmetic is just the
-  // total across the bundle —
-  //   double: 2 strokes + 1 gap  -> outer 2w+s, knockout s
-  //   triple: 3 strokes + 2 gaps -> outer 3w+2s, knockout w+2s, then the
-  //           centre stroke painted back on top
-  // — which leaves exactly `weight`-thick lines with `spacingPx` between
-  // them. The triple's centre line is dotted, the usual road-centreline
-  // convention, regardless of the type's own line type.
-  const LINE_GAP_COLOR = "#ffffff";
-  function lineStrokeStyles(color, weight, dash, lineStyle, spacingPx) {
+  // Each line in a bundle is a real stroke on its own offset geometry (see
+  // offsetLineGeometries), so the space between them is genuinely empty and
+  // the basemap shows through. Where the centres sit, for w = weight and
+  // s = spacing:
+  //   double: two lines, centres (w + s) apart  -> offsets ±(w + s)/2
+  //   triple: three lines, same pitch           -> offsets ±(w + s) and 0
+  // which leaves exactly `weight`-thick lines with `spacingPx` of clear
+  // ground between their edges. The triple's centre line is dotted, the
+  // usual road-centreline convention, regardless of the type's own line
+  // type.
+  function lineStrokeStyles(color, weight, dash, lineStyle, spacingPx, feature, geometry, resolution) {
     const w = Math.max(1, Number(weight) || 2);
     // A sub-pixel gap would render as one blurred thick line, so never let
     // the bundle collapse below something visibly separated.
@@ -618,23 +735,26 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
         zIndex
       });
 
-    if (lineStyle === "double") {
-      return [
-        stroke(color, 2 * w + s, dash, Z_LINE_CASING),
-        stroke(LINE_GAP_COLOR, s, undefined, Z_LINE_KNOCKOUT)
-      ];
-    }
-    if (lineStyle === "triple") {
-      return [
-        stroke(color, 3 * w + 2 * s, dash, Z_LINE_CASING),
-        stroke(LINE_GAP_COLOR, w + 2 * s, undefined, Z_LINE_KNOCKOUT),
-        stroke(color, w, lineDashFor("dotted", w), Z_LINE_FILL)
-      ];
-    }
-    // A single stroke is a "fill", not a casing: it has no knockout of its
-    // own, and being painted in the fill round means a neighbouring road's
-    // white core can't erase it where the two cross.
-    return [stroke(color, w, dash, Z_LINE_FILL)];
+    const single = () => [stroke(color, w, dash, Z_LINE_FILL)];
+    if (lineStyle !== "double" && lineStyle !== "triple") return single();
+
+    const pitch = w + s;
+    const offsetsPx = lineStyle === "double"
+      ? [-pitch / 2, pitch / 2]
+      : [-pitch, 0, pitch];
+    const geoms = offsetLineGeometries(feature, geometry, offsetsPx, resolution);
+    // Degenerate geometry (a single point, or every vertex identical) can't
+    // be offset. One plain stroke is a better answer than nothing drawn.
+    if (!geoms) return single();
+
+    return geoms.map((geom, i) => {
+      const isCentre = lineStyle === "triple" && i === 1;
+      const style = stroke(color, w, isCentre ? lineDashFor("dotted", w) : dash, Z_LINE_FILL);
+      // A null geom means offset 0 — the feature's own geometry already is
+      // that line, so leaving it unset avoids copying the coordinates.
+      if (geom) style.setGeometry(geom);
+      return style;
+    });
   }
 
   // Feature TYPE ids the user has switched off from the FEATURES group in
@@ -694,7 +814,10 @@ export function initSurveyDraw({ map, cfg, supabase, setStatus, statusEl, loadLa
       const spacingPx = metersToPixels(feature.get("_lineSpacingM"), resolution, feature);
       return linetype === "none"
         ? []
-        : lineStrokeStyles(color, weight, dash, feature.get("_lineStyle"), spacingPx);
+        : lineStrokeStyles(
+          color, weight, dash, feature.get("_lineStyle"), spacingPx,
+          feature, feature.getGeometry(), resolution
+        );
     }
 
     const styles = [

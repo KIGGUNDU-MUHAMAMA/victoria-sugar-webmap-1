@@ -204,9 +204,9 @@ async function generateStatisticsReport() {
       idlePlots += r.idle_plots_count || 0;
     });
     
-    document.getElementById("statTotalArea").textContent = totalArea.toFixed(2);
-    document.getElementById("statHarvestedArea").textContent = harvestedArea.toFixed(2);
-    document.getElementById("statCultivatedArea").textContent = cultivatedArea.toFixed(2);
+    document.getElementById("statTotalArea").textContent = totalArea.toFixed(1);
+    document.getElementById("statHarvestedArea").textContent = harvestedArea.toFixed(1);
+    document.getElementById("statCultivatedArea").textContent = cultivatedArea.toFixed(1);
     document.getElementById("statIdlePlots").textContent = idlePlots;
     
     // 2. Fetch Harvest History with joins

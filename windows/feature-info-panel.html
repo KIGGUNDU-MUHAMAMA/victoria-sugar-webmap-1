@@ -58,24 +58,18 @@
 
         <div id="featureInfoPanelInner" class="popWinBody"></div>
 
-        <!-- Grouped action footer (see js/feature-export.js for Download,
-             and the featureLogModeSelect wiring in js/map-app.js for Log).
-             Each control is a solid "do it" button plus an attached select
-             that only changes the mode/format for the next click — picking
-             a menu option never fires the action by itself. Hidden until a
-             feature/estate/block/plot's details have actually loaded
-             (nothing to log or export before that). -->
+        <!-- Export only (see js/feature-export.js). A solid "do it" button
+             plus an attached select that only changes the format for the
+             next click — picking a menu option never fires the action by
+             itself. Hidden until a feature/estate/block/plot's details have
+             actually loaded (nothing to export before that).
+
+             The Log (Activity/Alert) split button that used to sit here was
+             removed on request; logging is reached from the map's own
+             selection toolbar and the left tool stack's Log Activity button.
+             setupFeatureInfoActionFooter() in map-app.js still looks for it
+             and is null-safe, so it no-ops. -->
         <footer class="popWinActionBtns" id="featureInfoActionBtns" hidden>
-          <div class="vsl-split-btn vsl-split-btn--log" id="featureLogSplitBtn">
-            <button type="button" class="vsl-split-btn__main vsl-split-btn__main--log" id="featureLogMainBtn">
-              <i class="fas fa-person-digging" aria-hidden="true"></i> Log
-            </button>
-            <label class="visually-hidden" for="featureLogModeSelect">Log type</label>
-            <select id="featureLogModeSelect" class="vsl-split-btn__select vsl-split-btn__select--log">
-              <option value="activity">Activity</option>
-              <option value="alert">Alert</option>
-            </select>
-          </div>
           <div class="vsl-split-btn vsl-split-btn--download" id="featureExportSplitBtn">
             <button type="button" class="vsl-split-btn__main vsl-split-btn__main--download" id="featureExportBtn">
               <i class="fas fa-download" aria-hidden="true"></i> Export

@@ -5537,7 +5537,10 @@ select.search-panel__input {
   white-space: nowrap;
 }
 
-.popWinCloseBtn {
+/* Close, plus any other icon-only control sitting beside it in the title
+   bar (minimise/restore) — one rule so they can't drift apart. */
+.popWinCloseBtn,
+.popWinHeadBtn {
   width: 30px;
   height: 30px;
   flex-shrink: 0;
@@ -5552,8 +5555,24 @@ select.search-panel__input {
   font-size: 14px;
   transition: background 0.15s;
 }
-.popWinCloseBtn:hover {
+.popWinCloseBtn:hover,
+.popWinHeadBtn:hover {
   background: rgba(255, 255, 255, 0.28);
+}
+
+/* Keeps the title-bar buttons together as one group, so .popWinHead's
+   space-between still pushes them to the right edge. */
+.popWinHead__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* fa-window-minimize is an underscore on the baseline, so it sits low in a
+   centred 30px box. */
+.popWinHeadBtn .fa-window-minimize {
+  transform: translateY(-3px);
 }
 
 /* Toolbar-style tab-switcher band — mirrors the dashboard's .tab-bar/.tab-btn
@@ -6599,6 +6618,25 @@ select.search-panel__input {
   height: 420px;
   max-height: 450px;
   flex: 0 0 450px;
+}
+
+/* Minimised: collapse to the title bar alone.
+   Must come AFTER the fixed-height rule above — same specificity (two
+   classes), so it only wins on source order. New per-window sizing rules
+   go above this, not below. */
+.popWinMain.popWinMain--minimized {
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  flex: 0 0 auto;
+}
+.popWinMain.popWinMain--minimized > :not(.popWinHead) {
+  display: none;
+}
+/* The head's bottom border divides it from the body; with no body it just
+   doubles the panel's own frame. */
+.popWinMain.popWinMain--minimized > .popWinHead {
+  border-bottom: none;
 }
 
 /* Container padding alone isn't enough to match the dashboard's footer

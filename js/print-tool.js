@@ -2499,7 +2499,7 @@ export function initPrintTool({
 
     // Each line of the plot label is its own toggle in the Text labels tab.
     const expArea = feature.get("area_acres");
-    const areaText = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
+    const areaText = expArea ? `${Number(expArea).toFixed(1)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
     const area = settings.labels.area ? areaText : "";
     const ratoonVal = feature.get("ratoon_number");
     const hasRatoon = settings.labels.ratoon &&
@@ -2586,7 +2586,7 @@ export function initPrintTool({
     if (!pointInRect(anchor, frame)) return; // label anchored off-page
     const name = String(feature.get("title_name") ?? "").trim();
     const expArea = feature.get("area_acres");
-    const areaText = expArea ? `${Number(expArea).toFixed(2)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
+    const areaText = expArea ? `${Number(expArea).toFixed(1)} ac` : (surveyFeatureAreaAcresText?.(feature) || "");
     const text = name && areaText ? `${name}\n${areaText}` : (name || areaText);
     if (text) {
       drawHaloText(doc, text, anchor[0], anchor[1], { fontSize: sizes.titleLabel, colorRGB: TITLE_BOUNDARY_RGB });
@@ -2733,11 +2733,11 @@ export function initPrintTool({
     const stored = feature?.get("_areaAc");
     if (stored !== null && stored !== undefined && stored !== "") {
       const n = Number(stored);
-      if (Number.isFinite(n)) return `${n.toFixed(2)} ac`;
+      if (Number.isFinite(n)) return `${n.toFixed(1)} ac`;
     }
     const m2 = ol.sphere.getArea(geometry, { projection: "EPSG:3857" });
     if (!Number.isFinite(m2)) return "";
-    return `${(m2 / M2_PER_ACRE).toFixed(2)} ac`;
+    return `${(m2 / M2_PER_ACRE).toFixed(1)} ac`;
   }
 
   /** Ground length of a line feature, matching lengthText in

@@ -9137,6 +9137,10 @@ async function initMap() {
 
   initPrintTool({
     map,
+    // For the Automatic selection window: the map's blocks layer only holds
+    // what's in the viewport, so an estate's full block list has to come
+    // from the server (vsl_estate_blocks_geojson).
+    supabase,
     setStatus,
     statusEl,
     closeOtherPanels: () => {

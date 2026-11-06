@@ -46,7 +46,7 @@ import { computeUtmCartesianAreaAcres } from "./utils.js";
 import { readSettings as readSavedSettings, setSetting } from "./user-settings.js";
 
 export function initPrintTool({
-  map, setStatus, statusEl, closeOtherPanels,
+  map, supabase, setStatus, statusEl, closeOtherPanels,
   // Layer refs + styling data — every one of these is redrawn as real PDF
   // vectors rather than rasterized. See drawMapVectors below.
   blocksLayer, parcelsLayer, estatesLayer, titlesLayer, getFeaturesLayer, getFeatureRenderLayers,
@@ -112,6 +112,21 @@ export function initPrintTool({
     boostQuality: false,
     // Features — null = all types
     featureTypes: null,
+    /**
+     * Automatic selection (see openAutoSelect). null = off, and everything
+     * inside the drawn rectangle prints, which is the original behaviour.
+     * When set, only the listed blocks and their plots print.
+     *
+     *   estateId   the estate the blocks belong to
+     *   blockIds   Set of block ids left switched ON
+     *   bufferM    metres of clear ground around the blocks' bounds
+     *   featuresOutside  draw features that fall outside the chosen blocks
+     *
+     * Deliberately NOT persisted by savePrintSettings: it's a choice about
+     * one particular print, not a preference. Reopening the print tool
+     * should not silently drop half an estate off the next sheet.
+     */
+    autoSelect: null,
     // Map details
     details: {
       title: true, legend: true, northArrow: true, qr: true,
@@ -122,8 +137,27 @@ export function initPrintTool({
   // The setup the person left last time (js/user-settings.js). Every value
   // is checked against what this version actually has, so a stale or
   // hand-edited save can add nothing and break nothing.
+  /**
+   * Keys whose DEFAULT changed after saves already existed, and the version
+   * at which that happened. A save from before that version has its value
+   * for those keys ignored once, so the new default actually takes effect
+   * instead of being overwritten by a preference nobody set deliberately.
+   *
+   * Without this, "Land Titles and Ratoon are off by default" was only true
+   * for someone who had never opened the print tool before.
+   */
+  const PRINT_SETTINGS_VERSION = 2;
+  const DEFAULTS_CHANGED_AT = {
+    2: [["layers", "titleBoundary"], ["labels", "ratoon"]]
+  };
+
   (function restoreSavedPrintSettings(saved) {
     if (!saved || typeof saved !== "object") return;
+    const savedVersion = Number(saved.v) || 1;
+    const ignore = new Set();
+    for (const [v, keys] of Object.entries(DEFAULTS_CHANGED_AT)) {
+      if (savedVersion < Number(v)) for (const [g, k] of keys) ignore.add(`${g}.${k}`);
+    }
     for (const k of ["textSize", "iconSize"]) {
       const n = Number(saved[k]);
       if (Number.isFinite(n) && n >= 1 && n <= 10) settings[k] = n;
@@ -134,6 +168,7 @@ export function initPrintTool({
     for (const group of ["labels", "layers", "details"]) {
       if (!saved[group] || typeof saved[group] !== "object") continue;
       for (const k of Object.keys(settings[group])) {
+        if (ignore.has(`${group}.${k}`)) continue;
         if (typeof saved[group][k] === "boolean") settings[group][k] = saved[group][k];
       }
     }
@@ -148,6 +183,9 @@ export function initPrintTool({
    *  the basemap switched off. */
   function savePrintSettings() {
     setSetting("print", {
+      // Stamped so a later default change can tell "the user chose this"
+      // from "this is just what the default used to be".
+      v: PRINT_SETTINGS_VERSION,
       textSize: settings.textSize,
       iconSize: settings.iconSize,
       labels: { ...settings.labels },
@@ -688,6 +726,11 @@ export function initPrintTool({
         <i class="fas fa-chevron-up" aria-hidden="true"></i>
       </button>
       <div class="vsl-print-lock-pop" id="vslPrintLockPop" hidden>
+        <button type="button" class="vsl-print-lock-pop__btn" id="vslPrintAutoSelectBtn">
+          <i class="fas fa-object-group" aria-hidden="true"></i>
+          <span>Automatic selection</span>
+        </button>
+        <div class="vsl-print-lock-pop__sep"></div>
         <label class="vsl-print-lock-pop__row">
           <input type="checkbox" id="vslPrintLockAspectCb" checked>
           <span>Lock Aspect Ratio</span>
@@ -725,6 +768,7 @@ export function initPrintTool({
   const selectAreaBtn = toolbar.querySelector("#vslPrintSelectAreaBtn");
   const selectOptsBtn = toolbar.querySelector("#vslPrintSelectOptsBtn");
   const lockPop = toolbar.querySelector("#vslPrintLockPop");
+  const autoSelectBtn = toolbar.querySelector("#vslPrintAutoSelectBtn");
   const lockAspectCb = toolbar.querySelector("#vslPrintLockAspectCb");
   const setupBtn = toolbar.querySelector("#vslPrintSetupBtn");
   const saveBtn = toolbar.querySelector("#vslPrintSaveBtn");
@@ -1325,9 +1369,18 @@ export function initPrintTool({
     // the printed area. Rendered as a right-aligned column when "Show
     // counts in legend" is on, which is what replaced the old separate
     // Summary box.
+    // Filtered at source by the automatic selection, so every count, area
+    // and status tally below describes exactly what was drawn. Filtering
+    // further down instead would leave the legend claiming plots that are
+    // not on the sheet. (All three filters are pass-through when automatic
+    // selection is off.)
     const estateFeatures = estatesLayer?.getSource()?.getFeaturesInExtent(extent) || [];
-    const blockFeatures = blocksLayer?.getSource()?.getFeaturesInExtent(extent) || [];
-    const plotFeatures = parcelsLayer?.getSource()?.getFeaturesInExtent(extent) || [];
+    // autoBlockSelected, not autoBlockAllowed: a neighbouring block drawn
+    // for context is not part of what this sheet reports.
+    const blockFeatures = (blocksLayer?.getSource()?.getFeaturesInExtent(extent) || [])
+      .filter(autoBlockSelected);
+    const plotFeatures = (parcelsLayer?.getSource()?.getFeaturesInExtent(extent) || [])
+      .filter(autoPlotAllowed);
     const titleFeatures = titlesLayer?.getSource()?.getFeaturesInExtent(extent) || [];
 
     // 1. Land properties — how each land layer is drawn.
@@ -1418,7 +1471,7 @@ export function initPrintTool({
     const featSrc = getFeaturesLayer?.()?.getSource();
     if (featSrc && extent) {
       const byId = new Map();
-      featSrc.getFeaturesInExtent(extent).forEach((f) => {
+      featSrc.getFeaturesInExtent(extent).filter(autoFeatureAllowed).forEach((f) => {
         if (!featureTypeEnabled(f)) return;
         const id = f.get("_typeId");
         const key = id == null ? f.get("_typeName") || "?" : id;
@@ -1635,6 +1688,10 @@ export function initPrintTool({
     // start drawing a selection.
     if (e.target.closest(".vsl-print-bottom-stack, .vsl-print-setup")) return;
     e.preventDefault();
+    // Dragging a box by hand overrides an automatic selection — the two
+    // would otherwise disagree, with the box saying one thing and the block
+    // filter quietly saying another.
+    if (settings.autoSelect) clearAutoSelection();
     drawingFrom = viewportPointFromEvent(e);
     ensureSelectionEl();
     selectionEl.style.left = `${drawingFrom.x}px`;
@@ -1802,6 +1859,523 @@ export function initPrintTool({
     else closeSetupPopup();
   });
   setupCloseBtn.addEventListener("click", closeSetupPopup);
+
+  // ---------------------------------------------------------------------
+  // Automatic selection
+  //
+  // Instead of dragging a rectangle by eye, pick an estate and switch off
+  // the blocks you don't want. The selection box is then computed from the
+  // blocks left on — their combined bounds, plus a buffer of clear ground,
+  // corrected to the page's aspect ratio — and only those blocks and their
+  // plots are drawn.
+  //
+  // Same shell as the Print settings window (vsl-print-setup + the tabbed
+  // body), so it inherits that window's look, position and scrolling rather
+  // than reinventing them.
+  // ---------------------------------------------------------------------
+
+  /** Default clear ground around the chosen blocks, in metres. */
+  const AUTO_BUFFER_DEFAULT_M = 100;
+
+  /** Blocks fetched for the estate currently shown, newest fetch wins.
+   *  Each: { id, code, name, extent } with extent in map units. */
+  let autoBlocks = [];
+  /** Guards against an older, slower estate fetch overwriting a newer one. */
+  let autoFetchToken = 0;
+
+  const autoPopup = document.createElement("div");
+  autoPopup.className = "vsl-print-setup vsl-print-auto";
+  autoPopup.hidden = true;
+  autoPopup.innerHTML = `
+    <div class="vsl-print-setup__head">
+      <span class="vsl-print-setup__title"><i class="fas fa-object-group" aria-hidden="true"></i> Automatic selection</span>
+      <button type="button" class="vsl-print-setup__close" id="vslPrintAutoCloseBtn" title="Close" aria-label="Close">
+        <i class="fas fa-times" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="vsl-print-settings">
+      <div class="vsl-print-settings__tabs">
+        <button type="button" class="vsl-print-settings__tab active" data-autotab="selection">
+          <i class="fas fa-layer-group" aria-hidden="true"></i><span>Selection</span>
+        </button>
+        <button type="button" class="vsl-print-settings__tab" data-autotab="settings">
+          <i class="fas fa-sliders" aria-hidden="true"></i><span>Settings</span>
+        </button>
+      </div>
+      <div class="vsl-print-settings__body">
+        <div class="vsl-print-settings__pane active" data-autopane="selection">
+          <label class="vsl-print-setup__row vsl-print-setup__row--full">
+            <select id="vslPrintAutoEstate"><option value="">— Select estate —</option></select>
+          </label>
+          <fieldset class="vsl-print-auto__blocks" id="vslPrintAutoBlocksWrap" hidden>
+            <legend>Blocks to print</legend>
+            <div class="vsl-print-auto__blocks-actions">
+              <button type="button" class="vsl-print-auto__link" id="vslPrintAutoAll">All</button>
+              <button type="button" class="vsl-print-auto__link" id="vslPrintAutoNone">None</button>
+              <button type="button" class="vsl-print-auto__link vsl-print-auto__count"
+                      id="vslPrintAutoCount" disabled></button>
+            </div>
+            <div class="vsl-print-auto__list" id="vslPrintAutoList"></div>
+          </fieldset>
+          <p class="vsl-print-setup__note" id="vslPrintAutoNote" hidden></p>
+          <button type="button" class="vsl-print-auto__clear" id="vslPrintAutoClear" hidden>
+            Clear automatic selection
+          </button>
+        </div>
+        <div class="vsl-print-settings__pane" data-autopane="settings">
+          <label class="vsl-print-setup__row vsl-print-setup__row--select">
+            <span>Buffer (m)</span>
+            <input type="number" id="vslPrintAutoBuffer" min="0" max="5000" step="10"
+                   value="${AUTO_BUFFER_DEFAULT_M}">
+          </label>
+          <label class="vsl-print-setup__row">
+            <input type="checkbox" id="vslPrintAutoFeaturesOutside">
+            <span>Print features outside the selection</span>
+          </label>
+          <label class="vsl-print-setup__row">
+            <input type="checkbox" id="vslPrintAutoNeighbourBlocks">
+            <span>Print neighbouring block boundaries</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  `;
+  viewportWrap.appendChild(autoPopup);
+
+  const autoCloseBtn = autoPopup.querySelector("#vslPrintAutoCloseBtn");
+  const autoEstateSel = autoPopup.querySelector("#vslPrintAutoEstate");
+  const autoBlocksWrap = autoPopup.querySelector("#vslPrintAutoBlocksWrap");
+  const autoListEl = autoPopup.querySelector("#vslPrintAutoList");
+  const autoCountEl = autoPopup.querySelector("#vslPrintAutoCount");
+  const autoNoteEl = autoPopup.querySelector("#vslPrintAutoNote");
+  const autoClearBtn = autoPopup.querySelector("#vslPrintAutoClear");
+  const autoBufferInput = autoPopup.querySelector("#vslPrintAutoBuffer");
+  const autoFeaturesOutsideCb = autoPopup.querySelector("#vslPrintAutoFeaturesOutside");
+  const autoNeighbourCb = autoPopup.querySelector("#vslPrintAutoNeighbourBlocks");
+
+  autoPopup.querySelectorAll(".vsl-print-settings__tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.autotab;
+      autoPopup.querySelectorAll(".vsl-print-settings__tab")
+        .forEach((b) => b.classList.toggle("active", b === btn));
+      autoPopup.querySelectorAll(".vsl-print-settings__pane")
+        .forEach((p) => p.classList.toggle("active", p.dataset.autopane === id));
+    });
+  });
+
+  /**
+   * Metres of ground -> map units at this latitude.
+   *
+   * The map is Web Mercator, where one unit is a true metre only at the
+   * equator and stretches by 1/cos(latitude) away from it. A 100m buffer
+   * asked for in metres has to be converted, or at Uganda's latitude it
+   * would come out right by luck (cos ~1) and badly wrong anywhere else.
+   * Same correction as the map's metersToPixels.
+   */
+  function metersToMapUnits(meters, atExtent) {
+    const m = Number(meters);
+    if (!Number.isFinite(m) || m <= 0) return 0;
+    let cosLat = 1;
+    try {
+      const lat = ol.proj.toLonLat(ol.extent.getCenter(atExtent))[1];
+      cosLat = Math.cos((lat * Math.PI) / 180) || 1;
+    } catch {
+      cosLat = 1;
+    }
+    return m / cosLat;
+  }
+
+  /**
+   * Grows `extent` to the page's aspect ratio by extending the SHORT side
+   * only — never the long one, so nothing that was inside stays inside.
+   *
+   * The selection has to match the printed map frame's proportions or the
+   * drawing is letterboxed. Shrinking the long side to fit would crop a
+   * block the user explicitly asked for, which is the one thing this must
+   * not do.
+   */
+  function fitExtentToAspect(extent, aspect) {
+    if (!extent || !Number.isFinite(aspect) || aspect <= 0) return extent;
+    const [minX, minY, maxX, maxY] = extent;
+    const w = maxX - minX;
+    const h = maxY - minY;
+    if (w <= 0 || h <= 0) return extent;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    let nw = w;
+    let nh = h;
+    if (w / h < aspect) nw = h * aspect;   // too tall — widen
+    else nh = w / aspect;                   // too wide — heighten
+    return [cx - nw / 2, cy - nh / 2, cx + nw / 2, cy + nh / 2];
+  }
+
+  /** The printed map frame's width/height ratio, which the selection has to
+   *  match. Derived from the page layout rather than guessed, so turning the
+   *  legend or the title on changes it correctly. */
+  function printFrameAspect(orientation) {
+    const L = computePageLayout(orientation, {
+      descLines: descriptionLineCount(orientation),
+      stamp: true
+    });
+    return L && L.mapAreaH > 0 ? L.mapAreaW / L.mapAreaH : 1;
+  }
+
+  /** Combined bounds of the blocks still switched on, or null. */
+  function autoSelectedExtent() {
+    const on = settings.autoSelect?.blockIds;
+    if (!on || !on.size) return null;
+    const combined = ol.extent.createEmpty();
+    let used = 0;
+    for (const b of autoBlocks) {
+      if (!on.has(String(b.id)) || !b.extent) continue;
+      ol.extent.extend(combined, b.extent);
+      used += 1;
+    }
+    return used && !ol.extent.isEmpty(combined) ? combined : null;
+  }
+
+  /**
+   * Moves the view to `extent`, then draws the selection box over exactly
+   * that ground.
+   *
+   * Order matters. The selection lives as viewport PIXELS and is converted
+   * back through the live view at print time (getPrintExtent), so the box
+   * can only be measured once the view is actually showing the extent —
+   * otherwise it lands off-screen, or clamped to the viewport edge and
+   * silently printing the wrong ground.
+   *
+   * The view is fitted with padding so the box sits inside the viewport
+   * with room to see it, and fitted WITHOUT animation: an animated fit
+   * finishes after this function returns, and the pixels would be measured
+   * against the old view.
+   */
+  function setSelectionFromExtent(extent) {
+    if (!extent) {
+      removeSelection();
+      return;
+    }
+    const view = map.getView();
+    const size = map.getSize();
+    if (!view || !size || !size[0] || !size[1]) return;
+
+    // Leave a margin so the box isn't flush against the viewport edge,
+    // where its resize grip would be unreachable.
+    const padPx = Math.round(Math.min(size[0], size[1]) * 0.12);
+    view.fit(extent, { size, padding: [padPx, padPx, padPx, padPx], duration: 0 });
+
+    // getPixelFromCoordinate reads the transform from the LAST RENDERED
+    // frame, not from the view object. view.fit updates the view
+    // immediately but schedules the render for the next animation frame, so
+    // without this the box was measured against the previous zoom — which
+    // is why it came out the wrong size until the block was toggled twice.
+    map.renderSync();
+
+    const topLeft = map.getPixelFromCoordinate([extent[0], extent[3]]);
+    const bottomRight = map.getPixelFromCoordinate([extent[2], extent[1]]);
+    if (!topLeft || !bottomRight) return;
+
+    ensureSelectionEl();
+    const left = Math.min(topLeft[0], bottomRight[0]);
+    const top = Math.min(topLeft[1], bottomRight[1]);
+    selectionEl.style.left = `${left}px`;
+    selectionEl.style.top = `${top}px`;
+    selectionEl.style.width = `${Math.abs(bottomRight[0] - topLeft[0])}px`;
+    selectionEl.style.height = `${Math.abs(bottomRight[1] - topLeft[1])}px`;
+    updateSelectionRectFromEl();
+    saveBtn.disabled = false;
+  }
+
+  /**
+   * Drives the on-screen selection rectangle from the chosen blocks.
+   *
+   * The map view is moved to the target extent first, THEN the rectangle is
+   * measured in screen pixels — because the selection is stored as viewport
+   * pixels and converted back through the live view at print time
+   * (getPrintExtent). Computing pixels for an extent the view isn't showing
+   * would put the box off-screen, or off the edge entirely at a far zoom.
+   */
+  function applyAutoSelection() {
+    const base = autoSelectedExtent();
+    if (!base) {
+      setSelectionFromExtent(null);
+      return false;
+    }
+    const pad = metersToMapUnits(settings.autoSelect.bufferM, base);
+    const buffered = pad > 0 ? ol.extent.buffer(base, pad) : base.slice();
+    // Orientation follows the blocks' own shape, so a tall estate prints
+    // portrait without the user having to think about it.
+    const orientation = (buffered[2] - buffered[0]) >= (buffered[3] - buffered[1])
+      ? "landscape" : "portrait";
+    const target = fitExtentToAspect(buffered, printFrameAspect(orientation));
+    setSelectionFromExtent(target);
+    return true;
+  }
+
+  /** Estates come from the map's own estates layer, which — unlike blocks
+   *  and plots — is loaded in full at boot, so this needs no fetch. */
+  function fillAutoEstates() {
+    const feats = estatesLayer?.getSource()?.getFeatures() || [];
+    const rows = feats
+      .map((f) => ({ id: String(f.getId()), name: String(f.get("estate_name") || f.getId()) }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const keep = autoEstateSel.value;
+    autoEstateSel.innerHTML = `<option value="">— Select estate —</option>`
+      + rows.map((r) => `<option value="${r.id}">${escapeAttr(r.name)}</option>`).join("");
+    if (keep && rows.some((r) => r.id === keep)) autoEstateSel.value = keep;
+  }
+
+  /** Minimal attribute escaping — estate and block names are user data and
+   *  go into innerHTML here. */
+  function escapeAttr(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  /** The one status line in the Selection tab. It carries problems only —
+   *  loading, failures, "nothing to print" — and hides itself otherwise, so
+   *  the window shows controls rather than instructions. */
+  function setAutoNote(msg) {
+    autoNoteEl.textContent = msg || "";
+    autoNoteEl.hidden = !msg;
+  }
+
+  function renderAutoBlockList() {
+    const on = settings.autoSelect?.blockIds || new Set();
+    autoListEl.innerHTML = autoBlocks.map((b) => `
+      <label class="vsl-print-auto__item">
+        <span class="vsl-print-auto__name">${escapeAttr(b.name)}</span>
+        <input type="checkbox" class="vsl-print-auto__toggle-input"
+               data-block="${escapeAttr(b.id)}" ${on.has(String(b.id)) ? "checked" : ""}>
+        <span class="vsl-print-auto__toggle" aria-hidden="true"></span>
+      </label>`).join("");
+    autoCountEl.textContent = `${on.size} of ${autoBlocks.length}`;
+    autoBlocksWrap.hidden = !autoBlocks.length;
+    autoClearBtn.hidden = !settings.autoSelect;
+  }
+
+  async function loadAutoBlocks(estateId) {
+    const token = ++autoFetchToken;
+    autoBlocks = [];
+    autoListEl.innerHTML = "";
+    autoBlocksWrap.hidden = true;
+    if (!estateId) {
+      setAutoNote("");
+      return;
+    }
+    setAutoNote("Loading blocks…");
+    let rows = [];
+    try {
+      const { data, error } = await supabase
+        .rpc("vsl_estate_blocks_geojson", { p_estate_id: Number(estateId) });
+      if (error) throw error;
+      rows = data || [];
+    } catch (err) {
+      if (token !== autoFetchToken) return;
+      setAutoNote(`Couldn't load that estate's blocks: ${err?.message || "unknown error"}`);
+      return;
+    }
+    // A slower earlier request must not overwrite a newer estate's list.
+    if (token !== autoFetchToken) return;
+
+    const fmt = new ol.format.GeoJSON();
+    const projOpts = { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" };
+    autoBlocks = rows.map((r) => {
+      let extent = null;
+      try {
+        extent = fmt.readGeometry(r.geojson, projOpts)?.getExtent() || null;
+      } catch {
+        extent = null;
+      }
+      return {
+        id: String(r.id),
+        code: r.block_code,
+        name: r.block_name || `Block ${r.block_code}`,
+        extent
+      };
+    }).filter((b) => b.extent);
+
+    if (!autoBlocks.length) {
+      setAutoNote("That estate has no blocks with mapped boundaries.");
+      return;
+    }
+    setAutoNote("");
+    settings.autoSelect = {
+      estateId: String(estateId),
+      blockIds: new Set(autoBlocks.map((b) => b.id)),
+      bufferM: Number(autoBufferInput.value) || AUTO_BUFFER_DEFAULT_M,
+      featuresOutside: !!autoFeaturesOutsideCb.checked,
+      neighbourBlocks: !!autoNeighbourCb.checked
+    };
+    renderAutoBlockList();
+    applyAutoSelection();
+  }
+
+  /**
+   * Re-fits the box, or blocks the print when nothing is left to draw.
+   *
+   * With every block switched off there is no extent to fit, so the box
+   * would sit wherever it last was and Save would produce a sheet with no
+   * blocks and no plots on it. Disabling Save says so before the PDF does.
+   */
+  function syncAutoSelection() {
+    const count = settings.autoSelect?.blockIds?.size || 0;
+    autoCountEl.textContent = `${count} of ${autoBlocks.length}`;
+    if (count) {
+      applyAutoSelection();
+      setAutoNote("");
+    } else {
+      setAutoNote("Switch at least one block on to print.");
+      saveBtn.disabled = true;
+    }
+  }
+
+  function setAllAutoBlocks(on) {
+    if (!settings.autoSelect) return;
+    settings.autoSelect.blockIds = on ? new Set(autoBlocks.map((b) => b.id)) : new Set();
+    renderAutoBlockList();
+    syncAutoSelection();
+  }
+
+  function clearAutoSelection() {
+    settings.autoSelect = null;
+    autoBlocks = [];
+    autoFetchToken += 1;
+    autoEstateSel.value = "";
+    autoListEl.innerHTML = "";
+    autoBlocksWrap.hidden = true;
+    autoClearBtn.hidden = true;
+    setAutoNote("");
+  }
+
+  autoEstateSel.addEventListener("change", () => loadAutoBlocks(autoEstateSel.value));
+  autoPopup.querySelector("#vslPrintAutoAll").addEventListener("click", () => setAllAutoBlocks(true));
+  autoPopup.querySelector("#vslPrintAutoNone").addEventListener("click", () => setAllAutoBlocks(false));
+  autoClearBtn.addEventListener("click", clearAutoSelection);
+
+  autoListEl.addEventListener("change", (e) => {
+    const input = e.target.closest(".vsl-print-auto__toggle-input");
+    if (!input || !settings.autoSelect) return;
+    const id = String(input.dataset.block);
+    // The checkbox has already toggled by the time `change` fires, so its
+    // own state is the new state — reading it is right, and inverting it
+    // would be the classic off-by-one-click bug.
+    if (input.checked) settings.autoSelect.blockIds.add(id);
+    else settings.autoSelect.blockIds.delete(id);
+    syncAutoSelection();
+  });
+
+  autoBufferInput.addEventListener("change", () => {
+    const n = Number(autoBufferInput.value);
+    const buffer = Number.isFinite(n) && n >= 0 ? Math.min(n, 5000) : AUTO_BUFFER_DEFAULT_M;
+    autoBufferInput.value = String(buffer);
+    if (!settings.autoSelect) return;
+    settings.autoSelect.bufferM = buffer;
+    applyAutoSelection();
+  });
+
+  autoFeaturesOutsideCb.addEventListener("change", () => {
+    if (settings.autoSelect) settings.autoSelect.featuresOutside = !!autoFeaturesOutsideCb.checked;
+  });
+
+  autoNeighbourCb.addEventListener("change", () => {
+    if (settings.autoSelect) settings.autoSelect.neighbourBlocks = !!autoNeighbourCb.checked;
+  });
+
+  /**
+   * Drag a window by its title bar.
+   *
+   * The window is centred with `top/left: 50%` plus a `translate(-50%,-50%)`,
+   * which cannot be combined with dragging: setting left/top while that
+   * transform is live would offset the result by half the window's size. So
+   * the first drag converts it to plain absolute coordinates — reading the
+   * CURRENT on-screen position first, so it doesn't jump at the moment you
+   * grab it — and a class drops the transform from then on.
+   *
+   * Kept inside viewportWrap: dragged off the map the title bar would be
+   * unreachable and the window could not be brought back.
+   */
+  function makeWindowDraggable(popup) {
+    const head = popup.querySelector(".vsl-print-setup__head");
+    if (!head) return;
+    let startX = 0, startY = 0, startLeft = 0, startTop = 0, dragging = false;
+
+    const onMove = (e) => {
+      if (!dragging) return;
+      const wrap = viewportWrap.getBoundingClientRect();
+      const maxLeft = Math.max(0, wrap.width - popup.offsetWidth);
+      const maxTop = Math.max(0, wrap.height - popup.offsetHeight);
+      popup.style.left = `${Math.max(0, Math.min(startLeft + (e.clientX - startX), maxLeft))}px`;
+      popup.style.top = `${Math.max(0, Math.min(startTop + (e.clientY - startY), maxTop))}px`;
+    };
+    const onUp = () => {
+      dragging = false;
+      head.classList.remove("vsl-print-setup__head--dragging");
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+
+    head.addEventListener("pointerdown", (e) => {
+      // The close button lives in the title bar; grabbing it should close
+      // the window, not start a drag.
+      if (e.target.closest(".vsl-print-setup__close")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const wrap = viewportWrap.getBoundingClientRect();
+      const rect = popup.getBoundingClientRect();
+      startLeft = rect.left - wrap.left;
+      startTop = rect.top - wrap.top;
+      // Pin it where it already is, THEN drop the centring transform, so
+      // the window stays put at the instant it's grabbed.
+      popup.style.left = `${startLeft}px`;
+      popup.style.top = `${startTop}px`;
+      popup.classList.add("vsl-print-setup--free");
+      startX = e.clientX;
+      startY = e.clientY;
+      dragging = true;
+      head.classList.add("vsl-print-setup__head--dragging");
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+  }
+  makeWindowDraggable(autoPopup);
+  makeWindowDraggable(setupPopup);
+
+  let autoOutsideHandler = null;
+
+  function closeAutoPopup() {
+    autoPopup.hidden = true;
+    if (autoOutsideHandler) {
+      document.removeEventListener("pointerdown", autoOutsideHandler, true);
+      autoOutsideHandler = null;
+    }
+  }
+
+  function openAutoPopup() {
+    closeSetupPopup();
+    lockPop.hidden = true;
+    selectOptsBtn.setAttribute("aria-expanded", "false");
+    autoPopup.hidden = false;
+    fillAutoEstates();
+    if (settings.autoSelect) {
+      autoEstateSel.value = settings.autoSelect.estateId;
+      autoBufferInput.value = String(settings.autoSelect.bufferM);
+      autoFeaturesOutsideCb.checked = !!settings.autoSelect.featuresOutside;
+      autoNeighbourCb.checked = !!settings.autoSelect.neighbourBlocks;
+      renderAutoBlockList();
+    }
+    if (autoOutsideHandler) return;
+    autoOutsideHandler = (e) => {
+      if (autoPopup.contains(e.target) || autoSelectBtn.contains(e.target)) return;
+      closeAutoPopup();
+    };
+    document.addEventListener("pointerdown", autoOutsideHandler, true);
+  }
+
+  autoSelectBtn.addEventListener("click", () => {
+    if (autoPopup.hidden) openAutoPopup();
+    else closeAutoPopup();
+  });
+  autoCloseBtn.addEventListener("click", closeAutoPopup);
 
   cancelBtn.addEventListener("click", () => exitPrintMode());
 
@@ -3193,6 +3767,79 @@ export function initPrintTool({
     return id == null ? true : settings.featureTypes.has(id);
   }
 
+  // ── Automatic-selection filters ──────────────────────────────────────
+  // All three are no-ops when automatic selection is off, so the ordinary
+  // "drag a box" print is completely unaffected.
+
+  /**
+   * Strictly the blocks the user left switched on.
+   *
+   * This is what the LEGEND counts, and what the print is "about". A
+   * neighbouring block drawn for context is not part of that: counting it
+   * would report six blocks and their combined acreage on a sheet the user
+   * asked to be about one.
+   */
+  function autoBlockSelected(feature) {
+    const on = settings.autoSelect?.blockIds;
+    if (!on) return true;
+    return on.has(String(feature.getId()));
+  }
+
+  /**
+   * Which blocks get DRAWN — the chosen ones, plus, when the option is on,
+   * any other block falling inside the print area.
+   *
+   * Those neighbours contribute only their boundary and name: blocks carry
+   * no fill of their own (see drawBlockVector), and their plots are
+   * excluded independently by autoPlotAllowed, which keys off the chosen
+   * set and is unaffected by this.
+   */
+  function autoBlockAllowed(feature) {
+    const auto = settings.autoSelect;
+    if (!auto?.blockIds) return true;
+    if (auto.neighbourBlocks) return true;
+    return autoBlockSelected(feature);
+  }
+
+  /**
+   * Is this plot inside a block that's switched on?
+   *
+   * block_id is the exact parent (added to vsl_get_features_bbox in
+   * migration 032). Older cached data has only block_code, which is unique
+   * within an estate — and automatic selection is estate-scoped — so the
+   * fallback is safe here even though a code alone wouldn't be globally.
+   */
+  function autoPlotAllowed(feature) {
+    const on = settings.autoSelect?.blockIds;
+    if (!on) return true;
+    const blockId = feature.get("block_id");
+    if (blockId != null && blockId !== "") return on.has(String(blockId));
+    const code = feature.get("block_code");
+    if (code == null) return false;
+    return autoBlocks.some((b) => on.has(b.id) && String(b.code) === String(code));
+  }
+
+  /**
+   * Should this drawn feature (road, wall, borehole, …) print?
+   *
+   * With "Print features outside the selection" on, everything in the print
+   * area is drawn. With it off, a feature only prints if it touches a block
+   * that is switched on — tested by extent rather than true geometry
+   * intersection, which is cheap and errs towards drawing a feature that
+   * merely passes nearby rather than dropping one that is genuinely inside.
+   */
+  function autoFeatureAllowed(feature) {
+    const auto = settings.autoSelect;
+    if (!auto?.blockIds?.size || auto.featuresOutside) return true;
+    const geom = feature.getGeometry?.();
+    const fx = geom?.getExtent?.();
+    if (!fx) return true;
+    for (const b of autoBlocks) {
+      if (auto.blockIds.has(b.id) && b.extent && ol.extent.intersects(b.extent, fx)) return true;
+    }
+    return false;
+  }
+
   function drawMapVectors(doc, extent, drawX, drawY, drawW, drawH) {
     if (!extent) return;
     const project = makeProjector(extent, drawX, drawY, drawW, drawH);
@@ -3211,6 +3858,7 @@ export function initPrintTool({
     }
     if (settings.layers.plot) {
       parcelsLayer?.getSource()?.getFeaturesInExtent(extent)
+        .filter(autoPlotAllowed)
         .forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
     }
     if (settings.layers.titleBoundary) {
@@ -3222,6 +3870,7 @@ export function initPrintTool({
     // every feature. See drawFeaturePlans.
     const featurePlans = (getFeaturesLayer?.()?.getSource()?.getFeaturesInExtent(extent) || [])
       .filter(featureTypeEnabled)
+      .filter(autoFeatureAllowed)
       .map((f) => planCustomFeature(f, project, sizes, frame))
       .filter(Boolean);
     drawFeaturePlans(doc, featurePlans, sizes);
@@ -3234,6 +3883,7 @@ export function initPrintTool({
     // block boundary runs is often the one thing a printed map is for.
     if (settings.layers.block) {
       blocksLayer?.getSource()?.getFeaturesInExtent(extent)
+        .filter(autoBlockAllowed)
         .forEach((f) => drawBlockVector(doc, f, project, sizes, frame));
     }
   }
@@ -3369,10 +4019,29 @@ export function initPrintTool({
 
   /** "VSL Map Print <SS>S<MM>M<HH>H<DD>D.pdf" — seconds/minutes/hour/day
    *  of generation time, per the requested S/M/H/D format. */
+  /**
+   * The downloaded file's name: the map's own title plus the same timecode
+   * as before, falling back to "VSL Map Print …" when no title was typed.
+   *
+   * The timecode stays on even with a title — printing the same map twice
+   * would otherwise land on one name and the browser would quietly suffix
+   * it "(1)", which is less readable than the stamp.
+   */
   function buildPrintFilename() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    return `VSL Map Print ${pad(d.getSeconds())}${pad(d.getMinutes())}${pad(d.getHours())}${pad(d.getDate())}.pdf`;
+    const stamp = `${pad(d.getSeconds())}${pad(d.getMinutes())}${pad(d.getHours())}${pad(d.getDate())}`;
+    // Strip what Windows, macOS and Linux between them refuse in a filename,
+    // collapse whitespace, and keep it short enough to stay readable in a
+    // downloads list. A title of only punctuation sanitises to nothing,
+    // which is why the result is re-checked rather than trusted.
+    const title = (titleInput?.value || "")
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80)
+      .trim();
+    return title ? `${title} ${stamp}.pdf` : `VSL Map Print ${stamp}.pdf`;
   }
 
   async function generatePdf() {
@@ -4037,6 +4706,12 @@ export function initPrintTool({
     // Via closeSetupPopup (not a bare hidden=true) so the document-level
     // outside-click listener is always torn down with it.
     closeSetupPopup();
+    closeAutoPopup();
+    // Automatic selection describes one print, not a preference — leaving it
+    // armed would silently drop blocks from the NEXT print too, with the
+    // window that explains why sitting closed.
+    settings.autoSelect = null;
+    autoBlocks = [];
     closeLockPop();
     removeSelection();
     setCapturingOverlay(false);

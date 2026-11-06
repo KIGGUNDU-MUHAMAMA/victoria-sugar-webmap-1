@@ -6268,6 +6268,274 @@ select.search-panel__input {
   accent-color: var(--primary);
   cursor: pointer;
 }
+
+/* "Automatic selection" — opens the estate/block picker. Sits above the
+   Lock Aspect Ratio row, separated by a rule, since it opens a window
+   rather than toggling something here. */
+.vsl-print-lock-pop__btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0.1rem;
+  border: none;
+  background: none;
+  font-size: 0.86rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--primary-2);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.vsl-print-lock-pop__btn:hover {
+  background: rgba(47, 107, 47, 0.08);
+}
+.vsl-print-lock-pop__sep {
+  height: 1px;
+  margin: 0.4rem -0.3rem;
+  background: rgba(47, 107, 47, 0.16);
+}
+
+/* Print mode puts a crosshair on the whole map wrapper so an area can be
+   dragged out. These windows are children of it and were inheriting that —
+   a crosshair over a form reads as "click to draw", which it isn't. */
+.vsl-print-setup,
+.vsl-print-setup * {
+  cursor: default;
+}
+.vsl-print-setup button:not(:disabled),
+.vsl-print-setup select,
+.vsl-print-setup label,
+.vsl-print-setup input[type="checkbox"] {
+  cursor: pointer;
+}
+.vsl-print-setup input[type="number"],
+.vsl-print-setup input[type="text"] {
+  cursor: text;
+}
+/* Grab handle for dragging the window (see makeWindowDraggable). */
+.vsl-print-setup__head {
+  cursor: grab;
+}
+.vsl-print-setup__head--dragging {
+  cursor: grabbing;
+}
+/* Once dragged, the window is positioned outright — the centring transform
+   has to go or every left/top is off by half the window's size.
+   TWO classes on purpose: `.vsl-print-setup` sets that transform further
+   down this file, and at equal specificity the later rule wins. Written as
+   a single class here, this lost, the transform stayed, and the first drag
+   threw the window up and left by half its size — title off the top of the
+   map, only its bottom edge reachable. */
+.vsl-print-setup.vsl-print-setup--free {
+  transform: none;
+}
+
+/* A row whose control takes the full width, for when there's no label
+   beside it (the estate dropdown). */
+.vsl-print-setup__row--full {
+  display: block;
+}
+.vsl-print-setup__row--full select {
+  width: 100%;
+}
+
+/* ── Automatic selection window ──
+   Shares .vsl-print-setup's shell (position, header, tabbed body); only
+   the block list and its toggles are new. See openAutoPopup in
+   js/print-tool.js. */
+
+/* Taller than the settings window: this one's whole job is a scrolling
+   list, and a short box showed about four blocks at a time. Capped against
+   the viewport so it still fits a phone in landscape. */
+.vsl-print-auto {
+  height: 540px;
+  max-height: calc(100% - 28px);
+  display: flex;
+  flex-direction: column;
+}
+.vsl-print-auto .vsl-print-settings {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* The PANE no longer scrolls — the block list inside it does (see below),
+   which is what keeps the estate dropdown fixed in view while the blocks
+   move under it. */
+.vsl-print-auto .vsl-print-settings__body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.vsl-print-auto .vsl-print-settings__pane.active {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.vsl-print-auto__blocks {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.6rem 0.6rem;
+  border: 1px solid rgba(47, 107, 47, 0.2);
+  border-radius: 8px;
+  /* Takes the leftover height and scrolls internally, so the estate
+     dropdown and the All/None row stay put while the blocks scroll. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vsl-print-auto__blocks legend {
+  padding: 0 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary-2);
+}
+/* Three equal cells. The count used to be a bare span with no width of its
+   own, so the two buttons squeezed it until "1 of 1" wrapped one character
+   per line. Giving all three the same flex basis fixes it by construction
+   rather than by picking a width that happens to fit. */
+.vsl-print-auto__blocks-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+  flex: 0 0 auto;
+}
+.vsl-print-auto__link {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid rgba(47, 107, 47, 0.25);
+  border-radius: 5px;
+  background: none;
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--primary-2);
+  text-align: center;
+  white-space: nowrap;
+}
+.vsl-print-auto__link:hover:not(:disabled) {
+  background: rgba(47, 107, 47, 0.08);
+}
+/* The count is a button purely so it matches the other two; it isn't
+   clickable, so it reads as a label rather than a disabled control. */
+.vsl-print-auto__count:disabled {
+  opacity: 1;
+  color: var(--muted, #6b7570);
+  background: rgba(47, 107, 47, 0.05);
+}
+/* The scrolling region. Height comes from the fieldset above rather than a
+   fixed max — on a tall window you see more blocks, which is the point of
+   making the window taller. */
+.vsl-print-auto__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* position: relative so the visually-hidden checkbox inside is placed
+   against ITS OWN ROW. Without it the input — being absolutely positioned —
+   fell back to the window as its containing block and sat at the window's
+   top-left corner; clicking a row near the bottom of a long list then made
+   the browser scroll the container to "reveal" that focused input, which
+   dragged the whole body upward and left a gap under it. */
+.vsl-print-auto__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.22rem 0.1rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.vsl-print-auto__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A switch, not a checkbox: the real input is hidden and the track/knob is
+   drawn by the sibling span. The input keeps the keyboard and the change
+   event; only the look is borrowed. */
+/* Sits ON the toggle it drives (right-hand end of its own row), not off in
+   a corner — so if the browser does scroll to reveal it on focus, the thing
+   it reveals is the row you just clicked. */
+.vsl-print-auto__toggle-input {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.vsl-print-auto__toggle {
+  flex: 0 0 auto;
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background: #c3ccc6;
+  transition: background 0.15s;
+}
+.vsl-print-auto__toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s;
+}
+.vsl-print-auto__toggle-input:checked + .vsl-print-auto__toggle {
+  background: var(--primary);
+}
+.vsl-print-auto__toggle-input:checked + .vsl-print-auto__toggle::after {
+  transform: translateX(16px);
+}
+.vsl-print-auto__toggle-input:focus-visible + .vsl-print-auto__toggle {
+  outline: 2px solid var(--primary-2);
+  outline-offset: 2px;
+}
+
+.vsl-print-auto__clear {
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.35rem;
+  border: 1px solid rgba(185, 28, 28, 0.35);
+  border-radius: 6px;
+  background: none;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #b91c1c;
+  cursor: pointer;
+}
+.vsl-print-auto__clear:hover {
+  background: rgba(185, 28, 28, 0.07);
+}
+.vsl-print-auto__clear[hidden] {
+  display: none !important;
+}
+
+/* The buffer field is a number input in a row built for <select>; give it
+   the same box so the two rows line up. */
+.vsl-print-setup__row--select input[type="number"] {
+  width: 7rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.82rem;
+}
 .vsl-print-toolbar__sep {
   width: 1px;
   align-self: stretch;

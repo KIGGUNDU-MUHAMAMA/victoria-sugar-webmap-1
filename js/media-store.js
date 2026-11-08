@@ -176,18 +176,28 @@ export async function uploadMediaFile(supabase, file, { entityType, entityId }) 
  * PUBLIC_FOLDERS in workers/media/src/index.js.
  *
  * The worker's key check is strict (letters, digits, dot, dash, underscore),
- * so anything else — spaces above all — is folded to a dash here rather
- * than being rejected at upload time, after the PDF has been built.
+ * so anything else — spaces above all — is folded to a dash.
+ *
+ * This is why the link and the downloaded file are named differently on
+ * purpose: the download keeps its spaces ("Kakooge 48522008.pdf") because
+ * it only has to read well in a Downloads folder, while the link has to
+ * survive being a URL and being typed off a printed QR, so it becomes
+ * "Kakooge-48522008.pdf".
  */
-export function mapPdfTarget(filename) {
-  const base = mediaBase();
-  if (!base) throw new Error("MEDIA_API_BASE is not set in config/app-config.js");
-  const safe = String(filename || "")
+export function mapFileSlug(name, maxLen = 150) {
+  return String(name || "")
     .replace(/\.pdf$/i, "")
     .replace(/[^A-Za-z0-9._-]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "")
-    .slice(0, 150) || "map";
+    .slice(0, maxLen)
+    .replace(/[-.]+$/, "");
+}
+
+export function mapPdfTarget(filename) {
+  const base = mediaBase();
+  if (!base) throw new Error("MEDIA_API_BASE is not set in config/app-config.js");
+  const safe = mapFileSlug(filename) || "map";
   const key = `maps/${safe}.pdf`;
   return { key, url: `${base}/${key}` };
 }

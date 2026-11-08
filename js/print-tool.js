@@ -4171,10 +4171,18 @@ export function initPrintTool({
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const stamp = `${pad(d.getSeconds())}${pad(d.getMinutes())}${pad(d.getHours())}${pad(d.getDate())}`;
-    // Strip what Windows, macOS and Linux between them refuse in a filename,
-    // collapse whitespace, and keep it short enough to stay readable in a
-    // downloads list. A title of only punctuation sanitises to nothing,
-    // which is why the result is re-checked rather than trusted.
+    // Spaces here, on purpose. This is the name that lands in the person's
+    // Downloads folder, where "Kakooge 48522008.pdf" reads better than a
+    // hyphenated slug. The UPLOADED copy is a different matter — it has to
+    // survive being a URL and being read off a printed QR — so
+    // mapPdfTarget() slugs this same name down to dashes for the link.
+    // The two differ deliberately.
+    //
+    // Strip what Windows, macOS and Linux between them refuse in a
+    // filename, collapse whitespace, and keep it short enough to stay
+    // readable in a downloads list. A title of only punctuation sanitises
+    // to nothing, which is why the result is re-checked rather than
+    // trusted.
     const title = (titleInput?.value || "")
       .replace(/[\\/:*?"<>|]+/g, " ")
       .replace(/\s+/g, " ")

@@ -437,25 +437,29 @@ export function initPrintTool({
       layout.mapAreaH = pageH - m - stampH - mapTop - barH - barGap;
       layout.barH = barH;
       layout.barY = mapTop + layout.mapAreaH + barGap;
-      // The QR and north arrow STACK into one narrow right-hand column —
-      // QR on top, arrow beneath — rather than sitting side by side. Two
-      // squares stacked are far narrower than two side by side, and that
-      // reclaimed width goes to the legend, which is the cell that
-      // actually needs it. The stack's width is whatever makes each half
-      // square, so the column ends up exactly bar-height tall.
-      // Side by side, not stacked. Three squares stacked in a 120pt bar
-      // would be 11mm each — too small for a phone to read a QR off paper.
-      // Across, each keeps its full cap of 56pt (about 20mm) and the cost
-      // is width taken from the legend, which has room to give.
+      // Portrait puts the QR codes in a STACK with the compass beside
+      // them, not three across. The compass box is tall and narrow — its
+      // natural shape, since the rose sits under a standing needle — and
+      // the two codes fill the same height alongside it, which is both
+      // what the sheet should look like and the arrangement that keeps the
+      // codes largest for the bar's height.
+      const qrKinds = bottomKinds.filter((k) => k !== "compass");
+      const hasCompass = bottomKinds.includes("compass");
       let stackW = 0;
-      let box = 0;
+      let qrBox = 0;
+      let compassW = 0;
       if (bottomKinds.length) {
-        const { units, gaps } = bottomRowMetrics(bottomKinds);
-        box = Math.min(BOTTOM_SQUARE_MAX_PT, barH);
-        stackW = box * units + gaps;
+        // Each code takes an equal share of the bar's height; with two
+        // that is just under half each.
+        const rows = Math.max(1, qrKinds.length);
+        qrBox = qrKinds.length
+          ? Math.min(BOTTOM_SQUARE_MAX_PT, (barH - SIDE_CELL_GAP_PT * (rows - 1)) / rows)
+          : 0;
+        compassW = hasCompass ? Math.min(barH * COMPASS_CELL_RATIO, BOTTOM_SQUARE_MAX_PT) : 0;
+        stackW = compassW + qrBox + (compassW && qrBox ? SIDE_CELL_GAP_PT : 0);
       }
       layout.stackW = stackW;
-      layout.stackSquare = box;
+      layout.stackSquare = qrBox;
 
       // One gap between each pair of cells present — legend | stack (the
       // stack counts once, however many squares are in it). The Comments
@@ -469,11 +473,29 @@ export function initPrintTool({
       const x = m + (showLegend ? layout.barLegendW + PAGE_GAP_PT : 0);
       layout.stackX = x;
       if (bottomKinds.length) {
-        // Centred in the bar's height rather than pinned to its top — the
-        // cells are shorter than the bar now they sit across it.
-        layout.bottomCells = layoutBottomCells(
-          bottomKinds, x, layout.barY + Math.max(0, (barH - box) / 2), box
-        );
+        const cellsOut = [];
+        // Compass first, so it sits to the LEFT of the codes.
+        if (compassW) {
+          const compassH = Math.min(barH, qrKinds.length
+            ? qrBox * qrKinds.length + SIDE_CELL_GAP_PT * (qrKinds.length - 1)
+            : barH);
+          cellsOut.push({
+            kind: "compass",
+            x,
+            y: layout.barY + Math.max(0, (barH - compassH) / 2),
+            w: compassW,
+            h: compassH
+          });
+        }
+        // Then the codes, stacked down the remaining width.
+        const qrX = x + (compassW ? compassW + SIDE_CELL_GAP_PT : 0);
+        const stackH = qrBox * qrKinds.length + SIDE_CELL_GAP_PT * Math.max(0, qrKinds.length - 1);
+        let qy = layout.barY + Math.max(0, (barH - stackH) / 2);
+        for (const kind of qrKinds) {
+          cellsOut.push({ kind, x: qrX, y: qy, w: qrBox, h: qrBox });
+          qy += qrBox + SIDE_CELL_GAP_PT;
+        }
+        layout.bottomCells = cellsOut;
       }
     }
     return layout;
@@ -1414,15 +1436,19 @@ export function initPrintTool({
    * "<0.1" rather than rounding to a flat "0", which would read as a
    * measurement failure rather than as a very small feature.
    *
-   * No unit per row — the heading carries it once (see "LEGEND (acres)").
+   * The unit rides on each figure ("1,959ac") rather than on the heading.
+   * The heading is read once and then forgotten; the number is read on its
+   * own, often out of the corner of an eye, and a bare "1,959" next to a
+   * count of "5" invites reading both as counts.
    */
   function legendAreaText(areaAcres) {
     const a = Number(areaAcres);
     if (!Number.isFinite(a) || a <= 0) return "";
-    if (a < 0.05) return "<0.1";
-    return a >= 10
+    if (a < 0.05) return "<0.1ac";
+    const n = a >= 10
       ? Math.round(a).toLocaleString("en-US")
       : (Math.round(a * 10) / 10).toLocaleString("en-US");
+    return `${n}ac`;
   }
 
   /** A legend row's count, for its own column. */
@@ -4407,42 +4433,102 @@ export function initPrintTool({
        * crossing it. The vertical is deliberately the longer of the two so
        * the bearing reads at a glance.
        */
+      /**
+       * Compass rose — a four-point star inside two rings, with a slim
+       * needle and "N" standing above it.
+       *
+       * Built from jsPDF primitives rather than an image so it stays sharp
+       * at any paper size and carries no raster weight, the same reason
+       * every boundary on this sheet is drawn rather than captured.
+       *
+       * Each star point is two triangles meeting on the axis — the left
+       * one light, the right one dark. That single detail is what makes a
+       * flat four-pointed star read as a three-dimensional rose, and it is
+       * the convention every printed compass uses.
+       */
+      /** How far a star point reaches, as a multiple of the ring radius.
+       *  Everything about the rose's size and position is derived from
+       *  this, because the points are its true outer edge. */
+      const STAR_TIP = 1.26;
+
       const drawCompassCell = (x, y, w, h) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
         doc.setLineWidth(1);
         doc.rect(x, y, w, h, "FD");
 
+        const INK = [38, 38, 38];
+        const LIGHT = [188, 188, 188];
+        const RING = [214, 214, 214];
+
         const cx = x + w / 2;
-        const label = Math.max(6, Math.min(10, h * 0.17));
+        const label = Math.max(5.5, Math.min(9, h * 0.15));
+        const needleTop = y + h * 0.055 + label;
+        const bottom = y + h * 0.95;
 
-        // Bands down the cell: label, then the cross.
-        const top = y + h * 0.08;
-        doc.setFont("helvetica", "normal");
+        // STAR_TIP is how far a point reaches past the rings, so the rose
+        // must be placed and sized against the TIP, not the radius —
+        // sizing by the radius alone pushed the south point through the
+        // bottom of the cell. Horizontally the widest thing is the same
+        // tip, east and west.
+        const roseR = Math.min(w * 0.36, (bottom - needleTop) / 2.9);
+        if (roseR < 3) return;
+        const roseCy = bottom - roseR * STAR_TIP;
+
+        // "N" above everything.
+        doc.setFont("helvetica", "bold");
         doc.setFontSize(label);
-        doc.setTextColor(30, 42, 30);
-        doc.text("N", cx, top + label * 0.85, { align: "center" });
+        doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.text("N", cx, y + h * 0.045 + label * 0.85, { align: "center" });
 
-        const vTop = top + label * 1.25;
-        const vBottom = y + h * 0.92;
-        const vLen = vBottom - vTop;
-        if (vLen <= 2) return;
+        // The needle: a tall sliver from just under the N down to the
+        // rose's north point, split light/dark down its spine like the
+        // star below it.
+        const needleBase = roseCy - roseR * 0.92;
+        const needleHalf = Math.max(0.7, roseR * 0.13);
+        if (needleBase > needleTop + 2) {
+          doc.setFillColor(LIGHT[0], LIGHT[1], LIGHT[2]);
+          doc.triangle(cx, needleTop, cx - needleHalf, needleBase, cx, needleBase, "F");
+          doc.setFillColor(INK[0], INK[1], INK[2]);
+          doc.triangle(cx, needleTop, cx + needleHalf, needleBase, cx, needleBase, "F");
+        }
 
-        doc.setDrawColor(30, 42, 30);
-        doc.setLineWidth(Math.max(0.6, h * 0.016));
-        doc.line(cx, vTop, cx, vBottom);
+        // Two rings: a pale outer band with a darker disc inside it.
+        doc.setFillColor(RING[0], RING[1], RING[2]);
+        doc.setDrawColor(150);
+        doc.setLineWidth(Math.max(0.3, roseR * 0.05));
+        doc.circle(cx, roseCy, roseR, "FD");
+        doc.setFillColor(110, 110, 110);
+        doc.circle(cx, roseCy, roseR * 0.72, "F");
 
-        // Open chevron at the top — two strokes, no fill.
-        const headH = vLen * 0.22;
-        const headW = Math.min(w * 0.3, vLen * 0.2);
-        doc.line(cx, vTop, cx - headW, vTop + headH);
-        doc.line(cx, vTop, cx + headW, vTop + headH);
+        // Four-point star. Long axis N/S, short axis E/W, each point a
+        // light half and a dark half.
+        const tip = roseR * STAR_TIP;
+        const side = roseR * 0.30;
+        const star = (dx, dy, px, py) => {
+          // (dx,dy) points at the tip; (px,py) is its perpendicular.
+          const tx = cx + dx * tip;
+          const ty = roseCy + dy * tip;
+          const ax = cx + px * side;
+          const ay = roseCy + py * side;
+          const bx = cx - px * side;
+          const by = roseCy - py * side;
+          doc.setFillColor(LIGHT[0], LIGHT[1], LIGHT[2]);
+          doc.triangle(tx, ty, ax, ay, cx, roseCy, "F");
+          doc.setFillColor(INK[0], INK[1], INK[2]);
+          doc.triangle(tx, ty, bx, by, cx, roseCy, "F");
+        };
+        star(0, -1, 1, 0);   // north
+        star(0, 1, 1, 0);    // south
+        star(-1, 0, 0, 1);   // west
+        star(1, 0, 0, 1);    // east
 
-        // Crossbar: shorter than the vertical, and below its midpoint so
-        // the north limb is visibly the long one.
-        const barY = vTop + vLen * 0.58;
-        const barHalf = Math.min(w * 0.3, vLen * 0.26);
-        doc.line(cx - barHalf, barY, cx + barHalf, barY);
+        // Hub: a white centre with a dark collar, which is what stops the
+        // four points reading as one solid blob where they meet.
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(INK[0], INK[1], INK[2]);
+        doc.setLineWidth(Math.max(0.4, roseR * 0.09));
+        doc.circle(cx, roseCy, roseR * 0.20, "FD");
       };
 
       /** Legend drawn into a given cell. `columns` lays the swatch rows out
@@ -4521,7 +4607,7 @@ export function initPrintTool({
         // The unit is stated once here rather than repeated on every row —
         // the area column holds bare numbers, which keeps the rows narrow
         // enough for the labels beside them.
-        doc.text("LEGEND (acres)", x + 8, y + 14);
+        doc.text("LEGEND", x + 8, y + 14);
 
         // Flatten groups into a single stream of heading/item rows, then
         // deal it into columns.
@@ -4532,8 +4618,6 @@ export function initPrintTool({
         legendGroups.forEach((g, gi) => {
           if (gi > 0) stream.push({ type: "gap" });
           stream.push({ type: "head", label: g.title });
-          // `group` travels with the row so the figure columns can be
-          // aligned per group rather than per legend — see labelWByGroup.
           g.items.forEach((it) => stream.push({ type: "item", group: gi, ...it }));
         });
 
@@ -4590,9 +4674,10 @@ export function initPrintTool({
         // another holds nothing but single-digit alert counts.
         const countColW = [];
         const areaColW = [];
-        /** "<column>:<group>" -> widest label inside that group, in that
-         *  column. The figure columns are positioned from this. */
-        const labelWByGroup = new Map();
+        /** Per column, the widest label anywhere in it. One figure edge
+         *  per column is measured from this, so every group's numbers line
+         *  up down the page like a table. */
+        const labelWMaxByCol = [];
         for (let c = 0; c < columns; c++) {
           const rows = cols[c];
           doc.setFont("helvetica", "normal");
@@ -4603,17 +4688,6 @@ export function initPrintTool({
           rows.forEach((r) => {
             if (r.type !== "item") return;
             widestLabel = Math.max(widestLabel, doc.getTextWidth(r.label));
-            // ...and the widest label within this row's own GROUP, which is
-            // what its figures are aligned against. Aligning the whole
-            // column to one width means a four-letter label like "Plot"
-            // sits a long way from its count purely because a feature type
-            // further down is called "Residential Area". Per group, the
-            // numbers in LAND PROPERTIES tuck in behind "Land Title" and
-            // only FEATURES pays for its own long names — and the digits
-            // still line up within each group, which is where they are
-            // actually compared.
-            const gKey = `${c}:${r.group}`;
-            labelWByGroup.set(gKey, Math.max(labelWByGroup.get(gKey) || 0, doc.getTextWidth(r.label)));
             // Count and area are two separate columns, each measured from
             // its own longest entry rather than given a fixed slot — "519"
             // and "9,147" are nothing like the same width, and a guess that
@@ -4623,6 +4697,7 @@ export function initPrintTool({
               widestArea = Math.max(widestArea, doc.getTextWidth(legendAreaText(r.area)));
             }
           });
+          labelWMaxByCol[c] = widestLabel;
           const anyCount = widestCount > 0;
           countColW[c] = Math.max(COUNT_COL_PT, widestCount);
           // No floor on the area column: a group with no areas at all
@@ -4671,17 +4746,19 @@ export function initPrintTool({
         // cell anyway, which is what keeps the box from looking padded.
 
         /**
-         * Right edges of the two figure columns, for one group in one
-         * column: area outermost, count just inside it, both right-aligned
-         * so their digits line up.
+         * Right edges of the two figure columns — area outermost, count
+         * just inside it, both right-aligned so the digits line up.
          *
-         * Measured from the group's own widest label, so the figures sit
-         * immediately past the words rather than out at the cell's edge.
-         * Clamped to the column's content width so a group with unusually
-         * long labels still can't push its numbers off the box.
+         * Measured from the widest label in the WHOLE COLUMN, not per
+         * group. Per group, each heading's figures sat just past its own
+         * longest word, so LAND PROPERTIES and FEATURES ended up with
+         * their numbers in different places and the legend read as three
+         * separate lists rather than one table. One edge per column costs
+         * a little whitespace after the short labels and buys a column of
+         * figures that scans straight down the page.
          */
-        const figureEdges = (col, group) => {
-          const labelW = labelWByGroup.get(`${col}:${group}`) || 0;
+        const figureEdges = (col) => {
+          const labelW = labelWMaxByCol[col] || 0;
           const rightLimit = colX[col] + colContentW[col];
           const natural = colX[col] + swatch + 5 + labelW + 8
             + countColW[col] + (areaColW[col] > 0 ? 6 + areaColW[col] : 0);
@@ -4723,7 +4800,7 @@ export function initPrintTool({
             // printing a nought.
             const showCount = showCounts && row.count != null;
             const lx = cx + swatch + 5;
-            const { areaR, countR } = figureEdges(col, row.group);
+            const { areaR, countR } = figureEdges(col);
             const labelMax = (showCount ? countR - countColW[col] : areaR) - lx - 4;
             doc.text(row.label, lx, cy, { maxWidth: Math.max(10, labelMax) });
             if (showCount) {
@@ -4767,10 +4844,12 @@ export function initPrintTool({
         const side = Math.max(4, Math.min(w - pad * 2, h - capH - pad * 1.5));
         doc.addImage(dataUrl, "PNG", x + (w - side) / 2, y + pad * 0.75, side, side);
         if (!caption) return;
+        // Smaller, and lifted clear of the frame. "Scan to Download" is the
+        // longer of the two and was sitting right on the bottom edge.
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(Math.max(4.6, Math.min(6.4, capH * 0.72)));
+        doc.setFontSize(Math.max(3.8, Math.min(5.2, capH * 0.58)));
         doc.setTextColor(60, 60, 60);
-        doc.text(caption, x + w / 2, y + h - capH * 0.3, { align: "center" });
+        doc.text(caption, x + w / 2, y + h - capH * 0.42, { align: "center" });
       };
 
 

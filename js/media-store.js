@@ -163,6 +163,60 @@ export async function uploadMediaFile(supabase, file, { entityType, entityId }) 
   };
 }
 
+/**
+ * Where a printed map sheet will live, derived from its own filename.
+ *
+ *   mapPdfTarget("Kaaya 08120025.pdf")
+ *     -> { key: "maps/Kaaya-08120025.pdf",
+ *          url: "https://farmsmedia.victoriasugar.ug/maps/Kaaya-08120025.pdf" }
+ *
+ * Flat and readable on purpose: this URL goes into a QR code printed on the
+ * sheet, and someone may well end up typing it. That also makes it
+ * guessable, which is why maps/ is treated as published — see
+ * PUBLIC_FOLDERS in workers/media/src/index.js.
+ *
+ * The worker's key check is strict (letters, digits, dot, dash, underscore),
+ * so anything else — spaces above all — is folded to a dash here rather
+ * than being rejected at upload time, after the PDF has been built.
+ */
+export function mapPdfTarget(filename) {
+  const base = mediaBase();
+  if (!base) throw new Error("MEDIA_API_BASE is not set in config/app-config.js");
+  const safe = String(filename || "")
+    .replace(/\.pdf$/i, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 150) || "map";
+  const key = `maps/${safe}.pdf`;
+  return { key, url: `${base}/${key}` };
+}
+
+/**
+ * Uploads a finished map PDF to the key mapPdfTarget() handed out.
+ *
+ * Writing still needs a signed-in Admin or Surveyor even though reading the
+ * result does not — the worker gates PUT exactly as it does for photos.
+ */
+export async function uploadMapPdf(supabase, blob, key) {
+  const base = mediaBase();
+  if (!base) throw new Error("MEDIA_API_BASE is not set in config/app-config.js");
+  const token = await accessToken(supabase);
+  // The print tool checks for a session before it draws the download QR,
+  // so reaching here without one means the session died mid-print.
+  if (!token) throw new Error("Your session expired — reload the page and sign in again to save maps.");
+
+  const response = await fetch(`${base}/api/upload?key=${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/pdf" },
+    body: blob
+  });
+  if (!response.ok) {
+    throw new Error((await response.text()) || `Upload failed (${response.status})`);
+  }
+  return { key, url: `${base}/${key}` };
+}
+
 /** Best-effort removal of an object that was uploaded but never referenced. */
 async function deleteMediaObject(supabase, key) {
   try {

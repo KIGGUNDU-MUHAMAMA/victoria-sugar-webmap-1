@@ -44,6 +44,7 @@
 import { fillOpacityOf } from "./feature-type-editor.js";
 import { computeUtmCartesianAreaAcres } from "./utils.js";
 import { readSettings as readSavedSettings, setSetting } from "./user-settings.js";
+import { mapPdfTarget, uploadMapPdf } from "./media-store.js";
 
 export function initPrintTool({
   map, supabase, setStatus, statusEl, closeOtherPanels,
@@ -130,7 +131,11 @@ export function initPrintTool({
     // Map details
     details: {
       title: true, legend: true, northArrow: true, qr: true,
-      counts: true, date: true, source: true, scale: true, printedBy: false
+      counts: true, date: true, source: true, scale: true, printedBy: false,
+      // Upload the finished PDF and print a QR to it. Off by default: it
+      // publishes the sheet to a link anyone can open (see PUBLIC_FOLDERS
+      // in workers/media/src/index.js), which should be a deliberate act.
+      saveToCloud: false
     }
   };
 
@@ -277,6 +282,48 @@ export function initPrintTool({
    *  separates the map from the column, where a bigger gap reads better. */
   const SIDE_CELL_GAP_PT = 4;
 
+  /**
+   * Width of the compass cell as a fraction of a QR cell's.
+   *
+   * The compass is drawn from lines and reads fine narrow; a QR has to be
+   * big enough for a phone to resolve. Split three ways equally, a QR on
+   * the landscape sheet comes out at 16.7mm, which is marginal. Giving the
+   * compass less brings the codes back to about 18mm.
+   */
+  const COMPASS_CELL_RATIO = 0.72;
+
+  /** Caption strip inside a QR cell — "Scan to Locate" / "Scan to
+   *  Download". Inside the box, under the code, as on the printed sheet. */
+  const BOTTOM_LABEL_PT = 9;
+
+  /**
+   * The bottom row: location QR, compass, download QR, in that order, so
+   * the compass sits between the two codes.
+   *
+   * `box` is the row's height and a QR cell's width; a compass cell is
+   * narrower by COMPASS_CELL_RATIO. Returns the cells already positioned.
+   */
+  function layoutBottomCells(kinds, x, y, box) {
+    let cx = x;
+    return kinds.map((kind) => {
+      const w = kind === "compass" ? box * COMPASS_CELL_RATIO : box;
+      const cell = { kind, x: cx, y, w, h: box };
+      cx += w + SIDE_CELL_GAP_PT;
+      return cell;
+    });
+  }
+
+  /** Total width `kinds` needs at a given box size, and the unit count the
+   *  box size is solved from when fitting to a column. */
+  function bottomRowMetrics(kinds) {
+    const qrCount = kinds.filter((k) => k !== "compass").length;
+    const compassCount = kinds.length - qrCount;
+    return {
+      units: qrCount + compassCount * COMPASS_CELL_RATIO,
+      gaps: SIDE_CELL_GAP_PT * Math.max(0, kinds.length - 1)
+    };
+  }
+
   /** Width reserved for the right-aligned count column on a legend row —
    *  a floor, not the final width: the column is measured from its own
    *  longest figures (see countColW in drawLegendCell), because "500
@@ -314,7 +361,13 @@ export function initPrintTool({
     const showLegend = !!opts.legend;
     const showNorthArrow = !!opts.northArrow;
     const showQr = !!opts.qr;
+    const showDownloadQr = !!opts.downloadQr;
     const showStamp = !!opts.stamp;
+    // Location QR, compass, download QR — the order they print in.
+    const bottomKinds = [];
+    if (showQr) bottomKinds.push("locate");
+    if (showNorthArrow) bottomKinds.push("compass");
+    if (showDownloadQr) bottomKinds.push("download");
     const landscape = orientation === "landscape";
     const pageW = landscape ? A4_LONG_PT : A4_SHORT_PT;
     const pageH = landscape ? A4_SHORT_PT : A4_LONG_PT;
@@ -330,11 +383,11 @@ export function initPrintTool({
     const titleBandH = PAGE_TITLE_BAND_PT + descLines * PAGE_DESC_LINE_PT;
     const mapTop = m + titleBandH;
     const stampH = showStamp ? PAGE_STAMP_BAND_PT : 0;
-    const hasExtras = showLegend || showNorthArrow || showQr;
+    const hasExtras = showLegend || bottomKinds.length > 0;
 
     const layout = {
       pageW, pageH, margin: m, mapTop, stampH, landscape, titleBandH, descLines,
-      showLegend, showNorthArrow, showQr
+      showLegend, showNorthArrow, showQr, showDownloadQr, bottomCells: []
     };
 
     if (landscape) {
@@ -356,22 +409,25 @@ export function initPrintTool({
       // 170pt, half the column is an 83pt square, far larger than either
       // needs, and it would also eat into the legend's height (the squares
       // set the bottom row's height).
-      const bottomRowH = (showQr || showNorthArrow)
-        ? Math.min(sideColW, BOTTOM_SQUARE_MAX_PT)
-        : 0;
+      // Cells are sized to fill the column exactly when all three are
+      // present, which is what puts the compass dead centre. With fewer,
+      // the box hits its cap and the group is centred instead of leaving
+      // the slack at one end.
+      let bottomRowH = 0;
+      if (bottomKinds.length) {
+        const { units, gaps } = bottomRowMetrics(bottomKinds);
+        const box = Math.min(BOTTOM_SQUARE_MAX_PT, (sideColW - gaps) / units);
+        const used = box * units + gaps;
+        bottomRowH = box;
+        layout.bottomRowY = frameBottom - box;
+        layout.bottomCells = layoutBottomCells(
+          bottomKinds,
+          layout.sideX + Math.max(0, (sideColW - used) / 2),
+          layout.bottomRowY,
+          box
+        );
+      }
       layout.bottomRowH = bottomRowH;
-      layout.bottomRowY = frameBottom - bottomRowH;
-      layout.bottomCellW = bottomRowH; // square
-      layout.qrSize = showQr ? layout.bottomCellW : 0;
-      layout.qrX = layout.sideX;
-      layout.qrY = layout.bottomRowY;
-      layout.arrowW = showNorthArrow ? layout.bottomCellW : 0;
-      // Right-aligned to the column when the QR is there to be left of it;
-      // on its own it takes the left end like any single cell.
-      layout.arrowX = showQr
-        ? layout.sideX + sideColW - layout.bottomCellW
-        : layout.sideX;
-      layout.arrowY = layout.bottomRowY;
     } else {
       // Extras live in a bar across the bottom: the legend, then the QR and
       // north arrow stacked at its right end.
@@ -387,12 +443,19 @@ export function initPrintTool({
       // reclaimed width goes to the legend, which is the cell that
       // actually needs it. The stack's width is whatever makes each half
       // square, so the column ends up exactly bar-height tall.
-      const stackBoth = showQr && showNorthArrow;
-      const stackSquare = stackBoth ? (barH - SIDE_CELL_GAP_PT) / 2 : barH;
-      layout.stackSquare = stackSquare;
-      layout.stackW = (showQr || showNorthArrow) ? stackSquare : 0;
-      layout.qrSize = showQr ? stackSquare : 0;
-      layout.barArrowW = showNorthArrow ? stackSquare : 0;
+      // Side by side, not stacked. Three squares stacked in a 120pt bar
+      // would be 11mm each — too small for a phone to read a QR off paper.
+      // Across, each keeps its full cap of 56pt (about 20mm) and the cost
+      // is width taken from the legend, which has room to give.
+      let stackW = 0;
+      let box = 0;
+      if (bottomKinds.length) {
+        const { units, gaps } = bottomRowMetrics(bottomKinds);
+        box = Math.min(BOTTOM_SQUARE_MAX_PT, barH);
+        stackW = box * units + gaps;
+      }
+      layout.stackW = stackW;
+      layout.stackSquare = box;
 
       // One gap between each pair of cells present — legend | stack (the
       // stack counts once, however many squares are in it). The Comments
@@ -405,11 +468,13 @@ export function initPrintTool({
 
       const x = m + (showLegend ? layout.barLegendW + PAGE_GAP_PT : 0);
       layout.stackX = x;
-      layout.qrX = x;
-      layout.qrY = layout.barY;
-      layout.arrowX = x;
-      // Arrow sits under the QR when both are on, else takes the column.
-      layout.arrowY = showQr ? layout.barY + stackSquare + SIDE_CELL_GAP_PT : layout.barY;
+      if (bottomKinds.length) {
+        // Centred in the bar's height rather than pinned to its top — the
+        // cells are shorter than the bar now they sit across it.
+        layout.bottomCells = layoutBottomCells(
+          bottomKinds, x, layout.barY + Math.max(0, (barH - box) / 2), box
+        );
+      }
     }
     return layout;
   }
@@ -450,6 +515,7 @@ export function initPrintTool({
       legend: settings.details.legend,
       northArrow: settings.details.northArrow,
       qr: settings.details.qr,
+      downloadQr: settings.details.saveToCloud,
       descLines: descriptionLineCount(orientation),
       stamp: settings.details.date || settings.details.source || settings.details.printedBy
     });
@@ -878,6 +944,7 @@ export function initPrintTool({
         { kind: "check", group: "details", key: "northArrow", label: "North arrow", reflow: true },
         { kind: "check", group: "details", key: "counts", label: "Show counts in legend" },
         { kind: "check", group: "details", key: "qr", label: "Location QR", reflow: true },
+        { kind: "check", group: "details", key: "saveToCloud", label: "Save to cloud + download QR", reflow: true },
         { kind: "check", group: "details", key: "date", label: "Date", reflow: true },
         { kind: "check", group: "details", key: "source", label: "Source", reflow: true },
         { kind: "check", group: "details", key: "scale", label: "Scale" },
@@ -1411,7 +1478,9 @@ export function initPrintTool({
         sym: { kind: "poly", fill: null, stroke: BLOCK_STROKE_RGB } });
     }
     if (settings.layers.plot) {
-      land.push({ label: "Plot", count: plotFeatures.length, area: sumAreaAcres(plotFeatures),
+      // "Field", not "Plot" — what the database calls a parcel is a field on
+      // the ground, and that is the word the printed sheet uses.
+      land.push({ label: "Field", count: plotFeatures.length, area: sumAreaAcres(plotFeatures),
         sym: { kind: "poly", fill: null, stroke: PARCEL_STROKE_RGB } });
     }
     if (settings.layers.titleBoundary) {
@@ -2013,11 +2082,12 @@ export function initPrintTool({
    *  match. Derived from the page layout rather than guessed, so turning the
    *  legend or the title on changes it correctly. */
   function printFrameAspect(orientation) {
-    const L = computePageLayout(orientation, {
-      descLines: descriptionLineCount(orientation),
-      stamp: true
-    });
-    return L && L.mapAreaH > 0 ? L.mapAreaW / L.mapAreaH : 1;
+    // Delegates rather than building its own opts. Written separately it
+    // passed NO toggles, so the layout came back as if the legend and the
+    // whole side column were switched off — a far wider frame than the
+    // sheet actually has, and the automatic selection was being fitted to
+    // that wrong ratio.
+    return targetAspectRatio(orientation);
   }
 
   /** Combined bounds of the blocks still switched on, or null. */
@@ -4159,6 +4229,51 @@ export function initPrintTool({
         throwIfCancelled(run);
       }
 
+      // Where this sheet will live, and the QR that points at it.
+      //
+      // Reserved BEFORE the PDF is built, not after: the QR has to be
+      // drawn into the page, so the link must already be known. It is,
+      // because the key is derived from the filename rather than handed
+      // out by the server.
+      let wantCloud = !!settings.details.saveToCloud;
+      let mapTarget = null;
+      let downloadQrDataUrl = null;
+
+      // Checked BEFORE the QR is drawn, not after the upload fails.
+      //
+      // Without this the sheet goes out carrying a QR to a file that was
+      // never uploaded — worse than no QR at all, because it looks like it
+      // works. A session can be missing even though the map is on screen:
+      // vsl_feature has a "read all" policy the anon key satisfies, so the
+      // layers keep loading after a refresh token has expired.
+      if (wantCloud) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData?.session?.access_token) {
+          wantCloud = false;
+          setPrintStatus(
+            "Not signed in, so this sheet can't be saved to the cloud — printing without the download QR. Reload the page and sign in again.",
+            true
+          );
+        }
+        throwIfCancelled(run);
+      }
+
+      if (wantCloud) {
+        try {
+          mapTarget = mapPdfTarget(buildPrintFilename());
+          setCapturingOverlay(true, "Preparing download link…");
+          downloadQrDataUrl = await fetchQrCodeDataUrl(mapTarget.url, run.controller?.signal);
+        } catch (cloudErr) {
+          throwIfCancelled(run);
+          // The sheet is still worth printing without it — but say so,
+          // rather than letting the user believe a copy was saved.
+          mapTarget = null;
+          console.warn("[Victoria Print] Download QR unavailable:", cloudErr);
+          setPrintStatus("Couldn't prepare the download link — printing without it.", true);
+        }
+        throwIfCancelled(run);
+      }
+
       // Orientation isn't a setting — automatic from whichever side of the
       // selection is longer.
       const orientation = selectionRect.width >= selectionRect.height ? "landscape" : "portrait";
@@ -4178,8 +4293,10 @@ export function initPrintTool({
         settings.details.date || settings.details.source ||
         (settings.details.printedBy && currentUserName())
       );
+      const showDownloadQr = !!downloadQrDataUrl;
       const L = computePageLayout(orientation, {
         legend: showLegend, northArrow: showNorthArrow, qr: showQr,
+        downloadQr: showDownloadQr,
         descLines: descriptionLineCount(orientation), stamp: showStamp
       });
       const margin = L.margin;
@@ -4278,28 +4395,54 @@ export function initPrintTool({
       /** North arrow, sized to whatever cell it's given — it shares the
        *  bottom row with the QR in landscape and sits in the bar in
        *  portrait, so the geometry is proportional rather than fixed. */
-      const drawNorthArrowCell = (x, y, w, h) => {
+      /**
+       * A surveyor's cross compass, drawn in strokes rather than filled
+       * shapes — the same visual language as the plot and block lines, so
+       * it sits on the sheet as draughting rather than as an icon. The
+       * solid black arrowhead it replaced was the heaviest mark on the
+       * page.
+       *
+       * North is up: "N" above a vertical that runs most of the cell's
+       * height, an open chevron at its top, and a shorter horizontal
+       * crossing it. The vertical is deliberately the longer of the two so
+       * the bearing reads at a glance.
+       */
+      const drawCompassCell = (x, y, w, h) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
         doc.setLineWidth(1);
         doc.rect(x, y, w, h, "FD");
 
         const cx = x + w / 2;
-        const s = Math.min(w, h);
-        // Arrow occupies the upper ~62%, the "N" sits under it.
-        const headH = s * 0.26;
-        const shaftH = s * 0.20;
-        const top = y + h * 0.16;
-        const halfW = s * 0.16;
+        const label = Math.max(6, Math.min(10, h * 0.17));
 
-        doc.setFillColor(30, 42, 30);
-        doc.triangle(cx, top, cx - halfW, top + headH, cx + halfW, top + headH, "F");
-        doc.rect(cx - s * 0.055, top + headH - 0.5, s * 0.11, shaftH, "F");
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(Math.max(6.5, Math.min(10, s * 0.2)));
+        // Bands down the cell: label, then the cross.
+        const top = y + h * 0.08;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(label);
         doc.setTextColor(30, 42, 30);
-        doc.text("N", cx, top + headH + shaftH + s * 0.2, { align: "center" });
+        doc.text("N", cx, top + label * 0.85, { align: "center" });
+
+        const vTop = top + label * 1.25;
+        const vBottom = y + h * 0.92;
+        const vLen = vBottom - vTop;
+        if (vLen <= 2) return;
+
+        doc.setDrawColor(30, 42, 30);
+        doc.setLineWidth(Math.max(0.6, h * 0.016));
+        doc.line(cx, vTop, cx, vBottom);
+
+        // Open chevron at the top — two strokes, no fill.
+        const headH = vLen * 0.22;
+        const headW = Math.min(w * 0.3, vLen * 0.2);
+        doc.line(cx, vTop, cx - headW, vTop + headH);
+        doc.line(cx, vTop, cx + headW, vTop + headH);
+
+        // Crossbar: shorter than the vertical, and below its midpoint so
+        // the north limb is visibly the long one.
+        const barY = vTop + vLen * 0.58;
+        const barHalf = Math.min(w * 0.3, vLen * 0.26);
+        doc.line(cx - barHalf, barY, cx + barHalf, barY);
       };
 
       /** Legend drawn into a given cell. `columns` lays the swatch rows out
@@ -4593,71 +4736,63 @@ export function initPrintTool({
         });
       };
 
-      /** Square QR cell + caption, linking to the centre of the printed
-       *  area on Google Maps. */
-      // No caption under the QR any more — it now shares a row with the
-      // north arrow at the very bottom of the column, so there's nothing
-      // below it to caption into, and "Scan for location" wouldn't fit a
-      // half-column square anyway.
-      const drawQrCell = (x, y, size) => {
-        doc.setFillColor(255, 255, 255);
-        doc.setDrawColor(120);
-        doc.setLineWidth(1);
-        doc.rect(x, y, size, size, "FD");
-        const pad = Math.max(2, size * 0.07);
-        doc.addImage(qrDataUrl, "PNG", x + pad, y + pad, size - pad * 2, size - pad * 2);
+      /**
+       * Paints the planned bottom row — location QR, compass, download QR.
+       * computePageLayout decided which cells exist and where they sit
+       * (layout.bottomCells), so landscape and portrait share this.
+       */
+      const drawBottomCells = () => {
+        for (const cell of L.bottomCells || []) {
+          if (cell.kind === "compass") drawCompassCell(cell.x, cell.y, cell.w, cell.h);
+          else if (cell.kind === "locate") drawQrCell(cell.x, cell.y, cell.w, cell.h, qrDataUrl, "Scan to Locate");
+          else drawQrCell(cell.x, cell.y, cell.w, cell.h, downloadQrDataUrl, "Scan to Download");
+        }
       };
 
       /**
-       * The empty cell between the QR and the north arrow.
+       * A QR cell: the code, with its caption inside the box underneath.
        *
-       * Those two are pinned to opposite ends of the side column so they
-       * line up with the legend's borders, which leaves a gap between them.
-       * Reserved space reads as a deliberate box; the same space with
-       * nothing drawn in it reads as a mistake. Same frame as every other
-       * cell on the page, and left blank — somewhere to write on the
-       * printed sheet, which is what the Comments box used to be for.
+       * The caption is not decoration — with two codes on one sheet they
+       * are otherwise indistinguishable, and scanning the wrong one gets
+       * you a map pin when you wanted the file.
        */
-      const drawPlaceholderCell = (x, y, w, h) => {
-        if (w < 8 || h < 8) return; // not enough room to be anything
+      const drawQrCell = (x, y, w, h, dataUrl, caption) => {
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(120);
         doc.setLineWidth(1);
         doc.rect(x, y, w, h, "FD");
+        if (!dataUrl) return;
+        const capH = caption ? Math.min(BOTTOM_LABEL_PT, h * 0.2) : 0;
+        const pad = Math.max(2, w * 0.07);
+        const side = Math.max(4, Math.min(w - pad * 2, h - capH - pad * 1.5));
+        doc.addImage(dataUrl, "PNG", x + (w - side) / 2, y + pad * 0.75, side, side);
+        if (!caption) return;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(Math.max(4.6, Math.min(6.4, capH * 0.72)));
+        doc.setTextColor(60, 60, 60);
+        doc.text(caption, x + w / 2, y + h - capH * 0.3, { align: "center" });
       };
+
 
       if (L.landscape) {
         // Extras stack down the right-hand column: the legend fills it
-        // from the top, with the QR and north arrow in a row pinned to the
-        // bottom.
-        // The legend now runs from the top of the column all the way down
-        // to the QR/arrow row — the Comments box used to sit between them
-        // and take 60pt of that height.
+        // from the top, with the QR / compass / QR row pinned to the
+        // bottom. The legend runs all the way down to that row — the
+        // Comments box used to sit between them and take 60pt.
         const stackTop = L.bottomRowH ? L.bottomRowY : mapTop + mapAreaH;
         const legendBottom = stackTop - (L.bottomRowH ? SIDE_CELL_GAP_PT : 0);
         if (showLegend && legendBottom - mapTop > 30) {
           drawLegendCell(L.sideX, mapTop, L.sideColW, legendBottom - mapTop, 1);
         }
-        if (showQr) drawQrCell(L.qrX, L.qrY, L.qrSize);
-        // Between the two, when both are present and there is a gap to
-        // fill (SIDE_CELL_GAP_PT of breathing room either side).
-        if (showQr && showNorthArrow) {
-          const gapX = L.qrX + L.qrSize + SIDE_CELL_GAP_PT;
-          const gapW = L.arrowX - SIDE_CELL_GAP_PT - gapX;
-          drawPlaceholderCell(gapX, L.bottomRowY, gapW, L.bottomRowH);
-        }
-        if (showNorthArrow) drawNorthArrowCell(L.arrowX, L.arrowY, L.arrowW, L.bottomRowH);
+        drawBottomCells();
       } else {
-        // Extras sit in a bar under the map: the legend, then the QR and
-        // arrow stacked at its right end. The legend spans the bar's full
-        // height with its rows flowing across several columns.
+        // Extras sit in a bar under the map: the legend, then the QR /
+        // compass / QR row across its right end. The legend spans the
+        // bar's full height with its rows flowing across several columns.
         if (showLegend) {
           drawLegendCell(margin, L.barY, L.barLegendW, L.barH, PORTRAIT_LEGEND_COLUMNS);
         }
-        if (showQr) drawQrCell(L.qrX, L.qrY, L.qrSize);
-        if (showNorthArrow) {
-          drawNorthArrowCell(L.arrowX, L.arrowY, L.barArrowW, L.stackSquare);
-        }
+        drawBottomCells();
       }
 
       // Approx. scale, bottom-right under the map frame.
@@ -4695,8 +4830,28 @@ export function initPrintTool({
       // stop the file landing in the person's Downloads folder.
       throwIfCancelled(run);
 
+      // Saved to the person's machine FIRST, uploaded second. The download
+      // is the thing they asked for; the cloud copy is a bonus, and a
+      // failing network must not cost them the file.
       doc.save(buildPrintFilename());
       setPrintStatus("PDF downloaded.", false);
+
+      if (mapTarget) {
+        setPrintStatus("PDF downloaded. Saving a copy…", false);
+        try {
+          await uploadMapPdf(supabase, doc.output("blob"), mapTarget.key);
+          setPrintStatus("PDF downloaded and saved — the QR on the sheet opens it.", false);
+        } catch (uploadErr) {
+          // Reported plainly: the sheet now carries a QR to a file that
+          // isn't there, and the person needs to know that before handing
+          // the printout to anyone.
+          console.warn("[Victoria Print] Map upload failed:", uploadErr);
+          setPrintStatus(
+            `PDF downloaded, but saving the cloud copy failed — the download QR on this sheet won't work. ${uploadErr?.message || ""}`.trim(),
+            true
+          );
+        }
+      }
     } catch (err) {
       if (err instanceof PrintCancelled) {
         setPrintStatus("Print cancelled.", false);

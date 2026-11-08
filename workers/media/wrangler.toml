@@ -27,7 +27,18 @@ SUPABASE_ANON_KEY = "sb_publishable_W2kx87RbvH0Qd1HkPPXlIg_6GAy0HAV"
 
 # Origins allowed to call this Worker from a browser. The first entry is
 # used as the fallback when a request arrives from somewhere unlisted.
-ALLOWED_ORIGINS = "https://victoriasugar.ug,https://admin.victoriasugar.ug,http://localhost:5500,http://127.0.0.1:5500,https://farms.victoriasugarltd.xyz/webmap,https://farms.victoriasugarltd.xyz/*"
+#
+# ⚠ These are ORIGINS, not URLs. An Origin header is only ever
+#   scheme://host[:port] — it never carries a path, and the comparison in
+#   workers/shared/auth.js is an exact string match with no wildcards. The
+#   two entries that used to be here,
+#       https://farms.victoriasugarltd.xyz/webmap
+#       https://farms.victoriasugarltd.xyz/*
+#   could therefore never match anything, so the live site was not on the
+#   list at all and every browser upload from it was blocked. Local
+#   development kept working only because auth.js has a separate regex
+#   exemption for localhost/127.0.0.1, which is why it went unnoticed.
+ALLOWED_ORIGINS = "https://farms.victoriasugarltd.xyz,https://victoriasugar.ug,https://admin.victoriasugar.ug,http://localhost:5500,http://127.0.0.1:5500"
 
 # The custom domain already attached to this bucket's worker. Comment this
 # block out to test on the *.workers.dev URL first.

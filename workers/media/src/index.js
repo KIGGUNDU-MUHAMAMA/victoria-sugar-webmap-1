@@ -35,8 +35,25 @@
 
 import { requireUser, cors, json, plain, serveObject } from "../../shared/auth.js";
 
-/** Top-level folders. Also the two prefixes reads are allowed to touch. */
-const MEDIA_FOLDERS = new Set(["photos", "videos"]);
+/** Top-level folders. Also the only prefixes reads are allowed to touch. */
+const MEDIA_FOLDERS = new Set(["photos", "videos", "maps"]);
+
+/**
+ * Folders served WITHOUT a signed-in user.
+ *
+ * Only "maps": a printed sheet carries a QR code to its own PDF, and the
+ * person who scans it is holding paper, not a logged-in browser. A token
+ * cannot travel on printed paper, so a gated link would always 401 and the
+ * QR would be decoration.
+ *
+ * The exposure is real and was accepted deliberately: map filenames are
+ * readable (estate + timestamp), so they can be guessed, and anything in
+ * maps/ should be treated as published. Writes are still gated — only a
+ * signed-in Admin or Surveyor can put a file here.
+ *
+ * To close it again, remove "maps" from this set. Nothing else changes.
+ */
+const PUBLIC_FOLDERS = new Set(["maps"]);
 
 /** What a media key may hang off. Anything else is rejected outright, so a
  *  caller cannot invent a folder tree inside the bucket. */
@@ -48,7 +65,9 @@ const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
 
 const MEDIA_CONTENT_TYPES = new Set([
   "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif",
-  "video/mp4", "video/quicktime", "video/webm"
+  "video/mp4", "video/quicktime", "video/webm",
+  // Printed map sheets saved from the print tool (maps/).
+  "application/pdf"
 ]);
 
 /** Deleting is destructive and irreversible; adding is not. */
@@ -88,13 +107,24 @@ async function route(request, env) {
     const key = decodeURIComponent(path.slice(1));
     if (mediaKeyError(key)) return plain("Not found", 404);
 
-    const gate = await requireUser(request, env);
-    if (gate.error) return gate.error;
+    // maps/ is readable by anyone — see PUBLIC_FOLDERS for why, and for how
+    // to close it again.
+    const isPublic = PUBLIC_FOLDERS.has(key.split("/")[0]);
+    if (!isPublic) {
+      const gate = await requireUser(request, env);
+      if (gate.error) return gate.error;
+    }
 
     // A key contains a uuid and the bytes never change under it, so this
-    // can be cached hard. `private` keeps it in the browser only — a shared
-    // cache must never hold something that required a token to fetch.
-    return serveObject(key, request, env.MEDIA, null, "private, max-age=86400, immutable");
+    // can be cached hard. `private` keeps a gated object in the browser
+    // only — a shared cache must never hold something that required a
+    // token to fetch. A public map sheet has no such constraint, but it CAN
+    // be overwritten by reprinting the same title in the same second, so it
+    // is not marked immutable.
+    const cache = isPublic
+      ? "public, max-age=300"
+      : "private, max-age=86400, immutable";
+    return serveObject(key, request, env.MEDIA, null, cache);
   }
 
   // ── Uploading ──────────────────────────────────────────────────────────
@@ -130,10 +160,21 @@ async function route(request, env) {
     }
     if (!body.byteLength) return plain("Empty file", 400);
 
-    // Refuse to overwrite. Keys carry a uuid so a collision means something
-    // has gone wrong, and silently replacing evidence would be the worst
-    // possible response to it.
-    if (await env.MEDIA.head(key)) return plain("That file already exists", 409);
+    // Refuse to overwrite. A photo or video key carries a uuid, so a
+    // collision means something has gone wrong, and silently replacing
+    // evidence would be the worst possible response to it.
+    //
+    // maps/ is the exception, and deliberately so: its key is the sheet's
+    // own title and timestamp, not a uuid, and reprinting a map is a
+    // normal thing to do. Refusing would fail the second print of the day
+    // for the same title, and the QR already printed on the older sheet
+    // should resolve to the newest version of that map rather than to a
+    // stale one. (This is why maps/ is served with a short cache and not
+    // marked immutable — see the GET branch above.)
+    const replaceable = PUBLIC_FOLDERS.has(key.split("/")[0]);
+    if (!replaceable && await env.MEDIA.head(key)) {
+      return plain("That file already exists", 409);
+    }
 
     await env.MEDIA.put(key, body, {
       httpMetadata: { contentType },
@@ -201,6 +242,15 @@ function mediaKeyError(key) {
     return "Malformed key";
   }
   const parts = key.split("/");
+  // maps/ is flat — maps/<name>.pdf — because the whole point is a short
+  // link a person can read off a printed QR. The entity/entityId levels the
+  // media folders use exist to tie a photo to the row it belongs to; a map
+  // sheet belongs to no row.
+  if (parts[0] === "maps") {
+    if (parts.length !== 2) return "Malformed key";
+    if (!/^[A-Za-z0-9._-]{1,160}\.pdf$/.test(parts[1])) return "Malformed file name";
+    return "";
+  }
   if (parts.length !== 4) return "Malformed key";
   const [folder, entity, entityId, name] = parts;
   if (!MEDIA_FOLDERS.has(folder)) return "Unknown media folder";

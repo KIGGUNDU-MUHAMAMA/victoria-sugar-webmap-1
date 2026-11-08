@@ -3074,7 +3074,15 @@ export function initPrintTool({
         strokeColor: BLOCK_STROKE_RGB, strokeWidth: sizes.blockStroke
       });
     });
+  }
+
+  /** A block's name. Its own pass, drawn UNDER the plot and feature names —
+   *  see drawMapVectors. The boundary above is unaffected and still goes
+   *  down last of all the geometry. */
+  function drawBlockLabel(doc, feature, project, sizes, frame) {
     if (!settings.labels.block) return;
+    const geometry = feature.getGeometry();
+    if (!geometry) return;
     const ip = getFeatureInteriorPoint?.(geometry);
     if (!ip) return;
     const anchor = project(ip.getCoordinates());
@@ -3087,8 +3095,9 @@ export function initPrintTool({
     const geometry = feature.getGeometry();
     if (!geometry) return;
     const status = feature.get("cultivation_status");
+    // Severity only — it tints the fill. The COUNT is read in
+    // drawParcelLabel, which owns the Alerts(n) badge.
     const alertSeverity = feature.get("_alert_severity");
-    const alertCount = feature.get("_alert_count");
 
     // With "Status colour fills" off, plots print as bare outlines — no
     // cultivation shading and no alert shading either, since both are the
@@ -3128,6 +3137,15 @@ export function initPrintTool({
       forEachOuterRing(geometry, (ring) => drawEdgeDistanceLabels(doc, ring, project, sizes.edgeDistance, frame));
     }
 
+  }
+
+  /** A plot's name/area/ratoon stack, plus its Alerts badge. Its own pass so
+   *  it paints over the block name underneath it — see drawMapVectors. */
+  function drawParcelLabel(doc, feature, project, sizes, frame) {
+    const geometry = feature.getGeometry();
+    if (!geometry) return;
+    const alertSeverity = feature.get("_alert_severity");
+    const alertCount = feature.get("_alert_count");
     const ip = getFeatureInteriorPoint?.(geometry);
     if (!ip) return;
     const anchor = project(ip.getCoordinates());
@@ -3726,14 +3744,23 @@ export function initPrintTool({
     }
 
     plans.filter((p) => p.kind === "point").forEach((p) => drawPointPlan(doc, p));
+  }
 
-    // Labels last of all — no stroke can paint over a name this way.
-    //
-    // Two rounds, and the order matters. Every feature's PRIMARY label goes
-    // down first and unconditionally, so nothing that used to be labelled
-    // stops being labelled. The repeats then fill in along each road, but
-    // only where they don't land on a name already on the page — a poor
-    // man's version of the declutter OpenLayers does for the live map.
+  /**
+   * Feature names, as their own round.
+   *
+   * Split out of drawFeaturePlans so every label on the page — block, plot
+   * and feature — can be painted after ALL the geometry, in a deliberate
+   * order (see drawMapVectors). Keeping it inside meant a feature name was
+   * laid down before the block boundaries were even drawn.
+   *
+   * Two rounds within it, and the order matters. Every feature's PRIMARY
+   * label goes down first and unconditionally, so nothing that used to be
+   * labelled stops being labelled. The repeats then fill in along each
+   * road, but only where they don't land on a name already on the page — a
+   * poor man's version of the declutter OpenLayers does for the live map.
+   */
+  function drawFeatureLabels(doc, plans, sizes) {
     if (!settings.labels.feature) return;
     const placed = [];
     plans.forEach((p) => {
@@ -3856,11 +3883,12 @@ export function initPrintTool({
       estatesLayer?.getSource()?.getFeaturesInExtent(extent)
         .forEach((f) => drawEstateVector(doc, f, project, sizes, frame));
     }
-    if (settings.layers.plot) {
-      parcelsLayer?.getSource()?.getFeaturesInExtent(extent)
-        .filter(autoPlotAllowed)
-        .forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
-    }
+    // Held so the label passes at the bottom reuse exactly the features
+    // that were drawn — recomputing the filter would risk the two drifting.
+    const plotFeatures = settings.layers.plot
+      ? (parcelsLayer?.getSource()?.getFeaturesInExtent(extent) || []).filter(autoPlotAllowed)
+      : [];
+    plotFeatures.forEach((f) => drawParcelVector(doc, f, project, sizes, frame));
     if (settings.layers.titleBoundary) {
       titlesLayer?.getSource()?.getFeaturesInExtent(extent)
         .forEach((f) => drawTitleVector(doc, f, project, sizes, frame));
@@ -3881,11 +3909,27 @@ export function initPrintTool({
     // js/map-app.js). Drawn in the middle of the stack, as they were, a
     // block line vanishes under the plots that tile over it, and where a
     // block boundary runs is often the one thing a printed map is for.
-    if (settings.layers.block) {
-      blocksLayer?.getSource()?.getFeaturesInExtent(extent)
-        .filter(autoBlockAllowed)
-        .forEach((f) => drawBlockVector(doc, f, project, sizes, frame));
-    }
+    const blockFeatures = settings.layers.block
+      ? (blocksLayer?.getSource()?.getFeaturesInExtent(extent) || []).filter(autoBlockAllowed)
+      : [];
+    blockFeatures.forEach((f) => drawBlockVector(doc, f, project, sizes, frame));
+
+    // ── Labels, after every piece of geometry ──────────────────────────
+    // Names used to be drawn with the shape they belong to, which made the
+    // paint order of the LABELS an accident of the paint order of the
+    // GEOMETRY. Blocks are drawn last so their boundaries sit above the
+    // plot fills — and that dragged the block NAME up on top of the plot
+    // and feature names too, printing "BLOCK1" straight through a plot's
+    // area figure.
+    //
+    // So the three label rounds run here instead, in their own order,
+    // while every boundary and line keeps exactly the position it had:
+    //   block names  — the backdrop, biggest text, least specific
+    //   plot names   — over the block name
+    //   feature names — over everything, as before
+    blockFeatures.forEach((f) => drawBlockLabel(doc, f, project, sizes, frame));
+    plotFeatures.forEach((f) => drawParcelLabel(doc, f, project, sizes, frame));
+    drawFeatureLabels(doc, featurePlans, sizes);
   }
 
   /** Plain pixel-accurate crop — `rect` must already be in the same pixel

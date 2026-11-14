@@ -4166,10 +4166,17 @@ function renderNotifications(el) {
       // Reconcile subscriptions by replacing the full set \u2014 this is a small
       // per-recipient child table, so a diff-free delete+reinsert is simpler
       // and safer than matching rows up one by one.
-      const { error: delErr } = await client.from('vsl_report_subscriptions').delete().eq('recipient_id', id);
-      if (delErr) throw delErr;
-      const { error: subErr } = await client.from('vsl_report_subscriptions').insert(
-        expandDraftReportsToRows(id)
+      // A single atomic upsert keyed on the (recipient_id, report_type) unique
+      // constraint replaces the old delete-then-insert here: those were two
+      // independent PostgREST requests, not one transaction, so if insert
+      // ever failed after delete had already committed, the recipient was
+      // left with some or all of their subscription rows deleted and none
+      // re-created. expandDraftReportsToRows always returns all 4
+      // report_type rows, so a single upsert both updates existing rows and
+      // creates any missing ones, and can't leave that half-done state.
+      const { error: subErr } = await client.from('vsl_report_subscriptions').upsert(
+        expandDraftReportsToRows(id),
+        { onConflict: 'recipient_id,report_type' }
       );
       if (subErr) throw subErr;
       closeModal();
@@ -4280,8 +4287,9 @@ function renderNotifications(el) {
       const { data, error } = await client.from('vsl_report_recipients').insert([{ email, name }]).select();
       if (error) throw error;
       const recipientId = data[0].id;
-      const { error: subErr } = await client.from('vsl_report_subscriptions').insert(
-        expandDraftReportsToRows(recipientId)
+      const { error: subErr } = await client.from('vsl_report_subscriptions').upsert(
+        expandDraftReportsToRows(recipientId),
+        { onConflict: 'recipient_id,report_type' }
       );
       if (subErr) throw subErr;
       closeModal();
